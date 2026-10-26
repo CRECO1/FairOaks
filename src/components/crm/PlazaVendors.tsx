@@ -10,9 +10,9 @@ interface Vendor {
 interface Props { authToken?: string; showToast?: (m: string) => void; isMobile?: boolean }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
-const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif" };
-const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4, display: 'block' };
-const btn: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '9px 14px', minHeight: 40, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
+const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif" };
+const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 4, display: 'block' };
+const btn: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '9px 14px', minHeight: 40, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
 const primary: React.CSSProperties = { ...btn, color: '#fff', background: '#C9922C', border: '1px solid #C9922C' };
 const blank = { name: '', category: '', description: '', phone: '', website: '', address: '', note: '', featured: false, published: true, local_owned: false };
 
@@ -63,14 +63,14 @@ export default function PlazaVendors({ authToken, showToast, isMobile }: Props) 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 560 }}>
-          The public <a href="https://fairoaksranchplaza.com/local" target="_blank" rel="noopener noreferrer" style={{ color: '#a06a12', fontWeight: 700 }}>Local Business &amp; Vendor Resource</a>. Focus is locally owned and operated businesses — only tick that box once the owner is confirmed.
+        <div style={{ fontSize: 13, color: 'var(--k-6b7280)', maxWidth: 560 }}>
+          The public <a href="https://fairoaksranchplaza.com/local" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--k-a06a12)', fontWeight: 700 }}>Local Business &amp; Vendor Resource</a>. Focus is locally owned and operated businesses — only tick that box once the owner is confirmed.
         </div>
         {!editing && <button style={primary} onClick={() => { setForm(blank); setEditing('new'); }}>＋ Add business</button>}
       </div>
 
       {editing && (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: isMobile ? 14 : 20, marginBottom: 18, display: 'grid', gap: 14 }}>
+        <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: isMobile ? 14 : 20, marginBottom: 18, display: 'grid', gap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
             <div><span style={label}>Business name</span><input style={input} value={form.name} maxLength={160} onChange={e => set('name', e.target.value)} /></div>
             <div><span style={label}>Category</span><input style={input} value={form.category} maxLength={80} onChange={e => set('category', e.target.value)} placeholder="e.g. Plumbing, Restaurants, Golf & Recreation" /></div>
@@ -94,23 +94,23 @@ export default function PlazaVendors({ authToken, showToast, isMobile }: Props) 
         </div>
       )}
 
-      {rows === null && <div style={{ color: '#9ca3af' }}>Loading…</div>}
-      {rows && rows.length === 0 && !editing && <div style={{ padding: 24, border: '1px dashed #d1d5db', borderRadius: 12, color: '#6b7280' }}>No businesses yet.</div>}
+      {rows === null && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
+      {rows && rows.length === 0 && !editing && <div style={{ padding: 24, border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)' }}>No businesses yet.</div>}
       <div style={{ display: 'grid', gap: 10 }}>
         {(rows ?? []).map(v => (
-          <div key={v.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div key={v.id} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 260px' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: v.published ? '#16a34a' : '#9ca3af' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: v.published ? 'var(--k-16a34a)' : 'var(--k-9ca3af)' }}>
                 {v.published ? 'Published' : 'Hidden'} · {v.category}{v.featured ? ' · Featured' : ''}
               </div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '2px 0' }}>{v.name}</div>
-              <div style={{ fontSize: 13, color: v.local_owned ? '#166534' : '#9ca3af', fontWeight: 600 }}>{v.local_owned ? '✓ Locally owned & operated' : 'Local ownership not confirmed — no badge'}</div>
+              <div style={{ fontSize: 13, color: v.local_owned ? 'var(--k-166534)' : 'var(--k-9ca3af)', fontWeight: 600 }}>{v.local_owned ? '✓ Locally owned & operated' : 'Local ownership not confirmed — no badge'}</div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button style={btn} onClick={() => startEdit(v)}>Edit</button>
               <button style={btn} onClick={() => patch(v, { local_owned: !v.local_owned }, v.local_owned ? 'Badge removed' : 'Confirmed locally owned')}>{v.local_owned ? 'Remove badge' : 'Confirm local'}</button>
               <button style={btn} onClick={() => patch(v, { published: !v.published }, v.published ? 'Hidden' : 'Published — live within 5 minutes')}>{v.published ? 'Hide' : 'Publish'}</button>
-              <button style={{ ...btn, color: '#b91c1c' }} onClick={() => remove(v)}>Delete</button>
+              <button style={{ ...btn, color: 'var(--k-b91c1c)' }} onClick={() => remove(v)}>Delete</button>
             </div>
           </div>
         ))}

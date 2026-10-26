@@ -96,8 +96,8 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
   return (
     <div style={{ maxWidth: 1100 }}>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 26, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Transaction Docs</h2>
-        <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 26, fontWeight: 600, color: 'var(--k-1a1a1a)', margin: 0 }}>Transaction Docs</h2>
+        <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 2 }}>
           Pick a form to fill, or attach a use-case packet to a deal below.
         </div>
       </div>
@@ -107,24 +107,24 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
         return (
           <div style={{ position: 'relative', maxWidth: isMobile ? '100%' : 560 }}>
             <button onClick={() => setFormMenuOpen(o => !o)}
-              style={{ display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left', background: formMenuOpen ? '#fffdf6' : '#fff', border: `1px solid ${formMenuOpen ? '#c9922c' : '#e5e7eb'}`, borderRadius: 12, padding: '13px 16px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left', background: formMenuOpen ? 'var(--k-fffdf6)' : 'var(--k-fff)', border: `1px solid ${formMenuOpen ? '#c9922c' : 'var(--k-e5e7eb)'}`, borderRadius: 12, padding: '13px 16px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
               <span style={{ fontSize: 24 }}>🖊️</span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>Fill out a form</div>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{loading ? 'Loading…' : `${forms.length} forms — contracts, lease, addenda & more`}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>Fill out a form</div>
+                <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 1 }}>{loading ? 'Loading…' : `${forms.length} forms — contracts, lease, addenda & more`}</div>
               </div>
               <span style={{ fontSize: 12, color: '#c9922c', fontWeight: 700, transform: formMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▾</span>
             </button>
             {formMenuOpen && (
               <>
                 <div onClick={() => setFormMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 8, background: '#fff', border: '1px solid #eef0f2', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,.18)', zIndex: 50, overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 8, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,.18)', zIndex: 50, overflow: 'hidden' }}>
                   <div style={{ padding: 10, borderBottom: '1px solid #f4f5f7' }}>
                     <input autoFocus placeholder="🔍  Search forms…" value={q} onChange={e => setQ(e.target.value)}
-                      style={{ width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }} />
+                      style={{ width: '100%', padding: '9px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }} />
                   </div>
                   <div style={{ maxHeight: '48vh', overflowY: 'auto', padding: 6 }}>
-                    {filtered.length === 0 && <div style={{ padding: 24, color: '#9ca3af', textAlign: 'center', fontSize: 13 }}>No forms match.</div>}
+                    {filtered.length === 0 && <div style={{ padding: 24, color: 'var(--k-9ca3af)', textAlign: 'center', fontSize: 13 }}>No forms match.</div>}
                     {cats.map(cat => {
                       const items = filtered.filter(f => (f.category || 'Other') === cat);
                       if (!items.length) return null;
@@ -141,15 +141,15 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
                                     ("Subdivision Information, Including Resale Certificate for Property
                                     Subject to Mandatory Membership in a POA"), and one clamped line hid
                                     exactly the part that tells two similar addenda apart. */}
-                                <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{f.name}</div>
-                                <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 1 }}>{f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pp` : ''}</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-1a1a1a)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{f.name}</div>
+                                <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 1 }}>{f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pp` : ''}</div>
                               </div>
                               {specForForm(f.form_code, f.name) ? (
                                 <span style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
                                   <button
                                     onClick={e => { e.stopPropagation(); setFormMenuOpen(false); setAutofill({ id: f.id, name: f.name }); }}
                                     title="Let the CRM pre-fill what it can and ask you for the rest — no deal needed"
-                                    style={{ fontSize: 11.5, fontWeight: 700, color: '#a06a12', background: '#fdf6e9', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                                    style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                                     ✨ Auto-fill
                                   </button>
                                   <span style={{ fontSize: 12, fontWeight: 700, color: '#c9922c' }}>Fill ›</span>
@@ -174,24 +174,24 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
       <div style={{ marginTop: isMobile ? 26 : 36 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 21, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Active Deals</h3>
-            <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>Attach a completed form to a live deal — or start a new one.</div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 21, fontWeight: 600, color: 'var(--k-1a1a1a)', margin: 0 }}>Active Deals</h3>
+            <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1 }}>Attach a completed form to a live deal — or start a new one.</div>
           </div>
           {onNewDeal && (
             <button onClick={onNewDeal} style={{ padding: isMobile ? '12px 16px' : '8px 16px', minHeight: isMobile ? 44 : undefined, fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ New Deal</button>
           )}
         </div>
         {activeDeals.length === 0 ? (
-          <div style={{ fontSize: 13, color: '#9ca3af', padding: '10px 0' }}>No active deals yet. Create one to start attaching documents.</div>
+          <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '10px 0' }}>No active deals yet. Create one to start attaching documents.</div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
             {activeDeals.map(d => (
-              <div key={d.id} style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client || 'Deal'}</div>
-                <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[d.property, d.type].filter(Boolean).join(' · ')}</div>
+              <div key={d.id} style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client || 'Deal'}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[d.property, d.type].filter(Boolean).join(' · ')}</div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
-                  {d.stage && <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', padding: '2px 8px', borderRadius: 20 }}>{d.stage}</span>}
-                  <button onClick={() => setPickForDeal(d.id)} style={{ marginLeft: 'auto', padding: isMobile ? '11px 14px' : '7px 12px', minHeight: isMobile ? 44 : undefined, fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ Add doc</button>
+                  {d.stage && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-1d4ed8)', background: 'var(--k-dbeafe)', padding: '2px 8px', borderRadius: 20 }}>{d.stage}</span>}
+                  <button onClick={() => setPickForDeal(d.id)} style={{ marginLeft: 'auto', padding: isMobile ? '11px 14px' : '7px 12px', minHeight: isMobile ? 44 : undefined, fontSize: 12.5, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ Add doc</button>
                 </div>
               </div>
             ))}
@@ -202,11 +202,11 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
       {/* Pick a form to attach to the chosen deal */}
       {pickForDeal && (
         <div onClick={() => setPickForDeal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'flex-start', padding: isMobile ? 0 : '12vh 16px', overflowY: isMobile ? 'hidden' : 'auto', fontFamily: "'DM Sans',sans-serif" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: isMobile ? '18px 18px 0 0' : 14, maxWidth: isMobile ? '100%' : 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden', ...(isMobile ? { maxHeight: '88vh', display: 'flex', flexDirection: 'column', paddingBottom: 'env(safe-area-inset-bottom)' } : {}) }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f2', fontWeight: 600, fontSize: 16, color: '#1a1a1a', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--k-fff)', borderRadius: isMobile ? '18px 18px 0 0' : 14, maxWidth: isMobile ? '100%' : 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden', ...(isMobile ? { maxHeight: '88vh', display: 'flex', flexDirection: 'column', paddingBottom: 'env(safe-area-inset-bottom)' } : {}) }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f2', fontWeight: 600, fontSize: 16, color: 'var(--k-1a1a1a)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
               <span style={{ flex: 1 }}>Pick a form for this deal</span>
               <button onClick={() => setPickForDeal(null)} aria-label="Close"
-                style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, cursor: 'pointer', fontSize: 16, color: '#6b7280', flexShrink: 0 }}>✕</button>
+                style={{ background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 8, width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)', flexShrink: 0 }}>✕</button>
             </div>
             <div style={{ padding: 10, maxHeight: isMobile ? undefined : '52vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', ...(isMobile ? { flex: 1, minHeight: 0 } : {}) }}>
               {forms.map(f => (
@@ -214,7 +214,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
                   style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: isMobile ? '13px 12px' : '11px 12px', minHeight: isMobile ? 48 : undefined, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
                   onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
                   <span style={{ fontSize: 20 }}>📄</span>
-                  <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{f.name}</span>{f.form_code && <span style={{ fontSize: 12, color: '#9ca3af' }}>{f.form_code}</span>}</span>
+                  <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--k-1a1a1a)' }}>{f.name}</span>{f.form_code && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{f.form_code}</span>}</span>
                 </button>
               ))}
             </div>

@@ -11,9 +11,9 @@ interface Job {
 interface Props { authToken?: string; showToast?: (m: string) => void; isMobile?: boolean }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
-const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif" };
-const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4, display: 'block' };
-const btn: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '9px 14px', minHeight: 40, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
+const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif" };
+const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 4, display: 'block' };
+const btn: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '9px 14px', minHeight: 40, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
 const primary: React.CSSProperties = { ...btn, color: '#fff', background: '#C9922C', border: '1px solid #C9922C' };
 const blank = { company: '', title: '', summary: '', location: '', employment_type: '', apply_url: '', apply_email: '', company_url: '', apply_method: 'external', notify_email: '', featured: false, published: true };
 
@@ -62,14 +62,14 @@ export default function PlazaJobs({ authToken, showToast, isMobile }: Props) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 600 }}>
-          Openings on <a href="https://fairoaksranchplaza.com/jobs" target="_blank" rel="noopener noreferrer" style={{ color: '#a06a12', fontWeight: 700 }}>fairoaksranchplaza.com/jobs</a> — local businesses hiring local people. Applicants go straight to the company&apos;s own link or email.
+        <div style={{ fontSize: 13, color: 'var(--k-6b7280)', maxWidth: 600 }}>
+          Openings on <a href="https://fairoaksranchplaza.com/jobs" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--k-a06a12)', fontWeight: 700 }}>fairoaksranchplaza.com/jobs</a> — local businesses hiring local people. Applicants go straight to the company&apos;s own link or email.
         </div>
         {!editing && <button style={primary} onClick={() => { setForm(blank); setEditing('new'); }}>＋ Add opening</button>}
       </div>
 
       {editing && (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: isMobile ? 14 : 20, marginBottom: 18, display: 'grid', gap: 14 }}>
+        <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: isMobile ? 14 : 20, marginBottom: 18, display: 'grid', gap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
             <div><span style={label}>Company</span><input style={input} value={form.company} maxLength={160} onChange={e => set('company', e.target.value)} /></div>
             <div><span style={label}>Job title</span><input style={input} value={form.title} maxLength={160} onChange={e => set('title', e.target.value)} /></div>
@@ -103,30 +103,30 @@ export default function PlazaJobs({ authToken, showToast, isMobile }: Props) {
         </div>
       )}
 
-      {rows === null && <div style={{ color: '#9ca3af' }}>Loading…</div>}
-      {rows && rows.length === 0 && !editing && <div style={{ padding: 24, border: '1px dashed #d1d5db', borderRadius: 12, color: '#6b7280' }}>No openings yet.</div>}
+      {rows === null && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
+      {rows && rows.length === 0 && !editing && <div style={{ padding: 24, border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)' }}>No openings yet.</div>}
       {(() => {
         const pend = (rows ?? []).filter(j => j.source === 'community' && !j.published).length;
-        return pend > 0 ? <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, fontWeight: 600 }}>{pend} community job posting{pend === 1 ? '' : 's'} waiting for your approval. Review below, edit if needed, then Approve &amp; publish (stays up 60 days).</div> : null;
+        return pend > 0 ? <div style={{ background: 'var(--k-fffbeb)', border: '1px solid var(--k-fcd34d)', color: 'var(--k-92400e)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, fontWeight: 600 }}>{pend} community job posting{pend === 1 ? '' : 's'} waiting for your approval. Review below, edit if needed, then Approve &amp; publish (stays up 60 days).</div> : null;
       })()}
       <div style={{ display: 'grid', gap: 10 }}>
         {(rows ?? []).slice().sort((a, b) => Number(b.source === 'community' && !b.published) - Number(a.source === 'community' && !a.published)).map(j => (
-          <div key={j.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div key={j.id} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 260px' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: j.published ? '#16a34a' : j.source === 'community' ? '#d97706' : '#9ca3af' }}>{j.published ? 'Published' : j.source === 'community' ? 'Pending approval' : 'Hidden'}{j.source === 'community' ? ' · Community post' : ''}{j.featured ? ' · Featured' : ''}</div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: j.published ? 'var(--k-16a34a)' : j.source === 'community' ? '#d97706' : 'var(--k-9ca3af)' }}>{j.published ? 'Published' : j.source === 'community' ? 'Pending approval' : 'Hidden'}{j.source === 'community' ? ' · Community post' : ''}{j.featured ? ' · Featured' : ''}</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '2px 0' }}>{j.title}</div>
-              <div style={{ fontSize: 13, color: '#6b7280' }}>{j.company}{j.location ? ` · ${j.location}` : ''}</div>
+              <div style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>{j.company}{j.location ? ` · ${j.location}` : ''}</div>
               {j.source === 'community' && (
-                <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 4 }}>
+                <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginTop: 4 }}>
                   Submitted by {j.submitter_name}{j.submitter_email ? <> · <a href={`mailto:${j.submitter_email}`}>{j.submitter_email}</a></> : null}{j.submitter_phone ? ` · ${j.submitter_phone}` : ''}
                 </div>
               )}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(j.apply_method === 'site' || (j.app_total ?? 0) > 0) && <button style={{ ...btn, ...((j.app_new ?? 0) > 0 ? { background: '#fef3c7', borderColor: '#fcd34d', color: '#92400e' } : {}) }} onClick={() => setOpenApps(openApps === j.id ? null : j.id)}>Applicants ({j.app_total ?? 0}{(j.app_new ?? 0) > 0 ? ` · ${j.app_new} new` : ''})</button>}
+              {(j.apply_method === 'site' || (j.app_total ?? 0) > 0) && <button style={{ ...btn, ...((j.app_new ?? 0) > 0 ? { background: 'var(--k-fef3c7)', borderColor: 'var(--k-fcd34d)', color: 'var(--k-92400e)' } : {}) }} onClick={() => setOpenApps(openApps === j.id ? null : j.id)}>Applicants ({j.app_total ?? 0}{(j.app_new ?? 0) > 0 ? ` · ${j.app_new} new` : ''})</button>}
               <button style={btn} onClick={() => startEdit(j)}>Edit</button>
               <button style={btn} onClick={() => patch(j, { published: !j.published }, j.published ? 'Hidden' : 'Published — live within 5 minutes')}>{j.published ? 'Hide' : j.source === 'community' ? 'Approve & publish' : 'Publish'}</button>
-              <button style={{ ...btn, color: '#b91c1c' }} onClick={() => remove(j)}>Delete</button>
+              <button style={{ ...btn, color: 'var(--k-b91c1c)' }} onClick={() => remove(j)}>Delete</button>
             </div>
             {openApps === j.id && <div style={{ flex: '1 1 100%' }}><Applicants jobId={j.id} authToken={authToken} showToast={showToast} onChange={load} /></div>}
           </div>
@@ -159,17 +159,17 @@ function Applicants({ jobId, authToken, showToast, onChange }: { jobId: string; 
     if (!r.ok) { showToast?.('Could not delete'); return; }
     showToast?.('Deleted'); load(); onChange();
   }
-  if (rows === null) return <div style={{ color: '#9ca3af', fontSize: 13, paddingTop: 8 }}>Loading applicants…</div>;
-  if (rows.length === 0) return <div style={{ color: '#6b7280', fontSize: 13, paddingTop: 8 }}>No applications yet.</div>;
+  if (rows === null) return <div style={{ color: 'var(--k-9ca3af)', fontSize: 13, paddingTop: 8 }}>Loading applicants…</div>;
+  if (rows.length === 0) return <div style={{ color: 'var(--k-6b7280)', fontSize: 13, paddingTop: 8 }}>No applications yet.</div>;
   return (
-    <div style={{ display: 'grid', gap: 8, marginTop: 10, borderTop: '1px solid #f3f4f6', paddingTop: 10 }}>
+    <div style={{ display: 'grid', gap: 8, marginTop: 10, borderTop: '1px solid var(--k-f3f4f6)', paddingTop: 10 }}>
       {rows.map(a => (
-        <div key={a.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', background: a.status === 'new' ? '#fffbeb' : '#fff' }}>
+        <div key={a.id} style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '10px 12px', background: a.status === 'new' ? 'var(--k-fffbeb)' : 'var(--k-fff)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div><b>{a.name}</b> <span style={{ color: '#6b7280', fontSize: 13 }}>· {new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></div>
+            <div><b>{a.name}</b> <span style={{ color: 'var(--k-6b7280)', fontSize: 13 }}>· {new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <select value={a.status} onChange={e => setStatus(a, e.target.value)} style={{ fontSize: 13, padding: '6px 8px', border: '1px solid #e5e7eb', borderRadius: 8 }}>{Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-              <button style={{ ...btn, color: '#b91c1c', minHeight: 32, padding: '4px 10px' }} onClick={() => del(a)}>Delete</button>
+              <select value={a.status} onChange={e => setStatus(a, e.target.value)} style={{ fontSize: 13, padding: '6px 8px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8 }}>{Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+              <button style={{ ...btn, color: 'var(--k-b91c1c)', minHeight: 32, padding: '4px 10px' }} onClick={() => del(a)}>Delete</button>
             </div>
           </div>
           <div style={{ fontSize: 13.5, marginTop: 4 }}>
@@ -177,7 +177,7 @@ function Applicants({ jobId, authToken, showToast, onChange }: { jobId: string; 
             {a.link && <> · <a href={a.link} target="_blank" rel="noopener noreferrer">Link</a></>}
             {a.has_resume && (a.resume_url ? <> · <a href={a.resume_url} target="_blank" rel="noopener noreferrer">Resume</a></> : ' · resume unavailable')}
           </div>
-          {a.message && <div style={{ fontSize: 13.5, color: '#374151', marginTop: 4, whiteSpace: 'pre-line' }}>{a.message}</div>}
+          {a.message && <div style={{ fontSize: 13.5, color: 'var(--k-374151)', marginTop: 4, whiteSpace: 'pre-line' }}>{a.message}</div>}
         </div>
       ))}
     </div>

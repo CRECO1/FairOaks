@@ -35,11 +35,11 @@ const money = (n?: number | null) => (n === null || n === undefined || n === '' 
 function leaseStatus(exp?: string | null): { label: string; bg: string; color: string } | null {
   if (!exp) return null;
   const days = Math.floor((new Date(exp + 'T00:00:00').getTime() - new Date(new Date().toDateString()).getTime()) / 86400000);
-  if (days < 0) return { label: 'Expired', bg: '#fee2e2', color: '#b91c1c' };
-  if (days <= 60) return { label: `${days}d left`, bg: '#fee2e2', color: '#b91c1c' };
-  if (days <= 90) return { label: '61-90 days', bg: '#ffedd5', color: '#c2410c' };
-  if (days <= 120) return { label: '91-120 days', bg: '#fef9c3', color: '#a16207' };
-  return { label: 'Current', bg: '#f0fdf4', color: '#15803d' };
+  if (days < 0) return { label: 'Expired', bg: '#fee2e2', color: 'var(--k-b91c1c)' };
+  if (days <= 60) return { label: `${days}d left`, bg: '#fee2e2', color: 'var(--k-b91c1c)' };
+  if (days <= 90) return { label: '61-90 days', bg: '#ffedd5', color: 'var(--k-c2410c)' };
+  if (days <= 120) return { label: '91-120 days', bg: '#fef9c3', color: 'var(--k-a16207)' };
+  return { label: 'Current', bg: '#f0fdf4', color: 'var(--k-15803d)' };
 }
 
 type SortKey = 'suite' | 'building' | 'tenant_name' | 'size_sf' | 'lease_expiration' | 'monthly_rent' | 'annual_rent' | 'lease_type' | 'mailbox_box' | 'keys' | 'email' | 'phone' | 'contact_name';
@@ -64,7 +64,7 @@ const HEAD: { label: string; w: number; k?: SortKey; right?: boolean }[] = [
   { label: 'Notes', w: 160 },
 ];
 
-const TH: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 2, background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '7px 8px', fontSize: 10.5, letterSpacing: .5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 800, textAlign: 'left', whiteSpace: 'nowrap' };
+const TH: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 2, background: 'var(--k-f9fafb)', borderBottom: '1px solid var(--k-e5e7eb)', padding: '7px 8px', fontSize: 10.5, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 800, textAlign: 'left', whiteSpace: 'nowrap' };
 const TD: React.CSSProperties = { borderBottom: '1px solid #f1f2f4', padding: 0, verticalAlign: 'middle' };
 
 // One inline-editable cell: commits on blur (or Enter), reverts on Escape.
@@ -101,7 +101,7 @@ function Cell({ value, onSave, align, width, placeholder, type = 'text', bold, m
         if (e.key === 'Escape') { dirty.current = false; setV(value ?? ''); (e.target as HTMLInputElement).blur(); }
       }}
       style={{ width: width ?? '100%', minWidth: width ?? 0, border: 'none', outline: 'none', background: 'transparent',
-        padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", color: '#1a1a1a',
+        padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-1a1a1a)',
         textAlign: align ?? 'left', fontWeight: bold ? 700 : 400, boxSizing: 'border-box' }}
     />
   );
@@ -139,7 +139,7 @@ function NoteCell({ value, onSave, profiles, contacts }: {
         if (e.key === 'Escape') { dirty.current = false; setV(value ?? ''); e.currentTarget.blur(); }
       }}
       style={{ width: '100%', minWidth: 0, border: 'none', outline: 'none', background: 'transparent', resize: 'none', overflow: 'hidden',
-        padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", color: '#1a1a1a', boxSizing: 'border-box', display: 'block' }}
+        padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-1a1a1a)', boxSizing: 'border-box', display: 'block' }}
     />
   );
 }
@@ -177,7 +177,7 @@ function ContactCell({ row, contacts, onLink, onText, onCreate }: {
       title={linked ? [contactName(linked), linked.email, linked.phone || linked.cell_phone].filter(Boolean).join(' · ') : 'Link a contact'}
       style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer',
         padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif",
-        color: linked ? '#111' : shown ? '#6b7280' : '#c0c4cc', fontWeight: linked ? 600 : 400,
+        color: linked ? 'var(--k-111)' : shown ? 'var(--k-6b7280)' : '#c0c4cc', fontWeight: linked ? 600 : 400,
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
       {linked ? <span style={{ color: GOLD, marginRight: 4 }}>●</span> : null}
       {shown || 'Link contact'}
@@ -194,32 +194,32 @@ function ContactCell({ row, contacts, onLink, onText, onCreate }: {
         }}
         style={{ width: '100%', border: 'none', outline: 'none', background: '#fffdf3', boxShadow: `inset 0 0 0 2px ${GOLD}33`,
           padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }} />
-      <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 30, minWidth: 240, background: '#fff',
-        border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.14)', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 30, minWidth: 240, background: 'var(--k-fff)',
+        border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.14)', overflow: 'hidden' }}>
         {matches.map(c => (
           <button key={c.id} onClick={() => { onLink(c); setOpen(false); }}
             style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none',
-              borderBottom: '1px solid #f3f4f6', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{contactName(c)}</div>
-            {c.email && <div style={{ fontSize: 11, color: '#9ca3af' }}>{c.email}</div>}
+              borderBottom: '1px solid var(--k-f3f4f6)', background: 'var(--k-fff)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-111)' }}>{contactName(c)}</div>
+            {c.email && <div style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>{c.email}</div>}
           </button>
         ))}
         {q.trim() && matches.length === 0 && (
           <>
             <button onClick={async () => { const c = await onCreate(q); if (c) { onLink(c); setOpen(false); } }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', borderBottom: '1px solid #f3f4f6', background: '#fffdf3', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: GOLD, fontWeight: 700 }}>
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', borderBottom: '1px solid var(--k-f3f4f6)', background: '#fffdf3', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: GOLD, fontWeight: 700 }}>
               ＋ Add “{q.trim()}” as a new contact
             </button>
             <button onClick={() => { onText(q); setOpen(false); }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: '#6b7280' }}>
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', background: 'var(--k-fff)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: 'var(--k-6b7280)' }}>
               No contact matches — keep “{q.trim()}” as text
             </button>
           </>
         )}
-        {!q.trim() && <div style={{ padding: '8px 11px', fontSize: 12, color: '#9ca3af' }}>Type a name, business or email…</div>}
+        {!q.trim() && <div style={{ padding: '8px 11px', fontSize: 12, color: 'var(--k-9ca3af)' }}>Type a name, business or email…</div>}
         {linked && (
           <button onClick={() => { onLink(null); setOpen(false); }}
-            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', borderTop: '1px solid #f3f4f6', background: '#fafafa', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: '#b91c1c' }}>
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', borderTop: '1px solid var(--k-f3f4f6)', background: 'var(--k-fafafa)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: 'var(--k-b91c1c)' }}>
             ✕ Unlink {contactName(linked)}
           </button>
         )}
@@ -434,14 +434,14 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
 
 
   const tile = (label: string, value: string, sub?: string) => (
-    <div style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 10, padding: '9px 13px', minWidth: 108 }}>
-      <div style={{ fontSize: 10, letterSpacing: .7, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 800 }}>{label}</div>
-      <div style={{ fontSize: 17, fontWeight: 800, color: '#1a1a1a', marginTop: 2, fontFamily: "'Cormorant Garamond',serif" }}>{value}</div>
-      {sub && <div style={{ fontSize: 10.5, color: '#9ca3af' }}>{sub}</div>}
+    <div style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '9px 13px', minWidth: 108 }}>
+      <div style={{ fontSize: 10, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 800 }}>{label}</div>
+      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--k-1a1a1a)', marginTop: 2, fontFamily: "'Cormorant Garamond',serif" }}>{value}</div>
+      {sub && <div style={{ fontSize: 10.5, color: 'var(--k-9ca3af)' }}>{sub}</div>}
     </div>
   );
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>Loading rent roll…</div>;
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading rent roll…</div>;
 
   const vendorRows = vendors.filter(v => v.category === 'vendor');
   const infoRows = vendors.filter(v => v.category === 'building_info');
@@ -461,23 +461,23 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search suite, tenant, email…"
-          style={{ flex: 1, minWidth: 190, padding: '7px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans',sans-serif" }} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          style={{ flex: 1, minWidth: 190, padding: '7px 11px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans',sans-serif" }} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: 'var(--k-6b7280)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={showVacant} onChange={e => setShowVacant(e.target.checked)} /> Show vacant
         </label>
         {unlinked.length > 0 && contacts.length > 0 && (
           <button onClick={matchContacts} disabled={matching} title="Link suites to CRM contacts by name or email"
-            style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px solid #e6d3a2', borderRadius: 8, padding: '7px 12px', cursor: matching ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+            style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1px solid var(--k-e6d3a2)', borderRadius: 8, padding: '7px 12px', cursor: matching ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
             {matching ? 'Linking…' : `🔗 Link contacts (${unlinked.length})`}
           </button>
         )}
         <button onClick={() => setExpanded(v => !v)} title={expanded ? 'Back to the property card' : 'Open the full sheet — every column, full width'}
-          style={{ fontSize: 12.5, fontWeight: 700, color: expanded ? '#6b7280' : '#a06a12', background: expanded ? '#fff' : '#fffdf6', border: `1px solid ${expanded ? '#e5e7eb' : '#e6d3a2'}`, borderRadius: 8, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{expanded ? '✕ Close' : '⛶ Full screen'}</button>
+          style={{ fontSize: 12.5, fontWeight: 700, color: expanded ? 'var(--k-6b7280)' : 'var(--k-a06a12)', background: expanded ? 'var(--k-fff)' : 'var(--k-fffdf6)', border: `1px solid ${expanded ? 'var(--k-e5e7eb)' : 'var(--k-e6d3a2)'}`, borderRadius: 8, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{expanded ? '✕ Close' : '⛶ Full screen'}</button>
         <button onClick={addSuite} style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '7px 13px', cursor: 'pointer' }}>＋ Suite</button>
       </div>
 
       {/* Grid */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', maxHeight: expanded ? 'calc(100vh - 330px)' : 560, background: '#fff' }}>
+      <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'auto', maxHeight: expanded ? 'calc(100vh - 330px)' : 560, background: 'var(--k-fff)' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1180 }}>
           <thead>
             <tr>
@@ -486,7 +486,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
                   title={h.k ? `Sort by ${h.label}` : undefined}
                   style={{ ...TH, minWidth: h.w, textAlign: h.right ? 'right' : 'left',
                     cursor: h.k ? 'pointer' : 'default', userSelect: 'none',
-                    color: sort.key && sort.key === h.k ? '#a06a12' : TH.color }}>
+                    color: sort.key && sort.key === h.k ? 'var(--k-a06a12)' : TH.color }}>
                   {h.label}{sort.key && sort.key === h.k ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
                 </th>
               ))}
@@ -500,14 +500,14 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
               // A lease that hasn't started, or one a newer lease has taken over from, says
               // so in place of the expiry countdown — its own dates are left as entered.
               const st = t?.status === 'upcoming'
-                ? { label: `Starts ${shortDate(r.lease_start)}`, bg: '#eff6ff', color: '#1d4ed8' }
+                ? { label: `Starts ${shortDate(r.lease_start)}`, bg: '#eff6ff', color: 'var(--k-1d4ed8)' }
                 : t?.status === 'replaced'
-                  ? { label: `Replaced ${shortDate(t.successor?.lease_start)}`, bg: '#f3f4f6', color: '#6b7280' }
+                  ? { label: `Replaced ${shortDate(t.successor?.lease_start)}`, bg: '#f3f4f6', color: 'var(--k-6b7280)' }
                   : leaseStatus(r.lease_expiration);
               const inactive = t?.status === 'replaced';
               return (
                 <tr key={r.id} title={t?.status === 'replaced' ? `Replaced by ${t.successor?.tenant_name ?? 'a new lease'} from ${shortDate(t.successor?.lease_start)} — not counted` : t?.status === 'upcoming' ? `Signed lease starting ${shortDate(r.lease_start)} — not counted until then` : undefined}
-                  style={{ background: vac ? '#fbfbfc' : t?.status === 'upcoming' ? '#f8fbff' : '#fff', opacity: inactive ? 0.55 : 1 }}>
+                  style={{ background: vac ? '#fbfbfc' : t?.status === 'upcoming' ? '#f8fbff' : 'var(--k-fff)', opacity: inactive ? 0.55 : 1 }}>
                   <td style={TD}><Cell value={r.suite} bold onSave={v => saveCell(r.id, 'suite', v)} /></td>
                   <td style={TD}><Cell value={r.building} onSave={v => saveCell(r.id, 'building', v)} /></td>
                   <td style={TD}><Cell value={r.tenant_name} bold={!vac} placeholder="Vacant" onSave={v => saveCell(r.id, 'tenant_name', v)} /></td>
@@ -532,11 +532,11 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
                 </tr>
               );
             })}
-            {visible.length === 0 && <tr><td colSpan={15} style={{ padding: 30, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No suites match.</td></tr>}
+            {visible.length === 0 && <tr><td colSpan={15} style={{ padding: 30, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 13 }}>No suites match.</td></tr>}
           </tbody>
         </table>
       </div>
-      <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 7 }}>
+      <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 7 }}>
         Click any cell to edit — changes save automatically. Tenant, size and lease expiration also update the Floor Plan for that suite.
       </div>
 
@@ -545,9 +545,9 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 9 }}>
           <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: GOLD, fontWeight: 700 }}>Backup / Prospective Tenants</div>
           <span style={{ flex: 1 }} />
-          <button onClick={addBackup} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '5px 11px', cursor: 'pointer' }}>＋ Backup tenant</button>
+          <button onClick={addBackup} style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1px dashed var(--k-e6d3a2)', borderRadius: 8, padding: '5px 11px', cursor: 'pointer' }}>＋ Backup tenant</button>
         </div>
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', background: '#fff' }}>
+        <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'auto', background: 'var(--k-fff)' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 900 }}>
             <thead><tr>
               {['Suite', 'Prospect / Tenant', 'Sq Ft', 'Contact', 'Phone', 'Email', 'Notes'].map((h, i) => (
@@ -557,7 +557,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
             </tr></thead>
             <tbody>
               {backupRows.map(r => (
-                <tr key={r.id} style={{ background: '#fff' }}>
+                <tr key={r.id} style={{ background: 'var(--k-fff)' }}>
                   <td style={TD}><Cell value={r.suite} onSave={v => saveCell(r.id, 'suite', v)} /></td>
                   <td style={TD}><Cell value={r.tenant_name} bold placeholder="Prospect name" onSave={v => saveCell(r.id, 'tenant_name', v)} /></td>
                   <td style={TD}><Cell value={r.size_sf} align="right" type="number" onSave={v => saveCell(r.id, 'size_sf', v)} /></td>
@@ -570,11 +570,11 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
                   </td>
                 </tr>
               ))}
-              {backupRows.length === 0 && <tr><td colSpan={8} style={{ padding: 22, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No backup tenants yet — add prospects waiting on a space here.</td></tr>}
+              {backupRows.length === 0 && <tr><td colSpan={8} style={{ padding: 22, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 13 }}>No backup tenants yet — add prospects waiting on a space here.</td></tr>}
             </tbody>
           </table>
         </div>
-        <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 7 }}>Backup / prospective tenants are tracked here only — not counted in the totals above, and never shown on the Floor Plan.</div>
+        <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 7 }}>Backup / prospective tenants are tracked here only — not counted in the totals above, and never shown on the Floor Plan.</div>
       </div>
 
       {/* Who this property's campaigns have reached, and who opened (live). */}
@@ -585,9 +585,9 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 9 }}>
           <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: GOLD, fontWeight: 700 }}>Vendors</div>
           <span style={{ flex: 1 }} />
-          <button onClick={() => addVendor('vendor')} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '5px 11px', cursor: 'pointer' }}>＋ Vendor</button>
+          <button onClick={() => addVendor('vendor')} style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1px dashed var(--k-e6d3a2)', borderRadius: 8, padding: '5px 11px', cursor: 'pointer' }}>＋ Vendor</button>
         </div>
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', background: '#fff' }}>
+        <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'auto', background: 'var(--k-fff)' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
             <thead><tr>
               <th style={{ ...TH, minWidth: 168 }}>Service</th><th style={{ ...TH, minWidth: 160 }}>Vendor</th>
@@ -605,7 +605,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
                   <td style={{ ...TD, textAlign: 'center' }}>{isAdmin && <button onClick={() => removeVendor(v.id, v.label || v.vendor || undefined)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}</td>
                 </tr>
               ))}
-              {vendorRows.length === 0 && <tr><td colSpan={6} style={{ padding: 18, textAlign: 'center', color: '#9ca3af', fontSize: 12.5 }}>No vendors yet.</td></tr>}
+              {vendorRows.length === 0 && <tr><td colSpan={6} style={{ padding: 18, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 12.5 }}>No vendors yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -616,17 +616,17 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 9 }}>
           <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: GOLD, fontWeight: 700 }}>Building Information</div>
           <span style={{ flex: 1 }} />
-          <button onClick={() => addVendor('building_info')} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '5px 11px', cursor: 'pointer' }}>＋ Item</button>
+          <button onClick={() => addVendor('building_info')} style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1px dashed var(--k-e6d3a2)', borderRadius: 8, padding: '5px 11px', cursor: 'pointer' }}>＋ Item</button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {infoRows.map(v => (
-            <div key={v.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fff', border: '1px solid #eef0f2', borderRadius: 8, padding: '2px 4px 2px 0' }}>
+            <div key={v.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 8, padding: '2px 4px 2px 0' }}>
               <div style={{ flex: '0 0 210px' }}><Cell value={v.label} bold onSave={x => saveVendor(v.id, 'label', x)} /></div>
               <div style={{ flex: 1 }}><NoteCell value={v.notes} profiles={profiles} contacts={noteContacts} onSave={x => { tagNotify(x, v.notes, v.label || 'the building'); saveVendor(v.id, 'notes', x, { tagged_contact_ids: tagsOf(x) }); }} /></div>
               {isAdmin && <button onClick={() => removeVendor(v.id, v.label || v.vendor || undefined)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '8px 6px' }}>✕</button>}
             </div>
           ))}
-          {infoRows.length === 0 && <div style={{ fontSize: 12.5, color: '#9ca3af', padding: '6px 2px' }}>No building notes yet.</div>}
+          {infoRows.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', padding: '6px 2px' }}>No building notes yet.</div>}
         </div>
       </div>
     </div>
@@ -636,7 +636,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
   return (
     <div onClick={e => { if (e.target === e.currentTarget) setExpanded(false); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(17,24,39,.55)', padding: 16, display: 'flex' }}>
-      <div style={{ background: '#fff', borderRadius: 14, flex: 1, minHeight: 0, overflow: 'auto', padding: 20, boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
+      <div style={{ background: 'var(--k-fff)', borderRadius: 14, flex: 1, minHeight: 0, overflow: 'auto', padding: 20, boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
         {body}
       </div>
     </div>

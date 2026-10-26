@@ -40,9 +40,9 @@ function ContactSearch({
     : clients.slice(0, 40); // show first 40 when no query
 
   const PILL: React.CSSProperties = {
-    padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 8,
-    fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif",
-    width: '100%', boxSizing: 'border-box', background: '#fafafa',
+    padding: '8px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8,
+    fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif",
+    width: '100%', boxSizing: 'border-box', background: 'var(--k-fafafa)',
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
   };
 
@@ -50,26 +50,26 @@ function ContactSearch({
     <div ref={containerRef} style={{ position: 'relative' }}>
       {/* Trigger */}
       <button type="button" onClick={() => { setOpen(o => !o); setQ(''); }} style={PILL}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left', color: selected ? '#111' : '#9ca3af' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left', color: selected ? 'var(--k-111)' : 'var(--k-9ca3af)' }}>
           {selected ? `${selected.first_name} ${selected.last_name}${selected.business_name ? ` — ${selected.business_name}` : ''}` : 'None'}
         </span>
         {selected && (
           <span onClick={e => { e.stopPropagation(); onChange(''); }} title="Clear"
-            style={{ flexShrink: 0, color: '#9ca3af', fontSize: 14, lineHeight: 1, cursor: 'pointer' }}>✕</span>
+            style={{ flexShrink: 0, color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1, cursor: 'pointer' }}>✕</span>
         )}
-        <span style={{ flexShrink: 0, color: '#9ca3af', fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+        <span style={{ flexShrink: 0, color: 'var(--k-9ca3af)', fontSize: 10 }}>{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
         <div style={{ position: 'absolute', top: '105%', left: 0, right: 0, zIndex: 400,
-          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
+          background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10,
           boxShadow: '0 8px 32px rgba(0,0,0,.14)', overflow: 'hidden' }}>
           {/* Search input */}
-          <div style={{ padding: '8px 10px', borderBottom: '1px solid #f3f4f6' }}>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--k-f3f4f6)' }}>
             <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
               placeholder="Search contacts…"
-              style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px',
-                fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: '#111', outline: 'none', boxSizing: 'border-box' }} />
+              style={{ width: '100%', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '6px 10px',
+                fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-111)', outline: 'none', boxSizing: 'border-box' }} />
           </div>
           {/* Results */}
           <div style={{ maxHeight: 220, overflowY: 'auto' }}>
@@ -81,19 +81,19 @@ function ContactSearch({
               None
             </button>
             {filtered.length === 0 ? (
-              <div style={{ padding: '12px 14px', fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>No contacts found</div>
+              <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--k-9ca3af)', textAlign: 'center' }}>No contacts found</div>
             ) : filtered.map(c => (
               <button type="button" key={c.id} onClick={() => { onChange(c.id); setOpen(false); setQ(''); }}
                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', border: 'none',
                   background: c.id === value ? '#fef9ee' : 'transparent',
                   cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
-                onMouseEnter={e => { if (c.id !== value) e.currentTarget.style.background = '#f9fafb'; }}
+                onMouseEnter={e => { if (c.id !== value) e.currentTarget.style.background = 'var(--k-f9fafb)'; }}
                 onMouseLeave={e => { if (c.id !== value) e.currentTarget.style.background = 'transparent'; }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: c.id === value ? '#c9922c' : '#111' }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: c.id === value ? '#c9922c' : 'var(--k-111)' }}>
                   {c.first_name} {c.last_name}
                 </div>
                 {(c.business_name || c.email) && (
-                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+                  <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>
                     {c.business_name ?? c.email}
                   </div>
                 )}
@@ -139,16 +139,16 @@ interface Props {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const STATUS_CFG = {
-  open:        { label: 'Open',        bg: '#dbeafe', color: '#1d4ed8', dot: '#3b82f6' },
-  in_progress: { label: 'In Progress', bg: '#fef3c7', color: '#b45309', dot: '#f59e0b' },
-  done:        { label: 'Done',        bg: '#dcfce7', color: '#15803d', dot: '#22c55e' },
+  open:        { label: 'Open',        bg: '#dbeafe', color: 'var(--k-1d4ed8)', dot: '#3b82f6' },
+  in_progress: { label: 'In Progress', bg: '#fef3c7', color: 'var(--k-b45309)', dot: '#f59e0b' },
+  done:        { label: 'Done',        bg: '#dcfce7', color: 'var(--k-15803d)', dot: '#22c55e' },
 } as const;
 
 const PRIORITY_CFG = {
-  urgent: { label: 'Urgent', bg: '#fee2e2', color: '#dc2626' },
-  high:   { label: 'High',   bg: '#fed7aa', color: '#c2410c' },
-  normal: { label: 'Normal', bg: '#dbeafe', color: '#1d4ed8' },
-  low:    { label: 'Low',    bg: '#f1f5f9', color: '#64748b' },
+  urgent: { label: 'Urgent', bg: '#fee2e2', color: 'var(--k-dc2626)' },
+  high:   { label: 'High',   bg: '#fed7aa', color: 'var(--k-c2410c)' },
+  normal: { label: 'Normal', bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
+  low:    { label: 'Low',    bg: '#f1f5f9', color: 'var(--k-64748b)' },
 } as const;
 
 const GROUP_CFG = [
@@ -163,7 +163,7 @@ const URGENCY_CFG = [
   { key: 'today',   label: 'Today',     color: '#c9922c', defaultOpen: true  },
   { key: 'week',    label: 'This Week', color: '#3b82f6', defaultOpen: true  },
   { key: 'later',   label: 'Later',     color: '#8b5cf6', defaultOpen: true  },
-  { key: 'nodate',  label: 'No Date',   color: '#9ca3af', defaultOpen: false },
+  { key: 'nodate',  label: 'No Date',   color: 'var(--k-9ca3af)', defaultOpen: false },
   { key: 'done',    label: 'Done',      color: '#22c55e', defaultOpen: false },
 ] as const;
 
@@ -213,7 +213,7 @@ function StatusPill({ value, onChange }: { value: StatusKey; onChange: (v: Statu
         {cfg.label}
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: '110%', left: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 6, zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,.12)', minWidth: 130 }}>
+        <div style={{ position: 'absolute', top: '110%', left: 0, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: 6, zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,.12)', minWidth: 130 }}>
           {(Object.keys(STATUS_CFG) as StatusKey[]).map(k => {
             const c = STATUS_CFG[k];
             return (
@@ -247,7 +247,7 @@ function PriorityPill({ value, onChange }: { value: PriorityKey; onChange: (v: P
         {cfg.label}
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: '110%', left: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 6, zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,.12)', minWidth: 120 }}>
+        <div style={{ position: 'absolute', top: '110%', left: 0, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: 6, zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,.12)', minWidth: 120 }}>
           {(Object.keys(PRIORITY_CFG) as PriorityKey[]).map(k => {
             const c = PRIORITY_CFG[k];
             return (
@@ -291,26 +291,26 @@ function DuePill({ value, overdue, isToday, onChange }: { value?: string; overdu
     <div ref={ref} style={{ display: 'inline-block' }} onClick={e => e.stopPropagation()}>
       <button onClick={toggle} title="Reschedule"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 6, border: '1px solid transparent', background: bg, color, fontSize: 12, fontWeight: overdue ? 700 : 500, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
-        onMouseEnter={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
+        onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--k-e5e7eb)')}
         onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}>
         📅 {value ? fmtDate(value) : 'No date'}
       </button>
       {pos && (
-        <div style={{ position: 'fixed', top: pos.top, left: pos.left, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.18)', padding: 6, zIndex: 1000, minWidth: 156 }}>
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.18)', padding: 6, zIndex: 1000, minWidth: 156 }}>
           {quick.map(q => (
             <button key={q.label} onClick={() => pick(q.days)}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6, border: 'none', background: 'transparent', color: '#374151', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--k-374151)', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-f9fafb)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
               {q.label}
             </button>
           ))}
-          <div style={{ borderTop: '1px solid #f3f4f6', margin: '4px 0' }} />
+          <div style={{ borderTop: '1px solid var(--k-f3f4f6)', margin: '4px 0' }} />
           <input type="date" value={value ?? ''} onChange={e => { onChange(e.target.value || null); setPos(null); }}
-            style={{ width: '100%', padding: '6px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }} />
+            style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, fontSize: 12, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }} />
           {value && (
             <button onClick={() => { onChange(null); setPos(null); }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', marginTop: 4, borderRadius: 6, border: 'none', background: 'transparent', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', marginTop: 4, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--k-dc2626)', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
               Clear date
             </button>
           )}
@@ -321,7 +321,7 @@ function DuePill({ value, overdue, isToday, onChange }: { value?: string; overdu
 }
 
 function Avatar({ profile }: { profile?: Profile }) {
-  if (!profile) return <span style={{ fontSize: 12, color: '#9ca3af' }}>—</span>;
+  if (!profile) return <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>—</span>;
   const color = avatarColor(profile.id);
   return (
     <span title={`${profile.first_name} ${profile.last_name}`}
@@ -341,26 +341,26 @@ function ClientContactCard({ client }: { client: Client }) {
     });
   }
   const typeColors: Record<string, { bg: string; color: string }> = {
-    Buyer: { bg: '#dbeafe', color: '#1d4ed8' },
-    Seller: { bg: '#dcfce7', color: '#15803d' },
-    Tenant: { bg: '#fef3c7', color: '#b45309' },
+    Buyer: { bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
+    Seller: { bg: '#dcfce7', color: 'var(--k-15803d)' },
+    Tenant: { bg: '#fef3c7', color: 'var(--k-b45309)' },
     'Landlord/Investor': { bg: '#f3e8ff', color: '#7e22ce' },
-    Agent: { bg: '#f1f5f9', color: '#475569' },
-    Broker: { bg: '#f1f5f9', color: '#475569' },
+    Agent: { bg: '#f1f5f9', color: 'var(--k-475569)' },
+    Broker: { bg: '#f1f5f9', color: 'var(--k-475569)' },
   };
-  const tc = client.type ? (typeColors[client.type] ?? { bg: '#f1f5f9', color: '#475569' }) : null;
+  const tc = client.type ? (typeColors[client.type] ?? { bg: '#f1f5f9', color: 'var(--k-475569)' }) : null;
   return (
-    <div style={{ marginTop: 8, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px' }}>
+    <div style={{ marginTop: 8, background: 'var(--k-f8fafc)', border: '1px solid var(--k-e2e8f0)', borderRadius: 10, padding: '12px 14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
           {(client.first_name[0] ?? '').toUpperCase()}{(client.last_name[0] ?? '').toUpperCase()}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {client.first_name} {client.last_name}
           </div>
           {client.business_name && (
-            <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.business_name}</div>
+            <div style={{ fontSize: 11, color: 'var(--k-6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.business_name}</div>
           )}
         </div>
         {tc && client.type && (
@@ -373,13 +373,13 @@ function ClientContactCard({ client }: { client: Client }) {
         {client.email && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 13 }}>✉️</span>
-            <a href={`mailto:${client.email}`} style={{ fontSize: 12, color: '#2563eb', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}
+            <a href={`mailto:${client.email}`} style={{ fontSize: 12, color: 'var(--k-2563eb)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}
               onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
               onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
               {client.email}
             </a>
             <button onClick={() => copy(client.email!, 'email')} title="Copy email"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: copied === 'email' ? '#16a34a' : '#9ca3af', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: copied === 'email' ? 'var(--k-16a34a)' : 'var(--k-9ca3af)', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
               {copied === 'email' ? '✓ Copied' : '📋'}
             </button>
           </div>
@@ -389,13 +389,13 @@ function ClientContactCard({ client }: { client: Client }) {
             {client.phone && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 13 }}>📞</span>
-                <a href={`tel:${client.phone}`} style={{ fontSize: 12, color: '#111', flex: 1, textDecoration: 'none' }}
+                <a href={`tel:${client.phone}`} style={{ fontSize: 12, color: 'var(--k-111)', flex: 1, textDecoration: 'none' }}
                   onMouseEnter={e => (e.currentTarget.style.color = '#c9922c')}
-                  onMouseLeave={e => (e.currentTarget.style.color = '#111')}>
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--k-111)')}>
                   {client.phone}
                 </a>
                 <button onClick={() => copy(client.phone!, 'phone')} title="Copy phone"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: copied === 'phone' ? '#16a34a' : '#9ca3af', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: copied === 'phone' ? 'var(--k-16a34a)' : 'var(--k-9ca3af)', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
                   {copied === 'phone' ? '✓ Copied' : '📋'}
                 </button>
               </div>
@@ -403,13 +403,13 @@ function ClientContactCard({ client }: { client: Client }) {
             {client.cell_phone && client.cell_phone !== client.phone && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 13 }}>📱</span>
-                <a href={`tel:${client.cell_phone}`} style={{ fontSize: 12, color: '#111', flex: 1, textDecoration: 'none' }}
+                <a href={`tel:${client.cell_phone}`} style={{ fontSize: 12, color: 'var(--k-111)', flex: 1, textDecoration: 'none' }}
                   onMouseEnter={e => (e.currentTarget.style.color = '#c9922c')}
-                  onMouseLeave={e => (e.currentTarget.style.color = '#111')}>
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--k-111)')}>
                   {client.cell_phone}
                 </a>
                 <button onClick={() => copy(client.cell_phone!, 'cell')} title="Copy cell"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: copied === 'cell' ? '#16a34a' : '#9ca3af', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: copied === 'cell' ? 'var(--k-16a34a)' : 'var(--k-9ca3af)', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
                   {copied === 'cell' ? '✓ Copied' : '📋'}
                 </button>
               </div>
@@ -417,7 +417,7 @@ function ClientContactCard({ client }: { client: Client }) {
           </>
         )}
         {!client.email && !client.phone && !client.cell_phone && (
-          <div style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>No contact info on file</div>
+          <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', fontStyle: 'italic' }}>No contact info on file</div>
         )}
       </div>
     </div>
@@ -439,15 +439,15 @@ function TaskDetailPanel({
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex' }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ flex: 1 }} onClick={onClose} />
-      <div style={{ width: Math.min(480, window.innerWidth), background: '#fff', boxShadow: '-4px 0 32px rgba(0,0,0,.14)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <div style={{ width: Math.min(480, window.innerWidth), background: 'var(--k-fff)', boxShadow: '-4px 0 32px rgba(0,0,0,.14)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         {/* Header */}
-        <div style={{ padding: '20px 24px 0', borderBottom: '1px solid #f3f4f6', paddingBottom: 16 }}>
+        <div style={{ padding: '20px 24px 0', borderBottom: '1px solid var(--k-f3f4f6)', paddingBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Task Detail</span>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 18, lineHeight: 1 }}>✕</button>
+            <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 }}>Task Detail</span>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 18, lineHeight: 1 }}>✕</button>
           </div>
           <input value={form.title ?? ''} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-            style={{ width: '100%', border: 'none', outline: 'none', fontSize: 20, fontWeight: 700, color: '#111', fontFamily: "'DM Sans',sans-serif", background: 'transparent', padding: 0, boxSizing: 'border-box' }} />
+            style={{ width: '100%', border: 'none', outline: 'none', fontSize: 20, fontWeight: 700, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif", background: 'transparent', padding: 0, boxSizing: 'border-box' }} />
         </div>
 
         {/* Body */}
@@ -455,29 +455,29 @@ function TaskDetailPanel({
           {/* Status + Priority row */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>Status</div>
+              <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 6 }}>Status</div>
               <StatusPill value={form.status ?? 'open'} onChange={v => setForm(f => ({ ...f, status: v }))} />
             </div>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>Priority</div>
+              <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 6 }}>Priority</div>
               <PriorityPill value={form.priority ?? 'normal'} onChange={v => setForm(f => ({ ...f, priority: v }))} />
             </div>
           </div>
 
           {/* Due date */}
           <div>
-            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>Due Date</div>
+            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 6 }}>Due Date</div>
             <input type="date" value={form.due_date ?? ''}
               onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
-              style={{ padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif", width: '100%', boxSizing: 'border-box', background: '#fafafa' }} />
+              style={{ padding: '7px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", width: '100%', boxSizing: 'border-box', background: 'var(--k-fafafa)' }} />
           </div>
 
           {/* Assignee */}
           {isAdmin && (
             <div>
-              <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>Assignee</div>
+              <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 6 }}>Assignee</div>
               <select value={form.assigned_to ?? ''} onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))}
-                style={{ padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif", width: '100%', background: '#fafafa' }}>
+                style={{ padding: '7px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", width: '100%', background: 'var(--k-fafafa)' }}>
                 <option value="">Unassigned</option>
                 {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
               </select>
@@ -486,7 +486,7 @@ function TaskDetailPanel({
 
           {/* Linked contact */}
           <div>
-            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>Linked Contact</div>
+            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 6 }}>Linked Contact</div>
             <ContactSearch clients={clients} value={form.client_id ?? ''} onChange={id => setForm(f => ({ ...f, client_id: id }))} />
             {(() => {
               const linked = clients.find(c => c.id === (form.client_id ?? ''));
@@ -496,22 +496,22 @@ function TaskDetailPanel({
 
           {/* Notes */}
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>Notes</div>
+            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 6 }}>Notes</div>
             <MentionTextarea value={form.description ?? ''} onChange={v => setForm(f => ({ ...f, description: v }))}
               profiles={profiles}
               placeholder="Add notes… (@ to tag a teammate)"
-              style={{ padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif", width: '100%', minHeight: 120, resize: 'vertical', background: '#fafafa', boxSizing: 'border-box', lineHeight: 1.6 }} />
+              style={{ padding: '10px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", width: '100%', minHeight: 120, resize: 'vertical', background: 'var(--k-fafafa)', boxSizing: 'border-box', lineHeight: 1.6 }} />
           </div>
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', gap: 10 }}>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--k-f3f4f6)', display: 'flex', gap: 10 }}>
           <button onClick={() => { if (confirm('Delete this task?')) onDelete(); }}
-            style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#dc2626', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid var(--k-fecaca)', background: 'var(--k-fff)', color: 'var(--k-dc2626)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
             Delete
           </button>
           <button onClick={onClose}
-            style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
             Cancel
           </button>
           <button onClick={() => onSave(form)}
@@ -756,12 +756,12 @@ export default function TasksSection({
               onDragOver={e => { e.preventDefault(); if (dragOverCol !== grp.key) setDragOverCol(grp.key); }}
               onDragLeave={e => { if (e.currentTarget === e.target) setDragOverCol(c => (c === grp.key ? null : c)); }}
               onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) handleColumnDrop(grp.key, id); }}
-              style={{ background: isDropTarget ? '#fdf6e8' : '#f8fafc', borderRadius: 12, border: `1px solid ${isDropTarget ? '#c9922c' : '#e5e7eb'}`, overflow: 'hidden', transition: 'background .12s, border-color .12s', minWidth: 0 }}>
+              style={{ background: isDropTarget ? 'var(--k-fdf6e8)' : 'var(--k-f8fafc)', borderRadius: 12, border: `1px solid ${isDropTarget ? '#c9922c' : 'var(--k-e5e7eb)'}`, overflow: 'hidden', transition: 'background .12s, border-color .12s', minWidth: 0 }}>
               {/* Column header */}
               <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '3px solid ' + grp.color }}>
                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: grp.color, display: 'inline-block', flexShrink: 0 }} />
-                <span style={{ fontWeight: 700, fontSize: 13, color: '#111', fontFamily: "'DM Sans',sans-serif" }}>{grp.label}</span>
-                <span style={{ fontSize: 11, color: '#9ca3af', background: '#fff', borderRadius: 10, padding: '1px 7px', fontWeight: 600, marginLeft: 'auto' }}>{groupTasks.length}</span>
+                <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>{grp.label}</span>
+                <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', background: 'var(--k-fff)', borderRadius: 10, padding: '1px 7px', fontWeight: 600, marginLeft: 'auto' }}>{groupTasks.length}</span>
               </div>
 
               {/* Cards */}
@@ -781,14 +781,14 @@ export default function TasksSection({
                     <div key={t.id} draggable
                       onDragStart={e => { e.dataTransfer.setData('text/plain', t.id); e.dataTransfer.effectAllowed = 'move'; }}
                       onClick={() => setDetailTask(t)}
-                      style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', border: `1px solid ${isSelected ? '#c9922c' : isOverdue ? '#fecaca' : '#e5e7eb'}`, boxShadow: isSelected ? '0 0 0 2px #fdf6e8' : '0 1px 3px rgba(0,0,0,.04)', cursor: 'grab', transition: 'box-shadow .15s' }}
+                      style={{ background: 'var(--k-fff)', borderRadius: 10, padding: '10px 12px', border: `1px solid ${isSelected ? '#c9922c' : isOverdue ? 'var(--k-fecaca)' : 'var(--k-e5e7eb)'}`, boxShadow: isSelected ? '0 0 0 2px #fdf6e8' : '0 1px 3px rgba(0,0,0,.04)', cursor: 'grab', transition: 'box-shadow .15s' }}
                       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.12)'; }}
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = isSelected ? '0 0 0 2px #fdf6e8' : '0 1px 3px rgba(0,0,0,.04)'; }}>
                       {/* Select + title */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                         <input type="checkbox" checked={isSelected} onClick={e => e.stopPropagation()} onChange={() => toggleSelect(t.id)}
                           title="Select" style={{ marginTop: 2, flexShrink: 0, width: 14, height: 14, cursor: 'pointer', accentColor: '#c9922c' }} />
-                        <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: t.status === 'done' ? '#9ca3af' : '#111', textDecoration: t.status === 'done' ? 'line-through' : 'none', lineHeight: 1.4 }}>
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: t.status === 'done' ? 'var(--k-9ca3af)' : 'var(--k-111)', textDecoration: t.status === 'done' ? 'line-through' : 'none', lineHeight: 1.4 }}>
                           {t.type && TYPE_META[t.type] && <span title={TYPE_META[t.type].label} style={{ marginRight: 6 }}>{TYPE_META[t.type].icon}</span>}
                           {t.title}
                         </div>
@@ -796,9 +796,9 @@ export default function TasksSection({
                       {/* Contact */}
                       {contact && (
                         <button onClick={e => { e.stopPropagation(); const full = clients.find(c => c.id === t.client_id); setContactPopup(full ?? null); }}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f1f5f9', border: 'none', borderRadius: 6, padding: '2px 7px', margin: '8px 0 0 22px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", maxWidth: 'calc(100% - 22px)' }}>
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--k-f1f5f9)', border: 'none', borderRadius: 6, padding: '2px 7px', margin: '8px 0 0 22px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", maxWidth: 'calc(100% - 22px)' }}>
                           <span style={{ fontSize: 10 }}>👤</span>
-                          <span style={{ fontSize: 11, color: '#374151', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.first_name} {contact.last_name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--k-374151)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.first_name} {contact.last_name}</span>
                         </button>
                       )}
                       {/* Footer: priority · reschedule · assignee */}
@@ -816,24 +816,24 @@ export default function TasksSection({
 
                 {/* Board quick-add */}
                 {canAdd(grp.key) && (quickAddGroup === grp.key ? (
-                  <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', border: '2px solid #c9922c' }}>
+                  <div style={{ background: 'var(--k-fff)', borderRadius: 10, padding: '10px 12px', border: '2px solid #c9922c' }}>
                     <input ref={quickAddRef} autoFocus value={quickAddTitle}
                       onChange={e => setQuickAddTitle(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd(quickAddFieldsFor(grp.key)); if (e.key === 'Escape') setQuickAddGroup(null); }}
                       placeholder="Task name… (Enter)"
-                      style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, color: '#111', fontFamily: "'DM Sans',sans-serif", background: 'transparent' }} />
+                      style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif", background: 'transparent' }} />
                     <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                       <button onClick={() => handleQuickAdd(quickAddFieldsFor(grp.key))}
                         style={{ flex: 1, padding: '5px 0', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Add</button>
                       <button onClick={() => setQuickAddGroup(null)}
-                        style={{ padding: '5px 10px', borderRadius: 6, background: '#f3f4f6', color: '#6b7280', border: 'none', fontSize: 12, cursor: 'pointer' }}>✕</button>
+                        style={{ padding: '5px 10px', borderRadius: 6, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', border: 'none', fontSize: 12, cursor: 'pointer' }}>✕</button>
                     </div>
                   </div>
                 ) : (
                   <button onClick={() => { setQuickAddGroup(grp.key); setQuickAddTitle(''); }}
-                    style={{ padding: '8px 12px', background: 'transparent', border: '1px dashed #d1d5db', borderRadius: 8, color: '#9ca3af', fontSize: 12, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: "'DM Sans',sans-serif" }}
+                    style={{ padding: '8px 12px', background: 'transparent', border: '1px dashed var(--k-d1d5db)', borderRadius: 8, color: 'var(--k-9ca3af)', fontSize: 12, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: "'DM Sans',sans-serif" }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9922c'; e.currentTarget.style.color = '#c9922c'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#9ca3af'; }}>
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--k-d1d5db)'; e.currentTarget.style.color = 'var(--k-9ca3af)'; }}>
                     + Add task
                   </button>
                 ))}
@@ -847,12 +847,12 @@ export default function TasksSection({
 
   // ── New Task Modal ────────────────────────────────────────────────────────
   const LABEL = (s: string) => (
-    <label style={{ fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', color: '#6b7280', fontWeight: 700, display: 'block', marginBottom: 5, fontFamily: "'DM Sans',sans-serif" }}>{s}</label>
+    <label style={{ fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 700, display: 'block', marginBottom: 5, fontFamily: "'DM Sans',sans-serif" }}>{s}</label>
   );
-  const INPUT_STYLE: React.CSSProperties = { padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif", width: '100%', boxSizing: 'border-box', background: '#fafafa' };
+  const INPUT_STYLE: React.CSSProperties = { padding: '9px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", width: '100%', boxSizing: 'border-box', background: 'var(--k-fafafa)' };
   const BULK_BTN: React.CSSProperties = { padding: '7px 12px', borderRadius: 8, border: 'none', background: 'rgba(255,255,255,.10)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' };
-  const BULK_MENU: React.CSSProperties = { position: 'absolute', bottom: '100%', left: 0, marginBottom: 6, background: '#fff', color: '#111', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.2)', padding: 6, minWidth: 152, zIndex: 460 };
-  const BULK_MENU_ITEM: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6, border: 'none', background: 'transparent', color: '#374151', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
+  const BULK_MENU: React.CSSProperties = { position: 'absolute', bottom: '100%', left: 0, marginBottom: 6, background: 'var(--k-fff)', color: 'var(--k-111)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.2)', padding: 6, minWidth: 152, zIndex: 460 };
+  const BULK_MENU_ITEM: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--k-374151)', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
 
   // ── Render ────────────────────────────────────────────────────────────────
   const doneCt = scoped.filter(t => t.status === 'done').length;
@@ -863,11 +863,11 @@ export default function TasksSection({
       {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
         {/* Grouping toggle — how the board columns are organized */}
-        <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 10, padding: 3, gap: 2 }}>
+        <div style={{ display: 'flex', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: 3, gap: 2 }}>
           {([['urgency', '⏱ Urgency'], ['status', '◪ Status']] as [GroupMode, string][]).map(([g, lbl]) => (
             <button key={g} onClick={() => setGroupMode(g)}
               style={{ padding: '5px 12px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'all .15s',
-                background: groupMode === g ? '#fff' : 'transparent', color: groupMode === g ? '#111' : '#6b7280', boxShadow: groupMode === g ? '0 1px 4px rgba(0,0,0,.1)' : 'none' }}>
+                background: groupMode === g ? 'var(--k-fff)' : 'transparent', color: groupMode === g ? 'var(--k-111)' : 'var(--k-6b7280)', boxShadow: groupMode === g ? '0 1px 4px rgba(0,0,0,.1)' : 'none' }}>
               {lbl}
             </button>
           ))}
@@ -875,11 +875,11 @@ export default function TasksSection({
 
         {/* Search */}
         <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search tasks…  ( / )"
-          style={{ padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', background: '#fff', fontFamily: "'DM Sans',sans-serif", width: isMobile ? '100%' : 200 }} />
+          style={{ padding: '7px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, color: 'var(--k-374151)', background: 'var(--k-fff)', fontFamily: "'DM Sans',sans-serif", width: isMobile ? '100%' : 200 }} />
 
         {/* Priority filter */}
         <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
-          style={{ padding: '7px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12, color: priorityFilter ? '#111' : '#9ca3af', background: '#fff', fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
+          style={{ padding: '7px 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 12, color: priorityFilter ? 'var(--k-111)' : 'var(--k-9ca3af)', background: 'var(--k-fff)', fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
           <option value="">All Priorities</option>
           {(Object.keys(PRIORITY_CFG) as PriorityKey[]).map(k => <option key={k} value={k}>{PRIORITY_CFG[k].label}</option>)}
         </select>
@@ -887,7 +887,7 @@ export default function TasksSection({
         {/* Assignee filter (admin only) */}
         {isAdmin && (
           <select value={assigneeFilter} onChange={e => setAssigneeFilter(e.target.value)}
-            style={{ padding: '7px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12, color: assigneeFilter ? '#111' : '#9ca3af', background: '#fff', fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
+            style={{ padding: '7px 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 12, color: assigneeFilter ? 'var(--k-111)' : 'var(--k-9ca3af)', background: 'var(--k-fff)', fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
             <option value="">All Assignees</option>
             {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
           </select>
@@ -895,7 +895,7 @@ export default function TasksSection({
 
         {currentUserId && (
           <button onClick={() => setMineOnly(m => !m)} title="Show only tasks assigned to me"
-            style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${mineOnly ? '#c9922c' : '#e5e7eb'}`, background: mineOnly ? '#fdf6e8' : '#fff', color: mineOnly ? '#a8741a' : '#6b7280', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+            style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${mineOnly ? '#c9922c' : 'var(--k-e5e7eb)'}`, background: mineOnly ? 'var(--k-fdf6e8)' : 'var(--k-fff)', color: mineOnly ? 'var(--k-a8741a)' : 'var(--k-6b7280)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
             {mineOnly ? '👤 Mine' : '👥 Everyone'}
           </button>
         )}
@@ -919,11 +919,11 @@ export default function TasksSection({
           const active = quickFilter === s.key;
           return (
             <button key={s.label} onClick={() => setQuickFilter(active ? '' : s.key)}
-              style={{ textAlign: 'left', background: '#fff', borderRadius: 10, padding: '12px 16px', border: `1px solid ${active ? s.color : '#e5e7eb'}`, borderLeft: `4px solid ${s.color}`, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: active ? `0 2px 12px ${s.color}22` : 'none', transition: 'all .12s' }}>
-              <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: active ? s.color : '#9ca3af', marginBottom: 3, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+              style={{ textAlign: 'left', background: 'var(--k-fff)', borderRadius: 10, padding: '12px 16px', border: `1px solid ${active ? s.color : 'var(--k-e5e7eb)'}`, borderLeft: `4px solid ${s.color}`, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: active ? `0 2px 12px ${s.color}22` : 'none', transition: 'all .12s' }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: active ? s.color : 'var(--k-9ca3af)', marginBottom: 3, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
                 {s.label}{active && <span>✓</span>}
               </div>
-              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', lineHeight: 1 }}>{s.val}</div>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1 }}>{s.val}</div>
             </button>
           );
         })}
@@ -931,7 +931,7 @@ export default function TasksSection({
 
       {/* Main view */}
       {tasksLoading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--k-9ca3af)' }}>
           <div style={{ fontSize: 24, marginBottom: 8 }}>⏳</div>
           Loading tasks…
         </div>
@@ -949,10 +949,10 @@ export default function TasksSection({
               <div style={BULK_MENU}>
                 {([['Today', 0], ['Tomorrow', 1], ['In 3 days', 3], ['Next week', 7]] as [string, number][]).map(([lbl, n]) => (
                   <button key={lbl} onClick={() => bulkApply({ due_date: addDaysStr(n) })} style={BULK_MENU_ITEM}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>{lbl}</button>
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-f9fafb)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>{lbl}</button>
                 ))}
-                <div style={{ borderTop: '1px solid #f3f4f6', margin: '4px 0' }} />
-                <button onClick={() => bulkApply({ due_date: '' })} style={{ ...BULK_MENU_ITEM, color: '#dc2626' }}>Clear date</button>
+                <div style={{ borderTop: '1px solid var(--k-f3f4f6)', margin: '4px 0' }} />
+                <button onClick={() => bulkApply({ due_date: '' })} style={{ ...BULK_MENU_ITEM, color: 'var(--k-dc2626)' }}>Clear date</button>
               </div>
             )}
           </div>
@@ -963,7 +963,7 @@ export default function TasksSection({
                 <div style={{ ...BULK_MENU, maxHeight: 240, overflowY: 'auto' }}>
                   {profiles.map(p => (
                     <button key={p.id} onClick={() => bulkApply({ assigned_to: p.id })} style={BULK_MENU_ITEM}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>{p.first_name} {p.last_name}</button>
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-f9fafb)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>{p.first_name} {p.last_name}</button>
                   ))}
                 </div>
               )}
@@ -979,10 +979,10 @@ export default function TasksSection({
         <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
           onClick={() => setContactPopup(null)}>
           <div onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 340, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+            style={{ background: 'var(--k-fff)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 340, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Contact Info</span>
-              <button onClick={() => setContactPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 18, lineHeight: 1 }}>✕</button>
+              <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 }}>Contact Info</span>
+              <button onClick={() => setContactPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 18, lineHeight: 1 }}>✕</button>
             </div>
             <ClientContactCard client={contactPopup} />
           </div>
@@ -1014,8 +1014,8 @@ export default function TasksSection({
       {showNewModal && (
         <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setShowNewModal(false); }}>
-          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
-            <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 20, color: '#111' }}>New Task</h3>
+          <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+            <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 20, color: 'var(--k-111)' }}>New Task</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>{LABEL('Title *')}<input autoFocus value={newForm.title} onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleNewTask()} placeholder="Task name…" style={INPUT_STYLE} /></div>
               <div>{LABEL('Notes')}<MentionTextarea value={newForm.description} onChange={v => setNewForm(f => ({ ...f, description: v }))} profiles={profiles} placeholder="Optional details… (@ to tag a teammate)" style={{ ...INPUT_STYLE, minHeight: 60, resize: 'none' }} /></div>
@@ -1027,7 +1027,7 @@ export default function TasksSection({
                   <option value="email">✉️ Email</option>
                 </select>
                 {(newForm.type === 'call' || newForm.type === 'follow_up') && (
-                  <div style={{ fontSize: 11.5, color: '#a06a12', marginTop: 4 }}>📞 Shows in the Call Queue (due today unless you set a later date).</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--k-a06a12)', marginTop: 4 }}>📞 Shows in the Call Queue (due today unless you set a later date).</div>
                 )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1054,7 +1054,7 @@ export default function TasksSection({
               </div>
               <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
                 <button onClick={() => setShowNewModal(false)}
-                  style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
+                  style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
                 <button onClick={handleNewTask} disabled={!newForm.title.trim()}
                   style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", opacity: newForm.title.trim() ? 1 : 0.5 }}>
                   Create Task

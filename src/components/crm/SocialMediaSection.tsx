@@ -277,13 +277,13 @@ function fmtNum(n: number): string {
 // Status badge styles
 function statusBadge(status: PostStatus) {
   const map: Record<PostStatus, { bg: string; color: string }> = {
-    draft:      { bg: '#f3f4f6', color: '#6b7280' },
-    scheduled:  { bg: '#dbeafe', color: '#1d4ed8' },
-    published:  { bg: '#dcfce7', color: '#15803d' },
-    failed:     { bg: '#fee2e2', color: '#dc2626' },
-    cancelled:  { bg: '#fef3c7', color: '#92400e' },
+    draft:      { bg: '#f3f4f6', color: 'var(--k-6b7280)' },
+    scheduled:  { bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
+    published:  { bg: '#dcfce7', color: 'var(--k-15803d)' },
+    failed:     { bg: '#fee2e2', color: 'var(--k-dc2626)' },
+    cancelled:  { bg: '#fef3c7', color: 'var(--k-92400e)' },
   };
-  return map[status] || { bg: '#f3f4f6', color: '#6b7280' };
+  return map[status] || { bg: '#f3f4f6', color: 'var(--k-6b7280)' };
 }
 
 // ── Unicode text formatting ────────────────────────────────────────────────────
@@ -945,9 +945,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           {/* ── LEFT: Composer ── */}
           <div style={{ flex: stackPublisher ? 'none' : '0 0 460px', maxWidth: stackPublisher ? '100%' : 460, width: stackPublisher ? '100%' : undefined }}>
             <div style={{
-              background: '#fff',
+              background: 'var(--k-fff)',
               borderRadius: 16,
-              border: '1px solid #f0f0f0',
+              border: '1px solid var(--k-f0f0f0)',
               padding: '24px',
               boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
             }}>
@@ -957,13 +957,13 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   marginBottom: 18, padding: '10px 14px',
-                  background: 'linear-gradient(90deg, #fffbeb, #fef3c7)',
-                  border: '1px solid #fde68a', borderRadius: 10,
+                  background: 'linear-gradient(90deg, var(--k-fffbeb), var(--k-fef3c7))',
+                  border: '1px solid var(--k-fde68a)', borderRadius: 10,
                 }}>
-                  <span style={{ fontSize: 12, color: '#92400e', fontWeight: 700 }}>✏️ Editing post</span>
+                  <span style={{ fontSize: 12, color: 'var(--k-92400e)', fontWeight: 700 }}>✏️ Editing post</span>
                   <button
                     onClick={resetComposer}
-                    style={{ background: 'none', border: 'none', fontSize: 11, color: '#92400e', cursor: 'pointer', fontWeight: 600, opacity: 0.8 }}
+                    style={{ background: 'none', border: 'none', fontSize: 11, color: 'var(--k-92400e)', cursor: 'pointer', fontWeight: 600, opacity: 0.8 }}
                   >
                     Cancel
                   </button>
@@ -972,7 +972,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
               {/* POST TO */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 10 }}>
                   Post To
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -987,15 +987,15 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 7,
                           padding: '8px 14px', borderRadius: 10, cursor: connected ? 'pointer' : 'not-allowed',
-                          border: `1.5px solid ${selected ? platformColor(p) : '#e5e7eb'}`,
-                          background: selected ? platformColor(p) : '#f9fafb',
+                          border: `1.5px solid ${selected ? platformColor(p) : 'var(--k-e5e7eb)'}`,
+                          background: selected ? platformColor(p) : 'var(--k-f9fafb)',
                           opacity: connected ? 1 : 0.38,
                           transition: 'all .15s',
                           boxShadow: selected ? `0 2px 8px ${platformColor(p)}40` : 'none',
                         }}
                       >
                         <span style={{ fontSize: 15 }}>{platformEmoji(p)}</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: selected ? '#fff' : '#6b7280' }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: selected ? '#fff' : 'var(--k-6b7280)' }}>
                           {platformLabel(p)}
                         </span>
                       </button>
@@ -1003,7 +1003,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   })}
                 </div>
                 {composerPlatforms.includes('youtube') && (
-                  <div style={{ fontSize: 11, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '6px 12px', marginTop: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--k-1d4ed8)', background: 'var(--k-eff6ff)', border: '1px solid var(--k-bfdbfe)', borderRadius: 8, padding: '6px 12px', marginTop: 10 }}>
                     ▶️ YouTube Shorts — upload a short vertical video (≤ 60 sec, 9:16) below
                   </div>
                 )}
@@ -1020,7 +1020,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     background: showAICaption ? '#C9A84C' : 'transparent',
                     cursor: 'pointer',
                     fontSize: 12, fontWeight: 700,
-                    color: showAICaption ? '#fff' : '#92400e',
+                    color: showAICaption ? '#fff' : 'var(--k-92400e)',
                     transition: 'all .15s',
                   }}
                 >
@@ -1031,31 +1031,31 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 {showAICaption && (
                   <div style={{
                     marginTop: 12, padding: '16px',
-                    background: '#fffbeb', borderRadius: 12,
-                    border: '1px solid #fde68a',
+                    background: 'var(--k-fffbeb)', borderRadius: 12,
+                    border: '1px solid var(--k-fde68a)',
                   }}>
                     <div style={{ marginBottom: 10 }}>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: '#92400e', display: 'block', marginBottom: 5 }}>Topic / Property</label>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-92400e)', display: 'block', marginBottom: 5 }}>Topic / Property</label>
                       <input
                         value={captionTopic}
                         onChange={e => setCaptionTopic(e.target.value)}
                         placeholder="e.g. Property listing at 123 Main St"
                         style={{
                           width: '100%', padding: '8px 11px', borderRadius: 8,
-                          border: '1.5px solid #fde68a', fontSize: 12,
-                          background: '#fff', boxSizing: 'border-box', outline: 'none',
+                          border: '1.5px solid var(--k-fde68a)', fontSize: 12,
+                          background: 'var(--k-fff)', boxSizing: 'border-box', outline: 'none',
                         }}
                       />
                     </div>
                     <div style={{ marginBottom: 12 }}>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: '#92400e', display: 'block', marginBottom: 5 }}>Tone</label>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-92400e)', display: 'block', marginBottom: 5 }}>Tone</label>
                       <select
                         value={captionTone}
                         onChange={e => setCaptionTone(e.target.value)}
                         style={{
                           width: '100%', padding: '8px 11px', borderRadius: 8,
-                          border: '1.5px solid #fde68a', fontSize: 12,
-                          background: '#fff', boxSizing: 'border-box',
+                          border: '1.5px solid var(--k-fde68a)', fontSize: 12,
+                          background: 'var(--k-fff)', boxSizing: 'border-box',
                         }}
                       >
                         {['Professional', 'Friendly', 'Exciting', 'Informative'].map(t => (
@@ -1068,7 +1068,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       disabled={captionLoading || !captionTopic.trim()}
                       style={{
                         padding: '8px 20px', borderRadius: 8, border: 'none',
-                        background: captionLoading || !captionTopic.trim() ? '#d1d5db' : '#C9A84C',
+                        background: captionLoading || !captionTopic.trim() ? 'var(--k-d1d5db)' : '#C9A84C',
                         color: '#fff', fontSize: 12, fontWeight: 700,
                         cursor: captionLoading || !captionTopic.trim() ? 'not-allowed' : 'pointer',
                       }}
@@ -1084,7 +1084,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 {/* Formatting toolbar */}
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 2,
-                  background: '#f9fafb', border: '1.5px solid #e5e7eb',
+                  background: 'var(--k-f9fafb)', border: '1.5px solid var(--k-e5e7eb)',
                   borderBottom: 'none', borderRadius: '12px 12px 0 0',
                   padding: '5px 8px',
                 }}>
@@ -1099,9 +1099,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       setComposerContent(newValue);
                       requestAnimationFrame(() => { el.focus(); el.setSelectionRange(newStart, newEnd); });
                     }}
-                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
+                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#C9A84C'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--k-e5e7eb)'; }}
                   >B</button>
 
                   {/* Italic */}
@@ -1115,9 +1115,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       setComposerContent(newValue);
                       requestAnimationFrame(() => { el.focus(); el.setSelectionRange(newStart, newEnd); });
                     }}
-                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', fontStyle: 'italic', fontWeight: 600, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
+                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', fontStyle: 'italic', fontWeight: 600, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#C9A84C'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--k-e5e7eb)'; }}
                   >I</button>
 
                   {/* Bold Italic */}
@@ -1131,13 +1131,13 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       setComposerContent(newValue);
                       requestAnimationFrame(() => { el.focus(); el.setSelectionRange(newStart, newEnd); });
                     }}
-                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', fontStyle: 'italic', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
+                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', fontStyle: 'italic', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#C9A84C'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--k-e5e7eb)'; }}
                   >BI</button>
 
                   {/* Divider */}
-                  <span style={{ width: 1, height: 18, background: '#e5e7eb', margin: '0 4px', flexShrink: 0 }} />
+                  <span style={{ width: 1, height: 18, background: 'var(--k-e5e7eb)', margin: '0 4px', flexShrink: 0 }} />
 
                   {/* Emoji picker */}
                   <div style={{ position: 'relative' }}>
@@ -1145,11 +1145,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       type="button"
                       title="Insert emoji"
                       onClick={() => { setEmojiPickerOpen(o => !o); setHashtagPickerOpen(false); }}
-                      style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: emojiPickerOpen ? '#fef9ec' : '#fff', fontSize: 14, cursor: 'pointer', lineHeight: 1, borderColor: emojiPickerOpen ? '#C9A84C' : '#e5e7eb' }}
+                      style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: emojiPickerOpen ? '#fef9ec' : 'var(--k-fff)', fontSize: 14, cursor: 'pointer', lineHeight: 1, borderColor: emojiPickerOpen ? '#C9A84C' : 'var(--k-e5e7eb)' }}
                     >😊</button>
                     {emojiPickerOpen && (
                       <div
-                        style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.10)', padding: 10, width: 232 }}
+                        style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: 'var(--k-fff)', border: '1.5px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.10)', padding: 10, width: 232 }}
                         onMouseDown={e => e.preventDefault()}
                       >
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2 }}>
@@ -1181,11 +1181,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       type="button"
                       title="Add hashtag group"
                       onClick={() => { setHashtagPickerOpen(o => !o); setEmojiPickerOpen(false); }}
-                      style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: hashtagPickerOpen ? '#fef9ec' : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#6b7280', lineHeight: 1, borderColor: hashtagPickerOpen ? '#C9A84C' : '#e5e7eb' }}
+                      style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: hashtagPickerOpen ? '#fef9ec' : 'var(--k-fff)', fontSize: 12, fontWeight: 700, cursor: 'pointer', color: 'var(--k-6b7280)', lineHeight: 1, borderColor: hashtagPickerOpen ? '#C9A84C' : 'var(--k-e5e7eb)' }}
                     >#</button>
                     {hashtagPickerOpen && (
                       <div
-                        style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.10)', padding: 6, minWidth: 220 }}
+                        style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: 'var(--k-fff)', border: '1.5px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.10)', padding: 6, minWidth: 220 }}
                         onMouseDown={e => e.preventDefault()}
                       >
                         {HASHTAG_GROUPS.map(group => (
@@ -1203,7 +1203,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
                           >
                             <span style={{ fontWeight: 700, color: '#1a1a2e', marginRight: 6 }}>{group.label}</span>
-                            <span style={{ color: '#9ca3af', fontSize: 11 }}>{group.tags.split(' ').length} tags</span>
+                            <span style={{ color: 'var(--k-9ca3af)', fontSize: 11 }}>{group.tags.split(' ').length} tags</span>
                           </button>
                         ))}
                       </div>
@@ -1220,7 +1220,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   style={{
                     width: '100%', padding: '13px 14px',
                     borderRadius: '0 0 12px 12px',
-                    border: '1.5px solid #e5e7eb', borderTop: 'none',
+                    border: '1.5px solid var(--k-e5e7eb)', borderTop: 'none',
                     fontSize: 13, lineHeight: 1.65,
                     resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box',
                     outline: 'none', transition: 'border-color .15s',
@@ -1231,15 +1231,15 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     (e.currentTarget.previousElementSibling as HTMLElement).style.borderColor = '#C9A84C';
                   }}
                   onBlur={e => {
-                    e.currentTarget.style.borderColor = '#e5e7eb';
-                    (e.currentTarget.previousElementSibling as HTMLElement).style.borderColor = '#e5e7eb';
+                    e.currentTarget.style.borderColor = 'var(--k-e5e7eb)';
+                    (e.currentTarget.previousElementSibling as HTMLElement).style.borderColor = 'var(--k-e5e7eb)';
                     setTimeout(() => { setEmojiPickerOpen(false); setHashtagPickerOpen(false); }, 150);
                   }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 5 }}>
                   <span style={{
                     fontSize: 11, fontWeight: 600,
-                    color: charsRemaining() < 0 ? '#dc2626' : charsRemaining() < 50 ? '#d97706' : '#9ca3af',
+                    color: charsRemaining() < 0 ? 'var(--k-dc2626)' : charsRemaining() < 50 ? '#d97706' : 'var(--k-9ca3af)',
                   }}>
                     {charsRemaining() < 0
                       ? `${Math.abs(charsRemaining())} over limit`
@@ -1258,9 +1258,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 <div
                   onClick={() => !uploadingMedia && mediaInputRef.current?.click()}
                   style={{
-                    border: '2px dashed #e5e7eb', borderRadius: 12, padding: composerMediaUrls.length > 0 ? '12px' : '20px',
+                    border: '2px dashed var(--k-e5e7eb)', borderRadius: 12, padding: composerMediaUrls.length > 0 ? '12px' : '20px',
                     textAlign: 'center', cursor: uploadingMedia ? 'default' : 'pointer',
-                    background: composerMediaUrls.length > 0 ? '#f8fff9' : '#fafafa',
+                    background: composerMediaUrls.length > 0 ? '#f8fff9' : 'var(--k-fafafa)',
                     opacity: uploadingMedia ? 0.7 : 1,
                     transition: 'all .15s',
                   }}
@@ -1320,38 +1320,38 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   {uploadingMedia ? (
                     <div>
                       <div style={{ fontSize: 28, marginBottom: 8 }}>⏳</div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Uploading…</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-6b7280)' }}>Uploading…</div>
                     </div>
                   ) : composerMediaUrls.length === 0 ? (
                     <div>
                       <div style={{ fontSize: 28, marginBottom: 8 }}>🖼️</div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 3 }}>Add Photos or Videos</div>
-                      <div style={{ fontSize: 11, color: '#9ca3af' }}>Click to browse · Max 10 files</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-6b7280)', marginBottom: 3 }}>Add Photos or Videos</div>
+                      <div style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>Click to browse · Max 10 files</div>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {composerMediaUrls.map((url, i) => (
                         <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
                           {isVideoUrl(url) ? (
-                            <div style={{ width: 72, height: 72, borderRadius: 10, border: '2px solid #e5e7eb', background: '#000', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: 72, height: 72, borderRadius: 10, border: '2px solid var(--k-e5e7eb)', background: '#000', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <video src={url} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.75 }} muted playsInline />
                               <span style={{ position: 'relative', zIndex: 1, fontSize: 20, filter: 'drop-shadow(0 1px 3px rgba(0,0,0,.6))' }}>▶️</span>
                               <button
                                 onClick={e => { e.stopPropagation(); setVideoEditorIndex(i); setVideoEditorOpen(true); }}
                                 title="Edit video"
-                                style={{ position: 'absolute', bottom: -7, left: '50%', transform: 'translateX(-50%)', width: 22, height: 22, borderRadius: '50%', background: '#fff', border: '1.5px solid #d1d5db', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.15)', zIndex: 2 }}
+                                style={{ position: 'absolute', bottom: -7, left: '50%', transform: 'translateX(-50%)', width: 22, height: 22, borderRadius: '50%', background: 'var(--k-fff)', border: '1.5px solid var(--k-d1d5db)', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.15)', zIndex: 2 }}
                               >✂️</button>
                             </div>
                           ) : (
                             <>
-                              <img src={url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 10, border: '2px solid #e5e7eb', display: 'block' }} />
+                              <img src={url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 10, border: '2px solid var(--k-e5e7eb)', display: 'block' }} />
                               <button
                                 onClick={e => { e.stopPropagation(); openImgEditor(i); }}
                                 title="Edit photo"
                                 style={{
                                   position: 'absolute', bottom: -7, left: '50%', transform: 'translateX(-50%)',
                                   width: 22, height: 22, borderRadius: '50%',
-                                  background: '#fff', border: '1.5px solid #d1d5db',
+                                  background: 'var(--k-fff)', border: '1.5px solid var(--k-d1d5db)',
                                   cursor: 'pointer', fontSize: 11,
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   boxShadow: '0 1px 4px rgba(0,0,0,0.15)', zIndex: 1,
@@ -1372,9 +1372,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                         </div>
                       ))}
                       <div style={{
-                        width: 72, height: 72, border: '2px dashed #d1d5db', borderRadius: 10,
+                        width: 72, height: 72, border: '2px dashed var(--k-d1d5db)', borderRadius: 10,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 24, color: '#9ca3af', flexShrink: 0,
+                        fontSize: 24, color: 'var(--k-9ca3af)', flexShrink: 0,
                       }}>+</div>
                     </div>
                   )}
@@ -1384,23 +1384,23 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               {/* Link + Hashtags grid */}
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 14 }}>
                 <div>
-                  <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af', display: 'block', marginBottom: 6 }}>Link URL</label>
+                  <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--k-9ca3af)', display: 'block', marginBottom: 6 }}>Link URL</label>
                   <input
                     value={composerLinkUrl}
                     onChange={e => setComposerLinkUrl(e.target.value)}
                     placeholder="https://…"
                     style={{
                       width: '100%', padding: '8px 11px', borderRadius: 9,
-                      border: '1.5px solid #e5e7eb', fontSize: 12,
+                      border: '1.5px solid var(--k-e5e7eb)', fontSize: 12,
                       boxSizing: 'border-box', outline: 'none',
                     }}
                     onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
-                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = 'var(--k-e5e7eb)'; }}
                   />
                 </div>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af' }}>Hashtags</label>
+                    <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--k-9ca3af)' }}>Hashtags</label>
                     {/* A "✨ Suggest" button used to sit here posting to
                         /api/crm/social/hashtags — a route that has never existed.
                         It 404'd, res.json() threw on the HTML error page, and the
@@ -1413,34 +1413,34 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     placeholder="#realestate #fairoak"
                     style={{
                       width: '100%', padding: '8px 11px', borderRadius: 9,
-                      border: '1.5px solid #e5e7eb', fontSize: 12,
+                      border: '1.5px solid var(--k-e5e7eb)', fontSize: 12,
                       boxSizing: 'border-box', outline: 'none',
                     }}
                     onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
-                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = 'var(--k-e5e7eb)'; }}
                   />
                 </div>
               </div>
 
               {/* First Comment (collapsible) */}
-              <div style={{ marginBottom: 10, borderTop: '1px solid #f5f5f5', paddingTop: 12 }}>
+              <div style={{ marginBottom: 10, borderTop: '1px solid var(--k-f5f5f5)', paddingTop: 12 }}>
                 <button
                   onClick={() => setShowFirstComment(!showFirstComment)}
                   style={{
-                    background: 'none', border: 'none', fontSize: 12, color: '#6b7280',
+                    background: 'none', border: 'none', fontSize: 12, color: 'var(--k-6b7280)',
                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
                     fontWeight: 600, padding: 0,
                   }}
                 >
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 18, height: 18, borderRadius: 4, background: '#f3f4f6',
-                    fontSize: 9, color: '#9ca3af', fontWeight: 700,
+                    width: 18, height: 18, borderRadius: 4, background: 'var(--k-f3f4f6)',
+                    fontSize: 9, color: 'var(--k-9ca3af)', fontWeight: 700,
                   }}>
                     {showFirstComment ? '▲' : '▼'}
                   </span>
                   💬 First Comment
-                  <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 400 }}>(Instagram strategy)</span>
+                  <span style={{ fontSize: 10, color: 'var(--k-9ca3af)', fontWeight: 400 }}>(Instagram strategy)</span>
                 </button>
                 {showFirstComment && (
                   <textarea
@@ -1450,34 +1450,34 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     rows={3}
                     style={{
                       width: '100%', marginTop: 10, padding: '9px 12px', borderRadius: 10,
-                      border: '1.5px solid #e5e7eb', fontSize: 12, resize: 'vertical',
+                      border: '1.5px solid var(--k-e5e7eb)', fontSize: 12, resize: 'vertical',
                       fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none',
                     }}
                     onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
-                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = 'var(--k-e5e7eb)'; }}
                   />
                 )}
               </div>
 
               {/* Internal Notes (collapsible) */}
-              <div style={{ marginBottom: 20, borderTop: '1px solid #f5f5f5', paddingTop: 12 }}>
+              <div style={{ marginBottom: 20, borderTop: '1px solid var(--k-f5f5f5)', paddingTop: 12 }}>
                 <button
                   onClick={() => setShowInternalNotes(!showInternalNotes)}
                   style={{
-                    background: 'none', border: 'none', fontSize: 12, color: '#6b7280',
+                    background: 'none', border: 'none', fontSize: 12, color: 'var(--k-6b7280)',
                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
                     fontWeight: 600, padding: 0,
                   }}
                 >
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 18, height: 18, borderRadius: 4, background: '#f3f4f6',
-                    fontSize: 9, color: '#9ca3af', fontWeight: 700,
+                    width: 18, height: 18, borderRadius: 4, background: 'var(--k-f3f4f6)',
+                    fontSize: 9, color: 'var(--k-9ca3af)', fontWeight: 700,
                   }}>
                     {showInternalNotes ? '▲' : '▼'}
                   </span>
                   📝 Internal Notes
-                  <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 400 }}>(not published)</span>
+                  <span style={{ fontSize: 10, color: 'var(--k-9ca3af)', fontWeight: 400 }}>(not published)</span>
                 </button>
                 {showInternalNotes && (
                   <textarea
@@ -1487,11 +1487,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     rows={2}
                     style={{
                       width: '100%', marginTop: 10, padding: '9px 12px', borderRadius: 10,
-                      border: '1.5px solid #e5e7eb', fontSize: 12, resize: 'vertical',
+                      border: '1.5px solid var(--k-e5e7eb)', fontSize: 12, resize: 'vertical',
                       fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none',
                     }}
                     onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
-                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = 'var(--k-e5e7eb)'; }}
                   />
                 )}
               </div>
@@ -1499,7 +1499,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               {/* Schedule / Post Now toggle */}
               <div style={{ marginBottom: 18 }}>
                 <div style={{
-                  display: 'inline-flex', borderRadius: 10, border: '1.5px solid #e5e7eb',
+                  display: 'inline-flex', borderRadius: 10, border: '1.5px solid var(--k-e5e7eb)',
                   overflow: 'hidden', marginBottom: 12,
                 }}>
                   {(['schedule', 'now'] as const).map(m => (
@@ -1510,7 +1510,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                         padding: '8px 18px', border: 'none',
                         background: postMode === m ? '#1a1a2e' : 'transparent',
                         fontSize: 12, fontWeight: 700,
-                        color: postMode === m ? '#fff' : '#9ca3af',
+                        color: postMode === m ? '#fff' : 'var(--k-9ca3af)',
                         cursor: 'pointer', transition: 'all .15s',
                       }}
                     >
@@ -1525,11 +1525,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     onChange={e => setComposerScheduledAt(e.target.value)}
                     style={{
                       width: '100%', padding: '9px 12px', borderRadius: 10,
-                      border: '1.5px solid #e5e7eb', fontSize: 12,
+                      border: '1.5px solid var(--k-e5e7eb)', fontSize: 12,
                       boxSizing: 'border-box', outline: 'none', color: '#1a1a2e',
                     }}
                     onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
-                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = 'var(--k-e5e7eb)'; }}
                   />
                 )}
               </div>
@@ -1541,8 +1541,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   disabled={composerLoading}
                   style={{
                     flex: 1, padding: '11px 0', borderRadius: 10,
-                    border: '1.5px solid #e5e7eb', background: '#f9fafb',
-                    fontSize: 13, fontWeight: 700, color: '#6b7280',
+                    border: '1.5px solid var(--k-e5e7eb)', background: 'var(--k-f9fafb)',
+                    fontSize: 13, fontWeight: 700, color: 'var(--k-6b7280)',
                     cursor: composerLoading ? 'not-allowed' : 'pointer',
                     transition: 'all .15s',
                   }}
@@ -1556,7 +1556,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     style={{
                       flex: 2, padding: '11px 0', borderRadius: 10, border: 'none',
                       background: (composerLoading || !composerScheduledAt || composerPlatforms.length === 0)
-                        ? '#d1d5db' : '#1a1a2e',
+                        ? 'var(--k-d1d5db)' : '#1a1a2e',
                       fontSize: 13, fontWeight: 700, color: '#fff',
                       cursor: (composerLoading || !composerScheduledAt || composerPlatforms.length === 0) ? 'not-allowed' : 'pointer',
                       boxShadow: (!composerLoading && composerScheduledAt && composerPlatforms.length > 0)
@@ -1572,7 +1572,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     disabled={composerLoading || composerPlatforms.length === 0}
                     style={{
                       flex: 2, padding: '11px 0', borderRadius: 10, border: 'none',
-                      background: (composerLoading || composerPlatforms.length === 0) ? '#d1d5db' : '#C9A84C',
+                      background: (composerLoading || composerPlatforms.length === 0) ? 'var(--k-d1d5db)' : '#C9A84C',
                       fontSize: 13, fontWeight: 700, color: '#fff',
                       cursor: (composerLoading || composerPlatforms.length === 0) ? 'not-allowed' : 'pointer',
                       boxShadow: (!composerLoading && composerPlatforms.length > 0)
@@ -1591,9 +1591,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           {/* ── RIGHT: Post Queue ── */}
           <div style={{ flex: stackPublisher ? 'none' : 1, width: stackPublisher ? '100%' : undefined, minWidth: 0 }}>
             <div style={{
-              background: '#fff',
+              background: 'var(--k-fff)',
               borderRadius: 16,
-              border: '1px solid #f0f0f0',
+              border: '1px solid var(--k-f0f0f0)',
               overflow: 'hidden',
               boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
             }}>
@@ -1601,7 +1601,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               {/* Pill tab bar */}
               <div style={{
                 display: 'flex', gap: 6, padding: '16px 16px 0',
-                borderBottom: '1px solid #f0f0f0', paddingBottom: 16,
+                borderBottom: '1px solid var(--k-f0f0f0)', paddingBottom: 16,
                 alignItems: 'center', justifyContent: 'space-between',
                 flexWrap: 'wrap', rowGap: 8,
               }}>
@@ -1623,7 +1623,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                         padding: '7px 14px', borderRadius: 100, border: 'none',
                         background: active ? '#1a1a2e' : 'transparent',
                         fontSize: 12, fontWeight: 700,
-                        color: active ? '#fff' : '#9ca3af',
+                        color: active ? '#fff' : 'var(--k-9ca3af)',
                         cursor: 'pointer', transition: 'all .15s',
                       }}
                     >
@@ -1631,8 +1631,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       <span>{label}</span>
                       <span style={{
                         padding: '1px 7px', borderRadius: 100, fontSize: 10, fontWeight: 800,
-                        background: active ? 'rgba(255,255,255,0.2)' : '#f3f4f6',
-                        color: active ? '#fff' : '#6b7280',
+                        background: active ? 'rgba(255,255,255,0.2)' : 'var(--k-f3f4f6)',
+                        color: active ? '#fff' : 'var(--k-6b7280)',
                       }}>
                         {count}
                       </span>
@@ -1645,8 +1645,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   disabled={campaignImporting}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '7px 14px', borderRadius: 100, border: '1px solid #e5e7eb',
-                    background: '#fff', fontSize: 12, fontWeight: 700,
+                    padding: '7px 14px', borderRadius: 100, border: '1px solid var(--k-e5e7eb)',
+                    background: 'var(--k-fff)', fontSize: 12, fontWeight: 700,
                     color: '#1a1a2e', cursor: campaignImporting ? 'not-allowed' : 'pointer',
                     opacity: campaignImporting ? 0.6 : 1, whiteSpace: 'nowrap',
                   }}
@@ -1658,7 +1658,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               {/* Queue content */}
               <div style={{ padding: '16px', maxHeight: 680, overflowY: 'auto' }}>
                 {postsLoading ? (
-                  <div style={{ textAlign: 'center', padding: '48px 24px', color: '#9ca3af' }}>
+                  <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--k-9ca3af)' }}>
                     <div style={{ fontSize: 28, marginBottom: 10 }}>⏳</div>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>Loading posts…</div>
                   </div>
@@ -1670,7 +1670,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a2e', marginBottom: 8 }}>
                       No {postQueueTab} posts yet
                     </div>
-                    <div style={{ fontSize: 13, color: '#9ca3af', lineHeight: 1.5 }}>
+                    <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', lineHeight: 1.5 }}>
                       {postQueueTab === 'scheduled'
                         ? 'Use the composer to schedule your first post.'
                         : `No ${postQueueTab} posts to show.`}
@@ -1695,14 +1695,14 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                           key={post.id}
                           style={{
                             borderRadius: 12,
-                            border: `1px solid ${isPreviewing ? '#C9A84C50' : '#f0f0f0'}`,
-                            background: '#fff',
+                            border: `1px solid ${isPreviewing ? '#C9A84C50' : 'var(--k-f0f0f0)'}`,
+                            background: 'var(--k-fff)',
                             boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
                             overflow: 'hidden',
                             transition: 'border-color .2s, box-shadow .2s',
                           }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#e0e0e0'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 3px 10px rgba(0,0,0,0.08)'; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = isPreviewing ? '#C9A84C50' : '#f0f0f0'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'; }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--k-e0e0e0)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 3px 10px rgba(0,0,0,0.08)'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = isPreviewing ? '#C9A84C50' : 'var(--k-f0f0f0)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'; }}
                         >
                           {/* Card body */}
                           <div style={{ padding: '14px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -1714,16 +1714,16 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                                 style={{
                                   width: 72, height: 72, flexShrink: 0,
                                   objectFit: 'cover', borderRadius: 10,
-                                  border: '1px solid #f0f0f0',
+                                  border: '1px solid var(--k-f0f0f0)',
                                 }}
                               />
                             ) : (
                               <div style={{
                                 width: 72, height: 72, flexShrink: 0, borderRadius: 10,
-                                background: primaryPlatform ? `${platformColor(primaryPlatform)}18` : '#f3f4f6',
+                                background: primaryPlatform ? `${platformColor(primaryPlatform)}18` : 'var(--k-f3f4f6)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 fontSize: 26,
-                                border: `1px solid ${primaryPlatform ? `${platformColor(primaryPlatform)}30` : '#e5e7eb'}`,
+                                border: `1px solid ${primaryPlatform ? `${platformColor(primaryPlatform)}30` : 'var(--k-e5e7eb)'}`,
                               }}>
                                 {primaryPlatform ? platformEmoji(primaryPlatform) : '📄'}
                               </div>
@@ -1737,7 +1737,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                                 lineHeight: 1.5, overflow: 'hidden',
                                 display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                               }}>
-                                {post.content || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No caption</span>}
+                                {post.content || <span style={{ color: 'var(--k-9ca3af)', fontStyle: 'italic' }}>No caption</span>}
                               </p>
 
                               {/* Platform badges + status + time */}
@@ -1768,7 +1768,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                                   <span style={{
                                     fontSize: post.status === 'scheduled' ? 12 : 11,
                                     fontWeight: post.status === 'scheduled' ? 700 : 400,
-                                    color: post.status === 'scheduled' ? '#1a1a2e' : '#9ca3af',
+                                    color: post.status === 'scheduled' ? '#1a1a2e' : 'var(--k-9ca3af)',
                                   }}>
                                     {post.status === 'scheduled' ? '📅' : '✅'} {timeStr}
                                   </span>
@@ -1778,9 +1778,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                               {/* Engagement for published */}
                               {post.status === 'published' && (
                                 <div style={{ display: 'flex', gap: 10, marginTop: 7 }}>
-                                  <span style={{ fontSize: 11, color: '#6b7280' }}>👍 {post.engagement?.likes || 0}</span>
-                                  <span style={{ fontSize: 11, color: '#6b7280' }}>💬 {post.engagement?.comments || 0}</span>
-                                  <span style={{ fontSize: 11, color: '#6b7280' }}>🔁 {post.engagement?.shares || 0}</span>
+                                  <span style={{ fontSize: 11, color: 'var(--k-6b7280)' }}>👍 {post.engagement?.likes || 0}</span>
+                                  <span style={{ fontSize: 11, color: 'var(--k-6b7280)' }}>💬 {post.engagement?.comments || 0}</span>
+                                  <span style={{ fontSize: 11, color: 'var(--k-6b7280)' }}>🔁 {post.engagement?.shares || 0}</span>
                                 </div>
                               )}
                             </div>
@@ -1789,18 +1789,18 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                           {/* Card action row */}
                           <div style={{
                             padding: '10px 14px',
-                            borderTop: '1px solid #f5f5f5',
+                            borderTop: '1px solid var(--k-f5f5f5)',
                             display: 'flex', gap: 6, flexWrap: 'wrap',
-                            background: '#fafafa',
+                            background: 'var(--k-fafafa)',
                           }}>
                             <button
                               onClick={() => setPreviewPostId(isPreviewing ? null : post.id)}
                               style={{
                                 padding: '5px 12px', borderRadius: 8,
-                                border: `1px solid ${isPreviewing ? '#C9A84C' : '#e5e7eb'}`,
-                                background: isPreviewing ? '#fffbeb' : '#fff',
+                                border: `1px solid ${isPreviewing ? '#C9A84C' : 'var(--k-e5e7eb)'}`,
+                                background: isPreviewing ? 'var(--k-fffbeb)' : 'var(--k-fff)',
                                 fontSize: 11, fontWeight: 700,
-                                color: isPreviewing ? '#92400e' : '#374151',
+                                color: isPreviewing ? 'var(--k-92400e)' : 'var(--k-374151)',
                                 cursor: 'pointer',
                               }}
                             >
@@ -1819,10 +1819,10 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                                 }}
                                 style={{
                                   padding: '5px 12px', borderRadius: 8,
-                                  border: `1px solid ${isScheduling ? '#1a1a2e' : '#dbeafe'}`,
-                                  background: isScheduling ? '#1a1a2e' : '#eff6ff',
+                                  border: `1px solid ${isScheduling ? '#1a1a2e' : 'var(--k-dbeafe)'}`,
+                                  background: isScheduling ? '#1a1a2e' : 'var(--k-eff6ff)',
                                   fontSize: 11, fontWeight: 700,
-                                  color: isScheduling ? '#fff' : '#1d4ed8',
+                                  color: isScheduling ? '#fff' : 'var(--k-1d4ed8)',
                                   cursor: 'pointer',
                                 }}
                               >
@@ -1833,8 +1833,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                               onClick={() => openEditPost(post)}
                               style={{
                                 padding: '5px 12px', borderRadius: 8,
-                                border: '1px solid #e5e7eb', background: '#fff',
-                                fontSize: 11, fontWeight: 700, color: '#374151',
+                                border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)',
+                                fontSize: 11, fontWeight: 700, color: 'var(--k-374151)',
                                 cursor: 'pointer',
                               }}
                             >
@@ -1844,8 +1844,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                               onClick={() => deletePost(post.id)}
                               style={{
                                 padding: '5px 12px', borderRadius: 8,
-                                border: '1px solid #fee2e2', background: '#fff',
-                                fontSize: 11, fontWeight: 700, color: '#dc2626',
+                                border: '1px solid var(--k-fee2e2)', background: 'var(--k-fff)',
+                                fontSize: 11, fontWeight: 700, color: 'var(--k-dc2626)',
                                 cursor: 'pointer',
                               }}
                             >
@@ -1857,7 +1857,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                           {isScheduling && (
                             <div style={{
                               padding: '12px 14px',
-                              borderTop: '1px solid #dbeafe',
+                              borderTop: '1px solid var(--k-dbeafe)',
                               background: '#f0f7ff',
                               display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
                             }}>
@@ -1888,8 +1888,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                                 onClick={() => setSchedulingPostId(null)}
                                 style={{
                                   padding: '7px 12px', borderRadius: 8,
-                                  border: '1px solid #bfdbfe', background: '#fff',
-                                  fontSize: 12, color: '#6b7280', cursor: 'pointer',
+                                  border: '1px solid var(--k-bfdbfe)', background: 'var(--k-fff)',
+                                  fontSize: 12, color: 'var(--k-6b7280)', cursor: 'pointer',
                                 }}
                               >
                                 Cancel
@@ -1909,9 +1909,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
         {/* ── Connected Accounts Bar ── */}
         <div style={{
-          background: '#fff',
+          background: 'var(--k-fff)',
           borderRadius: 16,
-          border: '1px solid #f0f0f0',
+          border: '1px solid var(--k-f0f0f0)',
           padding: '14px 20px',
           marginTop: 20,
           boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
@@ -1920,12 +1920,12 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           gap: 12,
           flexWrap: 'wrap',
         }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.1, textTransform: 'uppercase', color: '#9ca3af', marginRight: 4, whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginRight: 4, whiteSpace: 'nowrap' }}>
             Accounts
           </span>
 
           {connectionsLoading ? (
-            <span style={{ fontSize: 12, color: '#9ca3af' }}>Loading...</span>
+            <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>Loading...</span>
           ) : (
             <>
               {ALL_PLATFORMS.map(p => {
@@ -1952,7 +1952,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       </div>
                       <div style={{ lineHeight: 1.2 }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e' }}>{conn.account_name}</div>
-                        <div style={{ fontSize: 10, color: '#9ca3af' }}>{fmtNum(conn.followers_count)} followers</div>
+                        <div style={{ fontSize: 10, color: 'var(--k-9ca3af)' }}>{fmtNum(conn.followers_count)} followers</div>
                       </div>
                       <button
                         onClick={async () => {
@@ -1971,7 +1971,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                         title="Disconnect"
                         style={{
                           background: 'none', border: 'none', cursor: 'pointer',
-                          color: '#9ca3af', fontSize: 13, lineHeight: 1,
+                          color: 'var(--k-9ca3af)', fontSize: 13, lineHeight: 1,
                           padding: '0 0 0 4px', display: 'flex', alignItems: 'center',
                         }}
                       >✕</button>
@@ -1989,9 +1989,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6,
                       padding: '6px 12px', borderRadius: 100,
-                      border: '1.5px dashed #d1d5db',
-                      background: '#f9fafb', cursor: 'pointer',
-                      fontSize: 12, color: '#9ca3af', fontWeight: 600,
+                      border: '1.5px dashed var(--k-d1d5db)',
+                      background: 'var(--k-f9fafb)', cursor: 'pointer',
+                      fontSize: 12, color: 'var(--k-9ca3af)', fontWeight: 600,
                     }}
                   >
                     <span style={{ opacity: 0.5, fontSize: 14 }}>{platformEmoji(p)}</span>
@@ -2098,7 +2098,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
               onClick={prevPeriod}
-              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 14 }}
+              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', cursor: 'pointer', fontSize: 14 }}
             >←</button>
             <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>
               {calendarView === 'month'
@@ -2108,11 +2108,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
             </h3>
             <button
               onClick={nextPeriod}
-              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 14 }}
+              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', cursor: 'pointer', fontSize: 14 }}
             >→</button>
             <button
               onClick={() => setCalendarDate(new Date())}
-              style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151' }}
+              style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--k-374151)' }}
             >Today</button>
           </div>
 
@@ -2120,22 +2120,22 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
             {/* Platform legend */}
             <div style={{ display: 'flex', gap: 8 }}>
               {ALL_PLATFORMS.map(p => (
-                <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+                <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--k-6b7280)' }}>
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: platformColor(p), display: 'inline-block' }} />
                   {platformLabel(p).split('/')[0]}
                 </div>
               ))}
             </div>
             {/* View toggle */}
-            <div style={{ display: 'flex', gap: 4, background: '#f3f4f6', borderRadius: 8, padding: 3 }}>
+            <div style={{ display: 'flex', gap: 4, background: 'var(--k-f3f4f6)', borderRadius: 8, padding: 3 }}>
               {(['month', 'week'] as const).map(v => (
                 <button
                   key={v}
                   onClick={() => setCalendarView(v)}
                   style={{
                     padding: '5px 14px', borderRadius: 6, border: 'none',
-                    background: calendarView === v ? '#fff' : 'none',
-                    fontSize: 12, fontWeight: 700, color: calendarView === v ? '#1a1a2e' : '#9ca3af',
+                    background: calendarView === v ? 'var(--k-fff)' : 'none',
+                    fontSize: 12, fontWeight: 700, color: calendarView === v ? '#1a1a2e' : 'var(--k-9ca3af)',
                     cursor: 'pointer', boxShadow: calendarView === v ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
                   }}
                 >
@@ -2153,11 +2153,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
         </div>
 
         {calendarView === 'month' ? (
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
+          <div style={{ background: 'var(--k-fff)', borderRadius: 12, border: '1px solid var(--k-f0f0f0)', overflow: 'hidden' }}>
             {/* Day headers */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #f0f0f0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--k-f0f0f0)' }}>
               {dayNames.map(d => (
-                <div key={d} style={{ padding: '10px 12px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center' }}>
+                <div key={d} style={{ padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--k-9ca3af)', textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center' }}>
                   {d}
                 </div>
               ))}
@@ -2184,14 +2184,14 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     }}
                     style={{
                       minHeight: 100, padding: '8px',
-                      borderRight: isBorder ? '1px solid #f0f0f0' : 'none',
-                      borderBottom: isBottomBorder ? '1px solid #f0f0f0' : 'none',
-                      background: isToday ? '#fffbeb' : cell.isCurrentMonth ? '#fff' : '#fafafa',
+                      borderRight: isBorder ? '1px solid var(--k-f0f0f0)' : 'none',
+                      borderBottom: isBottomBorder ? '1px solid var(--k-f0f0f0)' : 'none',
+                      background: isToday ? 'var(--k-fffbeb)' : cell.isCurrentMonth ? 'var(--k-fff)' : 'var(--k-fafafa)',
                       cursor: cell.isCurrentMonth ? 'pointer' : 'default',
                       transition: 'background .1s',
                     }}
-                    onMouseEnter={e => { if (cell.isCurrentMonth) (e.currentTarget as HTMLDivElement).style.background = '#f9fafb'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = isToday ? '#fffbeb' : cell.isCurrentMonth ? '#fff' : '#fafafa'; }}
+                    onMouseEnter={e => { if (cell.isCurrentMonth) (e.currentTarget as HTMLDivElement).style.background = 'var(--k-f9fafb)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = isToday ? 'var(--k-fffbeb)' : cell.isCurrentMonth ? 'var(--k-fff)' : 'var(--k-fafafa)'; }}
                   >
                     <div style={{
                       fontSize: 12, fontWeight: 700,
@@ -2224,7 +2224,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                         </button>
                       ))}
                       {dayPosts.length > 3 && (
-                        <div style={{ fontSize: 10, color: '#9ca3af', paddingLeft: 5 }}>+{dayPosts.length - 3} more</div>
+                        <div style={{ fontSize: 10, color: 'var(--k-9ca3af)', paddingLeft: 5 }}>+{dayPosts.length - 3} more</div>
                       )}
                     </div>
                   </div>
@@ -2234,15 +2234,15 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           </div>
         ) : (
           // Week view
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'auto' }}>
+          <div style={{ background: 'var(--k-fff)', borderRadius: 12, border: '1px solid var(--k-f0f0f0)', overflow: 'auto' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '48px repeat(7, 1fr)', minWidth: 700 }}>
               {/* Header row */}
-              <div style={{ borderBottom: '1px solid #f0f0f0', borderRight: '1px solid #f0f0f0' }} />
+              <div style={{ borderBottom: '1px solid var(--k-f0f0f0)', borderRight: '1px solid var(--k-f0f0f0)' }} />
               {buildWeekDays().map((d, i) => {
                 const isToday = d.toDateString() === today.toDateString();
                 return (
-                  <div key={i} style={{ padding: '10px 8px', textAlign: 'center', borderBottom: '1px solid #f0f0f0', borderRight: i < 6 ? '1px solid #f0f0f0' : 'none', background: isToday ? '#fffbeb' : '#fff' }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>{dayNames[d.getDay()]}</div>
+                  <div key={i} style={{ padding: '10px 8px', textAlign: 'center', borderBottom: '1px solid var(--k-f0f0f0)', borderRight: i < 6 ? '1px solid var(--k-f0f0f0)' : 'none', background: isToday ? 'var(--k-fffbeb)' : 'var(--k-fff)' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--k-9ca3af)', textTransform: 'uppercase' }}>{dayNames[d.getDay()]}</div>
                     <div style={{ fontSize: 18, fontWeight: 700, color: isToday ? '#C9A84C' : '#1a1a2e', marginTop: 2 }}>{d.getDate()}</div>
                   </div>
                 );
@@ -2254,7 +2254,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 const weekDays = buildWeekDays();
                 return (
                   <>
-                    <div key={`h-${hour}`} style={{ padding: '4px 8px', fontSize: 10, color: '#9ca3af', textAlign: 'right', borderRight: '1px solid #f0f0f0', borderBottom: '1px solid #f5f5f5', minHeight: 48, display: 'flex', alignItems: 'flex-start', paddingTop: 4 }}>
+                    <div key={`h-${hour}`} style={{ padding: '4px 8px', fontSize: 10, color: 'var(--k-9ca3af)', textAlign: 'right', borderRight: '1px solid var(--k-f0f0f0)', borderBottom: '1px solid var(--k-f5f5f5)', minHeight: 48, display: 'flex', alignItems: 'flex-start', paddingTop: 4 }}>
                       {label}
                     </div>
                     {weekDays.map((d, di) => {
@@ -2263,7 +2263,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                         return dt.getHours() === hour;
                       });
                       return (
-                        <div key={`${hour}-${di}`} style={{ minHeight: 48, borderBottom: '1px solid #f5f5f5', borderRight: di < 6 ? '1px solid #f0f0f0' : 'none', padding: 2, position: 'relative' }}>
+                        <div key={`${hour}-${di}`} style={{ minHeight: 48, borderBottom: '1px solid var(--k-f5f5f5)', borderRight: di < 6 ? '1px solid var(--k-f0f0f0)' : 'none', padding: 2, position: 'relative' }}>
                           {dayPosts.map(post => (
                             <button
                               key={post.id}
@@ -2312,43 +2312,43 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
         {/* Saved Replies Modal */}
         {savedRepliesOpen && (
           <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 14, padding: 24, width: 'min(480px, calc(100vw - 28px))', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+            <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 14, padding: 24, width: 'min(480px, calc(100vw - 28px))', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Saved Replies</h3>
-                <button onClick={() => setSavedRepliesOpen(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#9ca3af' }}>✕</button>
+                <button onClick={() => setSavedRepliesOpen(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--k-9ca3af)' }}>✕</button>
               </div>
               <div style={{ marginBottom: 16 }}>
                 {savedReplies.map(r => (
-                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 8, border: '1px solid #f0f0f0', marginBottom: 8 }}>
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--k-f0f0f0)', marginBottom: 8 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e' }}>{r.name}</div>
-                      <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{r.content.slice(0, 60)}...</div>
+                      <div style={{ fontSize: 11, color: 'var(--k-6b7280)', marginTop: 2 }}>{r.content.slice(0, 60)}...</div>
                     </div>
                     <button
                       onClick={() => { setReplyText(r.content); setSavedRepliesOpen(false); }}
-                      style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                      style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
                     >Use</button>
                     <button
                       onClick={() => setSavedReplies(prev => prev.filter(x => x.id !== r.id))}
-                      style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid #fee2e2', background: '#fff', fontSize: 11, cursor: 'pointer', color: '#dc2626' }}
+                      style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--k-fee2e2)', background: 'var(--k-fff)', fontSize: 11, cursor: 'pointer', color: 'var(--k-dc2626)' }}
                     >✕</button>
                   </div>
                 ))}
               </div>
-              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 14 }}>
+              <div style={{ borderTop: '1px solid var(--k-f0f0f0)', paddingTop: 14 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e', marginBottom: 10 }}>Add New Reply</div>
                 <input
                   value={newReplyName}
                   onChange={e => setNewReplyName(e.target.value)}
                   placeholder="Reply name"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, marginBottom: 8, boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: 12, marginBottom: 8, boxSizing: 'border-box' }}
                 />
                 <textarea
                   value={newReplyContent}
                   onChange={e => setNewReplyContent(e.target.value)}
                   placeholder="Reply content..."
                   rows={3}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, marginBottom: 10, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: 12, marginBottom: 10, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
                 />
                 <button
                   onClick={() => {
@@ -2369,14 +2369,14 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 20, alignItems: 'flex-start' }}>
           {/* Left: message list */}
-          <div style={{ flex: isMobile ? 'none' : '0 0 360px', width: isMobile ? '100%' : undefined, background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
+          <div style={{ flex: isMobile ? 'none' : '0 0 360px', width: isMobile ? '100%' : undefined, background: 'var(--k-fff)', borderRadius: 12, border: '1px solid var(--k-f0f0f0)', overflow: 'hidden' }}>
             {/* Filters */}
-            <div style={{ padding: '14px 16px', borderBottom: '1px solid #f0f0f0' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--k-f0f0f0)' }}>
               <input
                 value={inboxSearch}
                 onChange={e => setInboxSearch(e.target.value)}
                 placeholder="🔍 Search messages..."
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, marginBottom: 10, boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: 12, marginBottom: 10, boxSizing: 'border-box' }}
               />
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
                 {(['all', 'open', 'resolved', 'spam'] as const).map(f => (
@@ -2384,9 +2384,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     key={f}
                     onClick={() => setInboxFilter(f)}
                     style={{
-                      padding: '4px 10px', borderRadius: 7, border: `1px solid ${inboxFilter === f ? '#1a1a2e' : '#e5e7eb'}`,
-                      background: inboxFilter === f ? '#1a1a2e' : '#fff',
-                      color: inboxFilter === f ? '#fff' : '#6b7280',
+                      padding: '4px 10px', borderRadius: 7, border: `1px solid ${inboxFilter === f ? '#1a1a2e' : 'var(--k-e5e7eb)'}`,
+                      background: inboxFilter === f ? '#1a1a2e' : 'var(--k-fff)',
+                      color: inboxFilter === f ? '#fff' : 'var(--k-6b7280)',
                       fontSize: 11, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize',
                     }}
                   >
@@ -2400,9 +2400,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     key={f}
                     onClick={() => setInboxTypeFilter(f)}
                     style={{
-                      padding: '3px 8px', borderRadius: 6, border: `1px solid ${inboxTypeFilter === f ? '#C9A84C' : '#e5e7eb'}`,
-                      background: inboxTypeFilter === f ? '#fffbeb' : '#fff',
-                      color: inboxTypeFilter === f ? '#92400e' : '#9ca3af',
+                      padding: '3px 8px', borderRadius: 6, border: `1px solid ${inboxTypeFilter === f ? '#C9A84C' : 'var(--k-e5e7eb)'}`,
+                      background: inboxTypeFilter === f ? 'var(--k-fffbeb)' : 'var(--k-fff)',
+                      color: inboxTypeFilter === f ? 'var(--k-92400e)' : 'var(--k-9ca3af)',
                       fontSize: 10, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize',
                     }}
                   >
@@ -2412,7 +2412,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 <select
                   value={inboxPlatformFilter}
                   onChange={e => setInboxPlatformFilter(e.target.value as SocialPlatform | 'all')}
-                  style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 10, color: '#6b7280', background: '#fff' }}
+                  style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', fontSize: 10, color: 'var(--k-6b7280)', background: 'var(--k-fff)' }}
                 >
                   <option value="all">All Platforms</option>
                   {ALL_PLATFORMS.map(p => <option key={p} value={p}>{platformLabel(p)}</option>)}
@@ -2426,7 +2426,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 <div style={{ padding: '48px 24px', textAlign: 'center' }}>
                   <div style={{ fontSize: 32, marginBottom: 12 }}>📥</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 6 }}>No messages yet</div>
-                  <div style={{ fontSize: 12, color: '#9ca3af' }}>Connect your social accounts to start seeing engagement here.</div>
+                  <div style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>Connect your social accounts to start seeing engagement here.</div>
                 </div>
               ) : (
                 filteredItems.map(item => (
@@ -2435,7 +2435,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     onClick={() => setSelectedInboxItem(item)}
                     style={{
                       width: '100%', textAlign: 'left', padding: '14px 16px',
-                      borderBottom: '1px solid #f5f5f5', background: selectedInboxItem?.id === item.id ? '#f0f9ff' : '#fff',
+                      borderBottom: '1px solid var(--k-f5f5f5)', background: selectedInboxItem?.id === item.id ? '#f0f9ff' : 'var(--k-fff)',
                       border: 'none', cursor: 'pointer', display: 'block',
                       borderLeft: selectedInboxItem?.id === item.id ? '3px solid #1DA1F2' : '3px solid transparent',
                     }}
@@ -2446,22 +2446,22 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                           {platformEmoji(item.platform)}
                         </div>
                         {item.status === 'open' && (
-                          <div style={{ position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: '50%', background: '#3b82f6', border: '2px solid #fff' }} />
+                          <div style={{ position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: '50%', background: '#3b82f6', border: '2px solid var(--k-fff)' }} />
                         )}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.from_name}</span>
-                          <span style={{ fontSize: 10, color: '#9ca3af' }}>@{item.from_handle}</span>
+                          <span style={{ fontSize: 10, color: 'var(--k-9ca3af)' }}>@{item.from_handle}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ padding: '1px 6px', borderRadius: 4, background: item.type === 'dm' ? '#dbeafe' : item.type === 'comment' ? '#dcfce7' : '#f3e8ff', color: item.type === 'dm' ? '#1d4ed8' : item.type === 'comment' ? '#15803d' : '#7e22ce', fontSize: 9, fontWeight: 700, textTransform: 'uppercase' }}>{item.type}</span>
+                          <span style={{ padding: '1px 6px', borderRadius: 4, background: item.type === 'dm' ? 'var(--k-dbeafe)' : item.type === 'comment' ? 'var(--k-dcfce7)' : '#f3e8ff', color: item.type === 'dm' ? 'var(--k-1d4ed8)' : item.type === 'comment' ? 'var(--k-15803d)' : '#7e22ce', fontSize: 9, fontWeight: 700, textTransform: 'uppercase' }}>{item.type}</span>
                           <span style={{ fontSize: 10 }}>{sentimentDot(item.sentiment)}</span>
-                          <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto' }}>{timeAgo(item.created_at)}</span>
+                          <span style={{ fontSize: 10, color: 'var(--k-9ca3af)', marginLeft: 'auto' }}>{timeAgo(item.created_at)}</span>
                         </div>
                       </div>
                     </div>
-                    <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: 46 }}>
+                    <div style={{ fontSize: 12, color: 'var(--k-6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: 46 }}>
                       {item.content}
                     </div>
                   </button>
@@ -2473,22 +2473,22 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           {/* Right: message detail */}
           <div style={{ flex: 1, minWidth: 0 }}>
             {!selectedInboxItem ? (
-              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '60px 24px', textAlign: 'center' }}>
+              <div style={{ background: 'var(--k-fff)', borderRadius: 12, border: '1px solid var(--k-f0f0f0)', padding: '60px 24px', textAlign: 'center' }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>💬</div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e', marginBottom: 6 }}>Select a message</div>
-                <div style={{ fontSize: 12, color: '#9ca3af' }}>Click a message from the left to view and reply.</div>
+                <div style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>Click a message from the left to view and reply.</div>
               </div>
             ) : (
-              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
+              <div style={{ background: 'var(--k-fff)', borderRadius: 12, border: '1px solid var(--k-f0f0f0)', overflow: 'hidden' }}>
                 {/* Header */}
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--k-f0f0f0)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ width: 44, height: 44, borderRadius: '50%', background: platformColor(selectedInboxItem.platform) + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
                       {platformEmoji(selectedInboxItem.platform)}
                     </div>
                     <div>
                       <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e' }}>{selectedInboxItem.from_name}</div>
-                      <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                      <div style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>
                         @{selectedInboxItem.from_handle} · {platformLabel(selectedInboxItem.platform)} {selectedInboxItem.type.toUpperCase()} · {timeAgo(selectedInboxItem.created_at)}
                       </div>
                     </div>
@@ -2496,13 +2496,13 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={() => updateInboxStatus(selectedInboxItem.id, selectedInboxItem.status === 'resolved' ? 'open' : 'resolved')}
-                      style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #bbf7d0', background: '#f0fdf4', fontSize: 12, color: '#15803d', cursor: 'pointer', fontWeight: 600 }}
+                      style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--k-bbf7d0)', background: 'var(--k-f0fdf4)', fontSize: 12, color: 'var(--k-15803d)', cursor: 'pointer', fontWeight: 600 }}
                     >
                       {selectedInboxItem.status === 'resolved' ? '↩ Reopen' : '✓ Resolve'}
                     </button>
                     <button
                       onClick={() => updateInboxStatus(selectedInboxItem.id, 'spam')}
-                      style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', fontSize: 12, color: '#dc2626', cursor: 'pointer', fontWeight: 600 }}
+                      style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--k-fecaca)', background: 'var(--k-fef2f2)', fontSize: 12, color: 'var(--k-dc2626)', cursor: 'pointer', fontWeight: 600 }}
                     >
                       🚫 Spam
                     </button>
@@ -2512,9 +2512,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 <div style={{ padding: '20px' }}>
                   {/* Original post preview */}
                   {selectedInboxItem.post_content_preview && (
-                    <div style={{ padding: '10px 14px', background: '#f9fafb', borderRadius: 8, border: '1px solid #f0f0f0', marginBottom: 14 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Original Post</div>
-                      <div style={{ fontSize: 12, color: '#6b7280' }}>{selectedInboxItem.post_content_preview}</div>
+                    <div style={{ padding: '10px 14px', background: 'var(--k-f9fafb)', borderRadius: 8, border: '1px solid var(--k-f0f0f0)', marginBottom: 14 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--k-9ca3af)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Original Post</div>
+                      <div style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>{selectedInboxItem.post_content_preview}</div>
                     </div>
                   )}
 
@@ -2544,12 +2544,12 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       onChange={e => setReplyText(e.target.value)}
                       placeholder="Type your reply..."
                       rows={4}
-                      style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #e5e7eb', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', marginBottom: 10, boxSizing: 'border-box', lineHeight: 1.5 }}
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--k-e5e7eb)', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', marginBottom: 10, boxSizing: 'border-box', lineHeight: 1.5 }}
                     />
                     <button
                       onClick={() => sendReply(selectedInboxItem.id, replyText)}
                       disabled={!replyText.trim()}
-                      style={{ padding: '9px 22px', borderRadius: 9, border: 'none', background: replyText.trim() ? '#1a1a2e' : '#d1d5db', color: '#fff', fontSize: 13, fontWeight: 700, cursor: replyText.trim() ? 'pointer' : 'not-allowed' }}
+                      style={{ padding: '9px 22px', borderRadius: 9, border: 'none', background: replyText.trim() ? '#1a1a2e' : 'var(--k-d1d5db)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: replyText.trim() ? 'pointer' : 'not-allowed' }}
                     >
                       Send Reply →
                     </button>
@@ -2557,11 +2557,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
                   {/* Previous reply */}
                   {selectedInboxItem.replied_at && (
-                    <div style={{ marginTop: 20, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Previous Reply</div>
-                      <div style={{ padding: '10px 14px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' }}>
-                        <div style={{ fontSize: 12, color: '#15803d' }}>{selectedInboxItem.reply_content}</div>
-                        <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4 }}>{timeAgo(selectedInboxItem.replied_at)}</div>
+                    <div style={{ marginTop: 20, borderTop: '1px solid var(--k-f0f0f0)', paddingTop: 16 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-9ca3af)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Previous Reply</div>
+                      <div style={{ padding: '10px 14px', background: 'var(--k-f0fdf4)', borderRadius: 8, border: '1px solid var(--k-bbf7d0)' }}>
+                        <div style={{ fontSize: 12, color: 'var(--k-15803d)' }}>{selectedInboxItem.reply_content}</div>
+                        <div style={{ fontSize: 10, color: 'var(--k-6b7280)', marginTop: 4 }}>{timeAgo(selectedInboxItem.replied_at)}</div>
                       </div>
                     </div>
                   )}
@@ -2617,11 +2617,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       .slice(0, 5);
 
     const statCard = (label: string, value: string, emoji: string, sub: string) => (
-      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: isMobile ? '14px 16px' : '20px 24px', flex: 1, minWidth: isMobile ? 'calc(50% - 8px)' : 0, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+      <div style={{ background: 'var(--k-fff)', borderRadius: 12, border: '1px solid var(--k-f0f0f0)', padding: isMobile ? '14px 16px' : '20px 24px', flex: 1, minWidth: isMobile ? 'calc(50% - 8px)' : 0, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
         <div style={{ fontSize: isMobile ? 20 : 24, marginBottom: 6 }}>{emoji}</div>
         <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 800, color: '#1a1a2e', fontFamily: "'Cormorant Garamond', serif", lineHeight: 1 }}>{value}</div>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e', marginTop: 6 }}>{label}</div>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{sub}</div>
+        <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 2 }}>{sub}</div>
       </div>
     );
 
@@ -2629,10 +2629,10 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       <div>
         {/* CTA for connecting more */}
         {connections.length < 3 && (
-          <div style={{ background: '#fffbeb', borderRadius: 12, border: '1px solid #fde68a', padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ background: 'var(--k-fffbeb)', borderRadius: 12, border: '1px solid var(--k-fde68a)', padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>Connect more accounts to see richer analytics</div>
-              <div style={{ fontSize: 11, color: '#a16207' }}>You have {connections.length} of 5 platforms connected.</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-92400e)' }}>Connect more accounts to see richer analytics</div>
+              <div style={{ fontSize: 11, color: 'var(--k-a16207)' }}>You have {connections.length} of 5 platforms connected.</div>
             </div>
             <button
               onClick={() => setShowConnectModal(true)}
@@ -2652,62 +2652,62 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
         </div>
 
         {/* Per-platform breakdown */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '20px 24px', marginBottom: 24 }}>
+        <div style={{ background: 'var(--k-fff)', borderRadius: 12, border: '1px solid var(--k-f0f0f0)', padding: '20px 24px', marginBottom: 24 }}>
           <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#1a1a2e' }}>Platform Breakdown</h3>
           {connections.length === 0 && analytics.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '32px', color: '#9ca3af', fontSize: 13 }}>
+            <div style={{ textAlign: 'center', padding: '32px', color: 'var(--k-9ca3af)', fontSize: 13 }}>
               No connected accounts. Connect your social accounts to see analytics.
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
-                  <tr style={{ borderBottom: '2px solid #f0f0f0' }}>
+                  <tr style={{ borderBottom: '2px solid var(--k-f0f0f0)' }}>
                     {['Account', 'Followers', 'Eng. Rate', 'Impressions', 'Reach', 'Likes', 'Comments', 'Shares'].map(h => (
-                      <th key={h} style={{ padding: '8px 12px', textAlign: h === 'Account' ? 'left' : 'right', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                      <th key={h} style={{ padding: '8px 12px', textAlign: h === 'Account' ? 'left' : 'right', fontSize: 11, fontWeight: 700, color: 'var(--k-9ca3af)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {analytics.length > 0 ? analytics.map((a, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #f5f5f5' }}>
+                    <tr key={i} style={{ borderBottom: '1px solid var(--k-f5f5f5)' }}>
                       <td style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: 18 }}>{platformEmoji(a.platform)}</span>
                         <div>
                           <div style={{ fontWeight: 700, color: '#1a1a2e' }}>{a.account_name}</div>
-                          <div style={{ fontSize: 10, color: '#9ca3af' }}>{platformLabel(a.platform)}</div>
+                          <div style={{ fontSize: 10, color: 'var(--k-9ca3af)' }}>{platformLabel(a.platform)}</div>
                         </div>
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#1a1a2e' }}>{fmtNum(a.followers)}</td>
                       <td style={{ padding: '12px', textAlign: 'right' }}>
-                        <span style={{ color: a.engagement_rate > 3 ? '#15803d' : a.engagement_rate > 1 ? '#d97706' : '#dc2626', fontWeight: 700 }}>
+                        <span style={{ color: a.engagement_rate > 3 ? 'var(--k-15803d)' : a.engagement_rate > 1 ? '#d97706' : 'var(--k-dc2626)', fontWeight: 700 }}>
                           {a.engagement_rate.toFixed(2)}%
                         </span>
                       </td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#374151' }}>{fmtNum(a.impressions)}</td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#374151' }}>{fmtNum(a.reach)}</td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#374151' }}>👍 {fmtNum(a.likes)}</td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#374151' }}>💬 {fmtNum(a.comments)}</td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#374151' }}>🔁 {fmtNum(a.shares)}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-374151)' }}>{fmtNum(a.impressions)}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-374151)' }}>{fmtNum(a.reach)}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-374151)' }}>👍 {fmtNum(a.likes)}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-374151)' }}>💬 {fmtNum(a.comments)}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-374151)' }}>🔁 {fmtNum(a.shares)}</td>
                     </tr>
                   )) : connections.map(conn => (
-                    <tr key={conn.id} style={{ borderBottom: '1px solid #f5f5f5' }}>
+                    <tr key={conn.id} style={{ borderBottom: '1px solid var(--k-f5f5f5)' }}>
                       <td style={{ padding: '12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 18 }}>{platformEmoji(conn.platform)}</span>
                           <div>
                             <div style={{ fontWeight: 700, color: '#1a1a2e' }}>{conn.account_name}</div>
-                            <div style={{ fontSize: 10, color: '#9ca3af' }}>{conn.account_handle}</div>
+                            <div style={{ fontSize: 10, color: 'var(--k-9ca3af)' }}>{conn.account_handle}</div>
                           </div>
                         </div>
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#1a1a2e' }}>{fmtNum(conn.followers_count)}</td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#9ca3af' }}>—</td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#9ca3af' }}>—</td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#9ca3af' }}>—</td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#9ca3af' }}>—</td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#9ca3af' }}>—</td>
-                      <td style={{ padding: '12px', textAlign: 'right', color: '#9ca3af' }}>—</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-9ca3af)' }}>—</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-9ca3af)' }}>—</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-9ca3af)' }}>—</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-9ca3af)' }}>—</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-9ca3af)' }}>—</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--k-9ca3af)' }}>—</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2718,15 +2718,15 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? 16 : 24, marginBottom: 24 }}>
           {/* Best time to post heatmap */}
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '20px 24px' }}>
+          <div style={{ background: 'var(--k-fff)', borderRadius: 12, border: '1px solid var(--k-f0f0f0)', padding: '20px 24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#1a1a2e' }}>Best Times to Post</h3>
-              <div style={{ fontSize: 10, color: '#9ca3af' }}>Based on real estate audience data</div>
+              <div style={{ fontSize: 10, color: 'var(--k-9ca3af)' }}>Based on real estate audience data</div>
             </div>
             {/* Legend */}
             <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center' }}>
               {([['Poor', 0], ['OK', 1], ['Warm', 2], ['Hot', 3]] as const).map(([label, score]) => (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#6b7280' }}>
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--k-6b7280)' }}>
                   <div style={{ width: 12, height: 12, borderRadius: 2, background: heatmapColors[score] }} />
                   {label}
                 </div>
@@ -2737,13 +2737,13 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               <div style={{ display: 'grid', gridTemplateColumns: `32px repeat(${heatmapHours.length}, 1fr)`, gap: 2, minWidth: 400 }}>
                 <div />
                 {heatmapHours.map(h => (
-                  <div key={h} style={{ fontSize: 9, color: '#9ca3af', textAlign: 'center' }}>
+                  <div key={h} style={{ fontSize: 9, color: 'var(--k-9ca3af)', textAlign: 'center' }}>
                     {h === 12 ? '12p' : h < 12 ? `${h}a` : `${h - 12}p`}
                   </div>
                 ))}
                 {heatmapDays.map((day, di) => (
                   <>
-                    <div key={`d-${di}`} style={{ fontSize: 10, color: '#6b7280', display: 'flex', alignItems: 'center' }}>{day}</div>
+                    <div key={`d-${di}`} style={{ fontSize: 10, color: 'var(--k-6b7280)', display: 'flex', alignItems: 'center' }}>{day}</div>
                     {heatmapHours.map(h => {
                       const score = heatmapScore(di, h);
                       return (
@@ -2765,10 +2765,10 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           </div>
 
           {/* Top Posts */}
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '20px 24px' }}>
+          <div style={{ background: 'var(--k-fff)', borderRadius: 12, border: '1px solid var(--k-f0f0f0)', padding: '20px 24px' }}>
             <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#1a1a2e' }}>Top Posts by Engagement</h3>
             {topPosts.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '32px', color: '#9ca3af', fontSize: 12 }}>
+              <div style={{ textAlign: 'center', padding: '32px', color: 'var(--k-9ca3af)', fontSize: 12 }}>
                 No published posts yet. Start publishing to see your top performers!
               </div>
             ) : (
@@ -2781,9 +2781,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   const rankColors = ['#C9A84C', '#9ca3af', '#cd7f32'];
                   const rankColor  = rankColors[i] ?? '#e5e7eb';
                   return (
-                    <div key={post.id} style={{ borderRadius: 10, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
+                    <div key={post.id} style={{ borderRadius: 10, border: '1px solid var(--k-f0f0f0)', overflow: 'hidden' }}>
                       {/* Top bar: rank + platforms + total */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: i === 0 ? '#fffbeb' : '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: i === 0 ? 'var(--k-fffbeb)' : 'var(--k-fafafa)', borderBottom: '1px solid var(--k-f0f0f0)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ width: 20, height: 20, borderRadius: '50%', background: rankColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                             {i + 1}
@@ -2792,24 +2792,24 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                             {post.platforms.slice(0, 3).map(p => renderPlatformBadge(p))}
                           </div>
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 20, padding: '2px 10px' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 20, padding: '2px 10px' }}>
                           {totalEng} engagements
                         </div>
                       </div>
                       {/* Post preview */}
                       <div style={{ padding: '10px 12px' }}>
-                        <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        <div style={{ fontSize: 12, color: 'var(--k-374151)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                           {post.content || '(no caption)'}
                         </div>
                         {/* Metrics row */}
                         <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--k-6b7280)' }}>
                             <span>👍</span><span style={{ fontWeight: 600 }}>{likes}</span><span>Likes</span>
                           </span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--k-6b7280)' }}>
                             <span>💬</span><span style={{ fontWeight: 600 }}>{comments}</span><span>Comments</span>
                           </span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--k-6b7280)' }}>
                             <span>🔁</span><span style={{ fontWeight: 600 }}>{shares}</span><span>Shares</span>
                           </span>
                         </div>
@@ -2834,7 +2834,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: isMobile ? 24 : 32, fontWeight: 700, color: '#1a1a2e', margin: 0, marginBottom: 4 }}>
             Publish &amp; schedule
           </h1>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
+          <p style={{ fontSize: 13, color: 'var(--k-6b7280)', margin: 0 }}>
             Manage all your social platforms from one place
           </p>
         </div>
@@ -2849,7 +2849,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '2px solid #f0f0f0', marginBottom: 24, gap: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
+      <div style={{ display: 'flex', borderBottom: '2px solid var(--k-f0f0f0)', marginBottom: 24, gap: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
         {([
           { id: 'publisher', label: 'Publisher', emoji: '✏️' },
           { id: 'calendar', label: 'Calendar', emoji: '📅' },
@@ -2863,7 +2863,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               padding: isMobile ? '10px 14px' : '12px 20px', border: 'none', background: 'none',
               borderBottom: `2px solid ${activeTab === tab.id ? '#1a1a2e' : 'transparent'}`,
               marginBottom: -2, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              color: activeTab === tab.id ? '#1a1a2e' : '#9ca3af',
+              color: activeTab === tab.id ? '#1a1a2e' : 'var(--k-9ca3af)',
               display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
               transition: 'color .15s',
               whiteSpace: 'nowrap',
@@ -2906,19 +2906,19 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               onClick={e => e.stopPropagation()}
               style={{
                 width: '100%', maxWidth: 540, maxHeight: '92vh', overflowY: 'auto',
-                background: '#fff', borderRadius: 16,
+                background: 'var(--k-fff)', borderRadius: 16,
                 border: '1px solid #dbdbdb', boxShadow: '0 24px 80px rgba(0,0,0,.4)',
                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
               }}
             >
               {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', gap: 12, borderBottom: '1px solid #efefef' }}>
+              <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', gap: 12, borderBottom: '1px solid var(--k-efefef)' }}>
                 <div style={{ width: 44, height: 44, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '2px solid transparent', background: 'linear-gradient(white,white) padding-box, linear-gradient(45deg,#f09433,#bc1888) border-box' }}>
                   {/* 44px avatar — next/image serves a tiny WebP rather than the full PNG. */}
                   <NextImage src="/fair-oaks-logo.png" alt="Fair Oaks Realty Group" width={44} height={44} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#000' }}>fairoaksrealtygroup</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-000)' }}>fairoaksrealtygroup</div>
                   <div style={{ fontSize: 12, color: '#8e8e8e' }}>{timeStr}</div>
                 </div>
                 <button onClick={() => setPreviewPostId(null)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#8e8e8e', cursor: 'pointer', lineHeight: 1 }}>✕</button>
@@ -2945,8 +2945,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               </div>
               {/* Caption */}
               <div style={{ padding: '4px 16px 20px' }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#000', marginBottom: 6 }}>243 likes</div>
-                <div style={{ fontSize: 14, color: '#000', lineHeight: 1.65 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-000)', marginBottom: 6 }}>243 likes</div>
+                <div style={{ fontSize: 14, color: 'var(--k-000)', lineHeight: 1.65 }}>
                   <span style={{ fontWeight: 700 }}>fairoaksrealtygroup </span>
                   <span style={{ whiteSpace: 'pre-wrap' }}>
                     {post.content.split(' ').map((word, wi) => (
@@ -2998,15 +2998,15 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
             <div
               className="crm-sheet-panel"
               onClick={e => e.stopPropagation()}
-              style={{ background: '#fff', borderRadius: 18, padding: 24, width: 440, maxWidth: '95vw', boxShadow: '0 24px 80px rgba(0,0,0,.5)' }}
+              style={{ background: 'var(--k-fff)', borderRadius: 18, padding: 24, width: 440, maxWidth: '95vw', boxShadow: '0 24px 80px rgba(0,0,0,.5)' }}
             >
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Edit Photo</div>
-                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Drag to reposition · Scroll to zoom</div>
+                  <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 2 }}>Drag to reposition · Scroll to zoom</div>
                 </div>
-                <button onClick={() => setImgEditorOpen(false)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9ca3af', cursor: 'pointer', lineHeight: 1, padding: 0 }}>✕</button>
+                <button onClick={() => setImgEditorOpen(false)} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--k-9ca3af)', cursor: 'pointer', lineHeight: 1, padding: 0 }}>✕</button>
               </div>
 
               {/* Aspect ratio selector */}
@@ -3017,9 +3017,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     onClick={() => { setImgEditorAspect(a.key); setImgEditorOffsetX(0); setImgEditorOffsetY(0); }}
                     style={{
                       flex: 1, padding: '8px 4px', borderRadius: 9, fontSize: 10, fontWeight: 700,
-                      border: imgEditorAspect === a.key ? '2px solid #1a1a2e' : '1.5px solid #e5e7eb',
-                      background: imgEditorAspect === a.key ? '#1a1a2e' : '#f9fafb',
-                      color: imgEditorAspect === a.key ? '#fff' : '#6b7280',
+                      border: imgEditorAspect === a.key ? '2px solid #1a1a2e' : '1.5px solid var(--k-e5e7eb)',
+                      background: imgEditorAspect === a.key ? '#1a1a2e' : 'var(--k-f9fafb)',
+                      color: imgEditorAspect === a.key ? '#fff' : 'var(--k-6b7280)',
                       cursor: 'pointer', lineHeight: 1.4,
                     }}
                   >
@@ -3075,8 +3075,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               {/* Zoom slider */}
               <div style={{ marginBottom: 20 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.8 }}>Zoom</label>
-                  <span style={{ fontSize: 11, color: '#6b7280' }}>{Math.round(imgEditorScale * 100)}%</span>
+                  <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--k-9ca3af)', textTransform: 'uppercase', letterSpacing: 0.8 }}>Zoom</label>
+                  <span style={{ fontSize: 11, color: 'var(--k-6b7280)' }}>{Math.round(imgEditorScale * 100)}%</span>
                 </div>
                 <input
                   type="range" min={30} max={300} value={Math.round(imgEditorScale * 100)}
@@ -3089,7 +3089,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               <div style={{ display: 'flex', gap: 10 }}>
                 <button
                   onClick={() => { setImgEditorOffsetX(0); setImgEditorOffsetY(0); setImgEditorScale(1); }}
-                  style={{ flex: 1, padding: '10px', borderRadius: 9, border: '1.5px solid #e5e7eb', background: '#f9fafb', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#6b7280' }}
+                  style={{ flex: 1, padding: '10px', borderRadius: 9, border: '1.5px solid var(--k-e5e7eb)', background: 'var(--k-f9fafb)', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: 'var(--k-6b7280)' }}
                 >
                   Reset
                 </button>
@@ -3113,7 +3113,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000 }} />
           <div className="crm-sheet-fixed" style={{
             position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            width: 480, maxWidth: '95vw', background: '#fff', borderRadius: 16,
+            width: 480, maxWidth: '95vw', background: 'var(--k-fff)', borderRadius: 16,
             zIndex: 1001, boxShadow: '0 24px 80px rgba(0,0,0,.25)', overflow: 'hidden',
           }}>
             {/* Header */}
@@ -3133,12 +3133,12 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   <div key={p} style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '12px 14px', borderRadius: 12,
-                    border: `1.5px solid ${conn ? platformColor(p) + '40' : '#f0f0f0'}`,
-                    background: conn ? platformColor(p) + '08' : '#fafafa',
+                    border: `1.5px solid ${conn ? platformColor(p) + '40' : 'var(--k-f0f0f0)'}`,
+                    background: conn ? platformColor(p) + '08' : 'var(--k-fafafa)',
                   }}>
                     <div style={{
                       width: 42, height: 42, borderRadius: '50%',
-                      background: conn ? platformColor(p) : '#e5e7eb',
+                      background: conn ? platformColor(p) : 'var(--k-e5e7eb)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0, opacity: conn ? 1 : 0.5,
                     }}>
@@ -3147,13 +3147,13 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e' }}>{platformLabel(p)}</div>
                       {conn ? (
-                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>
-                          <span style={{ color: '#16a34a', fontWeight: 600 }}>● Connected</span>
+                        <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 1 }}>
+                          <span style={{ color: 'var(--k-16a34a)', fontWeight: 600 }}>● Connected</span>
                           {' · '}{conn.account_name}
                           {conn.followers_count > 0 && ` · ${fmtNum(conn.followers_count)} followers`}
                         </div>
                       ) : (
-                        <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>Not connected</div>
+                        <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 1 }}>Not connected</div>
                       )}
                     </div>
                     {conn ? (
@@ -3171,7 +3171,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                           setConnections(prev => prev.filter(c => c.id !== conn.id));
                           toast(`Disconnected ${conn.account_name}`);
                         }}
-                        style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #fecaca', background: '#fff', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+                        style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid var(--k-fecaca)', background: 'var(--k-fff)', color: 'var(--k-dc2626)', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
                       >
                         Disconnect
                       </button>
@@ -3191,8 +3191,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 );
               })}
             </div>
-            <div style={{ padding: '10px 16px 16px', borderTop: '1px solid #f0f0f0' }}>
-              <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, textAlign: 'center' }}>
+            <div style={{ padding: '10px 16px 16px', borderTop: '1px solid var(--k-f0f0f0)' }}>
+              <p style={{ fontSize: 11, color: 'var(--k-9ca3af)', margin: 0, textAlign: 'center' }}>
                 Facebook & Instagram require Chrome or Safari to connect
               </p>
             </div>
@@ -3210,34 +3210,34 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           <div
             className="crm-sheet-panel"
             onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 16, padding: 32, width: 'min(420px, calc(100vw - 28px))', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
+            style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 32, width: 'min(420px, calc(100vw - 28px))', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
               <span style={{ fontSize: 28 }}>📸</span>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Connect Instagram</div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>Enter your Instagram username to link it to your Facebook Page</div>
+                <div style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>Enter your Instagram username to link it to your Facebook Page</div>
               </div>
             </div>
 
-            <div style={{ background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 12, color: '#92400e' }}>
+            <div style={{ background: 'var(--k-fef9c3)', border: '1px solid var(--k-fde68a)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 12, color: 'var(--k-92400e)' }}>
               💡 Full Instagram OAuth requires Meta App Review. This manually links your handle using your connected Facebook Page token.
             </div>
 
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Instagram Username</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-374151)', display: 'block', marginBottom: 6 }}>Instagram Username</label>
             <input
               autoFocus
               value={igHandle}
               onChange={e => setIgHandle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && saveManualInstagram()}
               placeholder="@fairoaksrealty_group"
-              style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box', marginBottom: 20 }}
+              style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box', marginBottom: 20 }}
             />
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button
                 onClick={() => setShowIgModal(false)}
-                style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb', fontSize: 13, cursor: 'pointer', color: '#6b7280' }}
+                style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-f9fafb)', fontSize: 13, cursor: 'pointer', color: 'var(--k-6b7280)' }}
               >
                 Cancel
               </button>

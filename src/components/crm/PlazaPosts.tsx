@@ -17,9 +17,9 @@ interface Props { authToken?: string; showToast?: (m: string) => void; isMobile?
 const SITE = 'https://fairoaksranchplaza.com';
 const KIND_LABEL: Record<Post['kind'], string> = { news: 'News', event: 'Event', notice: 'Notice', promo: 'Special / promo' };
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
-const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif" };
-const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4, display: 'block' };
-const btn: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '9px 14px', minHeight: 40, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
+const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif" };
+const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 4, display: 'block' };
+const btn: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '9px 14px', minHeight: 40, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
 const primary: React.CSSProperties = { ...btn, color: '#fff', background: '#C9922C', border: '1px solid #C9922C' };
 
 // <input type="datetime-local"> wants local "YYYY-MM-DDTHH:mm".
@@ -104,13 +104,13 @@ export default function PlazaPosts({ authToken, showToast, isMobile }: Props) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 22 }}>Plaza Site</h2>
-          <div style={{ fontSize: 13, color: '#6b7280' }}>News, events, notices and specials for <a href={SITE} target="_blank" rel="noopener noreferrer" style={{ color: '#a06a12', fontWeight: 700 }}>fairoaksranchplaza.com</a>. Published posts go live within about 5 minutes.</div>
+          <div style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>News, events, notices and specials for <a href={SITE} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--k-a06a12)', fontWeight: 700 }}>fairoaksranchplaza.com</a>. Published posts go live within about 5 minutes.</div>
         </div>
         {!editing && <button style={primary} onClick={startNew}>＋ New post</button>}
       </div>
 
       {editing && (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: isMobile ? 14 : 20, marginBottom: 18, display: 'grid', gap: 14 }}>
+        <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: isMobile ? 14 : 20, marginBottom: 18, display: 'grid', gap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
             <div><span style={label}>Type</span>
               <select style={input} value={form.kind} onChange={e => set('kind', e.target.value)}>
@@ -136,27 +136,27 @@ export default function PlazaPosts({ authToken, showToast, isMobile }: Props) {
         </div>
       )}
 
-      {posts === null && <div style={{ color: '#9ca3af' }}>Loading…</div>}
+      {posts === null && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
       {posts && posts.length === 0 && !editing && (
-        <div style={{ padding: 24, border: '1px dashed #d1d5db', borderRadius: 12, color: '#6b7280' }}>No posts yet. Click “＋ New post” to add the first one.</div>
+        <div style={{ padding: 24, border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)' }}>No posts yet. Click “＋ New post” to add the first one.</div>
       )}
       {(() => {
         const pend = (posts ?? []).filter(p => p.source === 'community' && !p.published).length;
-        return pend > 0 ? <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, fontWeight: 600 }}>{pend} community event{pend === 1 ? '' : 's'} waiting for your approval. Review below, edit if needed, then Approve &amp; publish.</div> : null;
+        return pend > 0 ? <div style={{ background: 'var(--k-fffbeb)', border: '1px solid var(--k-fcd34d)', color: 'var(--k-92400e)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, fontWeight: 600 }}>{pend} community event{pend === 1 ? '' : 's'} waiting for your approval. Review below, edit if needed, then Approve &amp; publish.</div> : null;
       })()}
       <div style={{ display: 'grid', gap: 10 }}>
         {(posts ?? []).slice().sort((a, b) => Number(b.source === 'community' && !b.published) - Number(a.source === 'community' && !a.published)).map(p => (
-          <div key={p.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div key={p.id} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 260px' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: p.published ? '#16a34a' : p.source === 'community' ? '#d97706' : '#9ca3af' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: p.published ? 'var(--k-16a34a)' : p.source === 'community' ? '#d97706' : 'var(--k-9ca3af)' }}>
                 {p.published ? 'Published' : p.source === 'community' ? 'Pending approval' : 'Draft'} · {p.source === 'community' ? 'Community event' : KIND_LABEL[p.kind]}
               </div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '2px 0' }}>{p.title}</div>
-              <div style={{ fontSize: 13, color: '#6b7280' }}>
+              <div style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>
                 {p.kind === 'event' && p.starts_at ? `${fmt(p.starts_at, true)}${p.location ? ` · ${p.location}` : ''}` : fmt(p.published_at)}
               </div>
               {p.source === 'community' && (
-                <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 4 }}>
+                <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginTop: 4 }}>
                   {p.organizer ? `Hosted by ${p.organizer} · ` : ''}Submitted by {p.submitter_name}{p.submitter_email ? <> · <a href={`mailto:${p.submitter_email}`}>{p.submitter_email}</a></> : null}{p.submitter_phone ? ` · ${p.submitter_phone}` : ''}
                 </div>
               )}
@@ -165,7 +165,7 @@ export default function PlazaPosts({ authToken, showToast, isMobile }: Props) {
               {p.published && <a style={{ ...btn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} href={`${SITE}/news/${p.slug}`} target="_blank" rel="noopener noreferrer">View</a>}
               <button style={btn} onClick={() => startEdit(p)}>Edit</button>
               <button style={p.source === 'community' && !p.published ? { ...btn, background: '#16a34a', color: '#fff', borderColor: '#16a34a' } : btn} onClick={() => togglePublish(p)}>{p.published ? 'Unpublish' : p.source === 'community' ? 'Approve & publish' : 'Publish'}</button>
-              <button style={{ ...btn, color: '#b91c1c' }} onClick={() => remove(p)}>Delete</button>
+              <button style={{ ...btn, color: 'var(--k-b91c1c)' }} onClick={() => remove(p)}>Delete</button>
             </div>
           </div>
         ))}

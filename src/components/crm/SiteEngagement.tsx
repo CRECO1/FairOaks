@@ -27,7 +27,7 @@ interface Payload {
   feed: { at: string; site: string; type: string; label: string | null; path: string | null; contact: string | null; client_id: string | null }[];
 }
 
-const card: React.CSSProperties = { background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 };
+const card: React.CSSProperties = { background: 'var(--k-fff)', borderRadius: 10, border: '1px solid var(--k-e0e0e0)', padding: '16px 20px', marginBottom: 14 };
 const title: React.CSSProperties = { fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, fontWeight: 600, marginBottom: 12 };
 const siteShort = (h: string) => h.replace('www.', '').replace('.com', '').replace('fairoaksrealtygroup', 'Fair Oaks').replace('crecotx', 'CRECO').replace('elkhornpoint', 'Elkhorn').replace('fairoaksranchplaza', 'Ranch Plaza');
 const INTENT_LABEL: Record<string, string> = { phone_tap: '📞 Call taps', email_tap: '✉️ Email taps', text_tap: '💬 Text taps', cta_click: '👆 Button clicks', download: '⬇️ Downloads', lead_form_started: '📝 Form starts' };
@@ -46,7 +46,7 @@ function MiniBars({ rows, empty }: { rows: Row[]; empty: string }) {
     <div>
       {rows.map(r => (
         <div key={r.label} style={{ marginBottom: 7 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: '#374151' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--k-374151)' }}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
             <span style={{ color: MUTE, fontWeight: 600 }}>{r.value.toLocaleString()}</span>
           </div>
@@ -72,7 +72,7 @@ export default function SiteEngagement({ authToken, isMobile, site, days, humanO
     return () => { off = true; clearInterval(t); };
   }, [authToken, site, window, humanOnly]);
 
-  if (err) return <div style={card}><div style={title}>Visitor engagement</div><div style={{ fontSize: 13, color: '#b91c1c' }}>{err}</div></div>;
+  if (err) return <div style={card}><div style={title}>Visitor engagement</div><div style={{ fontSize: 13, color: 'var(--k-b91c1c)' }}>{err}</div></div>;
   if (!d) return <div style={card}><div style={title}>Visitor engagement</div><div style={{ fontSize: 13, color: FAINT }}>Loading…</div></div>;
 
   const t = d.totals;
@@ -106,16 +106,16 @@ export default function SiteEngagement({ authToken, isMobile, site, days, humanO
         {d.known.length === 0 ? (
           <div style={{ fontSize: 12.5, color: FAINT, lineHeight: 1.55 }}>None yet. A contact shows up here when they click a link in one of our campaign emails or submit a form, and then keep browsing.</div>
         ) : d.known.map(k => (
-          <div key={k.client_id} style={{ padding: '8px 0', borderBottom: '1px solid #f3f4f6' }}>
+          <div key={k.client_id} style={{ padding: '8px 0', borderBottom: '1px solid var(--k-f3f4f6)' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
               <strong style={{ fontSize: 13.5, color: INK }}>{k.name}</strong>
               {k.type && <span style={{ fontSize: 11, color: MUTE }}>{k.type}</span>}
-              <span style={{ fontSize: 11.5, color: '#16a34a', fontWeight: 600 }}>{ago(k.last)}</span>
+              <span style={{ fontSize: 11.5, color: 'var(--k-16a34a)', fontWeight: 600 }}>{ago(k.last)}</span>
               <span style={{ fontSize: 11.5, color: FAINT }}>{k.sites.map(siteShort).join(', ')}</span>
             </div>
-            <div style={{ fontSize: 12.5, color: '#374151', marginTop: 2 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--k-374151)', marginTop: 2 }}>
               {k.pages} page{k.pages === 1 ? '' : 's'}{k.topPages.length ? ` · ${k.topPages.join(', ')}` : ''}
-              {k.actions.map(a => <span key={a.label} style={{ marginLeft: 8, background: '#fef3c7', color: '#92400e', borderRadius: 999, padding: '1px 8px', fontSize: 11.5, fontWeight: 700 }}>{INTENT_LABEL[a.label] ?? a.label} {a.value}</span>)}
+              {k.actions.map(a => <span key={a.label} style={{ marginLeft: 8, background: 'var(--k-fef3c7)', color: 'var(--k-92400e)', borderRadius: 999, padding: '1px 8px', fontSize: 11.5, fontWeight: 700 }}>{INTENT_LABEL[a.label] ?? a.label} {a.value}</span>)}
             </div>
           </div>
         ))}
@@ -136,9 +136,9 @@ export default function SiteEngagement({ authToken, isMobile, site, days, humanO
         {d.feed.length > 0 && (
           <div style={{ borderTop: '1px solid #f1f1f1', paddingTop: 8 }}>
             {d.feed.slice(0, 10).map((f, i) => (
-              <div key={i} style={{ fontSize: 12.5, color: '#374151', padding: '2px 0' }}>
+              <div key={i} style={{ fontSize: 12.5, color: 'var(--k-374151)', padding: '2px 0' }}>
                 <span style={{ color: FAINT, fontSize: 11.5, display: 'inline-block', width: 62 }}>{ago(f.at)}</span>
-                <strong style={{ color: f.contact ? INK : '#374151' }}>{f.contact ?? 'A visitor'}</strong> {FEED_TEXT[f.type] ?? f.type}{f.label && f.type !== 'email_click_identified' ? ` “${f.label}”` : ''}
+                <strong style={{ color: f.contact ? INK : 'var(--k-374151)' }}>{f.contact ?? 'A visitor'}</strong> {FEED_TEXT[f.type] ?? f.type}{f.label && f.type !== 'email_click_identified' ? ` “${f.label}”` : ''}
                 <span style={{ color: FAINT }}> · {siteShort(f.site)}{f.path ? ` ${f.path}` : ''}</span>
               </div>
             ))}
@@ -154,8 +154,8 @@ export default function SiteEngagement({ authToken, isMobile, site, days, humanO
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead><tr>{['Page', 'Views', 'Avg time', 'Avg scroll'].map(h => <th key={h} style={{ textAlign: h === 'Page' ? 'left' : 'right', color: MUTE, fontWeight: 600, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', padding: '0 8px 6px 0' }}>{h}</th>)}</tr></thead>
               <tbody>{d.pages.map(p => (
-                <tr key={p.path} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '6px 8px 6px 0', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#374151' }} title={p.title ?? p.path}>{p.path}</td>
+                <tr key={p.path} style={{ borderTop: '1px solid var(--k-f3f4f6)' }}>
+                  <td style={{ padding: '6px 8px 6px 0', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--k-374151)' }} title={p.title ?? p.path}>{p.path}</td>
                   <td style={{ textAlign: 'right', padding: '6px 8px 6px 0', fontWeight: 600 }}>{p.views}</td>
                   <td style={{ textAlign: 'right', padding: '6px 8px 6px 0', color: MUTE }}>{p.avgEngagedSec != null ? `${p.avgEngagedSec}s` : '—'}</td>
                   <td style={{ textAlign: 'right', padding: '6px 0', color: MUTE }}>{p.avgScroll != null ? `${p.avgScroll}%` : '—'}</td>

@@ -37,9 +37,9 @@ interface Props {
   onMention?: (ids: string[], call: WrapCall, note: string) => void;
 }
 
-const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
-const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans',sans-serif", minHeight: 36 };
-const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4, display: 'block' };
+const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
+const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans',sans-serif", minHeight: 36 };
+const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 4, display: 'block' };
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 
 /**
@@ -122,7 +122,7 @@ export default function CallWrapUp({ call, authToken, businessUnit, showToast, o
   }
 
   return (
-    <div style={{ marginTop: 10, borderTop: '1px dashed #e6d3a2', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ marginTop: 10, borderTop: '1px dashed var(--k-e6d3a2)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div>
         <span style={label}>What was this call?</span>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -143,12 +143,12 @@ export default function CallWrapUp({ call, authToken, businessUnit, showToast, o
         <div>
           <span style={label}>Contact</span>
           {call.contact ? (
-            <div style={{ fontSize: 13, color: '#374151' }}>👤 {call.contact.name}{call.contact.type ? ` · ${call.contact.type}` : ''} <span style={{ color: '#9ca3af' }}>— the note goes on their timeline</span></div>
+            <div style={{ fontSize: 13, color: 'var(--k-374151)' }}>👤 {call.contact.name}{call.contact.type ? ` · ${call.contact.type}` : ''} <span style={{ color: 'var(--k-9ca3af)' }}>— the note goes on their timeline</span></div>
           ) : (
             <>
               <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
                 {([['new', '＋ New contact'], ['link', '🔍 Existing contact']] as const).map(([k, t]) => (
-                  <button key={k} onClick={() => { setMode(k); setPicked(null); }} style={{ ...mini, minHeight: 32, padding: '5px 11px', background: mode === k ? '#111' : '#fff', color: mode === k ? '#fff' : '#374151', borderColor: mode === k ? '#111' : '#e5e7eb' }}>{t}</button>
+                  <button key={k} onClick={() => { setMode(k); setPicked(null); }} style={{ ...mini, minHeight: 32, padding: '5px 11px', background: mode === k ? '#111' : 'var(--k-fff)', color: mode === k ? '#fff' : 'var(--k-374151)', borderColor: mode === k ? '#111' : 'var(--k-e5e7eb)' }}>{t}</button>
                 ))}
               </div>
               {mode === 'new' ? (
@@ -161,19 +161,19 @@ export default function CallWrapUp({ call, authToken, businessUnit, showToast, o
                   <select style={input} value={form.type} onChange={e => { setTypeTouched(true); setForm(f => ({ ...f, type: e.target.value })); }}>
                     {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
-                  <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: '#9ca3af' }}>Leave the names blank to skip. A number or email that&apos;s already in the CRM links to that card instead of making a duplicate.</div>
+                  <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: 'var(--k-9ca3af)' }}>Leave the names blank to skip. A number or email that&apos;s already in the CRM links to that card instead of making a duplicate.</div>
                 </div>
               ) : (
                 <div>
                   <input style={input} value={q} onChange={e => { setQ(e.target.value); setPicked(null); }} placeholder="Search by name, company, email or phone…" />
                   {picked ? (
-                    <div style={{ fontSize: 13, marginTop: 6, color: '#166534' }}>✓ {[picked.first_name, picked.last_name].filter(Boolean).join(' ') || picked.business_name} <button onClick={() => setPicked(null)} style={{ ...mini, minHeight: 26, padding: '2px 8px', marginLeft: 6 }}>change</button></div>
+                    <div style={{ fontSize: 13, marginTop: 6, color: 'var(--k-166534)' }}>✓ {[picked.first_name, picked.last_name].filter(Boolean).join(' ') || picked.business_name} <button onClick={() => setPicked(null)} style={{ ...mini, minHeight: 26, padding: '2px 8px', marginLeft: 6 }}>change</button></div>
                   ) : found.length > 0 && (
                     <div style={{ border: '1px solid #eef0f2', borderRadius: 8, marginTop: 6, overflow: 'hidden' }}>
                       {found.map(c => (
-                        <button key={c.id} onClick={() => setPicked(c)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', minHeight: 40, background: '#fff', border: 'none', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}>
+                        <button key={c.id} onClick={() => setPicked(c)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', minHeight: 40, background: 'var(--k-fff)', border: 'none', borderBottom: '1px solid var(--k-f3f4f6)', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}>
                           <strong>{[c.first_name, c.last_name].filter(Boolean).join(' ') || c.business_name}</strong>
-                          <span style={{ color: '#9ca3af' }}>{c.business_name && (c.first_name || c.last_name) ? ` · ${c.business_name}` : ''}{c.type ? ` · ${c.type}` : ''}{c.phone || c.cell_phone ? ` · ${c.phone || c.cell_phone}` : ''}</span>
+                          <span style={{ color: 'var(--k-9ca3af)' }}>{c.business_name && (c.first_name || c.last_name) ? ` · ${c.business_name}` : ''}{c.type ? ` · ${c.type}` : ''}{c.phone || c.cell_phone ? ` · ${c.phone || c.cell_phone}` : ''}</span>
                         </button>
                       ))}
                     </div>
@@ -186,7 +186,7 @@ export default function CallWrapUp({ call, authToken, businessUnit, showToast, o
       )}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
         <button onClick={onClose} style={mini}>Cancel</button>
-        <button onClick={save} disabled={busy || !outcome} style={{ ...mini, background: outcome ? '#c9922c' : '#e5e7eb', color: '#fff', border: 'none', cursor: busy || !outcome ? 'not-allowed' : 'pointer' }}>
+        <button onClick={save} disabled={busy || !outcome} style={{ ...mini, background: outcome ? '#c9922c' : 'var(--k-e5e7eb)', color: '#fff', border: 'none', cursor: busy || !outcome ? 'not-allowed' : 'pointer' }}>
           {busy ? 'Saving…' : picked || wantsNewContact ? 'Save wrap-up + contact' : 'Save wrap-up'}
         </button>
       </div>

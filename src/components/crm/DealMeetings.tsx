@@ -27,7 +27,7 @@ const contactName = (c: PickContact) => c.business_name || `${c.first_name ?? ''
 const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
-const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fffdf6', border: '1px solid #f0e2c4', color: '#7a5410', borderRadius: 20, padding: '3px 9px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' };
+const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', color: '#7a5410', borderRadius: 20, padding: '3px 9px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' };
 
 export default function DealMeetings({ dealId, clientId, clients = [], authToken, businessUnit, showToast }: Props) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -149,8 +149,8 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
       {!readOnly && (
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>📝 Internal Notes</div>
-            <div style={{ fontSize: 11.5, color: '#9ca3af' }}>Tag the contacts involved so the team can see who&rsquo;s in this deal. Tagging never notifies anyone.</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)' }}>📝 Internal Notes</div>
+            <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>Tag the contacts involved so the team can see who&rsquo;s in this deal. Tagging never notifies anyone.</div>
           </div>
           {editing === null && (
             <button onClick={startNew} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: GOLD, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}>＋ Add note</button>
@@ -161,10 +161,10 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
       {/* ── Log / edit form ── */}
       {!readOnly && editing !== null && (
         <div style={{ border: '1px solid #eef0f2', borderRadius: 12, padding: 14, marginBottom: 14, background: '#fcfcfb' }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4 }}>Note</label>
+          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-6b7280)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Note</label>
           <textarea className="crm-input" autoFocus style={{ marginTop: 3, width: '100%', minHeight: 78, resize: 'vertical' }} value={note} onChange={e => setNote(e.target.value)} placeholder="What happened, what was decided, next steps…" />
 
-          <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, display: 'block', marginTop: 10 }}>Tag contacts in this deal</label>
+          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-6b7280)', textTransform: 'uppercase', letterSpacing: 0.4, display: 'block', marginTop: 10 }}>Tag contacts in this deal</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '5px 0' }}>
             {attendees.map(a => (
               <span key={a.id} style={chip}>{a.name}<button onClick={() => setAttendees(list => list.filter(x => x.id !== a.id))} style={{ border: 'none', background: 'none', color: '#b0873a', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button></span>
@@ -173,74 +173,74 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
           <div style={{ position: 'relative' }}>
             <input className="crm-input" style={{ width: '100%' }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Type a contact's name to tag them…" />
             {search.trim().length > 0 && matches.length === 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.10)', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.10)', overflow: 'hidden' }}>
                 {searching || search.trim().length < 2 ? (
-                  <div style={{ padding: '9px 12px', fontSize: 12.5, color: '#9ca3af' }}>Searching…</div>
+                  <div style={{ padding: '9px 12px', fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Searching…</div>
                 ) : (
                   <button onClick={() => createAndTag(search)}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', background: '#fffdf6', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: '#a06a12' }}>
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', background: 'var(--k-fffdf6)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: 'var(--k-a06a12)' }}>
                     ＋ Add “{search.trim()}” as a new contact
                   </button>
                 )}
               </div>
             )}
             {matches.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.10)', maxHeight: 220, overflowY: 'auto' }}>
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.10)', maxHeight: 220, overflowY: 'auto' }}>
                 {matches.map(c => (
                   <button key={c.id} onClick={() => { setAttendees(list => [...list, { id: c.id, name: contactName(c) }]); setSearch(''); }}
-                    style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 8, alignItems: 'center', padding: '8px 12px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: 13 }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#faf7ef')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
-                    <span style={{ fontWeight: 600, color: '#1a1a1a' }}>{contactName(c)}</span>
-                    {c.type && <span style={{ fontSize: 11, color: '#9ca3af' }}>{c.type}</span>}
+                    style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 8, alignItems: 'center', padding: '8px 12px', border: 'none', background: 'var(--k-fff)', cursor: 'pointer', fontSize: 13 }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-faf7ef)')} onMouseLeave={e => (e.currentTarget.style.background = 'var(--k-fff)')}>
+                    <span style={{ fontWeight: 600, color: 'var(--k-1a1a1a)' }}>{contactName(c)}</span>
+                    {c.type && <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>{c.type}</span>}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Internal only — tagged contacts are never emailed or notified. They&rsquo;ll see this deal listed on their contact record.</div>
+          <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 4 }}>Internal only — tagged contacts are never emailed or notified. They&rsquo;ll see this deal listed on their contact record.</div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
             <div style={{ flex: '0 0 150px' }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.4 }}>Date</label>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-9ca3af)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Date</label>
               <input type="date" className="crm-input" style={{ marginTop: 3, width: '100%' }} value={date} onChange={e => setDate(e.target.value)} />
             </div>
             <div style={{ flex: 1, minWidth: 180 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.4 }}>Title <span style={{ textTransform: 'none', fontWeight: 500 }}>(optional)</span></label>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-9ca3af)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Title <span style={{ textTransform: 'none', fontWeight: 500 }}>(optional)</span></label>
               <input className="crm-input" style={{ marginTop: 3, width: '100%' }} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Site walk, call with lender" />
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={save} disabled={busy} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 700, background: GOLD, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : (editing === 'new' ? 'Save note' : 'Save')}</button>
-            <button onClick={() => { setEditing(null); resetForm(); }} style={{ padding: '7px 14px', fontSize: 13, fontWeight: 700, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>Cancel</button>
+            <button onClick={() => { setEditing(null); resetForm(); }} style={{ padding: '7px 14px', fontSize: 13, fontWeight: 700, background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
       )}
 
       {/* ── Meeting list ── */}
-      {loading ? <div style={{ fontSize: 13, color: '#9ca3af' }}>Loading…</div>
-        : meetings.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af', padding: '6px 0' }}>{readOnly ? 'Not tagged in any deal notes yet.' : 'No notes yet — add one and tag who\u2019s involved.'}</div>
+      {loading ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>Loading…</div>
+        : meetings.length === 0 ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '6px 0' }}>{readOnly ? 'Not tagged in any deal notes yet.' : 'No notes yet — add one and tag who\u2019s involved.'}</div>
         : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {meetings.map(m => (
-              <div key={m.id} style={{ border: '1px solid #eef0f2', borderRadius: 12, padding: '11px 14px', background: '#fff' }}>
+              <div key={m.id} style={{ border: '1px solid #eef0f2', borderRadius: 12, padding: '11px 14px', background: 'var(--k-fff)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: m.note || m.attendees.length ? 6 : 0 }}>
                   <span style={{ fontSize: 15 }}>📝</span>
-                  {readOnly && m.deal && <span style={{ fontSize: 12.5, fontWeight: 800, color: '#a06a12', background: '#fdf6e9', border: '1px solid #f0e2c4', borderRadius: 6, padding: '2px 8px' }}>{m.deal.property || m.deal.client}</span>}
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280' }}>{fmtDate(m.meeting_date)}</span>
-                  {m.title && <span style={{ fontSize: 13.5, fontWeight: 700, color: '#1a1a1a' }}>· {m.title}</span>}
+                  {readOnly && m.deal && <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', borderRadius: 6, padding: '2px 8px' }}>{m.deal.property || m.deal.client}</span>}
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-6b7280)' }}>{fmtDate(m.meeting_date)}</span>
+                  {m.title && <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>· {m.title}</span>}
                   <span style={{ flex: 1 }} />
                   {!readOnly && (
                     <>
-                      <button onClick={() => startEdit(m)} title="Edit" style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Edit</button>
-                      <button onClick={() => remove(m.id)} title="Delete" style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>✕</button>
+                      <button onClick={() => startEdit(m)} title="Edit" style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fff)', border: '1px solid var(--k-f0e2c4)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Edit</button>
+                      <button onClick={() => remove(m.id)} title="Delete" style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-dc2626)', background: 'var(--k-fff)', border: '1px solid var(--k-fecaca)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>✕</button>
                     </>
                   )}
                 </div>
-                {m.note && <div style={{ fontSize: 13, color: '#374151', whiteSpace: 'pre-wrap', marginBottom: m.attendees.length ? 8 : 0 }}>{m.note}</div>}
+                {m.note && <div style={{ fontSize: 13, color: 'var(--k-374151)', whiteSpace: 'pre-wrap', marginBottom: m.attendees.length ? 8 : 0 }}>{m.note}</div>}
                 {m.attendees.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600 }}>👥</span>
+                    <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', fontWeight: 600 }}>👥</span>
                     {m.attendees.map(a => <span key={a.id} style={chip}>{a.name}</span>)}
                   </div>
                 )}

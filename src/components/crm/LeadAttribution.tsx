@@ -65,7 +65,7 @@ interface Payload {
   ga: Ga;
 }
 
-const card: React.CSSProperties = { background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 };
+const card: React.CSSProperties = { background: 'var(--k-fff)', borderRadius: 10, border: '1px solid var(--k-e0e0e0)', padding: '16px 20px', marginBottom: 14 };
 const panelTitle: React.CSSProperties = { fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, fontWeight: 600, marginBottom: 14 };
 const serif = "'Cormorant Garamond',serif";
 
@@ -103,7 +103,7 @@ function JourneyTrail({ steps, totalSec }: { steps: JourneyStep[]; totalSec: num
         return (
           <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {i > 0 && <span style={{ color: FAINT }}>→</span>}
-            <span style={{ fontSize: 12, color: '#374151', background: '#f6f2e9', border: '1px solid #ecdfc4', borderRadius: 5, padding: '2px 7px' }}>
+            <span style={{ fontSize: 12, color: 'var(--k-374151)', background: '#f6f2e9', border: '1px solid #ecdfc4', borderRadius: 5, padding: '2px 7px' }}>
               <span style={{ fontWeight: 600 }}>{s.p}</span>
               {dwell && <span style={{ color: MUTE }}> · {dwell}</span>}
             </span>
@@ -127,24 +127,24 @@ function Bars({ rows, isMobile, empty, tone = GOLD }: { rows: Row[]; isMobile: b
       {rows.map(r => {
         const share = Math.round((r.value / total) * 100);
         const bar = (
-          <div style={{ flex: 1, height: 22, background: '#f3f4f6', borderRadius: 5, overflow: 'hidden', minWidth: 0 }}>
+          <div style={{ flex: 1, height: 22, background: 'var(--k-f3f4f6)', borderRadius: 5, overflow: 'hidden', minWidth: 0 }}>
             <div style={{ width: `${Math.max(2, Math.round((r.value / max) * 100))}%`, height: '100%', background: tone, borderRadius: 5, transition: 'width .45s ease' }} />
           </div>
         );
         const figure = (
-          <div style={{ flexShrink: 0, fontSize: 12, color: '#374151', minWidth: 62, textAlign: 'right' }}>
+          <div style={{ flexShrink: 0, fontSize: 12, color: 'var(--k-374151)', minWidth: 62, textAlign: 'right' }}>
             <strong style={{ color: INK }}>{r.value.toLocaleString()}</strong>
             <span style={{ color: FAINT }}> · {share}%</span>
           </div>
         );
         return isMobile ? (
           <div key={r.label}>
-            <div style={{ fontSize: 12.5, color: '#374151', fontWeight: 500, marginBottom: 4, wordBreak: 'break-word' }}>{r.label}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--k-374151)', fontWeight: 500, marginBottom: 4, wordBreak: 'break-word' }}>{r.label}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{bar}{figure}</div>
           </div>
         ) : (
           <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 168, fontSize: 12, color: '#374151', fontWeight: 500, flexShrink: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.label}>{r.label}</div>
+            <div style={{ width: 168, fontSize: 12, color: 'var(--k-374151)', fontWeight: 500, flexShrink: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.label}>{r.label}</div>
             {bar}{figure}
           </div>
         );
@@ -207,14 +207,14 @@ function ConnectGa({ detail, label, viewing, token, reason, actionUrl }: {
   return (
     <div style={{ ...card, borderLeft: `4px solid ${GOLD}`, background: '#fffdf7' }}>
       <div style={panelTitle}>Google Analytics — {covers}</div>
-      <div style={{ fontSize: 13.5, color: '#374151', lineHeight: 1.7 }}>
+      <div style={{ fontSize: 13.5, color: 'var(--k-374151)', lineHeight: 1.7 }}>
         Session and landing-page data — the traffic that <em>didn&apos;t</em> become a lead, which is
         what a conversion rate needs.
       </div>
 
       {apiDisabled ? (
         <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 13, color: '#374151', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, color: 'var(--k-374151)', marginBottom: 10 }}>
             Your Google account is connected. One switch left: turn on the Analytics Data API
             in the Google Cloud project, then reload this page.
           </div>
@@ -253,7 +253,7 @@ function GaConnected({ label, via, token }: { label: string; via?: string; token
   return (
     <div style={{ ...card, borderLeft: `4px solid ${GOLD}`, marginBottom: 14, padding: '12px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12.5, color: '#374151', flex: '1 1 260px' }}>
+        <div style={{ fontSize: 12.5, color: 'var(--k-374151)', flex: '1 1 260px' }}>
           <strong>Google Analytics — {label}</strong>
           <span style={{ color: '#1a7f37', fontWeight: 700 }}> · Connected ✓</span>
           {via === 'oauth' && <span style={{ color: MUTE }}> (Google sign-in)</span>}
@@ -384,7 +384,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
   useEffect(() => () => { if (liveFlash.current) clearTimeout(liveFlash.current); }, []);
 
   if (loading && !data) return <div style={{ padding: 24, color: MUTE, fontSize: 14 }}>Loading lead attribution…</div>;
-  if (err) return <div style={{ ...card, borderLeft: '4px solid #ef4444' }}><div style={{ fontSize: 14, color: '#374151' }}>{err}</div></div>;
+  if (err) return <div style={{ ...card, borderLeft: '4px solid #ef4444' }}><div style={{ fontSize: 14, color: 'var(--k-374151)' }}>{err}</div></div>;
   if (!data) return null;
 
   const ga = data.ga;
@@ -393,8 +393,8 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
   const scopeLabel = site ?? 'all three sites';
   const maxBucket = Math.max(...data.overTime.map(b => b.leads), 1);
   const pill = (on: boolean): React.CSSProperties => ({
-    border: `1px solid ${on ? GOLD : '#e0e0e0'}`, background: on ? GOLD : '#fff',
-    color: on ? '#fff' : '#374151', borderRadius: 999, padding: '6px 14px',
+    border: `1px solid ${on ? GOLD : 'var(--k-e0e0e0)'}`, background: on ? GOLD : 'var(--k-fff)',
+    color: on ? '#fff' : 'var(--k-374151)', borderRadius: 999, padding: '6px 14px',
     fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
     whiteSpace: 'nowrap', lineHeight: 1.4,
   });
@@ -417,11 +417,11 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
         ))}
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
           <style>{`@keyframes laPulse{0%,100%{opacity:1}50%{opacity:.28}}`}</style>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: '#16a34a', fontWeight: 700 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--k-16a34a)', fontWeight: 700 }}>
             <span style={{ width: 8, height: 8, borderRadius: 999, background: '#16a34a', animation: 'laPulse 1.5s infinite' }} />
             Live
           </span>
-          {newKeys.size > 0 && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>· {newKeys.size} just arrived</span>}
+          {newKeys.size > 0 && <span style={{ fontSize: 11, color: 'var(--k-16a34a)', fontWeight: 700 }}>· {newKeys.size} just arrived</span>}
           <span style={{ fontSize: 11, color: FAINT }}>
             {loading ? 'updating…' : `updated ${new Date(lastRefreshed).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`}
           </span>
@@ -543,7 +543,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
           {data.health.sites.map(s => {
             const tone = s.pct === null ? FAINT : s.pct >= 80 ? '#16a34a' : s.pct >= 40 ? GOLD : GOLD_DEEP;
             return (
-              <span key={s.site} style={{ fontSize: 12.5, color: '#374151' }}>
+              <span key={s.site} style={{ fontSize: 12.5, color: 'var(--k-374151)' }}>
                 <strong style={{ color: tone }}>{s.pct === null ? '—' : `${s.pct}%`}</strong>
                 <span style={{ color: FAINT }}> {s.site.replace('.com', '')} ({s.withAttribution}/{s.total})</span>
               </span>
@@ -564,7 +564,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
               <div key={b.bucket} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', gap: 4, minWidth: 0 }}
                    title={`${b.bucket}: ${b.leads} lead${b.leads === 1 ? '' : 's'}`}>
                 <div style={{ fontSize: 10.5, color: MUTE, fontWeight: 600 }}>{b.leads || ''}</div>
-                <div style={{ width: '100%', height: `${Math.max(3, Math.round((b.leads / maxBucket) * 88))}%`, background: b.leads ? GOLD : '#f0f0f0', borderRadius: '3px 3px 0 0' }} />
+                <div style={{ width: '100%', height: `${Math.max(3, Math.round((b.leads / maxBucket) * 88))}%`, background: b.leads ? GOLD : 'var(--k-f0f0f0)', borderRadius: '3px 3px 0 0' }} />
                 <div style={{ fontSize: 9.5, color: FAINT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
                   {data.grain === 'month' ? b.bucket.slice(0, 7) : b.bucket.slice(5)}
                 </div>
@@ -585,7 +585,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
               <thead>
                 <tr style={{ textAlign: 'left', color: MUTE }}>
                   {['Campaign', 'Sent', 'Opens', 'Open %', 'Clicks', 'Leads'].map((h, i) => (
-                    <th key={h} style={{ padding: '6px 10px 8px 0', fontWeight: 600, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap', textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>
+                    <th key={h} style={{ padding: '6px 10px 8px 0', fontWeight: 600, borderBottom: '1px solid var(--k-e5e7eb)', whiteSpace: 'nowrap', textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -594,12 +594,12 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
                   const openPct = c.sent ? Math.round((c.opens / c.sent) * 100) : 0;
                   return (
                     <tr key={i}>
-                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: INK, fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.name}>{c.name}</td>
-                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', textAlign: 'right', color: '#374151' }}>{c.sent}</td>
-                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', textAlign: 'right', color: '#374151' }}>{c.opens}</td>
-                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', textAlign: 'right', color: openPct >= 40 ? '#16a34a' : openPct >= 20 ? GOLD_DEEP : MUTE, fontWeight: 600 }}>{openPct}%</td>
-                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', textAlign: 'right', color: c.clicks ? GOLD_DEEP : FAINT, fontWeight: c.clicks ? 600 : 400 }}>{c.clicks || '—'}</td>
-                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', textAlign: 'right', color: c.leads ? INK : FAINT, fontWeight: c.leads ? 700 : 400 }}>{c.leads || '—'}</td>
+                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid var(--k-f5f5f5)', color: INK, fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.name}>{c.name}</td>
+                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid var(--k-f5f5f5)', textAlign: 'right', color: 'var(--k-374151)' }}>{c.sent}</td>
+                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid var(--k-f5f5f5)', textAlign: 'right', color: 'var(--k-374151)' }}>{c.opens}</td>
+                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid var(--k-f5f5f5)', textAlign: 'right', color: openPct >= 40 ? 'var(--k-16a34a)' : openPct >= 20 ? GOLD_DEEP : MUTE, fontWeight: 600 }}>{openPct}%</td>
+                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid var(--k-f5f5f5)', textAlign: 'right', color: c.clicks ? GOLD_DEEP : FAINT, fontWeight: c.clicks ? 600 : 400 }}>{c.clicks || '—'}</td>
+                      <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid var(--k-f5f5f5)', textAlign: 'right', color: c.leads ? INK : FAINT, fontWeight: c.leads ? 700 : 400 }}>{c.leads || '—'}</td>
                     </tr>
                   );
                 })}
@@ -647,7 +647,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
               { label: 'Key events', val: ga.totals?.leads ?? 0, sub: 'incl. generate_lead' },
               { label: 'Conv. rate', val: `${((ga.totals?.conversionRate ?? 0) * 100).toFixed(1)}%`, sub: 'events ÷ sessions' },
             ].map(s => (
-              <div key={s.label} style={{ background: '#fff', borderRadius: 10, padding: '18px 20px', border: '1px solid #e0e0e0', borderLeft: `4px solid ${GOLD}` }}>
+              <div key={s.label} style={{ background: 'var(--k-fff)', borderRadius: 10, padding: '18px 20px', border: '1px solid var(--k-e0e0e0)', borderLeft: `4px solid ${GOLD}` }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, marginBottom: 6 }}>{s.label}</div>
                 <div style={{ fontFamily: serif, fontSize: 34, fontWeight: 700, color: INK, lineHeight: 1 }}>{typeof s.val === 'number' ? s.val.toLocaleString() : s.val}</div>
                 <div style={{ fontSize: 12, color: MUTE, marginTop: 3 }}>{s.sub}</div>
@@ -678,7 +678,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
               const open = expanded === i;
               const isNew = newKeys.has(`${r.name}|${r.date}`);
               return (
-                <div key={i} style={{ borderBottom: '1px solid #f1f1f1', paddingBottom: 9, ...(isNew ? { background: '#fffbeb', borderLeft: '3px solid #16a34a', paddingLeft: 10, marginLeft: -10 } : {}) }}>
+                <div key={i} style={{ borderBottom: '1px solid #f1f1f1', paddingBottom: 9, ...(isNew ? { background: 'var(--k-fffbeb)', borderLeft: '3px solid #16a34a', paddingLeft: 10, marginLeft: -10 } : {}) }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>
                     {r.name}
                     {isNew && <span style={{ marginLeft: 7, fontSize: 9, letterSpacing: 0.5, fontWeight: 800, color: '#fff', background: '#16a34a', padding: '1px 6px', borderRadius: 999 }}>NEW</span>}
@@ -711,7 +711,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
               <thead>
                 <tr style={{ textAlign: 'left', color: MUTE }}>
                   {['Name', 'Date', 'Site', 'Form', 'Channel', 'Campaign', 'Landing page', 'Pages · time on site'].map(h => (
-                    <th key={h} style={{ padding: '6px 10px 8px 0', fontWeight: 600, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
+                    <th key={h} style={{ padding: '6px 10px 8px 0', fontWeight: 600, borderBottom: '1px solid var(--k-e5e7eb)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -723,19 +723,19 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
                   const canOpen = hasJourney || !!r.client_id;
                   const open = expanded === i;
                   const isNew = newKeys.has(`${r.name}|${r.date}`);
-                  const td: React.CSSProperties = { padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5' };
+                  const td: React.CSSProperties = { padding: '7px 10px 7px 0', borderBottom: '1px solid var(--k-f5f5f5)' };
                   return (
                     <Fragment key={i}>
-                      <tr onClick={canOpen ? () => setExpanded(open ? null : i) : undefined} style={{ ...(canOpen ? { cursor: 'pointer' } : {}), ...(isNew ? { background: '#fffbeb' } : {}) }}>
+                      <tr onClick={canOpen ? () => setExpanded(open ? null : i) : undefined} style={{ ...(canOpen ? { cursor: 'pointer' } : {}), ...(isNew ? { background: 'var(--k-fffbeb)' } : {}) }}>
                         <td style={{ ...td, fontWeight: 600, color: INK, boxShadow: isNew ? 'inset 3px 0 0 #16a34a' : undefined }}>
                           {r.name}
                           {isNew && <span style={{ marginLeft: 7, fontSize: 9, letterSpacing: 0.5, fontWeight: 800, color: '#fff', background: '#16a34a', padding: '1px 6px', borderRadius: 999 }}>NEW</span>}
                         </td>
                         <td style={{ ...td, color: MUTE, whiteSpace: 'nowrap' }}>{r.date ? new Date(r.date).toLocaleDateString() : '—'}</td>
-                        <td style={{ ...td, color: '#374151', whiteSpace: 'nowrap' }}>{r.site ?? '—'}</td>
-                        <td style={{ ...td, color: '#374151' }}>{r.source ?? '—'}</td>
+                        <td style={{ ...td, color: 'var(--k-374151)', whiteSpace: 'nowrap' }}>{r.site ?? '—'}</td>
+                        <td style={{ ...td, color: 'var(--k-374151)' }}>{r.source ?? '—'}</td>
                         <td style={{ ...td, color: r.channel ? GOLD_DEEP : FAINT, fontWeight: r.channel ? 600 : 400 }}>{r.channel ?? 'not recorded'}</td>
-                        <td style={{ ...td, color: '#374151' }}>{r.campaign ?? '—'}</td>
+                        <td style={{ ...td, color: 'var(--k-374151)' }}>{r.campaign ?? '—'}</td>
                         <td style={{ ...td, color: MUTE, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.landing_page ?? ''}>{r.landing_page ?? '—'}</td>
                         <td style={{ ...td, whiteSpace: 'nowrap' }}>
                           {canOpen ? (
@@ -748,11 +748,11 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
                       </tr>
                       {open && canOpen && (
                         <tr>
-                          <td colSpan={8} style={{ padding: '4px 10px 12px 0', borderBottom: '1px solid #f5f5f5', background: '#fcfbf8' }}>
+                          <td colSpan={8} style={{ padding: '4px 10px 12px 0', borderBottom: '1px solid var(--k-f5f5f5)', background: '#fcfbf8' }}>
                             {hasJourney && (
                               <>
                                 <div style={{ fontSize: 11, color: MUTE, margin: '2px 0 6px' }}>
-                                  Entered on <strong style={{ color: '#374151' }}>{r.journey![0].p}</strong>
+                                  Entered on <strong style={{ color: 'var(--k-374151)' }}>{r.journey![0].p}</strong>
                                   {dur ? ` · ${dur} on site before submitting` : ''}
                                 </div>
                                 <JourneyTrail steps={r.journey!} totalSec={r.time_on_site_sec} />

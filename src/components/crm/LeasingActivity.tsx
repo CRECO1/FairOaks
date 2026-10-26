@@ -23,7 +23,7 @@ const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Be
 const money = (n: number | null) => n === null || n === undefined ? '' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const day = (d: string | null) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '';
 const TH: React.CSSProperties = { background: GREEN, color: '#fff', fontSize: 10.5, fontWeight: 800, padding: '8px 8px', textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 1 };
-const TD: React.CSSProperties = { fontSize: 12.5, color: GREEN, padding: '3px 6px', borderBottom: '1px solid #e5e7eb', verticalAlign: 'top' };
+const TD: React.CSSProperties = { fontSize: 12.5, color: GREEN, padding: '3px 6px', borderBottom: '1px solid var(--k-e5e7eb)', verticalAlign: 'top' };
 
 // Click-to-edit cell; saves on blur / Enter. type="money" stores a plain number.
 function Edit({ value, onSave, type = 'text', width, placeholder }: { value: string | number | null; onSave: (v: string) => void; type?: 'text' | 'number' | 'date'; width?: number; placeholder?: string }) {
@@ -34,7 +34,7 @@ function Edit({ value, onSave, type = 'text', width, placeholder }: { value: str
       onBlur={() => { if (String(value ?? '') !== v) onSave(v); }}
       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
       style={{ width: width ?? '100%', minWidth: 0, border: '1px solid transparent', background: 'transparent', borderRadius: 6, padding: '5px 6px', fontSize: 12.5, color: GREEN, fontFamily: "'DM Sans',sans-serif" }}
-      onFocus={e => { e.currentTarget.style.border = '1px solid #c9922c'; e.currentTarget.style.background = '#fff'; }}
+      onFocus={e => { e.currentTarget.style.border = '1px solid #c9922c'; e.currentTarget.style.background = 'var(--k-fff)'; }}
       onBlurCapture={e => { e.currentTarget.style.border = '1px solid transparent'; e.currentTarget.style.background = 'transparent'; }} />
   );
 }
@@ -85,7 +85,7 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
     } catch { onToast?.('Could not build the report'); } finally { setBusy(false); }
   };
 
-  if (!header) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>Loading leasing activity…</div>;
+  if (!header) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading leasing activity…</div>;
   const vacantSuites = (sections[0]?.lines ?? []).filter(l => l.occupant === 'VACANT' && (l.kind === 'vacancy' || l.kind === 'prospect'))
     .reduce<{ suite: string; sf: number | null }[]>((a, l) => (a.some(x => x.suite === l.suite) ? a : [...a, { suite: l.suite, sf: l.sf }]), []);
 
@@ -101,11 +101,11 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
           ? <select value={l.status} onChange={e => save(l.rowId, { leasing_status: e.target.value })} style={{ fontSize: 12, fontWeight: 800, border: '1px solid transparent', borderRadius: 6, padding: '4px 4px', width: '100%', textAlign: 'center', ...chip(l.status) }}>
               {LEASING_STATUSES.map(x => <option key={x} value={x}>{exportStatus(x)}</option>)}
             </select>
-          : l.kind === 'expiring' ? <Edit value={l.status} onSave={p('renewal_status')} placeholder="Renewal status" /> : <span style={{ color: '#6b7280', fontSize: 11.5 }}>Marketing</span>}</td>
-        <td style={TD}>{isProspect ? <><Edit value={l.dba} onSave={p('tenant_name')} placeholder="Tenant DBA" />{l.source && <span title="How this lead came in" style={{ display: 'inline-block', margin: '0 0 3px 6px', fontSize: 10, fontWeight: 800, letterSpacing: .3, color: '#a06a12', background: '#fff7e6', border: '1px solid #f0e2c4', borderRadius: 6, padding: '1px 6px' }}>{SOURCE_ICON[l.source] ?? '•'} {l.source}</span>}</> : l.kind === 'expiring' ? l.dba : ''}</td>
+          : l.kind === 'expiring' ? <Edit value={l.status} onSave={p('renewal_status')} placeholder="Renewal status" /> : <span style={{ color: 'var(--k-6b7280)', fontSize: 11.5 }}>Marketing</span>}</td>
+        <td style={TD}>{isProspect ? <><Edit value={l.dba} onSave={p('tenant_name')} placeholder="Tenant DBA" />{l.source && <span title="How this lead came in" style={{ display: 'inline-block', margin: '0 0 3px 6px', fontSize: 10, fontWeight: 800, letterSpacing: .3, color: 'var(--k-a06a12)', background: '#fff7e6', border: '1px solid var(--k-f0e2c4)', borderRadius: 6, padding: '1px 6px' }}>{SOURCE_ICON[l.source] ?? '•'} {l.source}</span>}</> : l.kind === 'expiring' ? l.dba : ''}</td>
         <td style={TD}>{isProspect || l.kind === 'expiring' ? <Edit value={l.use} onSave={p('tenant_use')} placeholder="Use" /> : ''}</td>
         <td style={{ ...TD, textAlign: 'center' }}>{isProspect
-          ? <select value={l.suite} onChange={e => save(l.rowId, { suite: e.target.value || null, size_sf: vacantSuites.find(v => v.suite === e.target.value)?.sf ?? null })} style={{ fontSize: 12, border: '1px solid #cbd5c0', borderRadius: 6, padding: '4px 2px', color: GREEN, background: '#fff' }}>
+          ? <select value={l.suite} onChange={e => save(l.rowId, { suite: e.target.value || null, size_sf: vacantSuites.find(v => v.suite === e.target.value)?.sf ?? null })} style={{ fontSize: 12, border: '1px solid #cbd5c0', borderRadius: 6, padding: '4px 2px', color: GREEN, background: 'var(--k-fff)' }}>
               <option value="">TBD</option>{vacantSuites.map(v => <option key={v.suite} value={v.suite}>{v.suite}</option>)}
             </select>
           : <b>{l.suite}</b>}</td>
@@ -114,7 +114,7 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
         <td style={TD}>{isProspect || l.kind === 'expiring' ? <Edit type="number" value={l.proposedRent} onSave={p('proposed_rent')} placeholder="$/SF" /> : ''}</td>
         <td style={TD}>{isProspect || l.kind === 'expiring' ? <Edit type="number" value={l.proposedTi} onSave={p('proposed_ti')} placeholder="$/SF" /> : ''}</td>
         <td style={{ ...TD, textAlign: 'center' }}>{isProspect || l.kind === 'expiring'
-          ? <select value={l.national === null ? '' : l.national ? 'Y' : 'N'} onChange={e => save(l.rowId, { is_national: e.target.value })} style={{ fontSize: 12, border: '1px solid #cbd5c0', borderRadius: 6, padding: '4px 2px', color: GREEN, background: '#fff' }}>
+          ? <select value={l.national === null ? '' : l.national ? 'Y' : 'N'} onChange={e => save(l.rowId, { is_national: e.target.value })} style={{ fontSize: 12, border: '1px solid #cbd5c0', borderRadius: 6, padding: '4px 2px', color: GREEN, background: 'var(--k-fff)' }}>
               <option value="">—</option><option value="Y">Yes</option><option value="N">No</option>
             </select> : ''}</td>
         <td style={{ ...TD, textAlign: 'center', whiteSpace: 'nowrap' }}>{day(l.expiration)}</td>
@@ -123,7 +123,7 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
         <td style={{ ...TD, textAlign: 'center' }}>{money(l.prevRentPsf)}</td>
         <td style={{ ...TD, whiteSpace: 'nowrap', textAlign: 'right' }}>
           {!nested && firstOfSuite && s.tone === 'vacant' && l.occupant === 'VACANT' && (
-            <button onClick={() => addProspect(l.suite, l.sf)} title="Add a prospect for this suite" style={{ fontSize: 11.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>＋ Prospect</button>
+            <button onClick={() => addProspect(l.suite, l.sf)} title="Add a prospect for this suite" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1px dashed var(--k-e6d3a2)', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>＋ Prospect</button>
           )}
           {isProspect && isAdmin && <button onClick={() => remove(l.rowId, l.dba)} title="Remove from the report" style={{ background: 'none', border: 'none', color: '#d9a3a3', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}
         </td>
@@ -148,7 +148,7 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
               <td style={{ ...TD, textAlign: 'center', fontWeight: 800 }}>{l.sf ? Number(l.sf).toLocaleString() : ''}</td>
               <td style={TD} colSpan={8} />
               <td style={{ ...TD, whiteSpace: 'nowrap', textAlign: 'right' }}>
-                {l.suiteRowId && <button onClick={() => addProspect(l.suite, l.sf)} title="Add a prospect for this suite" style={{ fontSize: 11.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>＋ Prospect</button>}
+                {l.suiteRowId && <button onClick={() => addProspect(l.suite, l.sf)} title="Add a prospect for this suite" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1px dashed var(--k-e6d3a2)', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>＋ Prospect</button>}
               </td>
             </tr>
           );
@@ -167,12 +167,12 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
           <input defaultValue={header.fund} onBlur={e => { if (e.target.value !== header.fund) saveFund(e.target.value); }}
             style={{ display: 'block', marginTop: 2, width: 130, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, color: '#fff', padding: '4px 7px', fontSize: 12.5 }} /></label>
         <div style={{ fontSize: 11, color: GOLD, fontWeight: 800 }}>LEASING AGENT<div style={{ color: '#fff', fontWeight: 600, fontSize: 12.5, marginTop: 4 }}>{header.agent || '—'}</div></div>
-        <button onClick={download} disabled={busy} style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 800, color: GREEN, background: '#fff', border: 'none', borderRadius: 8, padding: '9px 13px', cursor: 'pointer' }}>
+        <button onClick={download} disabled={busy} style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 800, color: GREEN, background: 'var(--k-fff)', border: 'none', borderRadius: 8, padding: '9px 13px', cursor: 'pointer' }}>
           {busy ? 'Building…' : '⬇ Download report (.xlsx)'}
         </button>
       </div>
 
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', background: '#fff', maxHeight: '70vh' }}>
+      <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'auto', background: 'var(--k-fff)', maxHeight: '70vh' }}>
         <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', minWidth: 1830 }}>
           <colgroup>{[130, 118, 200, 120, 66, 66, 128, 96, 90, 92, 112, 120, 280, 100, 100].map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
           <thead><tr>{REPORT_COLUMNS.map(c => <th key={c} style={TH}>{c}</th>)}<th style={{ ...TH, width: 90 }} /></tr></thead>
@@ -181,17 +181,17 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
               <React.Fragment key={s.title}>
                 <tr><td colSpan={15} style={{ background: s.tone === 'expiring' ? GOLD : GREEN, color: '#fff', fontWeight: 800, fontSize: 12.5, textAlign: 'center', padding: '7px 8px' }}>{s.title}</td></tr>
                 {s.lines.length ? renderLines(s)
-                  : <tr><td colSpan={15} style={{ ...TD, color: '#9ca3af', textAlign: 'center', padding: 10 }}>{s.tone === 'passed' ? 'No prospects have passed.' : 'None.'}</td></tr>}
+                  : <tr><td colSpan={15} style={{ ...TD, color: 'var(--k-9ca3af)', textAlign: 'center', padding: 10 }}>{s.tone === 'passed' ? 'No prospects have passed.' : 'None.'}</td></tr>}
               </React.Fragment>
             ))}
           </tbody>
         </table>
       </div>
       {ind && ind.total > 0 && (
-        <div style={{ marginTop: 14, border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+        <div style={{ marginTop: 14, border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'hidden', background: 'var(--k-fff)' }}>
           <div style={{ background: GREEN, color: '#fff', fontWeight: 800, fontSize: 12.5, textAlign: 'center', padding: '8px 8px' }}>Prospective Tenants by Industry — {ind.total} businesses</div>
           {ind.groups.map((g, gi) => (
-            <details key={g.industry} open={gi === 0} style={{ borderTop: '1px solid #e5e7eb' }}>
+            <details key={g.industry} open={gi === 0} style={{ borderTop: '1px solid var(--k-e5e7eb)' }}>
               <summary style={{ background: MINT, color: GREEN, fontWeight: 800, fontSize: 12.5, padding: '8px 12px', cursor: 'pointer' }}>
                 {g.industry.toUpperCase()}
                 <span style={{ fontWeight: 600, marginLeft: 10, fontSize: 12 }}>
@@ -205,7 +205,7 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
                       <td style={{ ...TD, width: 130, textAlign: 'center' }}><span style={{ display: 'inline-block', minWidth: 96, fontWeight: 800, fontSize: 12, borderRadius: 6, padding: '3px 8px', ...chip(r.status) }}>{r.status}</span></td>
                       <td style={{ ...TD, color: '#111827', fontWeight: 600 }}>{r.name}</td>
                       <td style={{ ...TD, width: 80, textAlign: 'center', whiteSpace: 'nowrap' }}>{shortDay(r.date)}</td>
-                      <td style={{ ...TD, color: '#4b5563' }}>{r.note}</td>
+                      <td style={{ ...TD, color: 'var(--k-4b5563)' }}>{r.note}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -214,16 +214,16 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
           ))}
         </div>
       )}
-      <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 7 }}>
+      <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 7 }}>
         Suites and expirations come from the Rent Roll tab; prospects are its backup / prospective-tenant rows. Set a prospect to <b>Passed</b> to move it to Passed Status. Rent and TI are $/SF.
       </div>
 
       {mk && (
-        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px', fontSize: 12.5, color: '#374151' }}>
+        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px', fontSize: 12.5, color: 'var(--k-374151)' }}>
           <span style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 800 }}>Email marketing</span><span>{mk.lines.email}</span>
           <span style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 800 }}>Calls</span><span>{mk.lines.calls}</span>
           {mk.lines.website && (<><span style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 800 }}>Website</span><span>{mk.lines.website}</span></>)}
-          <span /><span style={{ color: '#9ca3af' }}>These lines appear in the header of the downloaded sheet; per-campaign detail is on its second sheet.</span>
+          <span /><span style={{ color: 'var(--k-9ca3af)' }}>These lines appear in the header of the downloaded sheet; per-campaign detail is on its second sheet.</span>
         </div>
       )}
     </div>

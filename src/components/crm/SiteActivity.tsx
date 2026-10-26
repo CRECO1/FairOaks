@@ -24,8 +24,8 @@ interface Payload {
   pageviews: Pv[]; events: Ev[];
 }
 
-const chip: React.CSSProperties = { display: 'inline-block', fontSize: 11.5, color: '#374151', background: '#f3f4f6', borderRadius: 999, padding: '2px 9px', marginRight: 6, marginBottom: 5, whiteSpace: 'nowrap' };
-const hot: React.CSSProperties = { ...{ background: '#fef3c7', color: '#92400e', fontWeight: 700 } };
+const chip: React.CSSProperties = { display: 'inline-block', fontSize: 11.5, color: 'var(--k-374151)', background: 'var(--k-f3f4f6)', borderRadius: 999, padding: '2px 9px', marginRight: 6, marginBottom: 5, whiteSpace: 'nowrap' };
+const hot: React.CSSProperties = { ...{ background: 'var(--k-fef3c7)', color: 'var(--k-92400e)', fontWeight: 700 } };
 const siteShort = (h: string) => h.replace('www.', '').replace('.com', '').replace('fairoaksrealtygroup', 'Fair Oaks').replace('crecotx', 'CRECO').replace('elkhornpoint', 'Elkhorn').replace('fairoaksranchplaza', 'Ranch Plaza');
 
 function fmtSec(s: number): string { if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`; }
@@ -58,7 +58,7 @@ export default function SiteActivity({ clientId, authToken, compact }: { clientI
     return () => { off = true; };
   }, [clientId, authToken]);
 
-  if (err) return <div style={{ fontSize: 12.5, color: '#b91c1c' }}>{err}</div>;
+  if (err) return <div style={{ fontSize: 12.5, color: 'var(--k-b91c1c)' }}>{err}</div>;
   if (!data) return <div style={{ fontSize: 12.5, color: FAINT }}>Loading website activity…</div>;
 
   const s = data.summary, c = data.contact;
@@ -94,7 +94,7 @@ export default function SiteActivity({ clientId, authToken, compact }: { clientI
 
       {/* how they first found us */}
       {(c?.first_touch || c?.channel) && (
-        <div style={{ fontSize: 12.5, color: '#374151', marginBottom: 6, lineHeight: 1.55 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--k-374151)', marginBottom: 6, lineHeight: 1.55 }}>
           <strong style={{ color: GOLD_DEEP }}>First touch:</strong>{' '}
           {[ft.utm_source && `${ft.utm_source}${ft.utm_medium ? ` / ${ft.utm_medium}` : ''}`, ft.utm_campaign && `campaign ${ft.utm_campaign}`, ft.referrer && (() => { try { return `via ${new URL(String(ft.referrer)).hostname.replace('www.', '')}`; } catch { return null; } })(), ftClick.length && `ad click (${ftClick.join(', ')})`, ft.landing_page && `landed on ${ft.landing_page}`].filter(Boolean).join(' · ') || (c?.channel ?? '—')}
           {c?.channel ? <span style={{ color: FAINT }}> · channel {c.channel}</span> : null}
@@ -119,7 +119,7 @@ export default function SiteActivity({ clientId, authToken, compact }: { clientI
           {shown.map((t, i) => (
             <div key={i} style={{ display: 'flex', gap: 10, fontSize: 12.5, padding: '3px 0', lineHeight: 1.45, alignItems: 'baseline' }}>
               <span style={{ color: FAINT, width: 104, flexShrink: 0, fontSize: 11.5 }}>{when(t.at)}</span>
-              <span style={{ color: t.kind === 'event' ? '#111827' : '#374151', fontWeight: t.kind === 'event' ? 600 : 400, minWidth: 0, overflowWrap: 'anywhere' }}>
+              <span style={{ color: t.kind === 'event' ? '#111827' : 'var(--k-374151)', fontWeight: t.kind === 'event' ? 600 : 400, minWidth: 0, overflowWrap: 'anywhere' }}>
                 {t.text}{t.sub ? <span style={{ color: FAINT }}> · {t.sub}</span> : null}
               </span>
             </div>

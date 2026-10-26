@@ -130,34 +130,34 @@ export default function CampaignEngagedPanel({ campaign, authToken, isMobile, on
 
   return (
     <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={onClose}>
-      <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 720, boxShadow: '0 24px 80px rgba(0,0,0,.3)', overflow: 'hidden', fontFamily: "'DM Sans',sans-serif" }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
+      <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, width: '100%', maxWidth: 720, boxShadow: '0 24px 80px rgba(0,0,0,.3)', overflow: 'hidden', fontFamily: "'DM Sans',sans-serif" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--k-e5e7eb)', background: 'var(--k-fafafa)' }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>🔥 Who engaged{campaign ? '' : ' — last 90 days'}</div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, overflowWrap: 'anywhere' }}>{campaign ? campaign.name : 'Every campaign that sent in the last 90 days'}</div>
-            <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 6, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-111)' }}>🔥 Who engaged{campaign ? '' : ' — last 90 days'}</div>
+            <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 2, overflowWrap: 'anywhere' }}>{campaign ? campaign.name : 'Every campaign that sent in the last 90 days'}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 6, lineHeight: 1.45 }}>
               Real clicks, owner-report views, calls in and replies. Opens and spam-filter link checks are left out.
               {people && (checked.length ? ` Replies checked in ${checked.join(', ')}.` : ' Connect Gmail in Settings to include replies.')}
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1, padding: '0 4px', minWidth: 32, minHeight: 32 }}>×</button>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--k-9ca3af)', lineHeight: 1, padding: '0 4px', minWidth: 32, minHeight: 32 }}>×</button>
         </div>
 
         {people && people.length > 0 && (
           <div style={{ display: 'flex', gap: 6, padding: '12px 20px 0' }}>
             {([['todo', `To call (${todo.length})`], ['all', `All engaged (${people.length})`]] as const).map(([k, label]) => (
-              <button key={k} onClick={() => setView(k)} style={{ padding: isMobile ? '8px 14px' : '4px 14px', minHeight: isMobile ? 38 : undefined, borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: view === k ? '#111' : '#fff', color: view === k ? '#fff' : '#6b7280', borderColor: view === k ? '#111' : '#e5e7eb', whiteSpace: 'nowrap' }}>{label}</button>
+              <button key={k} onClick={() => setView(k)} style={{ padding: isMobile ? '8px 14px' : '4px 14px', minHeight: isMobile ? 38 : undefined, borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: view === k ? '#111' : 'var(--k-fff)', color: view === k ? '#fff' : 'var(--k-6b7280)', borderColor: view === k ? '#111' : 'var(--k-e5e7eb)', whiteSpace: 'nowrap' }}>{label}</button>
             ))}
           </div>
         )}
 
         {people && todo.length > 0 && agents && agents.length > 0 && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 20px 0' }}>
-            <span style={{ fontSize: 12.5, color: '#6b7280', fontWeight: 600 }}>Call tasks go to</span>
-            <select value={assignTo || meId || ''} onChange={e => setAssignTo(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600, background: '#fff', fontFamily: "'DM Sans',sans-serif" }}>
+            <span style={{ fontSize: 12.5, color: 'var(--k-6b7280)', fontWeight: 600 }}>Call tasks go to</span>
+            <select value={assignTo || meId || ''} onChange={e => setAssignTo(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: 13, fontWeight: 600, background: 'var(--k-fff)', fontFamily: "'DM Sans',sans-serif" }}>
               {agents.map(a => <option key={a.id} value={a.id}>{a.id === meId ? 'Me' : a.name}</option>)}
             </select>
-            <button onClick={() => assignAll(todo)} className="crm-btn crm-btn-sm" style={{ background: '#c9922c', color: '#111', border: 'none', fontWeight: 800 }}>
+            <button onClick={() => assignAll(todo)} className="crm-btn crm-btn-sm" style={{ background: '#c9922c', color: 'var(--k-111)', border: 'none', fontWeight: 800 }}>
               Assign all {todo.length} to {(agents.find(a => a.id === (assignTo || meId))?.name ?? 'me').split(' ')[0] === 'Me' ? 'me' : (agents.find(a => a.id === (assignTo || meId))?.name ?? 'me').split(' ')[0]}
             </button>
           </div>
@@ -165,43 +165,43 @@ export default function CampaignEngagedPanel({ campaign, authToken, isMobile, on
 
         <div style={{ padding: '12px 20px 20px', maxHeight: isMobile ? undefined : '70vh', overflowY: isMobile ? undefined : 'auto' }}>
           {error ? (
-            <div style={{ padding: 30, textAlign: 'center', color: '#b91c1c', fontSize: 14 }}>{error}</div>
+            <div style={{ padding: 30, textAlign: 'center', color: 'var(--k-b91c1c)', fontSize: 14 }}>{error}</div>
           ) : !people ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>Checking clicks, calls and replies…</div>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14 }}>Checking clicks, calls and replies…</div>
           ) : !people.length ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#6b7280', fontSize: 14, lineHeight: 1.6 }}>
-              Nobody has engaged yet.<br /><span style={{ fontSize: 12.5, color: '#9ca3af' }}>When someone clicks through, views their report, calls or replies, they show up here.</span>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--k-6b7280)', fontSize: 14, lineHeight: 1.6 }}>
+              Nobody has engaged yet.<br /><span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>When someone clicks through, views their report, calls or replies, they show up here.</span>
             </div>
           ) : !shown.length ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#16a34a', fontSize: 14 }}>✓ Everyone who engaged has been contacted.</div>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--k-16a34a)', fontSize: 14 }}>✓ Everyone who engaged has been contacted.</div>
           ) : shown.map(p => {
             const c = p.contact;
             const who = [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
             const phone = c.cell_phone || c.phone;
             const hasTask = p.open_task || tasked.has(p.client_id);
             return (
-              <div key={p.client_id} style={{ border: '1px solid #f0f0f0', borderRadius: 12, padding: '12px 14px', marginBottom: 10, background: p.contacted_at ? '#fafafa' : '#fff' }}>
+              <div key={p.client_id} style={{ border: '1px solid var(--k-f0f0f0)', borderRadius: 12, padding: '12px 14px', marginBottom: 10, background: p.contacted_at ? 'var(--k-fafafa)' : 'var(--k-fff)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <button onClick={() => onOpenContact(p.client_id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 700, color: '#111', textAlign: 'left', fontFamily: 'inherit', overflowWrap: 'anywhere' }}>
+                  <button onClick={() => onOpenContact(p.client_id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 700, color: 'var(--k-111)', textAlign: 'left', fontFamily: 'inherit', overflowWrap: 'anywhere' }}>
                     {who || c.business_name || c.email}
                   </button>
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: p.tier === 'hot' ? '#fee2e2' : '#fef3c7', color: p.tier === 'hot' ? '#991b1b' : '#92400e' }}>{p.tier}</span>
-                  {c.unsubscribed_at && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: '#f3f4f6', color: '#6b7280', textTransform: 'uppercase' }}>Unsubscribed</span>}
-                  <span style={{ marginLeft: 'auto', fontSize: 12, color: p.contacted_at ? '#16a34a' : '#b45309', fontWeight: 600 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: p.tier === 'hot' ? 'var(--k-fee2e2)' : 'var(--k-fef3c7)', color: p.tier === 'hot' ? 'var(--k-991b1b)' : 'var(--k-92400e)' }}>{p.tier}</span>
+                  {c.unsubscribed_at && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', textTransform: 'uppercase' }}>Unsubscribed</span>}
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: p.contacted_at ? 'var(--k-16a34a)' : 'var(--k-b45309)', fontWeight: 600 }}>
                     {p.contacted_at ? `✓ Contacted ${ago(p.contacted_at)}${p.contacted_how ? ` · ${p.contacted_how}` : ''}` : hasTask ? 'Call task open' : 'Not contacted yet'}
                   </span>
                 </div>
-                {who && c.business_name && <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 1 }}>{c.business_name}</div>}
-                {!campaign && <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 2 }}>{p.campaigns.map(x => x.name).join(' · ')}</div>}
+                {who && c.business_name && <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginTop: 1 }}>{c.business_name}</div>}
+                {!campaign && <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>{p.campaigns.map(x => x.name).join(' · ')}</div>}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 8 }}>
                   {p.signals.slice(0, 4).map((s, i) => (
-                    <div key={i} style={{ fontSize: 13, color: '#374151', display: 'flex', gap: 6 }}>
+                    <div key={i} style={{ fontSize: 13, color: 'var(--k-374151)', display: 'flex', gap: 6 }}>
                       <span aria-hidden="true">{ICON[s.kind]}</span>
                       <span style={{ flex: 1, minWidth: 0 }}>{s.label}</span>
-                      <span style={{ color: '#9ca3af', fontSize: 12, whiteSpace: 'nowrap' }}>{ago(s.at)}</span>
+                      <span style={{ color: 'var(--k-9ca3af)', fontSize: 12, whiteSpace: 'nowrap' }}>{ago(s.at)}</span>
                     </div>
                   ))}
-                  {p.signals.length > 4 && <div style={{ fontSize: 12, color: '#9ca3af' }}>+{p.signals.length - 4} more</div>}
+                  {p.signals.length > 4 && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>+{p.signals.length - 4} more</div>}
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                   {phone && <a href={`tel:${phone.replace(/[^\d+]/g, '')}`} data-contact-id={p.client_id} data-name={who || c.business_name || ''} className="crm-btn crm-btn-sm" style={{ background: '#16a34a', color: '#fff', border: 'none', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', ...(isMobile ? { flex: '1 1 calc(50% - 4px)', minHeight: 44, whiteSpace: 'nowrap', justifyContent: 'center' } : {}) }}>📞 {isMobile ? 'Call' : phone}</a>}

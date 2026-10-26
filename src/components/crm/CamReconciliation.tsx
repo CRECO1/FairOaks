@@ -98,12 +98,12 @@ export default function CamReconciliation({ listingId, listingName, address, aut
     } finally { setBusy(false); }
   };
 
-  const inp: React.CSSProperties = { padding: '7px 9px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: 13.5, width: '100%', boxSizing: 'border-box', fontFamily: "'DM Sans',sans-serif" };
-  const lbl: React.CSSProperties = { fontSize: 10.5, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 4 };
-  const card: React.CSSProperties = { background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, marginBottom: 14 };
+  const inp: React.CSSProperties = { padding: '7px 9px', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, fontSize: 13.5, width: '100%', boxSizing: 'border-box', fontFamily: "'DM Sans',sans-serif" };
+  const lbl: React.CSSProperties = { fontSize: 10.5, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 4 };
+  const card: React.CSSProperties = { background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, marginBottom: 14 };
   const head: React.CSSProperties = { fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 };
 
-  if (loading) return <div style={{ padding: 30, color: '#9ca3af', fontSize: 13 }}>Loading…</div>;
+  if (loading) return <div style={{ padding: 30, color: 'var(--k-9ca3af)', fontSize: 13 }}>Loading…</div>;
 
   const total = (m?: Money) => CATS.reduce((s, [k]) => s + (Number(m?.[k]) || 0), 0);
 
@@ -115,16 +115,16 @@ export default function CamReconciliation({ listingId, listingName, address, aut
           style={{ ...inp, width: 'auto', fontWeight: 700 }}>
           {[thisYear, thisYear - 1, thisYear - 2, thisYear - 3].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <span style={{ fontSize: 12.5, color: '#9ca3af' }}>reconciles {year} · projects {year + 1}</span>
+        <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>reconciles {year} · projects {year + 1}</span>
         <span style={{ flex: 1 }} />
-        {isAdmin && <button onClick={save} disabled={busy} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 700, color: '#6b7280', cursor: 'pointer' }}>Save</button>}
+        {isAdmin && <button onClick={save} disabled={busy} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', fontSize: 13, fontWeight: 700, color: 'var(--k-6b7280)', cursor: 'pointer' }}>Save</button>}
         <button onClick={() => generate()} disabled={busy} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? .6 : 1 }}>
           {busy ? 'Working…' : '📄 Generate all packets'}
         </button>
       </div>
 
       {missingSf.length > 0 && (
-        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '11px 14px', marginBottom: 14, fontSize: 13, color: '#78350f', lineHeight: 1.5 }}>
+        <div style={{ background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '11px 14px', marginBottom: 14, fontSize: 13, color: '#78350f', lineHeight: 1.5 }}>
           <strong>{missingSf.length} suite{missingSf.length === 1 ? ' has' : 's have'} no square footage</strong> — {missingSf.join(', ')}.
           Every allocation divides by leasable SF, so these are left out of the run and the rent roll’s {rollSf.toLocaleString()} SF
           is short of the property total. Fill them in on the Rent Roll tab.
@@ -144,13 +144,13 @@ export default function CamReconciliation({ listingId, listingName, address, aut
             </select>
           </div>
         </div>
-        <div style={{ marginTop: 12, fontSize: 12.5, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--k-6b7280)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
             <input type="checkbox" checked={(data.rounding ?? 'packet') === 'packet'}
               onChange={e => set({ rounding: e.target.checked ? 'packet' : 'exact' })} style={{ accentColor: '#c9922c', width: 15, height: 15 }} />
             <span>Round percentages and tenant totals the way the previous packets did</span>
           </label>
-          <span style={{ color: '#9ca3af' }}>— off gives the exact share to the cent.</span>
+          <span style={{ color: 'var(--k-9ca3af)' }}>— off gives the exact share to the cent.</span>
         </div>
       </div>
 
@@ -158,7 +158,7 @@ export default function CamReconciliation({ listingId, listingName, address, aut
         <div style={head}>Buildings</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
           {buildings.map(b => (
-            <div key={b} style={{ border: '1px solid #f3f4f6', borderRadius: 9, padding: 11 }}>
+            <div key={b} style={{ border: '1px solid var(--k-f3f4f6)', borderRadius: 9, padding: 11 }}>
               <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 8 }}>Building {b}</div>
               <div style={lbl}>Leasable SF</div>
               <input value={show(data.buildings?.[b]?.sf)} onChange={e => setBldg(b, 'sf', e.target.value)} style={{ ...inp, marginBottom: 8 }} />
@@ -175,11 +175,11 @@ export default function CamReconciliation({ listingId, listingName, address, aut
             <div style={head}>{which === 'expenses' ? `${year} actual` : `${year + 1} projected`}</div>
             {CATS.map(([k, label]) => (
               <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
-                <div style={{ flex: 1, fontSize: 13.5, color: '#374151' }}>{label}</div>
+                <div style={{ flex: 1, fontSize: 13.5, color: 'var(--k-374151)' }}>{label}</div>
                 <input value={show(data[which]?.[k])} onChange={e => setCat(which, k, e.target.value)} placeholder="0.00" style={{ ...inp, width: 120, textAlign: 'right' }} />
               </div>
             ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 8, fontSize: 13.5, fontWeight: 700 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--k-f3f4f6)', marginTop: 8, paddingTop: 8, fontSize: 13.5, fontWeight: 700 }}>
               <span>Total</span><span>${total(data[which]).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
@@ -191,7 +191,7 @@ export default function CamReconciliation({ listingId, listingName, address, aut
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 11, textTransform: 'uppercase', letterSpacing: .5 }}>
+              <tr style={{ textAlign: 'left', color: 'var(--k-9ca3af)', fontSize: 11, textTransform: 'uppercase', letterSpacing: .5 }}>
                 {['Suite', 'Tenant', 'Bldg', 'SF', `Paid in ${year}`, 'How that adds up', `${year + 1} base rent`, 'Jan base', ''].map(h => (
                   <th key={h} style={{ padding: '6px 8px', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
@@ -201,18 +201,18 @@ export default function CamReconciliation({ listingId, listingName, address, aut
               {tenants.map(t => {
                 const v = data.tenants?.[t.suite] ?? {};
                 return (
-                  <tr key={t.suite} style={{ borderTop: '1px solid #f3f4f6', opacity: t.sf ? 1 : .5 }}>
+                  <tr key={t.suite} style={{ borderTop: '1px solid var(--k-f3f4f6)', opacity: t.sf ? 1 : .5 }}>
                     <td style={{ padding: '6px 8px', fontWeight: 700, whiteSpace: 'nowrap' }}>{t.suite}</td>
                     <td style={{ padding: '6px 8px', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</td>
                     <td style={{ padding: '6px 8px' }}>{t.building || '—'}</td>
-                    <td style={{ padding: '6px 8px', color: t.sf ? '#374151' : '#dc2626', whiteSpace: 'nowrap' }}>{t.sf ? t.sf.toLocaleString() : 'no SF'}</td>
+                    <td style={{ padding: '6px 8px', color: t.sf ? 'var(--k-374151)' : 'var(--k-dc2626)', whiteSpace: 'nowrap' }}>{t.sf ? t.sf.toLocaleString() : 'no SF'}</td>
                     <td style={{ padding: '4px 8px' }}><input value={show(v.paid)} onChange={e => setTen(t.suite, 'paid', e.target.value)} style={{ ...inp, width: 100 }} /></td>
                     <td style={{ padding: '4px 8px' }}><input value={v.paidNote ?? ''} onChange={e => setTen(t.suite, 'paidNote', e.target.value)} placeholder="($462 x 11 + $440 in Jan)" style={{ ...inp, minWidth: 190 }} /></td>
                     <td style={{ padding: '4px 8px' }}><input value={show(v.baseRentNext)} onChange={e => setTen(t.suite, 'baseRentNext', e.target.value)} style={{ ...inp, width: 100 }} /></td>
                     <td style={{ padding: '4px 8px' }}><input value={show(v.baseRentJan)} onChange={e => setTen(t.suite, 'baseRentJan', e.target.value)} style={{ ...inp, width: 100 }} /></td>
                     <td style={{ padding: '4px 8px' }}>
                       <button onClick={() => generate(t.suite)} disabled={busy || !t.sf} title={t.sf ? 'Generate this tenant’s packet' : 'Needs square footage first'}
-                        style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #f0e2c4', background: '#fff', color: '#a06a12', fontSize: 12.5, fontWeight: 700, cursor: t.sf ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>📄</button>
+                        style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--k-f0e2c4)', background: 'var(--k-fff)', color: 'var(--k-a06a12)', fontSize: 12.5, fontWeight: 700, cursor: t.sf ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>📄</button>
                     </td>
                   </tr>
                 );

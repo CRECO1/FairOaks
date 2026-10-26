@@ -85,9 +85,9 @@ interface Deal {
 const DEAL_TYPES = ['Tenant Lease', 'Buyer Purchase', 'Landlord Listing', 'Seller Listing'];
 const DEAL_STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
 const STAGE_CHIP: Record<string, { bg: string; color: string }> = {
-  Prospect: { bg: '#f1f5f9', color: '#475569' }, Active: { bg: '#dbeafe', color: '#1d4ed8' },
-  LOI: { bg: '#fef3c7', color: '#b45309' }, 'In Contract': { bg: '#e0e7ff', color: '#4338ca' },
-  Closed: { bg: '#dcfce7', color: '#15803d' }, Lost: { bg: '#fee2e2', color: '#dc2626' },
+  Prospect: { bg: '#f1f5f9', color: 'var(--k-475569)' }, Active: { bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
+  LOI: { bg: '#fef3c7', color: 'var(--k-b45309)' }, 'In Contract': { bg: '#e0e7ff', color: 'var(--k-4338ca)' },
+  Closed: { bg: '#dcfce7', color: 'var(--k-15803d)' }, Lost: { bg: '#fee2e2', color: 'var(--k-dc2626)' },
 };
 interface EnvSigner { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; signed_at?: string | null; viewed_at?: string | null }
 interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; crm_envelope_signers?: EnvSigner[] }
@@ -120,11 +120,11 @@ const TYPES = ['Retail', 'Office', 'Industrial', 'Land', 'Multifamily', 'Mixed-U
 const STATUSES = ['active', 'pending', 'leased', 'sold', 'off_market'];
 
 const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
-  active:     { label: 'Active',     bg: '#dcfce7', color: '#15803d' },
-  pending:    { label: 'Pending',    bg: '#fef3c7', color: '#b45309' },
-  leased:     { label: 'Leased',     bg: '#dbeafe', color: '#1d4ed8' },
+  active:     { label: 'Active',     bg: '#dcfce7', color: 'var(--k-15803d)' },
+  pending:    { label: 'Pending',    bg: '#fef3c7', color: 'var(--k-b45309)' },
+  leased:     { label: 'Leased',     bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
   sold:       { label: 'Sold',       bg: '#f3e8ff', color: '#7e22ce' },
-  off_market: { label: 'Off Market', bg: '#f1f5f9', color: '#64748b' },
+  off_market: { label: 'Off Market', bg: '#f1f5f9', color: 'var(--k-64748b)' },
 };
 
 const CATEGORIES = [
@@ -135,14 +135,14 @@ const CATEGORIES = [
 ];
 
 const TYPE_COLORS: Record<string, { bg: string; color: string }> = {
-  Retail:      { bg: '#fef3c7', color: '#b45309' },
-  Office:      { bg: '#dbeafe', color: '#1d4ed8' },
-  Industrial:  { bg: '#f1f5f9', color: '#475569' },
-  Land:        { bg: '#dcfce7', color: '#15803d' },
+  Retail:      { bg: '#fef3c7', color: 'var(--k-b45309)' },
+  Office:      { bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
+  Industrial:  { bg: '#f1f5f9', color: 'var(--k-475569)' },
+  Land:        { bg: '#dcfce7', color: 'var(--k-15803d)' },
   Multifamily: { bg: '#f3e8ff', color: '#7e22ce' },
   'Mixed-Use': { bg: '#fce7f3', color: '#be185d' },
   Medical:     { bg: '#cffafe', color: '#0e7490' },
-  Flex:        { bg: '#fff7ed', color: '#c2410c' },
+  Flex:        { bg: '#fff7ed', color: 'var(--k-c2410c)' },
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1037,12 +1037,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // ── Shared input style ──────────────────────────────────────────────────────
 
   const INP: React.CSSProperties = {
-    padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16,
-    color: '#374151', fontFamily: "'DM Sans',sans-serif", width: '100%',
-    boxSizing: 'border-box', background: '#fafafa', minHeight: 44,
+    padding: '10px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 16,
+    color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", width: '100%',
+    boxSizing: 'border-box', background: 'var(--k-fafafa)', minHeight: 44,
   };
   const LBL = (s: string) => (
-    <div style={{ fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', color: '#6b7280', fontWeight: 700, marginBottom: 5, fontFamily: "'DM Sans',sans-serif" }}>{s}</div>
+    <div style={{ fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 700, marginBottom: 5, fontFamily: "'DM Sans',sans-serif" }}>{s}</div>
   );
 
   // ── Form fields (shared by new + edit) ─────────────────────────────────────
@@ -1055,9 +1055,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     const set = (k: keyof typeof BLANK_FORM, v: string) => onChange({ ...form, [k]: v });
     // One heading per group, so a long form reads as a few short sections instead of one wall of fields.
     const SEC = (title: string, hint?: string) => (
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '8px 0 -2px', paddingBottom: 6, borderBottom: '1px solid #f0ece3' }}>
-        <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: '#111' }}>{title}</span>
-        {hint && <span style={{ fontSize: 11.5, color: '#9ca3af' }}>{hint}</span>}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '8px 0 -2px', paddingBottom: 6, borderBottom: '1px solid var(--k-f0ece3)' }}>
+        <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: 'var(--k-111)' }}>{title}</span>
+        {hint && <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>{hint}</span>}
       </div>
     );
     const grid = (min = 200): React.CSSProperties => ({ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}px,100%), 1fr))`, gap: 12 });
@@ -1146,11 +1146,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             <input style={INP} value={form.map_pin} onChange={e => set('map_pin', e.target.value)} placeholder="29.7255, -98.6526" />
           </div>
         </div>
-        <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: -6 }}>Map pin: right-click the spot in Google Maps → click the coordinates to copy → paste here. Leave blank to auto-locate from the address.</div>
+        <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: -6 }}>Map pin: right-click the spot in Google Maps → click the coordinates to copy → paste here. Leave blank to auto-locate from the address.</div>
         <div>
           {LBL('Flyer Headline (optional)')}
           <input style={INP} value={form.flyer_headline} onChange={e => set('flyer_headline', e.target.value)} maxLength={90} placeholder="Built-to-suit retail in the heart of Fair Oaks Ranch" />
-          <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 3 }}>One line printed over the cover photo of the flyer. Leave blank for none.</div>
+          <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 3 }}>One line printed over the cover photo of the flyer. Leave blank for none.</div>
         </div>
         <div>
           {LBL('Flyer Description')}
@@ -1159,7 +1159,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         <div>
           {LBL('Flyer Highlights (one per line)')}
           <textarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} value={form.highlights} onChange={e => set('highlights', e.target.value)} placeholder={'Move-in ready medical building\nHigh visibility\nAmple parking'} />
-          <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 3 }}>Bulleted list on the property flyer — one highlight per line.</div>
+          <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 3 }}>Bulleted list on the property flyer — one highlight per line.</div>
         </div>
 
         {SEC('Internal', 'never shown on the flyer')}
@@ -1181,17 +1181,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search listings…"
           style={{ ...INP, flex: 1, minWidth: 160, fontSize: 16 }} />
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-          style={{ ...INP, width: 'auto', flex: 'none', color: typeFilter ? '#111' : '#9ca3af', fontSize: 16 }}>
+          style={{ ...INP, width: 'auto', flex: 'none', color: typeFilter ? 'var(--k-111)' : 'var(--k-9ca3af)', fontSize: 16 }}>
           <option value="">All Types</option>
           {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          style={{ ...INP, width: 'auto', flex: 'none', color: statusFilter ? '#111' : '#9ca3af', fontSize: 16 }}>
+          style={{ ...INP, width: 'auto', flex: 'none', color: statusFilter ? 'var(--k-111)' : 'var(--k-9ca3af)', fontSize: 16 }}>
           <option value="">All Statuses</option>
           {STATUSES.map(s => <option key={s} value={s}>{STATUS_CFG[s]?.label}</option>)}
         </select>
         <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontSize: 12, color: '#9ca3af' }}>{filtered.length} listing{filtered.length !== 1 ? 's' : ''}</span>
+          <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{filtered.length} listing{filtered.length !== 1 ? 's' : ''}</span>
           {isAdmin && (
             <button onClick={() => setShowNew(true)}
               style={{ padding: '10px 18px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 44 }}>
@@ -1203,11 +1203,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
       {/* Grid */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--k-9ca3af)' }}>
           <div style={{ fontSize: 28, marginBottom: 10 }}>🏢</div>Loading listings…
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--k-9ca3af)' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🏢</div>
           <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>No listings yet</div>
           {isAdmin && <div style={{ fontSize: 13 }}>Click <strong>+ New Listing</strong> to add your first property.</div>}
@@ -1219,11 +1219,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         const gridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 16 };
         const renderCard = (l: Listing) => {
             const sc = STATUS_CFG[l.status ?? 'active'] ?? STATUS_CFG.active;
-            const tc = TYPE_COLORS[l.type ?? ''] ?? { bg: '#f1f5f9', color: '#475569' };
+            const tc = TYPE_COLORS[l.type ?? ''] ?? { bg: '#f1f5f9', color: 'var(--k-475569)' };
             const agent = profiles.find(p => p.id === l.listing_agent_id);
             return (
               <div key={l.id} onClick={() => openListing(l)}
-                style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,.05)', transition: 'box-shadow .15s, transform .1s' }}
+                style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,.05)', transition: 'box-shadow .15s, transform .1s' }}
                 onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,.1)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
                 onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,.05)'; e.currentTarget.style.transform = 'none'; }}>
 
@@ -1234,9 +1234,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   {/* Header row */}
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: '#111', lineHeight: 1.25, marginBottom: 3 }}>{l.name}</div>
+                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1.25, marginBottom: 3 }}>{l.name}</div>
                       {(l.address || l.city) && (
-                        <div style={{ fontSize: 12, color: '#6b7280' }}>
+                        <div style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>
                           {[l.address, l.city, l.state].filter(Boolean).join(', ')}
                         </div>
                       )}
@@ -1249,7 +1249,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   {/* Type + price row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                     <span style={{ ...tc, padding: '2px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700 } as React.CSSProperties}>{l.type}</span>
-                    {l.sq_ft && <span style={{ fontSize: 12, color: '#6b7280' }}>{fmtSqFt(l.sq_ft)}</span>}
+                    {l.sq_ft && <span style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>{fmtSqFt(l.sq_ft)}</span>}
                     {l.asking_price && (
                       <span style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 700, color: '#c9922c' }}>{fmt$(l.asking_price)}</span>
                     )}
@@ -1257,19 +1257,19 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
                   {/* Description snippet */}
                   {l.description && (
-                    <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5, marginBottom: 12, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>
+                    <div style={{ fontSize: 12, color: 'var(--k-6b7280)', lineHeight: 1.5, marginBottom: 12, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>
                       {l.description}
                     </div>
                   )}
 
                   {/* Footer */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 10, borderTop: '1px solid #f3f4f6' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 10, borderTop: '1px solid var(--k-f3f4f6)' }}>
                     {agent ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
                           {agent.first_name[0]}{agent.last_name[0]}
                         </div>
-                        <span style={{ fontSize: 11, color: '#6b7280' }}>{agent.first_name} {agent.last_name}</span>
+                        <span style={{ fontSize: 11, color: 'var(--k-6b7280)' }}>{agent.first_name} {agent.last_name}</span>
                       </div>
                     ) : <span />}
                     {(perfById[l.id]?.real || perfById[l.id]?.inquiries) ? (
@@ -1277,7 +1277,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         👁 {perfById[l.id].real}{perfById[l.id].inquiries ? ` · ✉ ${perfById[l.id].inquiries}` : ''} <span style={{ fontWeight: 500, color: '#b9965a' }}>30d</span>
                       </span>
                     ) : null}
-                    <span style={{ marginLeft: perfById[l.id]?.real || perfById[l.id]?.inquiries ? 0 : 'auto', fontSize: 11, color: '#9ca3af' }}>
+                    <span style={{ marginLeft: perfById[l.id]?.real || perfById[l.id]?.inquiries ? 0 : 'auto', fontSize: 11, color: 'var(--k-9ca3af)' }}>
                       {new Date(l.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
                   </div>
@@ -1288,11 +1288,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         const section = (title: string, items: Listing[], hint: string) => (
           <div style={{ marginBottom: 26 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
-              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: '#111' }}>{title}</div>
-              <span style={{ fontSize: 12, color: '#9ca3af', background: '#f3f4f6', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{items.length}</span>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: 'var(--k-111)' }}>{title}</div>
+              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{items.length}</span>
             </div>
             {items.length === 0
-              ? <div style={{ fontSize: 13, color: '#9ca3af', fontStyle: 'italic', padding: '4px 0' }}>{hint}</div>
+              ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', fontStyle: 'italic', padding: '4px 0' }}>{hint}</div>
               : <div style={gridStyle}>{items.map(renderCard)}</div>}
           </div>
         );
@@ -1308,31 +1308,31 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {active && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex' }} onClick={e => { if (e.target === e.currentTarget) closePanel(); }}>
           <div style={{ flex: 1 }} onClick={closePanel} />
-          <div style={{ width: Math.min(activeTab === 'rentroll' || activeTab === 'prospects' || activeTab === 'leasing' ? 1100 : 620, window.innerWidth), background: '#fff', boxShadow: '-4px 0 40px rgba(0,0,0,.16)', display: 'flex', flexDirection: 'column', overflowY: 'auto', transition: 'width .18s ease' }}>
+          <div style={{ width: Math.min(activeTab === 'rentroll' || activeTab === 'prospects' || activeTab === 'leasing' ? 1100 : 620, window.innerWidth), background: 'var(--k-fff)', boxShadow: '-4px 0 40px rgba(0,0,0,.16)', display: 'flex', flexDirection: 'column', overflowY: 'auto', transition: 'width .18s ease' }}>
 
             {/* Panel header: the title keeps the full width; status chips + flyer actions sit on their own row beneath it
                 (they used to share the title's row and squeezed it to one word per line, eating half the panel's height). */}
-            <div style={{ padding: '16px 24px 0', borderBottom: '1px solid #eceae4', background: '#fff', flexShrink: 0 }}>
+            <div style={{ padding: '16px 24px 0', borderBottom: '1px solid #eceae4', background: 'var(--k-fff)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div title={active.name} style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#111', lineHeight: 1.2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>{active.name}</div>
+                  <div title={active.name} style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1.2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>{active.name}</div>
                   {(active.address || active.city) && (
-                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       📍 {[active.address, active.city, active.state, active.zip].filter(Boolean).join(', ')}
                     </div>
                   )}
                 </div>
-                <button onClick={closePanel} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1, padding: 4, flexShrink: 0 }}>✕</button>
+                <button onClick={closePanel} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 20, lineHeight: 1, padding: 4, flexShrink: 0 }}>✕</button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '10px 0 10px' }}>
                 {(() => {
                   const sc = STATUS_CFG[active.status ?? 'active'] ?? STATUS_CFG.active;
-                  const tc = TYPE_COLORS[active.type ?? ''] ?? { bg: '#f1f5f9', color: '#475569' };
+                  const tc = TYPE_COLORS[active.type ?? ''] ?? { bg: '#f1f5f9', color: 'var(--k-475569)' };
                   return (
                     <>
                       <span style={{ ...sc, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 } as React.CSSProperties}>{sc.label}</span>
                       {active.type && <span style={{ ...tc, padding: '3px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 700 } as React.CSSProperties}>{active.type}</span>}
-                      {active.sq_ft && <span style={{ fontSize: 12.5, color: '#6b7280' }}>{fmtSqFt(active.sq_ft)}</span>}
+                      {active.sq_ft && <span style={{ fontSize: 12.5, color: 'var(--k-6b7280)' }}>{fmtSqFt(active.sq_ft)}</span>}
                       {active.asking_price && <span style={{ fontSize: 13, fontWeight: 700, color: '#c9922c' }}>{fmt$(active.asking_price)}</span>}
                     </>
                   );
@@ -1350,20 +1350,20 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     return (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         {built && (
-                          <span title={`Flyer built ${built.toLocaleString('en-US')}`} style={{ fontSize: 11.5, color: stale ? '#b45309' : '#9ca3af', fontWeight: stale ? 700 : 400, whiteSpace: 'nowrap' }}>
+                          <span title={`Flyer built ${built.toLocaleString('en-US')}`} style={{ fontSize: 11.5, color: stale ? 'var(--k-b45309)' : 'var(--k-9ca3af)', fontWeight: stale ? 700 : 400, whiteSpace: 'nowrap' }}>
                             {stale ? '⚠ out of date' : `Flyer · ${built.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
                           </span>
                         )}
                         <button onClick={() => generateFlyer()} disabled={flyerBusy} title={built ? 'Open the saved flyer' : 'Create a branded PDF flyer'}
-                          style={{ ...bs, border: '1px solid #f0e2c4', background: '#fdf6e9', color: '#a06a12' }}>
+                          style={{ ...bs, border: '1px solid var(--k-f0e2c4)', background: 'var(--k-fdf6e9)', color: 'var(--k-a06a12)' }}>
                           {flyerBusy ? '…' : built ? '📄 View flyer' : '📄 Create flyer'}
                         </button>
                         {built && (
                           <>
                             <button onClick={() => generateFlyer({ download: true })} disabled={flyerBusy} title="Download the flyer as a PDF"
-                              style={{ ...bs, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280' }}>⬇</button>
+                              style={{ ...bs, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)' }}>⬇</button>
                             <button onClick={() => generateFlyer({ force: true })} disabled={flyerBusy} title="Rebuild the flyer from the current photos and details"
-                              style={{ ...bs, border: stale ? 'none' : '1px solid #e5e7eb', background: stale ? '#c9922c' : '#fff', color: stale ? '#fff' : '#6b7280' }}>
+                              style={{ ...bs, border: stale ? 'none' : '1px solid var(--k-e5e7eb)', background: stale ? '#c9922c' : 'var(--k-fff)', color: stale ? '#fff' : 'var(--k-6b7280)' }}>
                               ↻ Update flyer
                             </button>
                           </>
@@ -1386,7 +1386,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     ...(canSeeRentRoll ? [{ k: 'prospects', label: '📬 Prospects' }] : []),
                     { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
                     <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'performance' | 'documents' | 'rentroll' | 'leasing' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team')}
-                      style={{ padding: '9px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', flexShrink: 0, color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
+                      style={{ padding: '9px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', flexShrink: 0, color: activeTab === t.k ? '#c9922c' : 'var(--k-6b7280)', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
                       {t.label}
                     </button>
                   ))}
@@ -1407,21 +1407,21 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   {/* Transaction-doc forms bound to this property */}
                   <div style={{ marginBottom: 22 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}><span style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>Transaction docs</span><span style={{ fontSize: 11.5, color: '#9ca3af', background: '#f3f4f6', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{listingForms.length}</span></div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}><span style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>Transaction docs</span><span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{listingForms.length}</span></div>
                       <div style={{ display: 'flex', gap: 7 }}>
                         {canSeeRentRoll && (
                           <button onClick={() => setDraftingLease(true)} title="Describe a lease in a sentence and review what it fills in"
-                            style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#fffdf6', color: '#a06a12', border: '1px dashed #e6d3a2', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✨ Draft a lease</button>
+                            style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: 'var(--k-fffdf6)', color: 'var(--k-a06a12)', border: '1px dashed var(--k-e6d3a2)', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✨ Draft a lease</button>
                         )}
                         {onAddDocument && active && (
                           <button onClick={() => onAddDocument(active.id)} title="Upload an outside PDF — an addendum, a vendor contract, anything — and send it for signature on this property"
-                            style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#fffdf6', color: '#a06a12', border: '1px dashed #e6d3a2', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ Import a PDF</button>
+                            style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: 'var(--k-fffdf6)', color: 'var(--k-a06a12)', border: '1px dashed var(--k-e6d3a2)', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ Import a PDF</button>
                         )}
                         <button onClick={() => { setFormDealId(null); loadCrmForms(); setFormSearch(''); setFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
                       </div>
                     </div>
                     {listingForms.length === 0 ? (
-                      <div style={{ fontSize: 13, color: '#9ca3af', padding: '4px 0 6px' }}>No forms yet. Fill a lease, LOI, or any commercial/TREC form and it saves to this property.</div>
+                      <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '4px 0 6px' }}>No forms yet. Fill a lease, LOI, or any commercial/TREC form and it saves to this property.</div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {listingForms.map(f => {
@@ -1435,10 +1435,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                           const title = f.title || f.crm_forms?.name || 'Form';
                           const deal = f.deal_id ? deals.find(x => x.id === f.deal_id) : null;
                           const btn: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif", minHeight: 32 };
-                          const ghost: React.CSSProperties = { ...btn, color: '#374151', background: '#fff', border: '1px solid #e5e7eb' };
-                          const menuItem: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: '#374151' };
+                          const ghost: React.CSSProperties = { ...btn, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)' };
+                          const menuItem: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: 'var(--k-374151)' };
                           return (
-                            <div key={f.id} style={{ background: signed ? '#f7fdf9' : '#fffdf6', border: `1px solid ${signed ? '#c9ead4' : '#f0e2c4'}`, borderRadius: 10, padding: '12px 14px', position: 'relative' }}>
+                            <div key={f.id} style={{ background: signed ? '#f7fdf9' : 'var(--k-fffdf6)', border: `1px solid ${signed ? '#c9ead4' : 'var(--k-f0e2c4)'}`, borderRadius: 10, padding: '12px 14px', position: 'relative' }}>
                               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                                 <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1.2 }}>📄</span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1450,43 +1450,43 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                         if (e.key === 'Escape') setRenamingDoc(null);
                                       }}
                                       onBlur={() => { renameSubmission(f.id, renameDraft); setRenamingDoc(null); }}
-                                      style={{ width: '100%', boxSizing: 'border-box', fontSize: 14, fontWeight: 600, color: '#1a1a1a', border: '1px solid #c9922c', borderRadius: 6, padding: '4px 8px', fontFamily: "'DM Sans',sans-serif", background: '#fff' }} />
+                                      style={{ width: '100%', boxSizing: 'border-box', fontSize: 14, fontWeight: 600, color: 'var(--k-1a1a1a)', border: '1px solid #c9922c', borderRadius: 6, padding: '4px 8px', fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)' }} />
                                   ) : (
                                     <div onDoubleClick={() => { setRenameDraft(title); setRenamingDoc(f.id); }} title={`${title} — double-click to rename`}
-                                      style={{ fontSize: 14.5, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word', cursor: 'text' } as React.CSSProperties}>{title}</div>
+                                      style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-1a1a1a)', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word', cursor: 'text' } as React.CSSProperties}>{title}</div>
                                   )}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
                                     {signed
-                                      ? <span style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', borderRadius: 20, padding: '2px 9px' }}>✓ Signed</span>
+                                      ? <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-15803d)', background: 'var(--k-dcfce7)', borderRadius: 20, padding: '2px 9px' }}>✓ Signed</span>
                                       : live
-                                        ? <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 20, padding: '2px 9px', whiteSpace: 'nowrap' }}>📤 Out for signature · {doneN}/{signers.length}</span>
-                                        : <span style={{ fontSize: 11.5, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', borderRadius: 20, padding: '2px 9px' }}>Draft</span>}
+                                        ? <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-1d4ed8)', background: 'var(--k-dbeafe)', borderRadius: 20, padding: '2px 9px', whiteSpace: 'nowrap' }}>📤 Out for signature · {doneN}/{signers.length}</span>
+                                        : <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-6b7280)', background: 'var(--k-f3f4f6)', borderRadius: 20, padding: '2px 9px' }}>Draft</span>}
                                     {/* Mirrored in from a deal at this property — same row, edited either side */}
-                                    {f.deal_id && <span title="Lives on this deal — edits here and on the deal are the same document" style={{ fontSize: 11, fontWeight: 700, background: '#eef2ff', color: '#4338ca', borderRadius: 20, padding: '2px 9px', whiteSpace: 'nowrap' }}>💼 {deal?.client || 'deal'}</span>}
-                                    <span style={{ fontSize: 12, color: '#9ca3af' }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</span>
+                                    {f.deal_id && <span title="Lives on this deal — edits here and on the deal are the same document" style={{ fontSize: 11, fontWeight: 700, background: 'var(--k-eef2ff)', color: 'var(--k-4338ca)', borderRadius: 20, padding: '2px 9px', whiteSpace: 'nowrap' }}>💼 {deal?.client || 'deal'}</span>}
+                                    <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</span>
                                   </div>
                                 </div>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10, paddingLeft: 30 }}>
                                 {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${title}.pdf`, type: 'application/pdf' })} style={ghost}>👁 View</button>}
                                 <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code); }} disabled={!f.form_id}
-                                  style={{ ...ghost, color: '#a06a12', border: '1px solid #f0e2c4', fontWeight: 700, cursor: f.form_id ? 'pointer' : 'default', opacity: f.form_id ? 1 : 0.5 }}>Edit</button>
+                                  style={{ ...ghost, color: 'var(--k-a06a12)', border: '1px solid var(--k-f0e2c4)', fontWeight: 700, cursor: f.form_id ? 'pointer' : 'default', opacity: f.form_id ? 1 : 0.5 }}>Edit</button>
                                 {signed
-                                  ? (env!.executed_url && <button onClick={() => setPreviewFile({ url: env!.executed_url!, name: `${title} (signed).pdf`, type: 'application/pdf' })} title="View the executed copy" style={{ ...btn, color: '#15803d', background: '#dcfce7', border: 'none', fontWeight: 700 }}>View signed copy</button>)
+                                  ? (env!.executed_url && <button onClick={() => setPreviewFile({ url: env!.executed_url!, name: `${title} (signed).pdf`, type: 'application/pdf' })} title="View the executed copy" style={{ ...btn, color: 'var(--k-15803d)', background: 'var(--k-dcfce7)', border: 'none', fontWeight: 700 }}>View signed copy</button>)
                                   : live
-                                    ? <button onClick={() => openSendModal(null, f)} title="Send the signature request again" style={{ ...btn, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', fontWeight: 700 }}>↻ Resend</button>
-                                    : <button onClick={() => openSendModal(null, f)} disabled={!f.url} title={f.url ? 'Send for signature' : 'Fill and save the form first'} style={{ ...btn, color: '#fff', background: f.url ? '#c9922c' : '#e5e7eb', border: 'none', fontWeight: 700, cursor: f.url ? 'pointer' : 'default' }}>📤 Send for signature</button>}
+                                    ? <button onClick={() => openSendModal(null, f)} title="Send the signature request again" style={{ ...btn, color: 'var(--k-a06a12)', background: 'var(--k-fff)', border: '1px solid var(--k-f0e2c4)', fontWeight: 700 }}>↻ Resend</button>
+                                    : <button onClick={() => openSendModal(null, f)} disabled={!f.url} title={f.url ? 'Send for signature' : 'Fill and save the form first'} style={{ ...btn, color: '#fff', background: f.url ? '#c9922c' : 'var(--k-e5e7eb)', border: 'none', fontWeight: 700, cursor: f.url ? 'pointer' : 'default' }}>📤 Send for signature</button>}
                                 <div style={{ marginLeft: 'auto', position: 'relative' }}>
                                   <button onClick={() => setDocMenu(docMenu === f.id ? null : f.id)} aria-label="More actions" title="More: email, copy, cancel request, delete" style={{ ...ghost, padding: '6px 11px', fontSize: 16, lineHeight: 1 }}>⋯</button>
                                   {docMenu === f.id && (
                                     <>
                                       <div onClick={() => setDocMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
-                                      <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 21, minWidth: 200, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.14)', overflow: 'hidden' }}>
+                                      <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 21, minWidth: 200, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.14)', overflow: 'hidden' }}>
                                         {f.url && <button style={menuItem} onClick={() => { setDocMenu(null); setEmailDocId(f.id); }}>✉ Email this PDF</button>}
                                         <button style={menuItem} onClick={() => { setDocMenu(null); setRenameDraft(title); setRenamingDoc(f.id); }}>✎ Rename</button>
                                         <button style={menuItem} onClick={() => { setDocMenu(null); copySubmission(f.id); }}>⧉ Make a copy</button>
-                                        {live && !signed && <button style={{ ...menuItem, color: '#b91c1c' }} onClick={() => { setDocMenu(null); voidEnvelope(env!.id); }}>⊘ Cancel signature request</button>}
-                                        <button style={{ ...menuItem, color: '#dc2626', borderTop: '1px solid #f3f4f6' }} onClick={() => { setDocMenu(null); deleteSubmission(f.id); }}>✕ Delete document</button>
+                                        {live && !signed && <button style={{ ...menuItem, color: 'var(--k-b91c1c)' }} onClick={() => { setDocMenu(null); voidEnvelope(env!.id); }}>⊘ Cancel signature request</button>}
+                                        <button style={{ ...menuItem, color: 'var(--k-dc2626)', borderTop: '1px solid var(--k-f3f4f6)' }} onClick={() => { setDocMenu(null); deleteSubmission(f.id); }}>✕ Delete document</button>
                                       </div>
                                     </>
                                   )}
@@ -1504,15 +1504,15 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     const head = (title: string, count?: number) => (
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '26px 0 10px' }}>
                         <span style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>{title}</span>
-                        {count !== undefined && <span style={{ fontSize: 11.5, color: '#9ca3af', background: '#f3f4f6', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{count}</span>}
+                        {count !== undefined && <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{count}</span>}
                       </div>
                     );
                     const row = (f: (typeof files)[number]) => (
-                      <div key={f.id} style={{ background: '#fff', border: '1px solid #e8e6df', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div key={f.id} style={{ background: 'var(--k-fff)', border: '1px solid #e8e6df', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
                         <span style={{ fontSize: 22, flexShrink: 0 }}>{fileIcon(f.file_type, f.category)}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div title={f.name} style={{ fontSize: 13.5, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' } as React.CSSProperties}>{f.name}</div>
-                          <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 2 }}>{fmtBytes(f.file_size)}{f.created_at ? ` · ${new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}</div>
+                          <div title={f.name} style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--k-1a1a1a)', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' } as React.CSSProperties}>{f.name}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>{fmtBytes(f.file_size)}{f.created_at ? ` · ${new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}</div>
                         </div>
                         <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
                           {onSignFile && active && f.url && f.file_type === 'application/pdf' && (
@@ -1521,11 +1521,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                           )}
                           {f.url && (
                             <button onClick={() => setPreviewFile({ url: f.url!, name: f.name, type: f.file_type })}
-                              style={{ padding: '6px 11px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: 12.5, color: '#374151', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 32 }}>👁 View</button>
+                              style={{ padding: '6px 11px', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, fontSize: 12.5, color: 'var(--k-374151)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 32 }}>👁 View</button>
                           )}
                           {isAdmin && (
                             <button onClick={() => deleteFile(f.id, f.name)} aria-label={`Remove ${f.name}`} title="Remove this file"
-                              style={{ padding: '6px 9px', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, fontSize: 12.5, color: '#dc2626', cursor: 'pointer', minHeight: 32 }}>✕</button>
+                              style={{ padding: '6px 9px', background: 'var(--k-fff)', border: '1px solid var(--k-fecaca)', borderRadius: 7, fontSize: 12.5, color: 'var(--k-dc2626)', cursor: 'pointer', minHeight: 32 }}>✕</button>
                           )}
                         </div>
                       </div>
@@ -1553,20 +1553,20 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                               style={{ padding: '8px 16px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13.5, fontWeight: 700, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.6 : 1, whiteSpace: 'nowrap', minHeight: 40 }}>
                               {uploading ? 'Uploading…' : '＋ Upload a file'}
                             </button>
-                            <span style={{ fontSize: 12.5, color: '#6b7280' }}>into</span>
+                            <span style={{ fontSize: 12.5, color: 'var(--k-6b7280)' }}>into</span>
                             <select value={uploadCat} onChange={e => setUploadCat(e.target.value)} aria-label="File category"
                               style={{ ...INP, width: 'auto', minHeight: 40, padding: '6px 10px', fontSize: 14, flex: '0 1 auto' }}>
                               {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
                             </select>
-                            <span style={{ fontSize: 11.5, color: '#9ca3af', flexBasis: '100%' }}>{dropOver ? 'Drop to upload' : 'or drag a file here · PDF, Word, Excel, PowerPoint, images, ZIP · up to 50 MB'}</span>
+                            <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', flexBasis: '100%' }}>{dropOver ? 'Drop to upload' : 'or drag a file here · PDF, Word, Excel, PowerPoint, images, ZIP · up to 50 MB'}</span>
                             <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={uploadFile}
                               accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.ppt,.pptx,.zip,.txt,.csv" />
                           </div>
                         )}
                         {filesLoading ? (
-                          <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 14 }}>Loading files…</div>
+                          <div style={{ textAlign: 'center', padding: 30, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading files…</div>
                         ) : files.length === 0 ? (
-                          <div style={{ textAlign: 'center', padding: '22px 0 8px', color: '#9ca3af' }}>
+                          <div style={{ textAlign: 'center', padding: '22px 0 8px', color: 'var(--k-9ca3af)' }}>
                             <div style={{ fontSize: 28, marginBottom: 6 }}>📁</div>
                             <div style={{ fontSize: 13 }}>No files uploaded yet</div>
                           </div>
@@ -1574,7 +1574,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                             {groups.map(g => (
                               <div key={g.key}>
-                                <div style={{ fontSize: 11.5, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 8 }}>{g.label} · {g.items.length}</div>
+                                <div style={{ fontSize: 11.5, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>{g.label} · {g.items.length}</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{g.items.map(row)}</div>
                               </div>
                             ))}
@@ -1638,14 +1638,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
                     <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>Deals at this Property</div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => { loadAllDeals(); setShowLinkDeal(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>🔗 Link deal</button>
+                      <button onClick={() => { loadAllDeals(); setShowLinkDeal(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: 'var(--k-fff)', color: 'var(--k-a06a12)', border: '1px solid var(--k-f0e2c4)', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>🔗 Link deal</button>
                       <button onClick={() => setShowNewDeal(true)} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ New deal</button>
                     </div>
                   </div>
                   {deals.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9ca3af' }}>
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--k-9ca3af)' }}>
                       <div style={{ fontSize: 34, marginBottom: 8 }}>💼</div>
-                      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3, color: '#6b7280' }}>No deals at this property yet</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3, color: 'var(--k-6b7280)' }}>No deals at this property yet</div>
                       <div style={{ fontSize: 13 }}>Start a deal to draft LOIs, leases &amp; condition reports here — then send them for signature.</div>
                     </div>
                   ) : (
@@ -1677,23 +1677,23 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                           }
                         };
                         return (
-                          <div key={d.id} style={{ border: '1px solid #eef0f2', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: '#fbfbfa', borderBottom: '1px solid #f3f4f6' }}>
+                          <div key={d.id} style={{ border: '1px solid #eef0f2', borderRadius: 12, background: 'var(--k-fff)', overflow: 'hidden' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: '#fbfbfa', borderBottom: '1px solid var(--k-f3f4f6)' }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>{d.client || 'Unnamed'}</span>
+                                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>{d.client || 'Unnamed'}</span>
                                   <span style={{ fontSize: 11, fontWeight: 700, background: chip.bg, color: chip.color, padding: '2px 9px', borderRadius: 20 }}>{d.stage || 'Prospect'}</span>
                                 </div>
-                                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                                <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>
                                   {d.type || '—'}{d.value ? ` · ${fmt$(d.value)}` : ''}{agent ? ` · ${agent.first_name} ${agent.last_name}` : ''}
                                 </div>
                               </div>
-                              <button onClick={() => unlinkDeal(d.id)} title="Remove from property" style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 7, color: '#9ca3af', fontSize: 13, cursor: 'pointer', padding: '5px 8px', flexShrink: 0 }}>✕</button>
+                              <button onClick={() => unlinkDeal(d.id)} title="Remove from property" style={{ background: 'none', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, color: 'var(--k-9ca3af)', fontSize: 13, cursor: 'pointer', padding: '5px 8px', flexShrink: 0 }}>✕</button>
                             </div>
                             {/* Add a form to this deal — blanks waiting first, then the library */}
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px 0', flexWrap: 'wrap' }}>
                               <select value={pick} onChange={e => setDealFormPick(prev => ({ ...prev, [d.id]: e.target.value }))}
-                                style={{ flex: 1, minWidth: 190, padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
+                                style={{ flex: 1, minWidth: 190, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
                                 <option value="">— Add a form to this deal —</option>
                                 {waiting.length > 0 && (
                                   <optgroup label={`Waiting to be filled · ${waiting.length}`}>
@@ -1714,21 +1714,21 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                               </select>
                               <button onClick={runPick} disabled={!pick || dealFormAdding === d.id}
                                 style={{ padding: '7px 14px', fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: 'none', flexShrink: 0, fontFamily: "'DM Sans',sans-serif",
-                                  background: pick ? '#c9922c' : '#e5e7eb', color: pick ? '#fff' : '#9ca3af', cursor: pick && dealFormAdding !== d.id ? 'pointer' : 'default' }}>
+                                  background: pick ? '#c9922c' : 'var(--k-e5e7eb)', color: pick ? '#fff' : 'var(--k-9ca3af)', cursor: pick && dealFormAdding !== d.id ? 'pointer' : 'default' }}>
                                 {dealFormAdding === d.id ? 'Adding…' : pickIsWaiting ? '✍️ Fill' : '+ Add'}
                               </button>
                             </div>
                             {docs.length > 0 && (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 14px' }}>
                                 {docs.map(f => (
-                                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, padding: '8px 12px' }}>
+                                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', borderRadius: 8, padding: '8px 12px' }}>
                                     <span style={{ fontSize: 17, flexShrink: 0 }}>📄</span>
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
-                                      <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
+                                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
+                                      <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
                                     </div>
-                                    {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
-                                    {f.url && <button onClick={() => setEmailDocId(f.id)} title="Email this PDF as an attachment" style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✉ Email</button>}
+                                    {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
+                                    {f.url && <button onClick={() => setEmailDocId(f.id)} title="Email this PDF as an attachment" style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fff)', border: '1px solid var(--k-f0e2c4)', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✉ Email</button>}
 
                                     {(() => {
                                       const env = envMap[f.id];
@@ -1739,18 +1739,18 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                         return (
                                           <>
                                             {env.status === 'completed' && env.executed_url
-                                              ? <button onClick={() => setPreviewFile({ url: env.executed_url!, name: `${f.title || f.crm_forms?.name || 'Document'} (signed).pdf`, type: 'application/pdf' })} style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed</button>
-                                              : <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 7, padding: '5px 10px', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</span>}
-                                            <button onClick={() => openSendModal(d, f)} disabled={!f.url} title="Resend for signature (e.g. after making edits)" style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 8px', cursor: f.url ? 'pointer' : 'default', flexShrink: 0 }}>↻</button>
-                                            {pending && <button onClick={() => voidEnvelope(env.id)} title="Cancel the signature request" style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>⊘</button>}
+                                              ? <button onClick={() => setPreviewFile({ url: env.executed_url!, name: `${f.title || f.crm_forms?.name || 'Document'} (signed).pdf`, type: 'application/pdf' })} style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-15803d)', background: 'var(--k-dcfce7)', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed</button>
+                                              : <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-1d4ed8)', background: 'var(--k-dbeafe)', borderRadius: 7, padding: '5px 10px', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</span>}
+                                            <button onClick={() => openSendModal(d, f)} disabled={!f.url} title="Resend for signature (e.g. after making edits)" style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fff)', border: '1px solid var(--k-f0e2c4)', borderRadius: 7, padding: '5px 8px', cursor: f.url ? 'pointer' : 'default', flexShrink: 0 }}>↻</button>
+                                            {pending && <button onClick={() => voidEnvelope(env.id)} title="Cancel the signature request" style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-b91c1c)', background: 'var(--k-fff)', border: '1px solid var(--k-fecaca)', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>⊘</button>}
                                           </>
                                         );
                                       }
-                                      return <button onClick={() => openSendModal(d, f)} disabled={!f.url} title={f.url ? 'Send for signature' : 'Fill and save the form first'} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: f.url ? '#c9922c' : '#e5e7eb', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: f.url ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
+                                      return <button onClick={() => openSendModal(d, f)} disabled={!f.url} title={f.url ? 'Send for signature' : 'Fill and save the form first'} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: f.url ? '#c9922c' : 'var(--k-e5e7eb)', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: f.url ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
                                     })()}
-                                    <button onClick={() => editDealForm(d.id, { id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code)} disabled={!f.form_id} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
-                                    <button onClick={() => copySubmission(f.id, { dealId: d.id })} title="Make a copy" style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>⧉</button>
-                                    <button onClick={() => deleteSubmission(f.id, { dealId: d.id })} title="Delete document" style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                                    <button onClick={() => editDealForm(d.id, { id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code)} disabled={!f.form_id} style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fff)', border: '1px solid var(--k-f0e2c4)', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                                    <button onClick={() => copySubmission(f.id, { dealId: d.id })} title="Make a copy" style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-6b7280)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>⧉</button>
+                                    <button onClick={() => deleteSubmission(f.id, { dealId: d.id })} title="Delete document" style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-dc2626)', background: 'var(--k-fff)', border: '1px solid var(--k-fecaca)', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
                                   </div>
                                 ))}
                               </div>
@@ -1776,7 +1776,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     const allPhotoCat = files.filter(f => f.category === 'photo');
                     const photos = allPhotoCat.filter(isImage);
                     const notImages = allPhotoCat.filter(f => !isImage(f));
-                    if (filesLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af', fontSize: 14 }}>Loading…</div>;
+                    if (filesLoading) return <div style={{ textAlign: 'center', padding: 40, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>;
                     const act: React.CSSProperties = { border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, padding: '3px 7px', cursor: 'pointer', lineHeight: 1.4, fontFamily: "'DM Sans',sans-serif" };
                     return (
                       <div>
@@ -1790,13 +1790,13 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             style={{ ...act, padding: '7px 13px', fontSize: 12.5, background: '#c9922c', color: '#fff', opacity: photoBusy ? 0.6 : 1 }}>
                             {photoBusy ? 'Working…' : '＋ Add photos'}
                           </button>
-                          <span style={{ fontSize: 12, color: '#9ca3af' }}>
+                          <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>
                             {photos.length} photo{photos.length === 1 ? '' : 's'} · drag to reorder — the first one is the flyer cover
                           </span>
                         </div>
 
                         {notImages.length > 0 && (
-                          <div style={{ fontSize: 12.5, color: '#7c5a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 9, padding: '9px 12px', marginBottom: 12 }}>
+                          <div style={{ fontSize: 12.5, color: '#7c5a12', background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', borderRadius: 9, padding: '9px 12px', marginBottom: 12 }}>
                             ⚠ {notImages.length} file{notImages.length === 1 ? '' : 's'} here {notImages.length === 1 ? 'is' : 'are'} not an image ({notImages.map(f => f.name).join(', ')}) — {notImages.length === 1 ? 'it won\u2019t' : 'they won\u2019t'} appear on the flyer. Move {notImages.length === 1 ? 'it' : 'them'} to Documents.
                           </div>
                         )}
@@ -1805,7 +1805,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             onDragOver={e => e.preventDefault()}
                             onDrop={e => { e.preventDefault(); addPhotos(e.dataTransfer.files); }}
                             onClick={() => photoInputRef.current?.click()}
-                            style={{ textAlign: 'center', padding: 40, color: '#9ca3af', border: '2px dashed #e6d3a2', borderRadius: 12, background: '#fffdf6', cursor: 'pointer' }}>
+                            style={{ textAlign: 'center', padding: 40, color: 'var(--k-9ca3af)', border: '2px dashed var(--k-e6d3a2)', borderRadius: 12, background: 'var(--k-fffdf6)', cursor: 'pointer' }}>
                             <div style={{ fontSize: 32, marginBottom: 8 }}>🖼</div>
                             <div style={{ fontSize: 13 }}>Drop photos here, or click to browse.</div>
                           </div>
@@ -1824,7 +1824,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                 onMouseEnter={() => setHoverPhoto(f.id)}
                                 onMouseLeave={() => setHoverPhoto(h => (h === f.id ? null : h))}
                                 onTouchStart={() => setHoverPhoto(f.id)}
-                                style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', aspectRatio: '4 / 3', background: '#f3f4f6',
+                                style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', aspectRatio: '4 / 3', background: 'var(--k-f3f4f6)',
                                   border: i === 0 ? `2px solid #c9922c` : '1px solid #eef0f2',
                                   opacity: dragPhoto === f.id ? 0.4 : 1, cursor: 'grab' }}>
                                 {f.url && <img src={f.url} alt={f.name} loading="lazy" draggable={false} onClick={() => setPreviewFile({ url: f.url!, name: f.name, type: f.file_type })} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} />}
@@ -1833,9 +1833,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                 )}
                                 <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', gap: 4, justifyContent: 'center', padding: 5, background: 'linear-gradient(transparent, rgba(0,0,0,.6))',
                                   opacity: hoverPhoto === f.id || dragPhoto === f.id ? 1 : 0, transition: 'opacity .12s', pointerEvents: hoverPhoto === f.id || dragPhoto === f.id ? 'auto' : 'none' }}>
-                                  {i !== 0 && <button onClick={() => makeCover(photos, f.id)} title="Use as the flyer cover" style={{ ...act, background: 'rgba(255,255,255,.92)', color: '#a06a12' }}>★ Cover</button>}
-                                  <button onClick={() => { replacingRef.current = f; replaceRef.current?.click(); }} disabled={photoBusy} title="Swap this photo, keeping its position" style={{ ...act, background: 'rgba(255,255,255,.92)', color: '#374151' }}>⇄ Replace</button>
-                                  <button onClick={() => deleteFile(f.id, f.name)} title="Remove this photo" style={{ ...act, background: 'rgba(255,255,255,.92)', color: '#b91c1c' }}>✕</button>
+                                  {i !== 0 && <button onClick={() => makeCover(photos, f.id)} title="Use as the flyer cover" style={{ ...act, background: 'rgba(255,255,255,.92)', color: 'var(--k-a06a12)' }}>★ Cover</button>}
+                                  <button onClick={() => { replacingRef.current = f; replaceRef.current?.click(); }} disabled={photoBusy} title="Swap this photo, keeping its position" style={{ ...act, background: 'rgba(255,255,255,.92)', color: 'var(--k-374151)' }}>⇄ Replace</button>
+                                  <button onClick={() => deleteFile(f.id, f.name)} title="Remove this photo" style={{ ...act, background: 'rgba(255,255,255,.92)', color: 'var(--k-b91c1c)' }}>✕</button>
                                 </div>
                               </div>
                             ))}
@@ -1851,7 +1851,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               {activeTab === 'contacts' && (
                 <div>
                   {/* Add a contact */}
-                  <div style={{ background: '#f8fafc', border: '1px solid #eef0f2', borderRadius: 10, padding: '14px 16px', marginBottom: 18 }}>
+                  <div style={{ background: 'var(--k-f8fafc)', border: '1px solid #eef0f2', borderRadius: 10, padding: '14px 16px', marginBottom: 18 }}>
                     <div style={{ display: 'flex', gap: 8, marginBottom: contactSearch.trim() ? 10 : 0, flexWrap: 'wrap' }}>
                       <select value={contactRole} onChange={e => setContactRole(e.target.value)} style={{ ...INP, width: 'auto', flex: 'none', fontSize: 15 }}>
                         {['Landlord','Tenant','Buyer','Seller','Listing Agent','Co-broker','Attorney','Property Mgr','Vendor','Other'].map(r => <option key={r} value={r}>{r}</option>)}
@@ -1863,18 +1863,18 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       const linked = new Set(listingContacts.map(c => c.client_id));
                       const matches = clients.filter(c => !linked.has(c.id) && `${c.first_name} ${c.last_name} ${c.business_name ?? ''}`.toLowerCase().includes(q)).slice(0, 20);
                       return (
-                        <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #eef0f2', borderRadius: 8, background: '#fff' }}>
+                        <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #eef0f2', borderRadius: 8, background: 'var(--k-fff)' }}>
                           {matches.length === 0 ? (
                             <button onClick={() => createAndLinkContact(contactSearch)} disabled={addingContact}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', background: '#fffdf6', cursor: addingContact ? 'default' : 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13.5, fontWeight: 700, color: '#a06a12' }}>
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', background: 'var(--k-fffdf6)', cursor: addingContact ? 'default' : 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13.5, fontWeight: 700, color: 'var(--k-a06a12)' }}>
                               ＋ Add “{contactSearch.trim()}” as a new {contactRole.toLowerCase()} contact
                             </button>
                           ) : matches.map(c => (
                             <button key={c.id} onClick={() => addContact(c.id)} disabled={addingContact}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #f3f4f6', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                              <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{c.first_name} {c.last_name}</span>
-                              {c.business_name && <span style={{ fontSize: 12, color: '#9ca3af' }}>· {c.business_name}</span>}
-                              {c.type && <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af' }}>{c.type}</span>}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid var(--k-f3f4f6)', background: 'var(--k-fff)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{c.first_name} {c.last_name}</span>
+                              {c.business_name && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>· {c.business_name}</span>}
+                              {c.type && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--k-9ca3af)' }}>{c.type}</span>}
                             </button>
                           ))}
                         </div>
@@ -1884,7 +1884,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
                   {/* Linked contacts */}
                   {listingContacts.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
+                    <div style={{ textAlign: 'center', padding: 40, color: 'var(--k-9ca3af)' }}>
                       <div style={{ fontSize: 32, marginBottom: 8 }}>👥</div>
                       <div style={{ fontSize: 13 }}>No contacts linked yet. Add the landlord, tenant, agents, attorney, etc. above.</div>
                     </div>
@@ -1895,16 +1895,16 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         const name = c ? `${c.first_name} ${c.last_name}` : 'Contact';
                         const phone = c?.phone || c?.cell_phone || '';
                         return (
-                          <div key={lc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #eef0f2', borderRadius: 10, padding: '11px 14px' }}>
+                          <div key={lc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '11px 14px' }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{name}</span>
-                                {lc.role && <span style={{ fontSize: 10.5, fontWeight: 700, color: '#a06a12', background: '#fdf6e9', border: '1px solid #f0e2c4', borderRadius: 20, padding: '1px 8px' }}>{lc.role}</span>}
+                                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{name}</span>
+                                {lc.role && <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', borderRadius: 20, padding: '1px 8px' }}>{lc.role}</span>}
                               </div>
-                              {(c?.business_name || phone || c?.email) && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[c?.business_name, phone, c?.email].filter(Boolean).join(' · ')}</div>}
+                              {(c?.business_name || phone || c?.email) && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[c?.business_name, phone, c?.email].filter(Boolean).join(' · ')}</div>}
                             </div>
-                            {phone && <a href={`tel:${phone}`} title="Call" style={{ fontSize: 13, color: '#16a34a', textDecoration: 'none', border: '1px solid #bbf7d0', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>📞</a>}
-                            {c?.email && <a href={`mailto:${c.email}`} title="Email" style={{ fontSize: 13, color: '#2563eb', textDecoration: 'none', border: '1px solid #bfdbfe', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>✉️</a>}
+                            {phone && <a href={`tel:${phone}`} title="Call" style={{ fontSize: 13, color: 'var(--k-16a34a)', textDecoration: 'none', border: '1px solid var(--k-bbf7d0)', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>📞</a>}
+                            {c?.email && <a href={`mailto:${c.email}`} title="Email" style={{ fontSize: 13, color: 'var(--k-2563eb)', textDecoration: 'none', border: '1px solid var(--k-bfdbfe)', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>✉️</a>}
                             {isAdmin && <button onClick={() => removeContact(lc.id, lc.crm_clients ? (lc.crm_clients.business_name || `${lc.crm_clients.first_name ?? ''} ${lc.crm_clients.last_name ?? ''}`.trim()) : undefined)} title="Remove from this property" style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 15, flexShrink: 0 }}>🗑</button>}
                           </div>
                         );
@@ -1928,20 +1928,20 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     {profiles.filter(p => p.id !== teamOwner).map(p => {
                       const on = teamAssigned.includes(p.id);
                       return (
-                        <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, border: `1px solid ${on ? '#c9922c' : '#eef0f2'}`, background: on ? '#fdf6e9' : '#fff', cursor: 'pointer' }}>
+                        <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, border: `1px solid ${on ? '#c9922c' : '#eef0f2'}`, background: on ? 'var(--k-fdf6e9)' : 'var(--k-fff)', cursor: 'pointer' }}>
                           <input type="checkbox" checked={on} onChange={() => setTeamAssigned(a => on ? a.filter(x => x !== p.id) : [...a, p.id])} style={{ accentColor: '#c9922c' }} />
-                          <span style={{ fontSize: 14, color: '#374151', fontWeight: 500 }}>{p.first_name} {p.last_name}</span>
+                          <span style={{ fontSize: 14, color: 'var(--k-374151)', fontWeight: 500 }}>{p.first_name} {p.last_name}</span>
                         </label>
                       );
                     })}
-                    {profiles.filter(p => p.id !== teamOwner).length === 0 && <div style={{ fontSize: 13, color: '#9ca3af' }}>No other teammates in this workspace.</div>}
+                    {profiles.filter(p => p.id !== teamOwner).length === 0 && <div style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>No other teammates in this workspace.</div>}
                   </div>
 
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 10, border: '1px solid #eef0f2', background: '#f8fafc', cursor: 'pointer', marginBottom: 20 }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 10, border: '1px solid #eef0f2', background: 'var(--k-f8fafc)', cursor: 'pointer', marginBottom: 20 }}>
                     <input type="checkbox" checked={teamRestricted} onChange={e => setTeamRestricted(e.target.checked)} style={{ accentColor: '#c9922c', marginTop: 2 }} />
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>🔒 Restricted folder</div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>When on, only the owner, the teammates above, and admins can see and open this property. Off = visible to the whole team.</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>🔒 Restricted folder</div>
+                      <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 2 }}>When on, only the owner, the teammates above, and admins can see and open this property. Off = visible to the whole team.</div>
                     </div>
                   </label>
 
@@ -1955,17 +1955,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
             {/* Panel footer */}
             {activeTab === 'info' && isAdmin && (
-              <div style={{ padding: '14px 24px', borderTop: '1px solid #f0f0f0', display: 'flex', gap: 10 }}>
+              <div style={{ padding: '14px 24px', borderTop: '1px solid var(--k-f0f0f0)', display: 'flex', gap: 10 }}>
                 <button onClick={deleteListing}
-                  style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#dc2626', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                  style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--k-fecaca)', background: 'var(--k-fff)', color: 'var(--k-dc2626)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                   Delete
                 </button>
                 <button onClick={closePanel}
-                  style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                  style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                   Cancel
                 </button>
                 <button onClick={saveListing} disabled={!dirty}
-                  style={{ flex: 1, padding: '9px 18px', borderRadius: 8, border: 'none', background: dirty ? '#c9922c' : '#e5e7eb', color: dirty ? '#fff' : '#9ca3af', fontSize: 13, fontWeight: 700, cursor: dirty ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif", transition: 'all .15s' }}>
+                  style={{ flex: 1, padding: '9px 18px', borderRadius: 8, border: 'none', background: dirty ? '#c9922c' : 'var(--k-e5e7eb)', color: dirty ? '#fff' : 'var(--k-9ca3af)', fontSize: 13, fontWeight: 700, cursor: dirty ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif", transition: 'all .15s' }}>
                   Save Changes
                 </button>
               </div>
@@ -1978,17 +1978,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {showNew && (
         <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setShowNew(false); }}>
-          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, margin: 0, color: '#111' }}>New Listing</h3>
-              <button onClick={() => setShowNew(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, margin: 0, color: 'var(--k-111)' }}>New Listing</h3>
+              <button onClick={() => setShowNew(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 20, lineHeight: 1 }}>✕</button>
             </div>
             {renderForm({ form: newForm, onChange: setNewForm })}
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
               <button onClick={() => setShowNew(false)}
-                style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
+                style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
               <button onClick={createListing} disabled={!newForm.name.trim() || creating}
-                style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: newForm.name.trim() ? '#c9922c' : '#e5e7eb', color: newForm.name.trim() ? '#fff' : '#9ca3af', fontSize: 13, fontWeight: 700, cursor: newForm.name.trim() ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
+                style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: newForm.name.trim() ? '#c9922c' : 'var(--k-e5e7eb)', color: newForm.name.trim() ? '#fff' : 'var(--k-9ca3af)', fontSize: 13, fontWeight: 700, cursor: newForm.name.trim() ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
                 {creating ? 'Creating…' : 'Create Listing'}
               </button>
             </div>
@@ -2001,10 +2001,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {showNewDeal && active && (
         <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setShowNewDeal(false); }}>
-          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>New Deal — {active.name}</h3>
-              <button onClick={() => setShowNewDeal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: 'var(--k-111)' }}>New Deal — {active.name}</h3>
+              <button onClick={() => setShowNewDeal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 20, lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
@@ -2019,15 +2019,15 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         const nm = c.business_name || `${c.first_name} ${c.last_name}`.trim();
                         return (
                           <button key={c.id} onClick={() => setNewDeal({ ...newDeal, client: nm, client_email: c.email || '', client_phone: c.phone || c.cell_phone || '', client_id: c.id })}
-                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderBottom: '1px solid #f3f4f6', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}>
-                            <span style={{ fontWeight: 600, color: '#1a1a1a' }}>{nm}</span>{c.email ? <span style={{ color: '#9ca3af' }}> · {c.email}</span> : null}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderBottom: '1px solid var(--k-f3f4f6)', background: 'var(--k-fff)', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}>
+                            <span style={{ fontWeight: 600, color: 'var(--k-1a1a1a)' }}>{nm}</span>{c.email ? <span style={{ color: 'var(--k-9ca3af)' }}> · {c.email}</span> : null}
                           </button>
                         );
                       })}
                     </div>
                   ) : null;
                 })()}
-                {newDeal.client_id ? <div style={{ fontSize: 11.5, color: '#15803d', marginTop: 4 }}>✓ Linked to contact{newDeal.client_email ? ` · ${newDeal.client_email}` : ''}</div> : null}
+                {newDeal.client_id ? <div style={{ fontSize: 11.5, color: 'var(--k-15803d)', marginTop: 4 }}>✓ Linked to contact{newDeal.client_email ? ` · ${newDeal.client_email}` : ''}</div> : null}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>{LBL('Type')}<select style={INP} value={newDeal.type} onChange={e => setNewDeal({ ...newDeal, type: e.target.value })}>{DEAL_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
@@ -2035,7 +2035,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-              <button onClick={() => setShowNewDeal(false)} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
+              <button onClick={() => setShowNewDeal(false)} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
               <button onClick={createDeal} disabled={dealBusy || !newDeal.client.trim()} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: dealBusy ? 'default' : 'pointer', opacity: dealBusy || !newDeal.client.trim() ? 0.6 : 1, fontFamily: "'DM Sans',sans-serif" }}>{dealBusy ? 'Creating…' : 'Create deal'}</button>
             </div>
           </div>
@@ -2046,24 +2046,24 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {showLinkDeal && active && (
         <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setShowLinkDeal(false); }}>
-          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Link an existing deal</h3>
-              <button onClick={() => setShowLinkDeal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: 'var(--k-111)' }}>Link an existing deal</h3>
+              <button onClick={() => setShowLinkDeal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 20, lineHeight: 1 }}>✕</button>
             </div>
             <input style={INP} value={linkSearch} onChange={e => setLinkSearch(e.target.value)} placeholder="🔍  Search deals by client or property…" />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '55vh', overflowY: 'auto', marginTop: 12 }}>
               {(() => {
                 const q = linkSearch.toLowerCase();
                 const list = allDeals.filter(d => d.listing_id !== active.id && `${d.client} ${d.property ?? ''}`.toLowerCase().includes(q)).slice(0, 40);
-                if (list.length === 0) return <div style={{ fontSize: 13, color: '#9ca3af', padding: '8px 0' }}>No other deals found.</div>;
+                if (list.length === 0) return <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '8px 0' }}>No other deals found.</div>;
                 return list.map(d => {
                   const chip = STAGE_CHIP[d.stage || 'Prospect'] || STAGE_CHIP.Prospect;
                   return (
                     <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #eef0f2', borderRadius: 8, padding: '8px 12px' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a1a1a' }}>{d.client}<span style={{ fontSize: 11, fontWeight: 700, background: chip.bg, color: chip.color, padding: '1px 8px', borderRadius: 20, marginLeft: 8 }}>{d.stage}</span></div>
-                        <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{d.type || '—'}{d.property ? ` · ${d.property}` : ''}{d.listing_id ? ' · (linked elsewhere)' : ''}</div>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)' }}>{d.client}<span style={{ fontSize: 11, fontWeight: 700, background: chip.bg, color: chip.color, padding: '1px 8px', borderRadius: 20, marginLeft: 8 }}>{d.stage}</span></div>
+                        <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>{d.type || '—'}{d.property ? ` · ${d.property}` : ''}{d.listing_id ? ' · (linked elsewhere)' : ''}</div>
                       </div>
                       <button onClick={() => linkDeal(d.id)} style={{ fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 12px', cursor: 'pointer', flexShrink: 0 }}>Link here</button>
                     </div>
@@ -2087,12 +2087,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         const formRow = (fm: FormTemplate) => (
           <div key={fm.id} style={{ display: 'flex', alignItems: 'stretch', gap: 4 }}>
             <button onClick={() => openFormEditor({ id: fm.id, name: fm.name }, undefined, fm.form_code)}
-              style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: '1px solid #eef0f2', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", minWidth: 0 }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+              style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: '1px solid #eef0f2', background: 'var(--k-fff)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", minWidth: 0 }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-fafafa)')} onMouseLeave={e => (e.currentTarget.style.background = 'var(--k-fff)')}>
               <span style={{ fontSize: 18 }}>📄</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fm.name}</div>
-                {(fm.form_code || fm.category) && <div style={{ fontSize: 12, color: '#9ca3af' }}>{[fm.category, fm.form_code].filter(Boolean).join(' · ')}</div>}
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fm.name}</div>
+                {(fm.form_code || fm.category) && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{[fm.category, fm.form_code].filter(Boolean).join(' · ')}</div>}
               </div>
             </button>
             {isAdmin && (
@@ -2104,18 +2104,18 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         return (
         <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setFormPicker(false); }}>
-          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Fill a form — {active.name}</h3>
-              <button onClick={() => setFormPicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: 'var(--k-111)' }}>Fill a form — {active.name}</h3>
+              <button onClick={() => setFormPicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 20, lineHeight: 1 }}>✕</button>
             </div>
             <input autoFocus value={formSearch} onChange={e => setFormSearch(e.target.value)}
               placeholder="Search forms — e.g. short term, LOI, lease…"
               style={{ ...INP, marginBottom: 12, fontSize: 14 }} />
             {crmForms.length === 0 ? (
-              <div style={{ fontSize: 13, color: '#9ca3af', padding: '8px 0' }}>No form templates found for this workspace.</div>
+              <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '8px 0' }}>No form templates found for this workspace.</div>
             ) : matches.length === 0 ? (
-              <div style={{ fontSize: 13, color: '#9ca3af', padding: '8px 0' }}>No form matches “{formSearch}”.</div>
+              <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '8px 0' }}>No form matches “{formSearch}”.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '62vh', overflowY: 'auto' }}>
                 {hasCurated && <div style={{ fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, padding: '0 2px 2px' }}>Your forms</div>}
@@ -2123,7 +2123,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                 {hasCurated && restForms.length > 0 && (
                   <>
                     <button onClick={() => setShowMoreForms(s => !s)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 13, fontWeight: 700, padding: '10px 2px 4px', fontFamily: "'DM Sans',sans-serif" }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 700, padding: '10px 2px 4px', fontFamily: "'DM Sans',sans-serif" }}>
                       {showMoreForms ? '▾' : '▸'} More forms ({restForms.length})
                     </button>
                     {showMoreForms && restForms.map(formRow)}
@@ -2142,17 +2142,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {sendModal && (
         <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setSendModal(null); }}>
-          <div className="es-touch crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="es-touch crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Send for signature</h3>
-              <button onClick={() => setSendModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: 'var(--k-111)' }}>Send for signature</h3>
+              <button onClick={() => setSendModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 20, lineHeight: 1 }}>✕</button>
             </div>
-            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}><strong>{sendModal.title}</strong> — signers are emailed in order; each signs, then the next is notified. The executed copy is emailed to everyone.</div>
+            <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginBottom: 12 }}><strong>{sendModal.title}</strong> — signers are emailed in order; each signs, then the next is notified. The executed copy is emailed to everyone.</div>
             {sendSigFields !== null && (sendSigFields > 0 ? (() => {
               const keptCount = sendFieldGroups.length ? sendFieldGroups.filter(g => g.keep).reduce((n, g) => n + g.types.length, 0) : sendSigFields;
               const anyRemoved = sendFieldGroups.some(g => !g.keep);
               return (
-                <div style={{ fontSize: 12.5, color: '#15803d', background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 12px', marginBottom: 14 }}>
+                <div style={{ fontSize: 12.5, color: 'var(--k-15803d)', background: 'var(--k-ecfdf5)', border: '1px solid var(--k-bbf7d0)', borderRadius: 8, padding: '10px 12px', marginBottom: 14 }}>
                   <div style={{ fontWeight: 700 }}>✒ {keptCount} signature field{keptCount === 1 ? '' : 's'} on this document — signers sign on the doc itself.</div>
                   {sendFieldGroups.length > 0 && (
                     <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -2161,57 +2161,57 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         const summary = Object.entries(counts).map(([t, n]) => n > 1 ? `${n} ${fieldTypeLabel(t)}` : fieldTypeLabel(t)).join(' + ');
                         const hasSigner = sendSigners.some(s => s.role === g.role && s.email.includes('@') && s.name.trim());
                         return (
-                          <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, rowGap: 4, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
+                          <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, rowGap: 4, fontSize: 12, background: 'var(--k-fff)', border: '1px solid #d6f0dd', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
                             <select value={g.role} disabled={!g.keep} onChange={e => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, role: e.target.value } : x))}
-                              title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: '#166534', background: '#f7fdf9', border: '1px solid #cdeed8', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
+                              title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-166534)', background: '#f7fdf9', border: '1px solid #cdeed8', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
                               {SIGNER_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                             </select>
                             <span style={{ flex: '1 1 100px', minWidth: 0, color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
-                            {g.keep && !hasSigner && <span title="No signer below is set to this party yet — add one (or change a signer's role) so this block gets signed" style={{ fontSize: 10, fontWeight: 700, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 5, padding: '1px 5px' }}>no signer</span>}
+                            {g.keep && !hasSigner && <span title="No signer below is set to this party yet — add one (or change a signer's role) so this block gets signed" style={{ fontSize: 10, fontWeight: 700, color: 'var(--k-b45309)', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 5, padding: '1px 5px' }}>no signer</span>}
                             <span style={{ flex: 1 }} />
                             {g.keep
-                              ? <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: false } : x))} title="Remove these fields — no one will sign here" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
-                              : <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: true } : x))} title="Restore these fields" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#15803d', background: '#fff', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Undo</button>}
+                              ? <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: false } : x))} title="Remove these fields — no one will sign here" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: 'var(--k-dc2626)', background: 'var(--k-fff)', border: '1px solid var(--k-fecaca)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
+                              : <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: true } : x))} title="Restore these fields" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: 'var(--k-15803d)', background: 'var(--k-fff)', border: '1px solid var(--k-bbf7d0)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Undo</button>}
                           </div>
                         );
                       })}
                       {(anyRemoved || sendFieldGroups.some(g => g.keep && g.role !== g.origRole)) && <div style={{ fontSize: 11, color: '#8a6d3b' }}>Field changes save to the document when you send. Removed fields won’t be signed.</div>}
-                      <button onClick={goPlaceFields} title="Open the document to place initials, a date, or a text field for a signer to fill in" style={{ marginTop: 6, width: '100%', fontSize: 12.5, fontWeight: 800, color: '#a06a12', background: '#fffdf6', border: '1.5px solid #e6d3a2', borderRadius: 8, padding: '9px 10px', cursor: 'pointer' }}>✒ Add initials, dates &amp; other fields</button>
+                      <button onClick={goPlaceFields} title="Open the document to place initials, a date, or a text field for a signer to fill in" style={{ marginTop: 6, width: '100%', fontSize: 12.5, fontWeight: 800, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1.5px solid var(--k-e6d3a2)', borderRadius: 8, padding: '9px 10px', cursor: 'pointer' }}>✒ Add initials, dates &amp; other fields</button>
                     </div>
                   )}
                 </div>
               );
             })() : (
-              <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 12.5, color: 'var(--k-b45309)', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 8, padding: '10px 12px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ flex: 1, minWidth: 180 }}>No signature fields placed — signers will sign on an added Signatures page. To sign on the document’s own lines, place fields first.</span>
                 <button onClick={goPlaceFields}
-                  style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' }}>✒ Add initials &amp; dates</button>
+                  style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fff)', border: '1px solid var(--k-f0e2c4)', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' }}>✒ Add initials &amp; dates</button>
               </div>
             ))}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {sendSigners.map((s, i) => {
                 const q = s.name.trim().toLowerCase();
                 const sugg = sendPick === i && q ? clients.filter(c => (c.business_name || `${c.first_name} ${c.last_name}`).toLowerCase().includes(q)).slice(0, 6) : [];
-                const rc: React.CSSProperties = { fontSize: 12, fontWeight: 800, lineHeight: 1, color: '#8a6d3b', background: '#fbf6e9', border: '1px solid #e6d3a2', borderRadius: 5, cursor: 'pointer', padding: '3px 6px' };
+                const rc: React.CSSProperties = { fontSize: 12, fontWeight: 800, lineHeight: 1, color: '#8a6d3b', background: '#fbf6e9', border: '1px solid var(--k-e6d3a2)', borderRadius: 5, cursor: 'pointer', padding: '3px 6px' };
                 return (
-                  <div key={i} style={{ border: '1px solid #eef0f2', borderRadius: 10, padding: 10, background: '#fff' }}>
+                  <div key={i} style={{ border: '1px solid #eef0f2', borderRadius: 10, padding: 10, background: 'var(--k-fff)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <span style={{ fontSize: 11.5, fontWeight: 800, color: '#9ca3af' }}>{i + 1}.</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--k-9ca3af)' }}>{i + 1}.</span>
                       <select value={s.role} onChange={e => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, role: e.target.value } : x))} style={{ ...INP, width: 'auto', flex: '0 0 118px', padding: '5px 8px', fontSize: 12.5 }}>
                         {SIGNER_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
                       <span style={{ flex: 1 }} />
                       <button onClick={() => setSendSigners(prev => { const j = i - 1; if (j < 0) return prev; const c = [...prev]; [c[i], c[j]] = [c[j], c[i]]; return c; })} disabled={i === 0} title="Move up" style={{ ...rc, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
                       <button onClick={() => setSendSigners(prev => { const j = i + 1; if (j >= prev.length) return prev; const c = [...prev]; [c[i], c[j]] = [c[j], c[i]]; return c; })} disabled={i === sendSigners.length - 1} title="Move down" style={{ ...rc, opacity: i === sendSigners.length - 1 ? 0.3 : 1 }}>↓</button>
-                      {sendSigners.length > 1 && <button onClick={() => setSendSigners(prev => prev.filter((_, j) => j !== i))} title="Remove signer" style={{ ...rc, color: '#dc2626', borderColor: '#fecaca', background: '#fff' }}>✕</button>}
+                      {sendSigners.length > 1 && <button onClick={() => setSendSigners(prev => prev.filter((_, j) => j !== i))} title="Remove signer" style={{ ...rc, color: 'var(--k-dc2626)', borderColor: 'var(--k-fecaca)', background: 'var(--k-fff)' }}>✕</button>}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                       <div style={{ position: 'relative' }}>
                         <input value={s.name} onChange={e => { setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x)); setSendPick(i); }} onFocus={() => setSendPick(i)} onBlur={() => setTimeout(() => setSendPick(p => (p === i ? null : p)), 150)} placeholder="Name" style={{ ...INP, fontSize: 14 }} />
                         {sugg.length > 0 && (
-                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.1)', maxHeight: 180, overflowY: 'auto' }}>
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.1)', maxHeight: 180, overflowY: 'auto' }}>
                             {sugg.map(c => { const nm = c.business_name || `${c.first_name} ${c.last_name}`.trim(); return (
-                              <button key={c.id} onMouseDown={() => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, name: nm, email: c.email || x.email } : x))} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 11px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: 13 }}>{nm}{c.email ? <span style={{ color: '#9ca3af', fontSize: 11 }}> · {c.email}</span> : ''}</button>
+                              <button key={c.id} onMouseDown={() => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, name: nm, email: c.email || x.email } : x))} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 11px', border: 'none', background: 'var(--k-fff)', cursor: 'pointer', fontSize: 13 }}>{nm}{c.email ? <span style={{ color: 'var(--k-9ca3af)', fontSize: 11 }}> · {c.email}</span> : ''}</button>
                             ); })}
                           </div>
                         )}
@@ -2221,11 +2221,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   </div>
                 );
               })}
-              <button onClick={() => setSendSigners(prev => [...prev, { role: 'other', name: '', email: '' }])} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', alignSelf: 'flex-start' }}>＋ Add signer</button>
+              <button onClick={() => setSendSigners(prev => [...prev, { role: 'other', name: '', email: '' }])} style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1px dashed var(--k-e6d3a2)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', alignSelf: 'flex-start' }}>＋ Add signer</button>
               <textarea value={sendMsg} onChange={e => setSendMsg(e.target.value)} placeholder="Optional message to the signers…" style={{ ...INP, minHeight: 54, resize: 'vertical', fontSize: 14 }} />
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-              <button onClick={() => setSendModal(null)} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
+              <button onClick={() => setSendModal(null)} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
               <button
                 onClick={() => {
                   const ready = sendSigners.filter(x => x.email.includes('@') && x.name.trim());

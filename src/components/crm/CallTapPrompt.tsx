@@ -123,17 +123,17 @@ export default function CallTapPrompt({ businessUnit, authToken, isMobile, suppr
   if (!pending || !open) return null;
   const title = pending.name || pretty(pending.number);
   const chip = (k: Retry, label: string) => (
-    <button key={k} onClick={() => setRetry(k)} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', minHeight: 36, borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", border: '1px solid', borderColor: retry === k ? '#c9922c' : '#e5e7eb', background: retry === k ? '#fffdf6' : '#fff', color: retry === k ? '#a06a12' : '#6b7280' }}>{label}</button>
+    <button key={k} onClick={() => setRetry(k)} style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', minHeight: 36, borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", border: '1px solid', borderColor: retry === k ? '#c9922c' : 'var(--k-e5e7eb)', background: retry === k ? 'var(--k-fffdf6)' : 'var(--k-fff)', color: retry === k ? 'var(--k-a06a12)' : 'var(--k-6b7280)' }}>{label}</button>
   );
   return (
     <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1100, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }} onClick={dismiss}>
-      <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, width: '100%', maxWidth: 440, padding: isMobile ? '18px 18px 78px' : '18px 18px 20px', boxShadow: '0 24px 80px rgba(0,0,0,.3)', fontFamily: "'DM Sans',sans-serif" }} onClick={e => e.stopPropagation()}>
+      <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: isMobile ? '16px 16px 0 0' : 16, width: '100%', maxWidth: 440, padding: isMobile ? '18px 18px 78px' : '18px 18px 20px', boxShadow: '0 24px 80px rgba(0,0,0,.3)', fontFamily: "'DM Sans',sans-serif" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#111' }}>How did the call go?</div>
-            <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2, overflowWrap: 'anywhere' }}>📞 {title}{pending.name ? ` · ${pretty(pending.number)}` : ''}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--k-111)' }}>How did the call go?</div>
+            <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 2, overflowWrap: 'anywhere' }}>📞 {title}{pending.name ? ` · ${pretty(pending.number)}` : ''}</div>
           </div>
-          <button onClick={dismiss} aria-label="Skip" style={{ background: 'none', border: 'none', fontSize: 22, color: '#9ca3af', cursor: 'pointer', lineHeight: 1, minWidth: 32, minHeight: 32 }}>×</button>
+          <button onClick={dismiss} aria-label="Skip" style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--k-9ca3af)', cursor: 'pointer', lineHeight: 1, minWidth: 32, minHeight: 32 }}>×</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
           {OUTCOMES.map(o => (
@@ -142,12 +142,12 @@ export default function CallTapPrompt({ businessUnit, authToken, isMobile, suppr
             </button>
           ))}
         </div>
-        <MentionTextarea value={note} onChange={setNote} profiles={profiles ?? []} placeholder="Note (optional) — type it, then tap what happened (@ to tag)" style={{ width: '100%', boxSizing: 'border-box', minHeight: 54, padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", marginBottom: 10 }} />
+        <MentionTextarea value={note} onChange={setNote} profiles={profiles ?? []} placeholder="Note (optional) — type it, then tap what happened (@ to tag)" style={{ width: '100%', boxSizing: 'border-box', minHeight: 54, padding: '9px 11px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", marginBottom: 10 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: '#9ca3af' }}>If no answer / voicemail, remind me to try again:</span>
+          <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>If no answer / voicemail, remind me to try again:</span>
           {chip('none', 'No reminder')}{chip('hour', 'In 1 hour')}{chip('tmrw', 'Tomorrow 9a')}
         </div>
-        {pending.pending && <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 10 }}>This returns a call-back from the Calling Log — “Talked to them” marks it handled.</div>}
+        {pending.pending && <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 10 }}>This returns a call-back from the Calling Log — “Talked to them” marks it handled.</div>}
       </div>
     </div>
   );

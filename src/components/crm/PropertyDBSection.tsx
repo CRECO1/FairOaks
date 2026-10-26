@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 
 const PropertyMap = dynamic(() => import('./PropertyMap'), {
   ssr: false,
-  loading: () => <div style={{ padding: 60, textAlign: 'center', color: '#9ca3af' }}>Loading map…</div>,
+  loading: () => <div style={{ padding: 60, textAlign: 'center', color: 'var(--k-9ca3af)' }}>Loading map…</div>,
 });
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -76,14 +76,14 @@ interface Props {
 }
 
 const ASSET_COLORS: Record<string, { bg: string; color: string }> = {
-  Retail:      { bg: '#fef3c7', color: '#b45309' },
-  Office:      { bg: '#dbeafe', color: '#1d4ed8' },
-  Industrial:  { bg: '#f1f5f9', color: '#475569' },
-  Land:        { bg: '#dcfce7', color: '#15803d' },
+  Retail:      { bg: '#fef3c7', color: 'var(--k-b45309)' },
+  Office:      { bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
+  Industrial:  { bg: '#f1f5f9', color: 'var(--k-475569)' },
+  Land:        { bg: '#dcfce7', color: 'var(--k-15803d)' },
   Multifamily: { bg: '#f3e8ff', color: '#7e22ce' },
   'Mixed-Use': { bg: '#fce7f3', color: '#be185d' },
   Medical:     { bg: '#cffafe', color: '#0e7490' },
-  Flex:        { bg: '#fff7ed', color: '#c2410c' },
+  Flex:        { bg: '#fff7ed', color: 'var(--k-c2410c)' },
 };
 
 // Options for the agent Add-Property form (see AddPropertyModal).
@@ -164,7 +164,7 @@ async function downscaleIfLargeImage(file: File): Promise<File> {
 }
 
 function assetStyle(a?: string) {
-  return ASSET_COLORS[a ?? ''] ?? { bg: '#f1f5f9', color: '#475569' };
+  return ASSET_COLORS[a ?? ''] ?? { bg: '#f1f5f9', color: 'var(--k-475569)' };
 }
 function fmtSf(n?: number | null) { return n ? `${Number(n).toLocaleString()} SF` : ''; }
 function fmt$(n?: number | null) {
@@ -180,9 +180,9 @@ function cityLine(p: Property) {
 }
 function statusPill(s?: string) {
   const v = (s || '').toLowerCase();
-  if (/vacan|avail/.test(v)) return { bg: '#dcfce7', color: '#15803d' };
-  if (/leas|occup|sold|pend/.test(v)) return { bg: '#dbeafe', color: '#1d4ed8' };
-  return { bg: '#f1f5f9', color: '#64748b' };
+  if (/vacan|avail/.test(v)) return { bg: '#dcfce7', color: 'var(--k-15803d)' };
+  if (/leas|occup|sold|pend/.test(v)) return { bg: '#dbeafe', color: 'var(--k-1d4ed8)' };
+  return { bg: '#f1f5f9', color: 'var(--k-64748b)' };
 }
 const muted = <span style={{ color: '#d1d5db' }}>—</span>;
 
@@ -199,9 +199,9 @@ function freshness(p: Property): { label: string; full: string; bg: string; colo
   const label = days <= 0 ? 'Today' : days === 1 ? 'Yesterday'
     : days < 7 ? `${days}d ago` : days < 31 ? `${Math.floor(days / 7)}w ago`
     : days < 365 ? `${Math.floor(days / 30)}mo ago` : `${Math.floor(days / 365)}y ago`;
-  const tone = days <= 7 ? { bg: '#ecfdf5', color: '#15803d' }
-    : days <= 45 ? { bg: '#f1f5f9', color: '#64748b' }
-    : { bg: '#fff7ed', color: '#b45309' };
+  const tone = days <= 7 ? { bg: '#ecfdf5', color: 'var(--k-15803d)' }
+    : days <= 45 ? { bg: '#f1f5f9', color: 'var(--k-64748b)' }
+    : { bg: '#fff7ed', color: 'var(--k-b45309)' };
   const full = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   return { label, full, ...tone };
 }
@@ -230,7 +230,7 @@ function PropertyThumb({ p, height }: { p: Property; height: number }) {
   return (
     <img src={src} alt={p.name || p.address || 'property'} loading="lazy"
       onError={() => setFailed(true)}
-      style={{ display: 'block', width: '100%', height, objectFit: 'cover', background: '#f3f4f6' }} />
+      style={{ display: 'block', width: '100%', height, objectFit: 'cover', background: 'var(--k-f3f4f6)' }} />
   );
 }
 
@@ -355,20 +355,20 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
 
   const sortTh = (key: string, label: string, align: 'left' | 'right' = 'left') => (
     <th onClick={() => setSort(s => (s.key === key ? { key, dir: (s.dir === 1 ? -1 : 1) as 1 | -1 } : { key, dir: 1 }))}
-      style={{ padding: '12px 12px', fontWeight: 700, textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', color: sort.key === key ? '#b07d1f' : '#9ca3af' }}>
+      style={{ padding: '12px 12px', fontWeight: 700, textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', color: sort.key === key ? '#b07d1f' : 'var(--k-9ca3af)' }}>
       {label}<span style={{ opacity: sort.key === key ? 1 : 0.3 }}>{sort.key === key ? (sort.dir === 1 ? ' ↑' : ' ↓') : ' ↕'}</span>
     </th>
   );
 
   const inputStyle: React.CSSProperties = {
-    padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14,
-    fontFamily: "'DM Sans',sans-serif", background: '#fff', color: '#111',
+    padding: '9px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14,
+    fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)',
   };
 
   return (
     <div>
       {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 10 }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 10 }}>
         <input
           placeholder="🔍  Search address, city, submarket, broker…"
           value={search}
@@ -394,10 +394,10 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
           <option value="loopnet">LoopNet</option>
           <option value="crexi">Crexi</option>
         </select>
-        <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', ...(isMobile ? { width: '100%' } : {}) }}>
+        <div style={{ display: 'flex', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, overflow: 'hidden', ...(isMobile ? { width: '100%' } : {}) }}>
           {(['rows', 'cards', 'map'] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
-              style={{ padding: isMobile ? '11px 10px' : '9px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: view === v ? '#c9922c' : '#fff', color: view === v ? '#fff' : '#6b7280', ...(isMobile ? { flex: 1, minHeight: 44 } : {}) }}>
+              style={{ padding: isMobile ? '11px 10px' : '9px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: view === v ? '#c9922c' : 'var(--k-fff)', color: view === v ? '#fff' : 'var(--k-6b7280)', ...(isMobile ? { flex: 1, minHeight: 44 } : {}) }}>
               {v === 'rows' ? '☰ List' : v === 'cards' ? '▦ Cards' : '📍 Map'}
             </button>
           ))}
@@ -411,7 +411,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         </button>
       </div>
 
-      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 14, fontWeight: 600 }}>
+      <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginBottom: 14, fontWeight: 600 }}>
         {loading ? 'Loading…' : `${filtered.length}${filtered.length !== properties.length ? ` of ${properties.length}` : ''} propert${filtered.length === 1 ? 'y' : 'ies'} in the Property DB`}
       </div>
 
@@ -423,7 +423,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         <div aria-busy="true" aria-label="Loading properties" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <style>{`@keyframes crmPulse{0%,100%{opacity:.55}50%{opacity:.9}}`}</style>
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '14px 16px', border: '1px solid #eef0f2', borderRadius: 10, background: '#fff', animation: `crmPulse 1.4s ease-in-out ${i * 0.08}s infinite` }}>
+            <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '14px 16px', border: '1px solid #eef0f2', borderRadius: 10, background: 'var(--k-fff)', animation: `crmPulse 1.4s ease-in-out ${i * 0.08}s infinite` }}>
               <div style={{ width: 52, height: 40, borderRadius: 6, background: '#eef0f2', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ height: 11, width: `${52 + ((i * 11) % 26)}%`, background: '#eef0f2', borderRadius: 4 }} />
@@ -437,7 +437,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
 
       {/* Grid */}
       {!loading && filtered.length === 0 && (
-        <div style={{ textAlign: 'center', color: '#9ca3af', padding: '60px 20px' }}>
+        <div style={{ textAlign: 'center', color: 'var(--k-9ca3af)', padding: '60px 20px' }}>
           <div style={{ fontSize: 40, marginBottom: 10 }}>🏢</div>
           No properties match. Broker-DB listings arrive automatically from your Gmail “Property DB” label.
         </div>
@@ -449,7 +449,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         <div>
           {/* Sorting lives in the table headers on desktop; on mobile it needs its own control */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, flexShrink: 0 }}>Sort</span>
+            <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', fontWeight: 600, flexShrink: 0 }}>Sort</span>
             <select
               value={sort.key}
               onChange={e => setSort({ key: e.target.value, dir: 1 })}
@@ -467,7 +467,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
             <button
               onClick={() => setSort(s => ({ key: s.key || 'name', dir: (s.dir === 1 ? -1 : 1) as 1 | -1 }))}
               aria-label={sort.dir === 1 ? 'Sort ascending' : 'Sort descending'}
-              style={{ minWidth: 44, minHeight: 44, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#6b7280', fontSize: 15, cursor: 'pointer', flexShrink: 0 }}
+              style={{ minWidth: 44, minHeight: 44, border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 15, cursor: 'pointer', flexShrink: 0 }}
             >
               {sort.dir === 1 ? '↑' : '↓'}
             </button>
@@ -481,28 +481,28 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               const avail = p.available_sf && p.available_sf !== p.size_sf ? p.available_sf : null;
               return (
                 <button key={p.id} onClick={() => setActive(p)}
-                  style={{ textAlign: 'left', width: '100%', background: '#fff', border: '1px solid #eef0f2', borderLeft: `4px solid ${as.color}`, borderRadius: 12, padding: '14px 15px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+                  style={{ textAlign: 'left', width: '100%', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderLeft: `4px solid ${as.color}`, borderRadius: 12, padding: '14px 15px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                   <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}>
                     <div style={{ width: 54, height: 54, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
                       <PropertyThumb p={p} height={54} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.25 }}>{p.name || p.address || '—'}</div>
-                      {loc && <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2 }}>{loc}</div>}
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-1a1a1a)', lineHeight: 1.25 }}>{p.name || p.address || '—'}</div>
+                      {loc && <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>{loc}</div>}
                     </div>
                     {price && <div style={{ fontSize: 15, fontWeight: 700, color: '#b07d1f', whiteSpace: 'nowrap', flexShrink: 0 }}>{price}</div>}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, alignItems: 'center' }}>
                     {p.asset_type && <span style={{ fontSize: 11.5, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 9px', borderRadius: 20 }}>{p.asset_type}</span>}
                     {p.vacancy_status && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: st.color, background: st.bg, padding: '3px 9px', borderRadius: 20 }}>{p.vacancy_status}</span>}
-                    {p.size_sf ? <span style={{ fontSize: 12.5, color: '#374151' }}>{fmtSf(p.size_sf)}</span> : null}
-                    {avail ? <span style={{ fontSize: 12, color: '#9ca3af' }}>{fmtSf(avail)} avail</span> : null}
+                    {p.size_sf ? <span style={{ fontSize: 12.5, color: 'var(--k-374151)' }}>{fmtSf(p.size_sf)}</span> : null}
+                    {avail ? <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{fmtSf(avail)} avail</span> : null}
                     <span style={{ marginLeft: 'auto' }}><UpdatedChip p={p} compact /></span>
                   </div>
                   {(p.submarket || p.county || p.listing_company || p.listing_agent_name || ownerLabel(p) || cadValue(p.notes)) && (
-                    <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid #f3f4f6', fontSize: 12, color: '#9ca3af', display: 'flex', flexWrap: 'wrap', gap: '3px 12px' }}>
-                      {ownerLabel(p) && <span style={{ color: '#6b7280' }}>🏛 {ownerLabel(p)}</span>}
-                      {cadValue(p.notes) && <span style={{ color: '#15803d', fontWeight: 600 }}>Appraised {cadValue(p.notes)}</span>}
+                    <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--k-f3f4f6)', fontSize: 12, color: 'var(--k-9ca3af)', display: 'flex', flexWrap: 'wrap', gap: '3px 12px' }}>
+                      {ownerLabel(p) && <span style={{ color: 'var(--k-6b7280)' }}>🏛 {ownerLabel(p)}</span>}
+                      {cadValue(p.notes) && <span style={{ color: 'var(--k-15803d)', fontWeight: 600 }}>Appraised {cadValue(p.notes)}</span>}
                       {p.submarket && <span>📍 {p.submarket}{p.county ? ` · ${p.county} Co.` : ''}</span>}
                       {(p.listing_agent_name || p.listing_company) && <span>🏷 {[p.listing_agent_name, p.listing_company].filter(Boolean).join(' · ')}</span>}
                     </div>
@@ -515,7 +515,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
       )}
 
       {view === 'rows' && !loading && filtered.length > 0 && !isMobile && (
-        <div style={{ overflowX: 'auto', border: '1px solid #eef0f2', borderRadius: 12, background: '#fff' }}>
+        <div style={{ overflowX: 'auto', border: '1px solid #eef0f2', borderRadius: 12, background: 'var(--k-fff)' }}>
           <table style={{ width: '100%', minWidth: 1040, borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'DM Sans',sans-serif" }}>
             <colgroup>
               <col style={{ width: '24%' }} />
@@ -534,7 +534,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                 {sortTh('type', 'Type')}
                 {sortTh('size', 'Size', 'right')}
                 {sortTh('rate', 'Rate / Price', 'right')}
-                <th style={{ padding: '12px 12px', fontWeight: 700, color: '#9ca3af' }}>Broker</th>
+                <th style={{ padding: '12px 12px', fontWeight: 700, color: 'var(--k-9ca3af)' }}>Broker</th>
                 {sortTh('status', 'Status')}
                 {sortTh('updated', 'Updated')}
               </tr>
@@ -550,39 +550,39 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                 const ell: React.CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
                 return (
                   <tr key={p.id} onClick={() => setActive(p)}
-                    style={{ borderTop: '1px solid #f4f5f7', cursor: 'pointer', background: '#fff' }}
+                    style={{ borderTop: '1px solid #f4f5f7', cursor: 'pointer', background: 'var(--k-fff)' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')}
-                    onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                    onMouseLeave={e => (e.currentTarget.style.background = 'var(--k-fff)')}>
                     <td style={{ padding: '10px 12px 10px 16px', verticalAlign: 'top' }}>
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
                         <div style={{ width: 42, height: 42, borderRadius: 7, overflow: 'hidden', flexShrink: 0 }}>
                           <PropertyThumb p={p} height={42} />
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ ...ell, fontWeight: 600, color: '#1a1a1a', fontSize: 14 }} title={p.name || p.address || ''}>{p.name || p.address || '—'}</div>
-                          <div style={{ ...ell, color: '#9ca3af', fontSize: 12.5, marginTop: 2 }} title={loc}>{loc || '—'}</div>
-                          {ownerLabel(p) && <div style={{ ...ell, color: '#6b7280', fontSize: 11.5, marginTop: 2 }} title={`Owner: ${ownerLabel(p)}`}>🏛 {ownerLabel(p)}</div>}
+                          <div style={{ ...ell, fontWeight: 600, color: 'var(--k-1a1a1a)', fontSize: 14 }} title={p.name || p.address || ''}>{p.name || p.address || '—'}</div>
+                          <div style={{ ...ell, color: 'var(--k-9ca3af)', fontSize: 12.5, marginTop: 2 }} title={loc}>{loc || '—'}</div>
+                          {ownerLabel(p) && <div style={{ ...ell, color: 'var(--k-6b7280)', fontSize: 11.5, marginTop: 2 }} title={`Owner: ${ownerLabel(p)}`}>🏛 {ownerLabel(p)}</div>}
                         </div>
                       </div>
                     </td>
-                    <td style={{ padding: '12px 12px', verticalAlign: 'top', color: '#374151', fontSize: 13 }}>
+                    <td style={{ padding: '12px 12px', verticalAlign: 'top', color: 'var(--k-374151)', fontSize: 13 }}>
                       <div style={ell} title={p.submarket || ''}>{p.submarket || muted}</div>
-                      {p.county && <div style={{ ...ell, color: '#9ca3af', fontSize: 11.5, marginTop: 1 }} title={p.county}>{p.county} Co.</div>}
+                      {p.county && <div style={{ ...ell, color: 'var(--k-9ca3af)', fontSize: 11.5, marginTop: 1 }} title={p.county}>{p.county} Co.</div>}
                     </td>
                     <td style={{ padding: '12px 10px', verticalAlign: 'top' }}>
                       {p.asset_type ? <span style={{ display: 'inline-block', maxWidth: '100%', ...ell, fontSize: 11.5, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 9px', borderRadius: 20 }} title={p.asset_type}>{p.asset_type}</span> : muted}
                     </td>
                     <td style={{ padding: '12px 10px', textAlign: 'right', verticalAlign: 'top' }}>
-                      <div style={{ color: '#374151', fontSize: 13.5, whiteSpace: 'nowrap' }}>{fmtSf(p.size_sf) || muted}</div>
-                      {avail && <div style={{ color: '#9ca3af', fontSize: 11.5, marginTop: 1, whiteSpace: 'nowrap' }}>{fmtSf(avail)} avail</div>}
+                      <div style={{ color: 'var(--k-374151)', fontSize: 13.5, whiteSpace: 'nowrap' }}>{fmtSf(p.size_sf) || muted}</div>
+                      {avail && <div style={{ color: 'var(--k-9ca3af)', fontSize: 11.5, marginTop: 1, whiteSpace: 'nowrap' }}>{fmtSf(avail)} avail</div>}
                     </td>
                     <td style={{ padding: '12px 10px', textAlign: 'right', verticalAlign: 'top' }}>
                       <div style={{ fontWeight: 700, color: price ? '#b07d1f' : '#d1d5db', fontSize: 13, ...ell }} title={String(price || '')}>{price || '—'}</div>
-                      {cadValue(p.notes) && <div style={{ color: '#15803d', fontSize: 11, marginTop: 1, whiteSpace: 'nowrap' }} title="County appraised value">CAD {cadValue(p.notes)}</div>}
+                      {cadValue(p.notes) && <div style={{ color: 'var(--k-15803d)', fontSize: 11, marginTop: 1, whiteSpace: 'nowrap' }} title="County appraised value">CAD {cadValue(p.notes)}</div>}
                     </td>
                     <td style={{ padding: '12px 12px', verticalAlign: 'top' }}>
-                      <div style={{ ...ell, color: '#374151', fontSize: 13 }} title={p.listing_company || ''}>{p.listing_company || muted}</div>
-                      {p.listing_agent_name && <div style={{ ...ell, color: '#9ca3af', fontSize: 12, marginTop: 1 }} title={p.listing_agent_name}>{p.listing_agent_name}</div>}
+                      <div style={{ ...ell, color: 'var(--k-374151)', fontSize: 13 }} title={p.listing_company || ''}>{p.listing_company || muted}</div>
+                      {p.listing_agent_name && <div style={{ ...ell, color: 'var(--k-9ca3af)', fontSize: 12, marginTop: 1 }} title={p.listing_agent_name}>{p.listing_agent_name}</div>}
                     </td>
                     <td style={{ padding: '12px 12px', verticalAlign: 'top' }}>
                       {p.vacancy_status ? <span style={{ display: 'inline-block', maxWidth: '100%', ...ell, fontSize: 10.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: st.color, background: st.bg, padding: '3px 9px', borderRadius: 20 }} title={p.vacancy_status}>{p.vacancy_status}</span> : muted}
@@ -591,7 +591,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                       {fresh ? (
                         <div title={`Data last updated ${fresh.full}`}>
                           <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, color: fresh.color, background: fresh.bg, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' }}>{fresh.label}</span>
-                          <div style={{ color: '#9ca3af', fontSize: 11, marginTop: 2, whiteSpace: 'nowrap' }}>{fresh.full}</div>
+                          <div style={{ color: 'var(--k-9ca3af)', fontSize: 11, marginTop: 2, whiteSpace: 'nowrap' }}>{fresh.full}</div>
                         </div>
                       ) : muted}
                     </td>
@@ -613,7 +613,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               key={p.id}
               onClick={() => setActive(p)}
               style={{
-                textAlign: 'left', background: '#fff', border: '1px solid #eef0f2', borderRadius: 12,
+                textAlign: 'left', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12,
                 padding: 0, cursor: 'pointer', overflow: 'hidden', fontFamily: "'DM Sans',sans-serif",
                 boxShadow: '0 1px 2px rgba(0,0,0,.04)', transition: 'box-shadow .15s, transform .15s',
               }}
@@ -624,16 +624,16 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               <div style={{ height: 4, background: as.color }} />
               <div style={{ padding: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                  <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 19, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.15 }}>
+                  <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 19, fontWeight: 600, color: 'var(--k-1a1a1a)', lineHeight: 1.15 }}>
                     {p.name || p.address || 'Untitled property'}
                   </div>
                   {p.vacancy_status && (
-                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .4, color: '#15803d', background: '#dcfce7', padding: '2px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .4, color: 'var(--k-15803d)', background: 'var(--k-dcfce7)', padding: '2px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>
                       {p.vacancy_status}
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 13, color: '#6b7280', marginTop: 3 }}>
+                <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 3 }}>
                   {[p.address, p.suite].filter(Boolean).join(', ')}
                   {(p.address || p.suite) && cityLine(p) ? ' · ' : ''}{cityLine(p)}
                 </div>
@@ -643,18 +643,18 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                       {p.asset_type}{p.property_subtype ? ` · ${p.property_subtype}` : ''}
                     </span>
                   )}
-                  {p.size_sf ? <span style={{ fontSize: 12, color: '#374151' }}>{fmtSf(p.size_sf)}</span> : null}
+                  {p.size_sf ? <span style={{ fontSize: 12, color: 'var(--k-374151)' }}>{fmtSf(p.size_sf)}</span> : null}
                   <UpdatedChip p={p} compact />
                   {price ? <span style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 700, color: '#c9922c' }}>{price}</span> : null}
                 </div>
                 {(ownerLabel(p) || cadValue(p.notes)) && (
-                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                     {ownerLabel(p) && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '58%' }} title={`Owner: ${ownerLabel(p)}`}>🏛 {ownerLabel(p)}</span>}
-                    {cadValue(p.notes) && <span style={{ fontWeight: 700, color: '#15803d', marginLeft: 'auto' }} title="County appraised value">Appraised {cadValue(p.notes)}</span>}
+                    {cadValue(p.notes) && <span style={{ fontWeight: 700, color: 'var(--k-15803d)', marginLeft: 'auto' }} title="County appraised value">Appraised {cadValue(p.notes)}</span>}
                   </div>
                 )}
                 {(p.listing_company || p.listing_agent_name) && (
-                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 10, borderTop: '1px solid #f3f4f6', paddingTop: 8 }}>
+                  <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 10, borderTop: '1px solid var(--k-f3f4f6)', paddingTop: 8 }}>
                     {p.listing_agent_name}{p.listing_agent_name && p.listing_company ? ' · ' : ''}{p.listing_company}
                   </div>
                 )}
@@ -669,18 +669,18 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
       {(view === 'rows' || view === 'cards') && !loading && sorted.length > PAGE_SIZE && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 18, fontFamily: "'DM Sans',sans-serif" }}>
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pageClamped <= 1}
-            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: pageClamped <= 1 ? '#f9fafb' : '#fff', color: pageClamped <= 1 ? '#c7cbd1' : '#374151', fontSize: 13, fontWeight: 700, cursor: pageClamped <= 1 ? 'default' : 'pointer' }}>← Prev</button>
-          <span style={{ fontSize: 13, color: '#6b7280', minWidth: 150, textAlign: 'center' }}>
+            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: pageClamped <= 1 ? 'var(--k-f9fafb)' : 'var(--k-fff)', color: pageClamped <= 1 ? '#c7cbd1' : 'var(--k-374151)', fontSize: 13, fontWeight: 700, cursor: pageClamped <= 1 ? 'default' : 'pointer' }}>← Prev</button>
+          <span style={{ fontSize: 13, color: 'var(--k-6b7280)', minWidth: 150, textAlign: 'center' }}>
             {(pageClamped - 1) * PAGE_SIZE + 1}–{Math.min(pageClamped * PAGE_SIZE, sorted.length)} of {sorted.length.toLocaleString()} · page {pageClamped}/{totalPages}
           </span>
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={pageClamped >= totalPages}
-            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: pageClamped >= totalPages ? '#f9fafb' : '#fff', color: pageClamped >= totalPages ? '#c7cbd1' : '#374151', fontSize: 13, fontWeight: 700, cursor: pageClamped >= totalPages ? 'default' : 'pointer' }}>Next →</button>
+            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: pageClamped >= totalPages ? 'var(--k-f9fafb)' : 'var(--k-fff)', color: pageClamped >= totalPages ? '#c7cbd1' : 'var(--k-374151)', fontSize: 13, fontWeight: 700, cursor: pageClamped >= totalPages ? 'default' : 'pointer' }}>Next →</button>
         </div>
       )}
 
       {view === 'map' && !loading && (
         <div>
-          <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginBottom: 10 }}>
             {filtered.filter(p => p.latitude != null && p.longitude != null).length} of {filtered.length} shown — properties without a geocoded address aren’t on the map yet. Click a pin for details.
           </div>
           <PropertyMap properties={sorted} onSelect={(p) => setActive(p as Property)} />
@@ -709,8 +709,8 @@ function Field({ label, value }: { label: string; value: unknown }) {
   const display = Array.isArray(value) ? value.join(', ') : String(value);
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 11, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 14, color: '#1f2937', marginTop: 2 }}>{display}</div>
+      <div style={{ fontSize: 11, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 14, color: 'var(--k-1f2937)', marginTop: 2 }}>{display}</div>
     </div>
   );
 }
@@ -738,9 +738,9 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 function StatTile({ label, value, accent }: { label: string; value?: string | null; accent?: boolean }) {
   if (!value) return null;
   return (
-    <div style={{ background: accent ? '#fdf6e9' : '#f8fafc', borderRadius: 10, padding: '12px 14px', border: `1px solid ${accent ? '#f0e2c4' : '#eef0f2'}` }}>
-      <div style={{ fontSize: 19, fontWeight: 700, color: accent ? '#a06a12' : '#1a1a1a', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={value}>{value}</div>
-      <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginTop: 5 }}>{label}</div>
+    <div style={{ background: accent ? 'var(--k-fdf6e9)' : 'var(--k-f8fafc)', borderRadius: 10, padding: '12px 14px', border: `1px solid ${accent ? 'var(--k-f0e2c4)' : '#eef0f2'}` }}>
+      <div style={{ fontSize: 19, fontWeight: 700, color: accent ? 'var(--k-a06a12)' : 'var(--k-1a1a1a)', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={value}>{value}</div>
+      <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginTop: 5 }}>{label}</div>
     </div>
   );
 }
@@ -770,17 +770,17 @@ function ContactCardRow({ label, contact, fallbackName, fallbackCompany, fallbac
       onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen!(); } } : undefined}
       style={{ background: contact ? '#f4f9f4' : '#fbfbfa', border: `1px solid ${contact ? '#cfe6cf' : '#eef0f2'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: clickable ? 'pointer' : 'default' }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
           {label}
-          {contact && <span style={{ color: '#15803d', background: '#dcfce7', padding: '2px 7px', borderRadius: 20, fontSize: 9.5, letterSpacing: .3 }}>👤 Contact</span>}
-          {clickable && <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 600 }}>· view card ›</span>}
+          {contact && <span style={{ color: 'var(--k-15803d)', background: 'var(--k-dcfce7)', padding: '2px 7px', borderRadius: 20, fontSize: 9.5, letterSpacing: .3 }}>👤 Contact</span>}
+          {clickable && <span style={{ color: 'var(--k-9ca3af)', fontSize: 11, fontWeight: 600 }}>· view card ›</span>}
         </div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', marginTop: 3 }}>{name || company}</div>
-        {company && name !== company && <div style={{ fontSize: 13, color: '#6b7280' }}>{company}</div>}
-        {email && <a href={`mailto:${email}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 12.5, color: '#a06a12', textDecoration: 'none', display: 'inline-block', marginTop: 2 }}>✉ {email}</a>}
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--k-1a1a1a)', marginTop: 3 }}>{name || company}</div>
+        {company && name !== company && <div style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>{company}</div>}
+        {email && <a href={`mailto:${email}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 12.5, color: 'var(--k-a06a12)', textDecoration: 'none', display: 'inline-block', marginTop: 2 }}>✉ {email}</a>}
       </div>
       {phone && (
-        <a href={`tel:${phone}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '8px 14px', borderRadius: 8, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : undefined }}>📞 {phone}</a>
+        <a href={`tel:${phone}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-a06a12)', textDecoration: 'none', border: '1px solid var(--k-f0e2c4)', background: 'var(--k-fffdf6)', padding: '8px 14px', borderRadius: 8, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : undefined }}>📞 {phone}</a>
       )}
     </div>
   );
@@ -801,33 +801,33 @@ function BrokerCardModal({ contact, listings, onClose, onOpenListing, isMobile }
   const email = contact.email || '';
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 1200, padding: isMobile ? 0 : 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: isMobile ? '18px 18px 0 0' : 16, width: isMobile ? '100%' : 480, maxWidth: '100%', maxHeight: '85vh', overflow: 'auto', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
-        <div style={{ padding: '20px 22px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--k-fff)', borderRadius: isMobile ? '18px 18px 0 0' : 16, width: isMobile ? '100%' : 480, maxWidth: '100%', maxHeight: '85vh', overflow: 'auto', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ padding: '20px 22px', borderBottom: '1px solid var(--k-f3f4f6)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700 }}>👤 {contact.type || 'Contact'}</span>
-              <span style={{ fontSize: 10, color: '#9ca3af' }}>Linked to your contacts</span>
+              <span style={{ color: 'var(--k-15803d)', background: 'var(--k-dcfce7)', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700 }}>👤 {contact.type || 'Contact'}</span>
+              <span style={{ fontSize: 10, color: 'var(--k-9ca3af)' }}>Linked to your contacts</span>
             </div>
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, color: '#1a1a1a', marginTop: 6, lineHeight: 1.1 }}>{name || company}</div>
-            {company && name !== company && <div style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>{company}</div>}
+            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, color: 'var(--k-1a1a1a)', marginTop: 6, lineHeight: 1.1 }}>{name || company}</div>
+            {company && name !== company && <div style={{ fontSize: 14, color: 'var(--k-6b7280)', marginTop: 2 }}>{company}</div>}
           </div>
-          <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 18, color: '#6b7280', flexShrink: 0 }}>✕</button>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 18, color: 'var(--k-6b7280)', flexShrink: 0 }}>✕</button>
         </div>
         <div style={{ padding: '16px 22px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {phone && <a href={`tel:${phone}`} style={{ fontSize: 14, fontWeight: 700, color: '#a06a12', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '10px 16px', borderRadius: 8 }}>📞 {phone}</a>}
-          {email && <a href={`mailto:${email}`} style={{ fontSize: 14, fontWeight: 600, color: '#a06a12', textDecoration: 'none', border: '1px solid #eee', background: '#fafafa', padding: '10px 16px', borderRadius: 8 }}>✉ Email</a>}
+          {phone && <a href={`tel:${phone}`} style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-a06a12)', textDecoration: 'none', border: '1px solid var(--k-f0e2c4)', background: 'var(--k-fffdf6)', padding: '10px 16px', borderRadius: 8 }}>📞 {phone}</a>}
+          {email && <a href={`mailto:${email}`} style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-a06a12)', textDecoration: 'none', border: '1px solid var(--k-eee)', background: 'var(--k-fafafa)', padding: '10px 16px', borderRadius: 8 }}>✉ Email</a>}
         </div>
         <div style={{ padding: '4px 22px 22px' }}>
-          <div style={{ fontSize: 11, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 8 }}>
+          <div style={{ fontSize: 11, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>
             {listings.length} listing{listings.length === 1 ? '' : 's'} from this broker
           </div>
           {listings.slice(0, 40).map((l) => (
-            <button key={l.id} onClick={() => onOpenListing?.(l)} style={{ display: 'block', width: '100%', textAlign: 'left', background: '#fafafa', border: '1px solid #f0f1f3', borderRadius: 9, padding: '10px 12px', marginBottom: 6, cursor: onOpenListing ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a1a1a' }}>{l.name || l.address || 'Untitled'}</div>
-              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>{[l.address, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</div>
+            <button key={l.id} onClick={() => onOpenListing?.(l)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'var(--k-fafafa)', border: '1px solid #f0f1f3', borderRadius: 9, padding: '10px 12px', marginBottom: 6, cursor: onOpenListing ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)' }}>{l.name || l.address || 'Untitled'}</div>
+              <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 1 }}>{[l.address, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</div>
             </button>
           ))}
-          {listings.length > 40 && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>+{listings.length - 40} more</div>}
+          {listings.length > 40 && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 4 }}>+{listings.length - 40} more</div>}
         </div>
       </div>
     </div>
@@ -852,7 +852,7 @@ function DetailModal({ p, onClose, isMobile = false, allProperties = [], onOpenP
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#fff', maxWidth: isMobile ? '100%' : 800, width: '100%', boxShadow: '0 24px 70px rgba(0,0,0,.32)', fontFamily: "'DM Sans',sans-serif",
+          background: 'var(--k-fff)', maxWidth: isMobile ? '100%' : 800, width: '100%', boxShadow: '0 24px 70px rgba(0,0,0,.32)', fontFamily: "'DM Sans',sans-serif",
           borderRadius: isMobile ? '18px 18px 0 0' : 16,
           ...(isMobile ? { maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: 'env(safe-area-inset-bottom)' } : {}),
         }}
@@ -860,23 +860,23 @@ function DetailModal({ p, onClose, isMobile = false, allProperties = [], onOpenP
         <div style={{ height: 6, background: as.color, borderTopLeftRadius: isMobile ? 18 : 16, borderTopRightRadius: isMobile ? 18 : 16, flexShrink: 0 }} />
         <div style={{ padding: isMobile ? '18px 18px 24px' : 28, ...(isMobile ? { overflowY: 'auto', WebkitOverflowScrolling: 'touch', flex: 1, minHeight: 0 } : {}) }}>
           {/* Header — the close button stays pinned at the top of the sheet on a phone */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', ...(isMobile ? { position: 'sticky', top: 0, background: '#fff', paddingBottom: 8, zIndex: 2 } : {}) }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', ...(isMobile ? { position: 'sticky', top: 0, background: 'var(--k-fff)', paddingBottom: 8, zIndex: 2 } : {}) }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 28, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.15 }}>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 28, fontWeight: 600, color: 'var(--k-1a1a1a)', lineHeight: 1.15 }}>
                 {p.name || p.address || 'Property'}
               </div>
-              <div style={{ fontSize: 14, color: '#6b7280', marginTop: 4 }}>
+              <div style={{ fontSize: 14, color: 'var(--k-6b7280)', marginTop: 4 }}>
                 {[p.address, p.suite].filter(Boolean).join(', ')}{(p.address || p.suite) && cityLine(p) ? ' · ' : ''}{cityLine(p)}
               </div>
             </div>
-            <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: isMobile ? 44 : 34, height: isMobile ? 44 : 34, cursor: 'pointer', fontSize: 18, color: '#6b7280', flexShrink: 0 }}>✕</button>
+            <button onClick={onClose} aria-label="Close" style={{ background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 8, width: isMobile ? 44 : 34, height: isMobile ? 44 : 34, cursor: 'pointer', fontSize: 18, color: 'var(--k-6b7280)', flexShrink: 0 }}>✕</button>
           </div>
 
           {/* Badges */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0 20px' }}>
             {p.asset_type && <span style={{ fontSize: 13, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 11px', borderRadius: 20 }}>{p.asset_type}{p.property_subtype ? ` · ${p.property_subtype}` : ''}</span>}
             {p.vacancy_status && <span style={{ fontSize: 13, fontWeight: 600, background: st.bg, color: st.color, padding: '3px 11px', borderRadius: 20 }}>{p.vacancy_status}</span>}
-            {p.building_class && <span style={{ fontSize: 13, fontWeight: 600, background: '#eef2ff', color: '#4338ca', padding: '3px 11px', borderRadius: 20 }}>Class {p.building_class}</span>}
+            {p.building_class && <span style={{ fontSize: 13, fontWeight: 600, background: 'var(--k-eef2ff)', color: 'var(--k-4338ca)', padding: '3px 11px', borderRadius: 20 }}>Class {p.building_class}</span>}
           </div>
 
           {/* Hero stats */}
@@ -936,14 +936,14 @@ function DetailModal({ p, onClose, isMobile = false, allProperties = [], onOpenP
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
               {links.filter(([, v]) => v).map(([label, url]) => (
                 <a key={label} href={String(url)} target="_blank" rel="noopener noreferrer"
-                   style={{ fontSize: 13, fontWeight: 600, color: '#c9922c', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: isMobile ? '11px 14px' : '6px 12px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : undefined }}>
+                   style={{ fontSize: 13, fontWeight: 600, color: '#c9922c', textDecoration: 'none', border: '1px solid var(--k-f0e2c4)', background: 'var(--k-fffdf6)', padding: isMobile ? '11px 14px' : '6px 12px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : undefined }}>
                   {label} ↗
                 </a>
               ))}
             </div>
           )}
 
-          <div style={{ fontSize: 11, color: '#c0c4cc', borderTop: '1px solid #f3f4f6', paddingTop: 12 }}>
+          <div style={{ fontSize: 11, color: '#c0c4cc', borderTop: '1px solid var(--k-f3f4f6)', paddingTop: 12 }}>
             {[
               p.source ? `Source: ${p.source}` : '',
               p.created_at ? `Added ${new Date(p.created_at as string).toLocaleDateString()}` : '',
@@ -1029,8 +1029,8 @@ function ContactPicker({ authToken, linked, initialQuery, draft, onLink, createT
   };
 
   const inp: React.CSSProperties = {
-    padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14,
-    fontFamily: "'DM Sans',sans-serif", background: '#fff', color: '#111', width: '100%', boxSizing: 'border-box',
+    padding: '9px 11px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14,
+    fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)', width: '100%', boxSizing: 'border-box',
   };
 
   if (linked) {
@@ -1038,11 +1038,11 @@ function ContactPicker({ authToken, linked, initialQuery, draft, onLink, createT
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#f4f9f4', border: '1px solid #cfe6cf', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
         <span style={{ fontSize: 16 }}>🔗</span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#166534' }}>{contactLabel(linked)}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-166534)' }}>{contactLabel(linked)}</div>
           <div style={{ fontSize: 12, color: '#4b7a4b' }}>{[contactCompany(linked), contactPhone(linked), linked.email].filter(Boolean).join(' · ') || 'Linked contact'}</div>
         </div>
-        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, color: '#15803d', background: '#dcfce7', padding: '3px 8px', borderRadius: 20 }}>from contacts</span>
-        <button type="button" onClick={() => onLink(null)} style={{ border: 'none', background: 'transparent', color: '#6b7280', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>✕ Unlink</button>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, color: 'var(--k-15803d)', background: 'var(--k-dcfce7)', padding: '3px 8px', borderRadius: 20 }}>from contacts</span>
+        <button type="button" onClick={() => onLink(null)} style={{ border: 'none', background: 'transparent', color: 'var(--k-6b7280)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>✕ Unlink</button>
       </div>
     );
   }
@@ -1051,33 +1051,33 @@ function ContactPicker({ authToken, linked, initialQuery, draft, onLink, createT
     <div style={{ marginBottom: 12 }}>
       {!open ? (
         <button type="button" onClick={() => setOpen(true)}
-          style={{ ...inp, textAlign: 'left', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', gap: 8 }}>
+          style={{ ...inp, textAlign: 'left', cursor: 'pointer', color: 'var(--k-6b7280)', display: 'flex', alignItems: 'center', gap: 8 }}>
           🔗 Link a contact from your list…
         </button>
       ) : (
-        <div style={{ border: '1px solid #c9922c', borderRadius: 10, padding: 8, background: '#fff', boxShadow: '0 8px 24px rgba(0,0,0,.10)' }}>
+        <div style={{ border: '1px solid #c9922c', borderRadius: 10, padding: 8, background: 'var(--k-fff)', boxShadow: '0 8px 24px rgba(0,0,0,.10)' }}>
           <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search contacts by name, company, phone…" style={inp} />
           <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 6 }}>
-            {busy && <div style={{ fontSize: 12, color: '#9ca3af', padding: '8px 4px' }}>Searching…</div>}
+            {busy && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', padding: '8px 4px' }}>Searching…</div>}
             {!busy && results.map(c => (
               <button type="button" key={c.id} onClick={() => { onLink(c); setOpen(false); }}
                 style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 6px', cursor: 'pointer', borderRadius: 6 }}
                 onMouseOver={e => (e.currentTarget.style.background = '#f7f4ec')}
                 onMouseOut={e => (e.currentTarget.style.background = 'transparent')}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: '#111' }}>{contactLabel(c)}{c.type ? <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}> · {c.type}</span> : null}</div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>{[contactCompany(c), contactPhone(c), c.email].filter(Boolean).join(' · ')}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)' }}>{contactLabel(c)}{c.type ? <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', fontWeight: 500 }}> · {c.type}</span> : null}</div>
+                <div style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>{[contactCompany(c), contactPhone(c), c.email].filter(Boolean).join(' · ')}</div>
               </button>
             ))}
             {!busy && results.length === 0 && (
-              <div style={{ fontSize: 12.5, color: '#9ca3af', padding: '8px 4px' }}>No contacts match{q.trim() ? ` “${q.trim()}”` : ''}.</div>
+              <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', padding: '8px 4px' }}>No contacts match{q.trim() ? ` “${q.trim()}”` : ''}.</div>
             )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 6, borderTop: '1px solid #f3f4f6', paddingTop: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 6, borderTop: '1px solid var(--k-f3f4f6)', paddingTop: 8 }}>
             <button type="button" onClick={createFromDraft} disabled={creating || !(draft.name || draft.company || q.trim())}
               style={{ border: 'none', background: (creating || !(draft.name || draft.company || q.trim())) ? '#dcc79a' : '#c9922c', color: '#fff', fontWeight: 700, fontSize: 12.5, padding: '7px 12px', borderRadius: 7, cursor: creating ? 'default' : 'pointer' }}>
               {creating ? 'Adding…' : `＋ Add ${(draft.name || q.trim() || 'new').slice(0, 24)} to contacts`}
             </button>
-            <button type="button" onClick={() => setOpen(false)} style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontWeight: 600, fontSize: 12.5, padding: '7px 12px', borderRadius: 7, cursor: 'pointer' }}>Close</button>
+            <button type="button" onClick={() => setOpen(false)} style={{ border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontWeight: 600, fontSize: 12.5, padding: '7px 12px', borderRadius: 7, cursor: 'pointer' }}>Close</button>
           </div>
         </div>
       )}
@@ -1226,12 +1226,12 @@ function AddPropertyModal({
   };
 
   const inp: React.CSSProperties = {
-    padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14,
-    fontFamily: "'DM Sans',sans-serif", background: '#fff', color: '#111', width: '100%', boxSizing: 'border-box',
+    padding: '9px 11px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14,
+    fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)', width: '100%', boxSizing: 'border-box',
   };
   const F = (key: string, label: string, o?: { area?: boolean; select?: string[]; ph?: string; span?: boolean; num?: boolean }) => (
     <div style={{ marginBottom: 12, ...(o?.span ? { gridColumn: '1 / -1' } : {}) }}>
-      <div style={{ fontSize: 11, letterSpacing: .4, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 11, letterSpacing: .4, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 4 }}>{label}</div>
       {o?.select ? (
         <select value={form[key] ?? ''} onChange={e => set(key, e.target.value)} style={inp}>
           <option value="">—</option>
@@ -1251,25 +1251,25 @@ function AddPropertyModal({
     <div onClick={onClose}
       style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 1100, display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'flex-start', padding: isMobile ? 0 : '5vh 16px', overflowY: isMobile ? 'hidden' : 'auto' }}>
       <div onClick={e => e.stopPropagation()}
-        style={{ background: '#fff', maxWidth: isMobile ? '100%' : 720, width: '100%', boxShadow: '0 24px 70px rgba(0,0,0,.32)', fontFamily: "'DM Sans',sans-serif", borderRadius: isMobile ? '18px 18px 0 0' : 16, ...(isMobile ? { maxHeight: '94vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: 'env(safe-area-inset-bottom)' } : {}) }}>
+        style={{ background: 'var(--k-fff)', maxWidth: isMobile ? '100%' : 720, width: '100%', boxShadow: '0 24px 70px rgba(0,0,0,.32)', fontFamily: "'DM Sans',sans-serif", borderRadius: isMobile ? '18px 18px 0 0' : 16, ...(isMobile ? { maxHeight: '94vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: 'env(safe-area-inset-bottom)' } : {}) }}>
         <div style={{ height: 6, background: '#c9922c', borderTopLeftRadius: isMobile ? 18 : 16, borderTopRightRadius: isMobile ? 18 : 16, flexShrink: 0 }} />
         <div style={{ padding: isMobile ? '18px 18px 20px' : 28, ...(isMobile ? { overflowY: 'auto', WebkitOverflowScrolling: 'touch', flex: 1, minHeight: 0 } : {}) }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 26, fontWeight: 600, color: '#1a1a1a' }}>Add a Property</div>
-            <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: isMobile ? 44 : 34, height: isMobile ? 44 : 34, cursor: 'pointer', fontSize: 18, color: '#6b7280' }}>✕</button>
+            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 26, fontWeight: 600, color: 'var(--k-1a1a1a)' }}>Add a Property</div>
+            <button onClick={onClose} aria-label="Close" style={{ background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 8, width: isMobile ? 44 : 34, height: isMobile ? 44 : 34, cursor: 'pointer', fontSize: 18, color: 'var(--k-6b7280)' }}>✕</button>
           </div>
 
           {/* Flyer dropzone — upload a PDF/image and Claude vision fills the form */}
           <label
             onDragOver={e => e.preventDefault()}
             onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) readFlyer(f); }}
-            style={{ display: 'block', border: '2px dashed #e0cfa0', background: reading ? '#fbf3df' : '#fffdf6', borderRadius: 12, padding: '18px 16px', textAlign: 'center', cursor: reading ? 'default' : 'pointer', marginBottom: 16 }}>
+            style={{ display: 'block', border: '2px dashed #e0cfa0', background: reading ? '#fbf3df' : 'var(--k-fffdf6)', borderRadius: 12, padding: '18px 16px', textAlign: 'center', cursor: reading ? 'default' : 'pointer', marginBottom: 16 }}>
             {/* accept="image/*" reliably offers the camera on phones and lets iOS
                 hand back a JPEG (HEIC photos are converted on capture). */}
             <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) readFlyer(f); e.target.value = ''; }} />
             {reading ? (
-              <div style={{ color: '#a06a12', fontWeight: 700, fontSize: 14 }}>⏳ Reading the flyer with AI…</div>
+              <div style={{ color: 'var(--k-a06a12)', fontWeight: 700, fontSize: 14 }}>⏳ Reading the flyer with AI…</div>
             ) : (
               <>
                 <div style={{ fontSize: 22, marginBottom: 4 }}>{isMobile ? '📸' : '📄'}</div>
@@ -1278,7 +1278,7 @@ function AddPropertyModal({
               </>
             )}
           </label>
-          {readMsg && <div style={{ fontSize: 13, color: readMsg.startsWith('✓') ? '#15803d' : '#b45309', marginBottom: 14, fontWeight: 600 }}>{readMsg}</div>}
+          {readMsg && <div style={{ fontSize: 13, color: readMsg.startsWith('✓') ? 'var(--k-15803d)' : 'var(--k-b45309)', marginBottom: 14, fontWeight: 600 }}>{readMsg}</div>}
 
           {/* Core fields */}
           <div style={grid}>
@@ -1355,11 +1355,11 @@ function AddPropertyModal({
             </>
           )}
 
-          {error && <div style={{ fontSize: 13, color: '#dc2626', marginTop: 6, fontWeight: 600 }}>{error}</div>}
+          {error && <div style={{ fontSize: 13, color: 'var(--k-dc2626)', marginTop: 6, fontWeight: 600 }}>{error}</div>}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, ...(isMobile ? { position: 'sticky', bottom: 0, background: '#fff', paddingTop: 12 } : {}) }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, ...(isMobile ? { position: 'sticky', bottom: 0, background: 'var(--k-fff)', paddingTop: 12 } : {}) }}>
             <button onClick={onClose} disabled={saving}
-              style={{ padding: '10px 18px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: 'pointer', minHeight: isMobile ? 44 : undefined }}>Cancel</button>
+              style={{ padding: '10px 18px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontWeight: 600, fontSize: 14, cursor: 'pointer', minHeight: isMobile ? 44 : undefined }}>Cancel</button>
             <button onClick={submit} disabled={saving || reading}
               style={{ padding: '10px 20px', border: 'none', borderRadius: 8, background: (saving || reading) ? '#dcc79a' : '#c9922c', color: '#fff', fontWeight: 700, fontSize: 14, cursor: (saving || reading) ? 'default' : 'pointer', minHeight: isMobile ? 44 : undefined }}>
               {saving ? 'Saving…' : 'Add to Property DB'}

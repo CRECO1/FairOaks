@@ -28,7 +28,7 @@ export default function EsignSavedMessages({ message, onPick, ownerKey, docTitle
   const [sel, setSel] = useState('');
   useEffect(() => { setItems(read(key)); }, [key]);
 
-  const small: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', whiteSpace: 'nowrap' };
+  const small: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', whiteSpace: 'nowrap' };
 
   function save() {
     const text = message.trim();
@@ -66,7 +66,7 @@ export default function EsignSavedMessages({ message, onPick, ownerKey, docTitle
         )}
       </select>
       <button type="button" onClick={save} disabled={!message.trim()} style={{ ...small, opacity: message.trim() ? 1 : 0.5 }}>Save this message</button>
-      {sel && <button type="button" onClick={remove} style={{ ...small, color: '#b91c1c', borderColor: '#fecaca' }}>Delete “{sel}”</button>}
+      {sel && <button type="button" onClick={remove} style={{ ...small, color: 'var(--k-b91c1c)', borderColor: 'var(--k-fecaca)' }}>Delete “{sel}”</button>}
     </div>
   );
 }

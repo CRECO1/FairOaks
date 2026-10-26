@@ -315,12 +315,12 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
       <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
         <div style={{ maxWidth: '86%' }}>
           {tools.length > 0 && (
-            <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>🔧 {tools.map(t => TOOL_LABEL[t] || t).join(' · ')}</div>
+            <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 4 }}>🔧 {tools.map(t => TOOL_LABEL[t] || t).join(' · ')}</div>
           )}
           {atts.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end', marginBottom: txt ? 5 : 0 }}>
               {atts.map(a => (
-                <span key={a.id} title={a.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fff', border: '1px solid #e5e7eb', color: '#374151', borderRadius: 8, padding: '4px 9px', fontSize: 12.5, maxWidth: '100%' }}>
+                <span key={a.id} title={a.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', color: 'var(--k-374151)', borderRadius: 8, padding: '4px 9px', fontSize: 12.5, maxWidth: '100%' }}>
                   <span aria-hidden>{kindIcon(a.name)}</span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 190 }}>{a.name}</span>
                 </span>
               ))}
@@ -328,8 +328,8 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
           )}
           {txt && (
             <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55, padding: '9px 13px', borderRadius: 12,
-              background: m.role === 'user' ? GOLD : '#fff', color: m.role === 'user' ? '#fff' : '#1f2937',
-              border: m.role === 'user' ? 'none' : '1px solid #e5e7eb', borderBottomRightRadius: m.role === 'user' ? 3 : 12, borderBottomLeftRadius: m.role === 'user' ? 12 : 3 }}>{m.role === 'assistant' ? linkify(txt) : txt}</div>
+              background: m.role === 'user' ? GOLD : 'var(--k-fff)', color: m.role === 'user' ? '#fff' : 'var(--k-1f2937)',
+              border: m.role === 'user' ? 'none' : '1px solid var(--k-e5e7eb)', borderBottomRightRadius: m.role === 'user' ? 3 : 12, borderBottomLeftRadius: m.role === 'user' ? 12 : 3 }}>{m.role === 'assistant' ? linkify(txt) : txt}</div>
           )}
         </div>
       </div>
@@ -343,7 +343,7 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
       onDrop={e => { if (e.dataTransfer?.files?.length) { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); } }}
       style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(430px, 100vw)', background: '#f7f7f5', boxShadow: '-8px 0 30px rgba(0,0,0,.14)', zIndex: 1200, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans',sans-serif" }}>
       {dragging && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 5, background: 'rgba(201,146,44,.12)', border: `3px dashed ${GOLD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', color: '#92400e', fontWeight: 700, fontSize: 16 }}>Drop files to attach</div>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 5, background: 'rgba(201,146,44,.12)', border: `3px dashed ${GOLD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', color: 'var(--k-92400e)', fontWeight: 700, fontSize: 16 }}>Drop files to attach</div>
       )}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(14px + env(safe-area-inset-top)) 16px 14px', background: '#1a1a1a', color: '#fff', flexShrink: 0 }}>
@@ -361,53 +361,53 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
       {/* Messages */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         {messages.length === 0 && (
-          <div style={{ color: '#6b7280', fontSize: 14, lineHeight: 1.6 }}>
+          <div style={{ color: 'var(--k-6b7280)', fontSize: 14, lineHeight: 1.6 }}>
             <p style={{ marginTop: 0 }}>Hi — I can look things up and take actions in your CRM. Try:</p>
             {SUGGESTIONS.map(s => (
-              <button key={s} onClick={() => send(s)} style={{ display: 'block', width: '100%', textAlign: 'left', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '9px 12px', marginBottom: 8, cursor: 'pointer', fontSize: 13.5, color: '#374151', fontFamily: 'inherit' }}>{s}</button>
+              <button key={s} onClick={() => send(s)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '9px 12px', marginBottom: 8, cursor: 'pointer', fontSize: 13.5, color: 'var(--k-374151)', fontFamily: 'inherit' }}>{s}</button>
             ))}
           </div>
         )}
         {bubbles}
-        {loading && <div style={{ fontSize: 13, color: '#9ca3af', padding: '4px 2px' }}>Thinking…</div>}
-        {error && <div style={{ fontSize: 13, color: '#dc2626', padding: '4px 2px' }}>{error}</div>}
+        {loading && <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '4px 2px' }}>Thinking…</div>}
+        {error && <div style={{ fontSize: 13, color: 'var(--k-dc2626)', padding: '4px 2px' }}>{error}</div>}
       </div>
 
       {/* Pending confirmation */}
       {pending.length > 0 && !loading && (
-        <div style={{ padding: '12px 16px', background: '#fffbeb', borderTop: '1px solid #fde68a', flexShrink: 0 }}>
-          <div style={{ fontSize: 13, color: '#92400e', fontWeight: 600, marginBottom: 8 }}>Confirm to run:</div>
+        <div style={{ padding: '12px 16px', background: 'var(--k-fffbeb)', borderTop: '1px solid var(--k-fde68a)', flexShrink: 0 }}>
+          <div style={{ fontSize: 13, color: 'var(--k-92400e)', fontWeight: 600, marginBottom: 8 }}>Confirm to run:</div>
           {pending.map((p, i) => <div key={i} style={{ fontSize: 13, color: '#78350f', marginBottom: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>• {p.summary}</div>)}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button onClick={() => send('', pending.map(p => p.id))} style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 8, padding: '11px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Confirm &amp; run</button>
-            <button onClick={() => { setPending([]); send('Actually, don’t do that.'); }} style={{ background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, padding: '11px 18px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Cancel</button>
+            <button onClick={() => { setPending([]); send('Actually, don’t do that.'); }} style={{ background: 'var(--k-fff)', color: 'var(--k-6b7280)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '11px 18px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Cancel</button>
           </div>
         </div>
       )}
 
       {/* Files waiting to go with the next message */}
       {picks.length > 0 && (
-        <div style={{ padding: '8px 12px 0', background: '#fff', borderTop: '1px solid #e5e7eb', display: 'flex', flexWrap: 'wrap', gap: 6, flexShrink: 0 }}>
+        <div style={{ padding: '8px 12px 0', background: 'var(--k-fff)', borderTop: '1px solid var(--k-e5e7eb)', display: 'flex', flexWrap: 'wrap', gap: 6, flexShrink: 0 }}>
           {picks.map(p => (
-            <span key={p.key} title={p.error || p.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${p.status === 'error' ? '#fecaca' : '#e5e7eb'}`, background: p.status === 'error' ? '#fef2f2' : '#f9fafb', borderRadius: 8, padding: '3px 4px 3px 7px', fontSize: 12.5, color: p.status === 'error' ? '#b91c1c' : '#374151', maxWidth: '100%' }}>
+            <span key={p.key} title={p.error || p.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${p.status === 'error' ? 'var(--k-fecaca)' : 'var(--k-e5e7eb)'}`, background: p.status === 'error' ? 'var(--k-fef2f2)' : 'var(--k-f9fafb)', borderRadius: 8, padding: '3px 4px 3px 7px', fontSize: 12.5, color: p.status === 'error' ? 'var(--k-b91c1c)' : 'var(--k-374151)', maxWidth: '100%' }}>
               {p.preview ? <img src={p.preview} alt="" style={{ width: 22, height: 22, objectFit: 'cover', borderRadius: 4 }} /> : <span aria-hidden>{kindIcon(p.name)}</span>}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>{p.name}</span>
-              <span style={{ color: '#9ca3af', fontSize: 11.5 }}>{p.status === 'uploading' ? 'uploading…' : p.status === 'error' ? 'failed' : prettySize(p.size)}</span>
-              <button onClick={() => removePick(p.key)} aria-label={`Remove ${p.name}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 16, lineHeight: 1, padding: '2px 5px', minWidth: 24, minHeight: 24 }}>×</button>
+              <span style={{ color: 'var(--k-9ca3af)', fontSize: 11.5 }}>{p.status === 'uploading' ? 'uploading…' : p.status === 'error' ? 'failed' : prettySize(p.size)}</span>
+              <button onClick={() => removePick(p.key)} aria-label={`Remove ${p.name}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 16, lineHeight: 1, padding: '2px 5px', minWidth: 24, minHeight: 24 }}>×</button>
             </span>
           ))}
         </div>
       )}
 
       {/* Input */}
-      <div style={{ padding: '12px 12px calc(12px + env(safe-area-inset-bottom))', borderTop: picks.length ? 'none' : '1px solid #e5e7eb', background: '#fff', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+      <div style={{ padding: '12px 12px calc(12px + env(safe-area-inset-bottom))', borderTop: picks.length ? 'none' : '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
         <input ref={fileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT} onChange={e => addFiles(e.target.files)} style={{ display: 'none' }} aria-hidden tabIndex={-1} />
         <button onClick={() => fileInputRef.current?.click()} disabled={loading || picks.length >= ATTACHMENT_MAX_FILES} aria-label="Attach a file or photo" title="Attach a photo, PDF, Word, Excel or CSV"
-          style={{ background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 10, width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: loading || picks.length >= ATTACHMENT_MAX_FILES ? 'default' : 'pointer', fontSize: 19, opacity: picks.length >= ATTACHMENT_MAX_FILES ? 0.5 : 1 }}>📎</button>
+          style={{ background: 'var(--k-fff)', color: 'var(--k-6b7280)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: loading || picks.length >= ATTACHMENT_MAX_FILES ? 'default' : 'pointer', fontSize: 19, opacity: picks.length >= ATTACHMENT_MAX_FILES ? 0.5 : 1 }}>📎</button>
         <textarea value={input} onChange={e => setInput(e.target.value)} rows={1} placeholder={picks.length ? 'Say what to do with the file…' : 'Ask or tell me to do something…'}
           onPaste={e => { const fs = Array.from(e.clipboardData?.files ?? []); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
-          style={{ flex: 1, resize: 'none', border: '1px solid #e5e7eb', borderRadius: 10, padding: '11px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none', minHeight: 44, maxHeight: 120, boxSizing: 'border-box' }} />
+          style={{ flex: 1, resize: 'none', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '11px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none', minHeight: 44, maxHeight: 120, boxSizing: 'border-box' }} />
         <button onClick={() => send(input)} disabled={loading || uploading || (!input.trim() && readyRefs.length === 0)} aria-label="Send" style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 10, width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, cursor: loading || !input.trim() ? 'default' : 'pointer', opacity: loading || !input.trim() ? 0.5 : 1, fontSize: 18 }}>↑</button>
       </div>
     </div>

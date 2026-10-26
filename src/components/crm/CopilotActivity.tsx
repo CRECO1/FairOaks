@@ -42,7 +42,7 @@ export default function CopilotActivity({ token, isMobile = false, isBroker = fa
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.55)', zIndex: 1300, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16, fontFamily: "'DM Sans',sans-serif" }}>
-      <div style={{ background: '#fff', borderRadius: isMobile ? '14px 14px 0 0' : 14, width: 'min(760px, 100%)', maxHeight: isMobile ? '92vh' : '86vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+      <div style={{ background: 'var(--k-fff)', borderRadius: isMobile ? '14px 14px 0 0' : 14, width: 'min(760px, 100%)', maxHeight: isMobile ? '92vh' : '86vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '16px 20px', background: '#1a1a1a', color: '#fff' }}>
           <span style={{ fontSize: 18 }}>👁</span>
@@ -55,46 +55,46 @@ export default function CopilotActivity({ token, isMobile = false, isBroker = fa
           <button onClick={onClose} aria-label="Close" style={{ background: 'rgba(255,255,255,.14)', border: 'none', color: '#fff', borderRadius: 8, width: 36, height: 36, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 16, lineHeight: 1, order: isMobile ? 2 : 4 }}>✕</button>
           <select value={view} onChange={e => setView(e.target.value as 'all' | 'copilot')}
             style={{ background: 'rgba(255,255,255,.12)', color: '#fff', border: '1px solid rgba(255,255,255,.2)', borderRadius: 8, padding: isMobile ? '10px 10px' : '6px 10px', fontSize: 14, fontFamily: 'inherit', cursor: 'pointer', order: 3, flex: isMobile ? '1 1 100%' : '0 0 auto', minWidth: 0, maxWidth: '100%' }}>
-            <option value="all" style={{ color: '#111' }}>All activity</option>
-            <option value="copilot" style={{ color: '#111' }}>AI / Copilot only</option>
+            <option value="all" style={{ color: 'var(--k-111)' }}>All activity</option>
+            <option value="copilot" style={{ color: 'var(--k-111)' }}>AI / Copilot only</option>
           </select>
           {isBroker && <select value={agentId} onChange={e => setAgentId(e.target.value)}
             style={{ background: 'rgba(255,255,255,.12)', color: '#fff', border: '1px solid rgba(255,255,255,.2)', borderRadius: 8, padding: isMobile ? '10px 10px' : '6px 10px', fontSize: 14, fontFamily: 'inherit', cursor: 'pointer', order: 3, flex: isMobile ? '1 1 100%' : '0 0 auto', minWidth: 0, maxWidth: '100%' }}>
-            <option value="" style={{ color: '#111' }}>All agents</option>
-            {agents.map(a => <option key={a.id} value={a.id} style={{ color: '#111' }}>{a.name}</option>)}
+            <option value="" style={{ color: 'var(--k-111)' }}>All agents</option>
+            {agents.map(a => <option key={a.id} value={a.id} style={{ color: 'var(--k-111)' }}>{a.name}</option>)}
           </select>}
         </div>
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '8px 8px calc(8px + env(safe-area-inset-bottom))' : 8 }}>
-          {loading && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading…</div>}
-          {error && <div style={{ padding: 40, textAlign: 'center', color: '#dc2626' }}>{error}</div>}
+          {loading && <div style={{ padding: 40, textAlign: 'center', color: 'var(--k-9ca3af)' }}>Loading…</div>}
+          {error && <div style={{ padding: 40, textAlign: 'center', color: 'var(--k-dc2626)' }}>{error}</div>}
           {!loading && !error && rows.length === 0 && (
-            <div style={{ padding: 50, textAlign: 'center', color: '#9ca3af', fontSize: 14, lineHeight: 1.6 }}>
+            <div style={{ padding: 50, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1.6 }}>
               {view === 'copilot'
                 ? <>No Copilot activity{agentId ? ' for this agent' : ' yet'}. Anything an agent asks the ✨ Copilot to do is recorded here.</>
                 : <>No activity recorded{agentId ? ' for this agent' : ' yet'}.</>}
             </div>
           )}
           {!loading && !error && rows.map(r => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'baseline', gap: isMobile ? 9 : 12, padding: isMobile ? '11px 10px' : '11px 14px', borderBottom: '1px solid #f3f4f6' }}>
+            <div key={r.id} style={{ display: 'flex', alignItems: 'baseline', gap: isMobile ? 9 : 12, padding: isMobile ? '11px 10px' : '11px 14px', borderBottom: '1px solid var(--k-f3f4f6)' }}>
               <div style={{ width: isMobile ? 92 : 130, flexShrink: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.agent}</div>
-                {r.business_unit && <div style={{ fontSize: 10.5, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5 }}>{r.business_unit}</div>}
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.agent}</div>
+                {r.business_unit && <div style={{ fontSize: 10.5, color: 'var(--k-9ca3af)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{r.business_unit}</div>}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, color: '#1f2937', lineHeight: 1.4, display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 14, color: 'var(--k-1f2937)', lineHeight: 1.4, display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap' }}>
                   {/* Which trail a row came from: what the Copilot did on the
                       agent's behalf, versus what the agent did themselves. */}
                   <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase', padding: '1px 6px', borderRadius: 5,
-                    background: r.kind === 'account' ? '#eef2ff' : '#fef3c7', color: r.kind === 'account' ? '#3730a3' : '#92400e' }}>
+                    background: r.kind === 'account' ? 'var(--k-eef2ff)' : 'var(--k-fef3c7)', color: r.kind === 'account' ? 'var(--k-3730a3)' : 'var(--k-92400e)' }}>
                     {r.kind === 'account' ? 'account' : 'AI'}
                   </span>
                   <span>{r.action}</span>
                 </div>
-                {r.contact && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>· {r.contact}</div>}
+                {r.contact && <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 2 }}>· {r.contact}</div>}
               </div>
-              <div style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0, whiteSpace: 'nowrap' }} title={new Date(r.when).toLocaleString()}>{ago(r.when)}</div>
+              <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0, whiteSpace: 'nowrap' }} title={new Date(r.when).toLocaleString()}>{ago(r.when)}</div>
             </div>
           ))}
         </div>

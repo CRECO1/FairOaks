@@ -45,10 +45,10 @@ interface Props {
 }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
-const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
-const chip: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px solid #e6d3a2', borderRadius: 6, padding: '4px 9px', minHeight: 30, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
-const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans',sans-serif" };
-const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4, display: 'block' };
+const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
+const chip: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1px solid var(--k-e6d3a2)', borderRadius: 6, padding: '4px 9px', minHeight: 30, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
+const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans',sans-serif" };
+const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 4, display: 'block' };
 
 function pretty(n: string | null | undefined): string {
   const d = String(n ?? '').replace(/\D/g, '');
@@ -390,15 +390,15 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap', rowGap: 8 }}>
-        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111', whiteSpace: 'nowrap' }}>📞 Calling Log</h2>
-        <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${list.length} ${filter === 'follow_up' ? 'waiting on a call back' : filter === 'all' ? `calls · last ${days} days` : 'calls'}`}</span>
+        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: 'var(--k-111)', whiteSpace: 'nowrap' }}>📞 Calling Log</h2>
+        <span style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>{loading ? '' : `${list.length} ${filter === 'follow_up' ? 'waiting on a call back' : filter === 'all' ? `calls · last ${days} days` : 'calls'}`}</span>
         <span style={{ flex: '1 1 auto', minWidth: 0 }} />
-        {isAdmin && conn?.talkroute && <button onClick={syncNow} disabled={busy === 'sync'} style={{ ...mini, color: '#9ca3af' }}>{busy === 'sync' ? '⏳ Syncing…' : '⟳ Sync Talkroute'}</button>}
+        {isAdmin && conn?.talkroute && <button onClick={syncNow} disabled={busy === 'sync'} style={{ ...mini, color: 'var(--k-9ca3af)' }}>{busy === 'sync' ? '⏳ Syncing…' : '⟳ Sync Talkroute'}</button>}
         <button onClick={() => setShowLog(v => !v)} style={mini}>＋ Log a call</button>
-        <button onClick={() => setShowBlocked(v => !v)} style={{ ...mini, background: showBlocked ? '#111' : '#fff', color: showBlocked ? '#fff' : '#374151' }}>🚫 Blocked numbers</button>
-        {isAdmin && <button onClick={() => setShowSetup(v => !v)} style={{ ...mini, background: showSetup ? '#111' : '#fff', color: showSetup ? '#fff' : '#374151' }}>⚙ Setup &amp; voice bot</button>}
+        <button onClick={() => setShowBlocked(v => !v)} style={{ ...mini, background: showBlocked ? '#111' : 'var(--k-fff)', color: showBlocked ? '#fff' : 'var(--k-374151)' }}>🚫 Blocked numbers</button>
+        {isAdmin && <button onClick={() => setShowSetup(v => !v)} style={{ ...mini, background: showSetup ? '#111' : 'var(--k-fff)', color: showSetup ? '#fff' : 'var(--k-374151)' }}>⚙ Setup &amp; voice bot</button>}
       </div>
-      <p style={{ fontSize: 13, color: '#6b7280', marginTop: 0, marginBottom: 14 }}>
+      <p style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 0, marginBottom: 14 }}>
         Calls and voicemails from Talkroute, plus every call the AI receptionist answers on the bot line — with what the caller wanted and who still needs a call back.
       </p>
 
@@ -414,10 +414,10 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             { label: 'Voicemails', value: stats.voicemail, sub: 'last 7 days', pick: 'voicemail' as const },
             { label: 'Texts to answer', value: threads.filter(t => t.unanswered).length, sub: `${threads.length} thread${threads.length === 1 ? '' : 's'}`, tone: threads.some(t => t.unanswered) ? '#b91c1c' : undefined, pick: 'texts' as const },
           ].map(c => (
-            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ flex: '1 1 120px', minWidth: 112, background: '#fff', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : '#eef0f3'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-              <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', fontWeight: 700 }}>{c.label}</div>
+            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ flex: '1 1 120px', minWidth: 112, background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : '#eef0f3'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+              <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--k-9ca3af)', fontWeight: 700 }}>{c.label}</div>
               <div style={{ fontSize: 21, fontWeight: 700, marginTop: 3, color: c.tone || '#111827' }}>{c.value}</div>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{c.sub}</div>
+              <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{c.sub}</div>
             </button>
           ))}
         </div>
@@ -441,14 +441,14 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
 
       {/* ── Setup & voice bot (admins) ── */}
       {isAdmin && showSetup && (
-        <div style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, marginBottom: 22 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 10 }}>Connections</div>
+        <div style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, marginBottom: 22 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 10 }}>Connections</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, fontSize: 13, marginBottom: 12 }}>
-            <div>{light(!!conn?.talkroute)} Talkroute API key {conn?.talkroute ? '' : <span style={{ color: '#9ca3af' }}>— add TALKROUTE_API_KEY in Vercel</span>}</div>
-            <div>{light(!!conn?.talkroute_webhook_secret)} Talkroute webhook secret {conn?.talkroute_webhook_secret ? '' : <span style={{ color: '#9ca3af' }}>— add TALKROUTE_WEBHOOK_SECRET</span>}</div>
-            <div>{light(!!conn?.twilio)} Twilio (bot line) {conn?.twilio ? '' : <span style={{ color: '#9ca3af' }}>— add TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN</span>}</div>
+            <div>{light(!!conn?.talkroute)} Talkroute API key {conn?.talkroute ? '' : <span style={{ color: 'var(--k-9ca3af)' }}>— add TALKROUTE_API_KEY in Vercel</span>}</div>
+            <div>{light(!!conn?.talkroute_webhook_secret)} Talkroute webhook secret {conn?.talkroute_webhook_secret ? '' : <span style={{ color: 'var(--k-9ca3af)' }}>— add TALKROUTE_WEBHOOK_SECRET</span>}</div>
+            <div>{light(!!conn?.twilio)} Twilio (bot line) {conn?.twilio ? '' : <span style={{ color: 'var(--k-9ca3af)' }}>— add TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN</span>}</div>
             <div>{light(!!conn?.anthropic)} Claude (the bot&apos;s brain)</div>
-            <div title={knowledge?.titles?.join('\n')}>{light(!!knowledge?.configured && (knowledge?.count ?? 0) > 0)} Website listings {knowledge?.configured ? <span style={{ color: '#6b7280' }}>— the bot knows {knowledge.count} of our own listing{knowledge.count === 1 ? '' : 's'}{businessUnit === 'residential' ? ' and can look up any home on the MLS by address, MLS number, area, beds or budget' : ' from crecotx.com'}, refreshed every 5 min</span> : <span style={{ color: '#9ca3af' }}>— not connected for this workspace</span>}</div>
+            <div title={knowledge?.titles?.join('\n')}>{light(!!knowledge?.configured && (knowledge?.count ?? 0) > 0)} Website listings {knowledge?.configured ? <span style={{ color: 'var(--k-6b7280)' }}>— the bot knows {knowledge.count} of our own listing{knowledge.count === 1 ? '' : 's'}{businessUnit === 'residential' ? ' and can look up any home on the MLS by address, MLS number, area, beds or budget' : ' from crecotx.com'}, refreshed every 5 min</span> : <span style={{ color: 'var(--k-9ca3af)' }}>— not connected for this workspace</span>}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
             <button onClick={() => settingsAction('test_talkroute')} disabled={!conn?.talkroute || busy === 'test_talkroute'} style={{ ...mini, opacity: conn?.talkroute ? 1 : .5 }}>Test Talkroute connection</button>
@@ -456,15 +456,15 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             <button onClick={() => settingsAction('register_webhooks')} disabled={!conn?.talkroute || !conn?.talkroute_webhook_secret || busy === 'register_webhooks'} style={{ ...mini, opacity: conn?.talkroute && conn?.talkroute_webhook_secret ? 1 : .5 }} title="Tells Talkroute to push new calls and voicemails here the moment they happen">Register Talkroute webhooks</button>
           </div>
 
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 8 }}>How the bot answers</div>
-          <ol style={{ fontSize: 13, color: '#374151', margin: '0 0 14px', paddingLeft: 20, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 8 }}>How the bot answers</div>
+          <ol style={{ fontSize: 13, color: 'var(--k-374151)', margin: '0 0 14px', paddingLeft: 20, lineHeight: 1.6 }}>
             <li>Buy a local voice number in Twilio and paste it below as the bot line.</li>
-            <li>In the Twilio console, on that number: <em>A call comes in</em> → Webhook <code style={{ fontSize: 12, background: '#f3f4f6', padding: '1px 5px', borderRadius: 4 }}>{conn?.twilio_voice_url}</code> (POST), and <em>Call status changes</em> → <code style={{ fontSize: 12, background: '#f3f4f6', padding: '1px 5px', borderRadius: 4 }}>{conn?.twilio_status_url}</code>.</li>
+            <li>In the Twilio console, on that number: <em>A call comes in</em> → Webhook <code style={{ fontSize: 12, background: 'var(--k-f3f4f6)', padding: '1px 5px', borderRadius: 4 }}>{conn?.twilio_voice_url}</code> (POST), and <em>Call status changes</em> → <code style={{ fontSize: 12, background: 'var(--k-f3f4f6)', padding: '1px 5px', borderRadius: 4 }}>{conn?.twilio_status_url}</code>.</li>
             <li>In Talkroute, add the bot line as a <em>Forwarding Number</em>. Then send calls to it wherever you want the bot to pick up: as the after-hours destination (Settings → Hours), as the “if no one answers” fallback on your ring group, or as a menu option (“press 2 to leave details with our assistant”).</li>
-            <li>Talkroute webhook URL (already used by the button above): <code style={{ fontSize: 12, background: '#f3f4f6', padding: '1px 5px', borderRadius: 4, wordBreak: 'break-all' }}>{conn?.talkroute_webhook_url}</code></li>
+            <li>Talkroute webhook URL (already used by the button above): <code style={{ fontSize: 12, background: 'var(--k-f3f4f6)', padding: '1px 5px', borderRadius: 4, wordBreak: 'break-all' }}>{conn?.talkroute_webhook_url}</code></li>
           </ol>
 
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 8 }}>Voice bot settings · {businessUnit}</div>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 8 }}>Voice bot settings · {businessUnit}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
             <div>
               <span style={label}>Bot</span>
@@ -490,14 +490,14 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
           <div style={{ marginTop: 12 }}><span style={label}>Instructions for the bot</span><textarea style={{ ...input, minHeight: 90 }} value={draft.instructions ?? ''} onChange={e => setDraft(d => ({ ...d, instructions: e.target.value }))} placeholder={"Office hours are Mon–Fri 9–5 Central. For 8000 Fair Oaks Parkway tenant issues, ask for the suite number. Never quote lease rates."} /></div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
             <button onClick={saveSettings} disabled={busy === 'settings'} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>{busy === 'settings' ? 'Saving…' : 'Save settings'}</button>
-            {settings && <span style={{ fontSize: 12, color: '#9ca3af' }}>Bot is {settings.enabled ? 'on' : 'off'}{settings.twilio_number ? ` · line ${pretty(settings.twilio_number)}` : ' · no bot line set yet'}</span>}
+            {settings && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>Bot is {settings.enabled ? 'on' : 'off'}{settings.twilio_number ? ` · line ${pretty(settings.twilio_number)}` : ' · no bot line set yet'}</span>}
           </div>
         </div>
       )}
 
       {/* ── Log a call by hand ── */}
       {showLog && (
-        <div style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 14, marginBottom: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, alignItems: 'end' }}>
+        <div style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 14, marginBottom: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, alignItems: 'end' }}>
           <div><span style={label}>Number</span><input style={input} value={manual.number} onChange={e => setManual(m => ({ ...m, number: e.target.value }))} placeholder="(210) 555-0123" /></div>
           <div><span style={label}>Name</span><input style={input} value={manual.caller_name} onChange={e => setManual(m => ({ ...m, caller_name: e.target.value }))} /></div>
           <div><span style={label}>Direction</span><select style={input} value={manual.direction} onChange={e => setManual(m => ({ ...m, direction: e.target.value }))}><option value="inbound">They called us</option><option value="outbound">We called them</option></select></div>
@@ -513,10 +513,10 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       {/* ── Filters ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
         {([['all', 'All'], ['follow_up', '🔔 Needs call back'], ['wrapup', '📝 Needs a note'], ['bot', '🤖 Bot'], ['voicemail', '📼 Voicemail'], ['missed', 'Missed'], ['newcaller', `➕ Not in contacts${(filter === 'all' || filter === 'newcaller') && newCallers.length ? ` (${newCallers.length})` : ''}`], ['texts', '💬 Texts']] as const).map(([k, t]) => (
-          <button key={k} onClick={() => setFilter(k)} style={{ ...mini, minHeight: 32, padding: '6px 11px', background: filter === k ? '#111' : '#fff', color: filter === k ? '#fff' : '#374151', borderColor: filter === k ? '#111' : '#e5e7eb' }}>{t}</button>
+          <button key={k} onClick={() => setFilter(k)} style={{ ...mini, minHeight: 32, padding: '6px 11px', background: filter === k ? '#111' : 'var(--k-fff)', color: filter === k ? '#fff' : 'var(--k-374151)', borderColor: filter === k ? '#111' : 'var(--k-e5e7eb)' }}>{t}</button>
         ))}
         <input value={qLive} onChange={e => setQLive(e.target.value)} placeholder="Search name, number, what they wanted…" style={{ ...input, flex: '1 1 200px', width: 'auto', minHeight: 32, padding: '6px 10px' }} />
-        {(internalHidden > 0 || showInternal) && <button onClick={() => setShowInternal(v => !v)} title="Calls between our own lines, the team's phones and the phones Talkroute forwards to" style={{ ...mini, minHeight: 32, padding: '6px 11px', background: showInternal ? '#111' : '#fff', color: showInternal ? '#fff' : '#6b7280', borderColor: showInternal ? '#111' : '#e5e7eb' }}>👥 {showInternal ? 'Hiding none' : `Internal hidden (${internalHidden})`}</button>}
+        {(internalHidden > 0 || showInternal) && <button onClick={() => setShowInternal(v => !v)} title="Calls between our own lines, the team's phones and the phones Talkroute forwards to" style={{ ...mini, minHeight: 32, padding: '6px 11px', background: showInternal ? '#111' : 'var(--k-fff)', color: showInternal ? '#fff' : 'var(--k-6b7280)', borderColor: showInternal ? '#111' : 'var(--k-e5e7eb)' }}>👥 {showInternal ? 'Hiding none' : `Internal hidden (${internalHidden})`}</button>}
         <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ ...input, width: 'auto', minHeight: 32, padding: '6px 8px', fontSize: 12.5 }}>
           {[7, 30, 90, 365].map(d => <option key={d} value={d}>Last {d} days</option>)}
         </select>
@@ -525,15 +525,15 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       {filter === 'texts' ? (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#6b7280', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--k-6b7280)', cursor: 'pointer' }}>
               <input type="checkbox" checked={textsNeedReply} onChange={e => setTextsNeedReply(e.target.checked)} /> Only threads waiting on a reply
             </label>
-            <span style={{ fontSize: 12, color: '#9ca3af' }}>· replies go out from your Talkroute number</span>
+            <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>· replies go out from your Talkroute number</span>
           </div>
           {threads.filter(t => !textsNeedReply || t.unanswered).length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
+            <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--k-9ca3af)' }}>
               <div style={{ fontSize: 40, marginBottom: 8 }}>💬</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{textsNeedReply ? 'Every text has been answered.' : 'No text threads in this window.'}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--k-374151)' }}>{textsNeedReply ? 'Every text has been answered.' : 'No text threads in this window.'}</div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -542,37 +542,37 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                 const who = t.contact?.name || pretty(t.number);
                 const msgs = thread[t.conversation_id];
                 return (
-                  <div key={t.conversation_id} style={{ background: '#fff', border: `1px solid ${t.unanswered ? '#f3e4c4' : '#eef0f2'}`, borderLeft: `4px solid ${t.unanswered ? '#c9922c' : '#e5e7eb'}`, borderRadius: 12, padding: '12px 14px' }}>
+                  <div key={t.conversation_id} style={{ background: 'var(--k-fff)', border: `1px solid ${t.unanswered ? '#f3e4c4' : '#eef0f2'}`, borderLeft: `4px solid ${t.unanswered ? '#c9922c' : 'var(--k-e5e7eb)'}`, borderRadius: 12, padding: '12px 14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 6 }}>
                       <span style={{ fontSize: 20, flexShrink: 0 }}>💬</span>
                       <div style={{ flex: '1 1 220px', minWidth: 0, cursor: 'pointer' }} onClick={() => openTextThread(t)}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 14.5, fontWeight: 700, color: '#111' }}>{who}</span>
-                          {t.contact && onOpenContact && <button onClick={e => { e.stopPropagation(); onOpenContact(t.contact!.id); }} style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>👤 Contact{t.contact.type ? ` · ${t.contact.type}` : ''}</button>}
-                          {t.unanswered && <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>Needs reply</span>}
-                          <span style={{ fontSize: 11, color: '#9ca3af' }}>{t.count} message{t.count === 1 ? '' : 's'}</span>
+                          <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-111)' }}>{who}</span>
+                          {t.contact && onOpenContact && <button onClick={e => { e.stopPropagation(); onOpenContact(t.contact!.id); }} style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-1d4ed8)', background: 'var(--k-dbeafe)', border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>👤 Contact{t.contact.type ? ` · ${t.contact.type}` : ''}</button>}
+                          {t.unanswered && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-92400e)', background: 'var(--k-fef3c7)', borderRadius: 6, padding: '2px 7px' }}>Needs reply</span>}
+                          <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>{t.count} message{t.count === 1 ? '' : 's'}</span>
                         </div>
-                        <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>{when(t.last.sent_at)}{t.contact ? ` · ${pretty(t.number)}` : ''}{t.our_number ? ` · to ${pretty(t.our_number)}` : ''}</div>
-                        {!openNow && <div style={{ fontSize: 13, color: '#374151', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.last.direction === 'outbound' ? '↩ You: ' : ''}{t.last.body || (t.last.attachments?.length ? '📎 Attachment' : '')}</div>}
+                        <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginTop: 2 }}>{when(t.last.sent_at)}{t.contact ? ` · ${pretty(t.number)}` : ''}{t.our_number ? ` · to ${pretty(t.our_number)}` : ''}</div>
+                        {!openNow && <div style={{ fontSize: 13, color: 'var(--k-374151)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.last.direction === 'outbound' ? '↩ You: ' : ''}{t.last.body || (t.last.attachments?.length ? '📎 Attachment' : '')}</div>}
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
                         {t.number && <a href={`tel:${t.number}`} style={{ ...mini, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call them">📞</a>}
                         <button onClick={() => openTextThread(t)} style={mini}>{openNow ? '▾ Close' : '▸ Open thread'}</button>
                         {t.unanswered
                           ? <button onClick={() => handleThread(t, true)} disabled={busy === t.conversation_id} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }} title="No reply needed">✓ Handled</button>
-                          : <button onClick={() => handleThread(t, false)} disabled={busy === t.conversation_id} style={{ ...mini, color: '#9ca3af' }} title="Flag for a reply">🔔</button>}
+                          : <button onClick={() => handleThread(t, false)} disabled={busy === t.conversation_id} style={{ ...mini, color: 'var(--k-9ca3af)' }} title="Flag for a reply">🔔</button>}
                       </div>
                     </div>
                     {openNow && (
                       <div style={{ marginTop: 10, borderTop: '1px solid #f1f2f4', paddingTop: 10 }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 13, maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
-                          {!msgs && <div style={{ color: '#9ca3af' }}>Loading…</div>}
+                          {!msgs && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
                           {(msgs ?? []).map(m => (
                             <div key={m.id} style={{ display: 'flex', justifyContent: m.direction === 'outbound' ? 'flex-end' : 'flex-start' }}>
-                              <div style={{ maxWidth: '78%', background: m.direction === 'outbound' ? '#fdf6e9' : '#f3f4f6', color: '#111', borderRadius: 10, padding: '6px 10px' }}>
+                              <div style={{ maxWidth: '78%', background: m.direction === 'outbound' ? 'var(--k-fdf6e9)' : 'var(--k-f3f4f6)', color: 'var(--k-111)', borderRadius: 10, padding: '6px 10px' }}>
                                 {m.body && <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>}
-                                {(m.attachments ?? []).map(a => a.link ? <a key={a.id} href={a.link} target="_blank" rel="noopener noreferrer" style={{ display: 'block', fontSize: 12, color: '#1d4ed8' }}>📎 {a.fileType || (a as { file_type?: string }).file_type || 'attachment'}</a> : null)}
-                                <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 2 }}>{when(m.sent_at)}{m.direction === 'outbound' && m.sent_by ? ` · ${m.sent_by}` : ''}</div>
+                                {(m.attachments ?? []).map(a => a.link ? <a key={a.id} href={a.link} target="_blank" rel="noopener noreferrer" style={{ display: 'block', fontSize: 12, color: 'var(--k-1d4ed8)' }}>📎 {a.fileType || (a as { file_type?: string }).file_type || 'attachment'}</a> : null)}
+                                <div style={{ fontSize: 10.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>{when(m.sent_at)}{m.direction === 'outbound' && m.sent_by ? ` · ${m.sent_by}` : ''}</div>
                               </div>
                             </div>
                           ))}
@@ -591,26 +591,26 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
           )}
         </div>
       ) : nothingConnected && !loading && list.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px 16px', color: '#9ca3af', background: '#fffdf6', border: '2px dashed #e6d3a2', borderRadius: 12 }}>
+        <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--k-9ca3af)', background: 'var(--k-fffdf6)', border: '2px dashed var(--k-e6d3a2)', borderRadius: 12 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>📞</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>Nothing is plugged in yet.</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--k-374151)' }}>Nothing is plugged in yet.</div>
           <div style={{ fontSize: 13, maxWidth: 520, margin: '6px auto 0' }}>
             Add the Talkroute API key to pull your call history and voicemails here, and a Twilio number for the AI receptionist. {isAdmin ? 'Open “Setup & voice bot” above for the exact steps.' : 'Ask an admin to finish the setup.'}
           </div>
         </div>
-      ) : loading ? <div style={{ color: '#9ca3af', fontSize: 14 }}>Loading…</div>
+      ) : loading ? <div style={{ color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>
         : list.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
+          <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--k-9ca3af)' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{filter === 'follow_up' ? 'Nobody is waiting on a call back.' : filter === 'wrapup' ? 'Every answered call has a note.' : filter === 'newcaller' ? 'Every caller you spoke with is already a contact.' : 'No calls match.'}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--k-374151)' }}>{filter === 'follow_up' ? 'Nobody is waiting on a call back.' : filter === 'wrapup' ? 'Every answered call has a note.' : filter === 'newcaller' ? 'Every caller you spoke with is already a contact.' : 'No calls match.'}</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {filter === 'wrapup' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fffdf6', border: '1px solid #e6d3a2', borderRadius: 12, padding: '12px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--k-fffdf6)', border: '1px solid var(--k-e6d3a2)', borderRadius: 12, padding: '12px 14px' }}>
                 <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>{list.length} answered call{list.length === 1 ? '' : 's'} with no note</div>
-                  <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>Step through them one at a time — one tap each — or clear the old ones nobody can remember.</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)' }}>{list.length} answered call{list.length === 1 ? '' : 's'} with no note</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginTop: 2 }}>Step through them one at a time — one tap each — or clear the old ones nobody can remember.</div>
                 </div>
                 <button onClick={() => setQueueOpen(true)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none', minHeight: 44, flex: '1 1 150px' }}>▶ Start wrap-up queue</button>
                 {isAdmin && <button onClick={skipOld} disabled={busy === 'skipold'} style={{ ...mini, minHeight: 44, flex: '1 1 150px' }} title="Marks calls older than 14 days as done without a note. Nothing is deleted.">{busy === 'skipold' ? 'Working…' : 'Clear ones older than 14 days'}</button>}
@@ -626,27 +626,27 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
               const di = pending ? dueInfo(c) : null;
               const hot = urgent || (di?.overdue ?? false);   // urgent OR past-due → the row goes red
               return (
-                <div key={c.id} style={{ background: '#fff', border: `1px solid ${pending ? (hot ? '#fca5a5' : '#f3e4c4') : '#eef0f2'}`, borderLeft: `4px solid ${pending ? (hot ? '#ef4444' : '#c9922c') : '#e5e7eb'}`, borderRadius: 12, padding: '12px 14px' }}>
+                <div key={c.id} style={{ background: 'var(--k-fff)', border: `1px solid ${pending ? (hot ? 'var(--k-fca5a5)' : '#f3e4c4') : '#eef0f2'}`, borderLeft: `4px solid ${pending ? (hot ? '#ef4444' : '#c9922c') : 'var(--k-e5e7eb)'}`, borderRadius: 12, padding: '12px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 6 }}>
                     <span style={{ fontSize: 20, flexShrink: 0 }} title={c.source}>{kindIcon(c)}</span>
                     <div style={{ flex: '1 1 200px', minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 14.5, fontWeight: 700, color: '#111' }}>{who}</span>
-                        {c.contact && onOpenContact && <button onClick={() => onOpenContact(c.contact!.id)} style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>👤 Contact{c.contact.type ? ` · ${c.contact.type}` : ''}</button>}
+                        <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-111)' }}>{who}</span>
+                        {c.contact && onOpenContact && <button onClick={() => onOpenContact(c.contact!.id)} style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-1d4ed8)', background: 'var(--k-dbeafe)', border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>👤 Contact{c.contact.type ? ` · ${c.contact.type}` : ''}</button>}
                         <span style={{ fontSize: 11, fontWeight: 700, color: badge.fg, background: badge.bg, borderRadius: 6, padding: '2px 7px' }}>{badge.text}</span>
-                        {c.blocked && c.result !== 'blocked' && <span title={c.blocked.reason ?? undefined} style={{ fontSize: 11, fontWeight: 700, color: '#991b1b', background: '#fee2e2', borderRadius: 6, padding: '2px 7px' }}>🚫 Number blocked{c.blocked.source === 'auto' ? ' (auto)' : ''}</span>}
-                        {urgent && <span style={{ fontSize: 11, fontWeight: 700, color: '#b91c1c', background: '#fee2e2', borderRadius: 6, padding: '2px 7px' }}>🚨 Urgent</span>}
-                        {pending && di && <span title={c.follow_up_due ? formatCentral(c.follow_up_due) : undefined} style={{ fontSize: 11, fontWeight: 700, color: di.overdue ? '#b91c1c' : '#a06a12', background: di.overdue ? '#fee2e2' : '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>⏰ {di.label}</span>}
+                        {c.blocked && c.result !== 'blocked' && <span title={c.blocked.reason ?? undefined} style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-991b1b)', background: 'var(--k-fee2e2)', borderRadius: 6, padding: '2px 7px' }}>🚫 Number blocked{c.blocked.source === 'auto' ? ' (auto)' : ''}</span>}
+                        {urgent && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-b91c1c)', background: 'var(--k-fee2e2)', borderRadius: 6, padding: '2px 7px' }}>🚨 Urgent</span>}
+                        {pending && di && <span title={c.follow_up_due ? formatCentral(c.follow_up_due) : undefined} style={{ fontSize: 11, fontWeight: 700, color: di.overdue ? 'var(--k-b91c1c)' : 'var(--k-a06a12)', background: di.overdue ? 'var(--k-fee2e2)' : 'var(--k-fef3c7)', borderRadius: 6, padding: '2px 7px' }}>⏰ {di.label}</span>}
                         {pending && !di && (() => { const aH = (Date.now() - new Date(c.started_at).getTime()) / 3_600_000; const col = aH >= 72 ? '#b91c1c' : aH >= 24 ? '#a06a12' : '#9ca3af'; return <span style={{ fontSize: 11, fontWeight: aH >= 24 ? 700 : 600, color: col }}>waiting {waiting(c)}</span>; })()}
-                        {pending && c.assignee_name && <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', background: '#e0e7ff', borderRadius: 6, padding: '2px 7px' }}>→ {c.assignee_name}</span>}
-                        {c.handled_at && <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>✓ Handled{c.handled_by_name ? ` by ${c.handled_by_name}` : ''}</span>}
+                        {pending && c.assignee_name && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-3730a3)', background: 'var(--k-e0e7ff)', borderRadius: 6, padding: '2px 7px' }}>→ {c.assignee_name}</span>}
+                        {c.handled_at && <span style={{ fontSize: 11, color: 'var(--k-15803d)', fontWeight: 700 }}>✓ Handled{c.handled_by_name ? ` by ${c.handled_by_name}` : ''}</span>}
                         {(() => { const o = outcomeMeta(c.outcome); return o ? <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} title={c.wrapped_by_name ? `Wrapped up by ${c.wrapped_by_name}` : 'Change'} style={{ fontSize: 11, fontWeight: 700, color: o.fg, background: o.bg, border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>{o.label}</button> : null; })()}
-                        {needsWrap(c) && <span style={{ fontSize: 11, fontWeight: 700, color: '#a06a12', background: '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>📝 No note yet</span>}
+                        {needsWrap(c) && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fef3c7)', borderRadius: 6, padding: '2px 7px' }}>📝 No note yet</span>}
                       </div>
-                      <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>
+                      <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginTop: 2 }}>
                         {when(c.started_at)}{c.duration_sec ? ` · ${dur(c.duration_sec)}` : ''}{c.answered_by_name ? ` · ${c.answered_by_name.split(' ')[0]} answered` : ''}{num && (c.contact || c.caller_name) ? ` · ${pretty(num)}` : ''}{c.callback_number && c.callback_number !== num ? ` · call back ${pretty(c.callback_number)}` : ''}
-                        {c.ai_meta?.property ? <span style={{ color: '#374151', fontWeight: 600 }}> · 🏢 {String(c.ai_meta.property)}</span> : ''}
-                        {c.intent ? <span style={{ color: '#a06a12', fontWeight: 600 }}> · {c.intent}</span> : ''}
+                        {c.ai_meta?.property ? <span style={{ color: 'var(--k-374151)', fontWeight: 600 }}> · 🏢 {String(c.ai_meta.property)}</span> : ''}
+                        {c.intent ? <span style={{ color: 'var(--k-a06a12)', fontWeight: 600 }}> · {c.intent}</span> : ''}
                       </div>
                       {c.history && (() => {
                         const h = c.history, n = h.prior + 1;
@@ -655,13 +655,13 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         const never = !h.reached;
                         return (
                           <div style={{ marginTop: 4, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap', fontSize: 12.5 }}>
-                            <span style={{ fontWeight: 700, borderRadius: 6, padding: '2px 8px', whiteSpace: 'nowrap', background: never ? '#fee2e2' : '#eef2ff', color: never ? '#b91c1c' : '#3730a3' }}>🔁 {ord} call{never ? ' — never reached' : ''}</span>
-                            <span style={{ color: '#6b7280' }}>last {when(h.last.at)} — {h.last.label}{h.last.by ? ` (${h.last.by})` : ''}{h.last.note ? <span style={{ color: '#374151' }}> · “{h.last.note}”</span> : ''}</span>
+                            <span style={{ fontWeight: 700, borderRadius: 6, padding: '2px 8px', whiteSpace: 'nowrap', background: never ? 'var(--k-fee2e2)' : 'var(--k-eef2ff)', color: never ? 'var(--k-b91c1c)' : 'var(--k-3730a3)' }}>🔁 {ord} call{never ? ' — never reached' : ''}</span>
+                            <span style={{ color: 'var(--k-6b7280)' }}>last {when(h.last.at)} — {h.last.label}{h.last.by ? ` (${h.last.by})` : ''}{h.last.note ? <span style={{ color: 'var(--k-374151)' }}> · “{h.last.note}”</span> : ''}</span>
                           </div>
                         );
                       })()}
-                      {(c.summary || c.transcript) && !openNow && <div style={{ fontSize: 13, color: '#374151', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary || c.transcript}</div>}
-                      {!c.summary && !c.transcript && c.notes && !openNow && wrapFor !== c.id && <div style={{ fontSize: 13, color: '#374151', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {c.notes}</div>}
+                      {(c.summary || c.transcript) && !openNow && <div style={{ fontSize: 13, color: 'var(--k-374151)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary || c.transcript}</div>}
+                      {!c.summary && !c.transcript && c.notes && !openNow && wrapFor !== c.id && <div style={{ fontSize: 13, color: 'var(--k-374151)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {c.notes}</div>}
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
                       {needsWrap(c) && wrapFor !== c.id && <button onClick={() => setWrapFor(c.id)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }} title="Ten seconds: what it was, a note, and who it was">📝 Wrap up</button>}
@@ -670,14 +670,14 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                       {(c.summary || c.transcript || c.source === 'voicebot' || c.notes) && <button onClick={() => toggleOpen(c)} style={mini}>{openNow ? '▾ Less' : '▸ Details'}</button>}
                       {pending
                         ? <button onClick={() => patch(c, { handled: true }, 'Marked as handled ✓')} disabled={busy === c.id} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>✓ Handled</button>
-                        : c.handled_at ? <button onClick={() => patch(c, { handled: false, needs_follow_up: true })} disabled={busy === c.id} style={{ ...mini, color: '#9ca3af' }} title="Put it back in the queue">↩</button>
+                        : c.handled_at ? <button onClick={() => patch(c, { handled: false, needs_follow_up: true })} disabled={busy === c.id} style={{ ...mini, color: 'var(--k-9ca3af)' }} title="Put it back in the queue">↩</button>
                         : <span style={{ position: 'relative', display: 'inline-flex' }}>
-                            <button onClick={() => setCbMenu(cbMenu === c.id ? null : c.id)} disabled={busy === c.id} style={{ ...mini, color: '#9ca3af' }} title="Flag for a call back — pick when to be reminded" aria-haspopup="menu" aria-expanded={cbMenu === c.id}>🔔</button>
+                            <button onClick={() => setCbMenu(cbMenu === c.id ? null : c.id)} disabled={busy === c.id} style={{ ...mini, color: 'var(--k-9ca3af)' }} title="Flag for a call back — pick when to be reminded" aria-haspopup="menu" aria-expanded={cbMenu === c.id}>🔔</button>
                             {cbMenu === c.id && <CallbackTimeMenu busy={busy === c.id} onPick={iso => flagWithTime(c, iso)} onClose={() => setCbMenu(null)} />}
                           </span>}
                       {c.direction !== 'outbound' && !c.contact && c.from_number && (c.blocked
                         ? <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={mini} title="Let this number through again">Unblock</button>
-                        : <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={{ ...mini, color: '#991b1b' }} title="Hang up on this number if it calls the bot line again">🚫 Block this number</button>)}
+                        : <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={{ ...mini, color: 'var(--k-991b1b)' }} title="Hang up on this number if it calls the bot line again">🚫 Block this number</button>)}
                       {!c.contact && !needsWrap(c) && c.outcome !== 'spam' && (c.from_number || c.to_number || c.callback_number) && <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} disabled={busy === c.id} style={mini} title="Save this caller as a contact, or link them to one">＋ Contact</button>}
                       {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }} title="Delete this record">✕</button>}
                     </div>
@@ -689,7 +689,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                       <button onClick={() => setDue(c, preset('eod'))} disabled={busy === c.id} style={chip}>Today 5p</button>
                       <button onClick={() => setDue(c, preset('tmrw'))} disabled={busy === c.id} style={chip}>Tmrw 9a</button>
                       <input type="datetime-local" value={toLocalInput(c.follow_up_due)} onChange={e => setDue(c, fromLocalInput(e.target.value))} style={{ ...input, width: 'auto', minHeight: 30, padding: '4px 8px', fontSize: 12 }} title="Pick a due time" />
-                      {c.follow_up_due && <button onClick={() => setDue(c, null)} disabled={busy === c.id} style={{ ...chip, color: '#9ca3af', background: '#fff', borderColor: '#e5e7eb' }}>clear</button>}
+                      {c.follow_up_due && <button onClick={() => setDue(c, null)} disabled={busy === c.id} style={{ ...chip, color: 'var(--k-9ca3af)', background: 'var(--k-fff)', borderColor: 'var(--k-e5e7eb)' }}>clear</button>}
                       {agents.length > 0 && (
                         <select value={c.follow_up_assignee ?? ''} onChange={e => assign(c, e.target.value)} style={{ ...input, width: 'auto', minHeight: 30, padding: '4px 8px', fontSize: 12 }} title="Assign this call back to an agent">
                           <option value="">Unassigned</option>
@@ -716,19 +716,19 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                   {audio[c.id] && <audio controls autoPlay src={audio[c.id]} style={{ width: '100%', marginTop: 10, height: 36 }} />}
                   {openNow && (
                     <div style={{ marginTop: 10, borderTop: '1px solid #f1f2f4', paddingTop: 10 }}>
-                      {c.summary && <div style={{ fontSize: 13.5, color: '#111', background: '#faf7ef', borderLeft: '3px solid #c9922c', padding: '8px 10px', borderRadius: 4, marginBottom: 10 }}>{c.summary}</div>}
+                      {c.summary && <div style={{ fontSize: 13.5, color: 'var(--k-111)', background: 'var(--k-faf7ef)', borderLeft: '3px solid #c9922c', padding: '8px 10px', borderRadius: 4, marginBottom: 10 }}>{c.summary}</div>}
                       {c.source === 'voicebot' ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 13 }}>
-                          {(turns[c.id] ?? []).length === 0 && c.transcript && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, color: '#374151' }}>{c.transcript}</pre>}
+                          {(turns[c.id] ?? []).length === 0 && c.transcript && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, color: 'var(--k-374151)' }}>{c.transcript}</pre>}
                           {(turns[c.id] ?? []).map(t => (
                             <div key={t.id} style={{ display: 'flex', gap: 8, justifyContent: t.role === 'bot' ? 'flex-start' : 'flex-end' }}>
-                              <div style={{ maxWidth: '78%', background: t.role === 'bot' ? '#f3f4f6' : '#fdf6e9', color: '#111', borderRadius: 10, padding: '6px 10px' }}>
-                                <span style={{ fontSize: 10.5, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: .4, display: 'block' }}>{t.role === 'bot' ? (settings?.bot_name || 'Bot') : 'Caller'}</span>{t.text}
+                              <div style={{ maxWidth: '78%', background: t.role === 'bot' ? 'var(--k-f3f4f6)' : 'var(--k-fdf6e9)', color: 'var(--k-111)', borderRadius: 10, padding: '6px 10px' }}>
+                                <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--k-9ca3af)', textTransform: 'uppercase', letterSpacing: .4, display: 'block' }}>{t.role === 'bot' ? (settings?.bot_name || 'Bot') : 'Caller'}</span>{t.text}
                               </div>
                             </div>
                           ))}
                         </div>
-                      ) : c.transcript ? <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, fontSize: 13, color: '#374151' }}>{c.transcript}</pre> : null}
+                      ) : c.transcript ? <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, fontSize: 13, color: 'var(--k-374151)' }}>{c.transcript}</pre> : null}
                       <div style={{ marginTop: 10 }}>
                         <span style={label}>Your notes</span>
                         <MentionTextarea value={noteDraft[c.id] ?? c.notes ?? ''} onChange={v => setNoteDraft(n => ({ ...n, [c.id]: v }))} profiles={agents} style={{ ...input, minHeight: 52 }} placeholder="What you did about it… (@ to tag a teammate)" />

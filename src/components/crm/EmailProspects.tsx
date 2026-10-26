@@ -23,8 +23,8 @@ const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Be
 const pct = (r: number) => `${Math.round(r * 100)}%`;
 const day = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Chicago' }) : '';
 const who = (p: Prospect) => p.business || p.name || p.email;
-const TH: React.CSSProperties = { textAlign: 'left', fontSize: 10.5, letterSpacing: .6, textTransform: 'uppercase', color: '#6b7280', fontWeight: 800, padding: '8px 10px', borderBottom: '1px solid #e5e7eb', background: '#fafafa', whiteSpace: 'nowrap', position: 'sticky', top: 0 };
-const TD: React.CSSProperties = { fontSize: 12.5, color: '#1f2937', padding: '7px 10px', borderBottom: '1px solid #f3f4f6', verticalAlign: 'top' };
+const TH: React.CSSProperties = { textAlign: 'left', fontSize: 10.5, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 800, padding: '8px 10px', borderBottom: '1px solid var(--k-e5e7eb)', background: 'var(--k-fafafa)', whiteSpace: 'nowrap', position: 'sticky', top: 0 };
+const TD: React.CSSProperties = { fontSize: 12.5, color: 'var(--k-1f2937)', padding: '7px 10px', borderBottom: '1px solid var(--k-f3f4f6)', verticalAlign: 'top' };
 
 export default function EmailProspects({ listingId, authToken, emptyHint = false }: { listingId: string; authToken?: string; emptyHint?: boolean }) {
   const [campaigns, setCampaigns] = useState<Camp[]>([]);
@@ -74,12 +74,12 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
     });
   }, [prospects, view, q, sort, segment]);
 
-  if (loading) return emptyHint ? <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Loading prospects…</div> : null;
+  if (loading) return emptyHint ? <div style={{ padding: 30, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 13 }}>Loading prospects…</div> : null;
   // No linked campaigns: hidden inside the Rent Roll; on the Prospects tab, say how to fill it.
   if (!campaigns.length) return emptyHint ? (
-    <div style={{ padding: '36px 20px', textAlign: 'center', color: '#6b7280', fontSize: 13.5, lineHeight: 1.6 }}>
+    <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--k-6b7280)', fontSize: 13.5, lineHeight: 1.6 }}>
       <div style={{ fontSize: 30, marginBottom: 6 }}>📬</div>
-      <div style={{ fontWeight: 700, color: '#374151', marginBottom: 4 }}>No campaigns for this property yet</div>
+      <div style={{ fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>No campaigns for this property yet</div>
       In Marketing, open a campaign about this property and set <strong>Property this campaign markets</strong> to it.<br />
       Everyone it emails shows up here with their open rate and who to ask for.
     </div>
@@ -93,10 +93,10 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
     </th>
   );
   const tile = (label: string, value: string, sub?: string) => (
-    <div style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 10, padding: '9px 13px', minWidth: 104, flex: '1 1 104px' }}>
-      <div style={{ fontSize: 10, letterSpacing: .7, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 800 }}>{label}</div>
-      <div style={{ fontSize: 17, fontWeight: 800, color: '#1a1a1a', marginTop: 2, fontFamily: "'Cormorant Garamond',serif" }}>{value}</div>
-      {sub && <div style={{ fontSize: 10.5, color: '#9ca3af' }}>{sub}</div>}
+    <div style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '9px 13px', minWidth: 104, flex: '1 1 104px' }}>
+      <div style={{ fontSize: 10, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 800 }}>{label}</div>
+      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--k-1a1a1a)', marginTop: 2, fontFamily: "'Cormorant Garamond',serif" }}>{value}</div>
+      {sub && <div style={{ fontSize: 10.5, color: 'var(--k-9ca3af)' }}>{sub}</div>}
     </div>
   );
 
@@ -104,7 +104,7 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
     <div style={{ marginTop: 26 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: GOLD, fontWeight: 700 }}>Email Prospects</div>
-        <span style={{ fontSize: 11.5, color: '#9ca3af' }}>from this property&apos;s campaigns · live</span>
+        <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>from this property&apos;s campaigns · live</span>
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -114,17 +114,17 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
         {tile('Clicked', String(totals.clicked), 'includes link scanners')}
       </div>
 
-      <button onClick={() => setShowCamps(v => !v)} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', marginBottom: 6 }}>
+      <button onClick={() => setShowCamps(v => !v)} style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-a06a12)', background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', marginBottom: 6 }}>
         {showCamps ? '▾' : '▸'} Open rate by campaign ({campaigns.length})
       </button>
       {showCamps && (
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', background: '#fff', marginBottom: 12 }}>
+        <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'auto', background: 'var(--k-fff)', marginBottom: 12 }}>
           <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 520 }}>
             <thead><tr>{th('Campaign')}{th('Sent', undefined, true)}{th('Opened', undefined, true)}{th('Open rate', undefined, true)}{th('Clicked', undefined, true)}{th('Last sent')}</tr></thead>
             <tbody>
               {campaigns.map(c => (
                 <tr key={c.id}>
-                  <td style={TD}>{c.name}{c.status === 'active' && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: '#15803d', background: '#f0fdf4', borderRadius: 6, padding: '1px 6px' }}>SENDING</span>}</td>
+                  <td style={TD}>{c.name}{c.status === 'active' && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: 'var(--k-15803d)', background: 'var(--k-f0fdf4)', borderRadius: 6, padding: '1px 6px' }}>SENDING</span>}</td>
                   <td style={{ ...TD, textAlign: 'right' }}>{c.sent}</td>
                   <td style={{ ...TD, textAlign: 'right' }}>{c.opened}</td>
                   <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{c.sent ? pct(c.openRate) : '—'}</td>
@@ -139,10 +139,10 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search business, contact, category…"
-          style={{ flex: '1 1 190px', minWidth: 0, padding: '7px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans',sans-serif" }} />
-        <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+          style={{ flex: '1 1 190px', minWidth: 0, padding: '7px 11px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans',sans-serif" }} />
+        <div style={{ display: 'flex', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, overflow: 'hidden' }}>
           {([['opened', `Opened (${totals.opened})`], ['all', `All emailed (${totals.reached})`], ...(totals.cold ? [['cold', `Not emailed yet (${totals.cold})`]] : [])] as ['opened' | 'all' | 'cold', string][]).map(([v, l]) => (
-            <button key={l} onClick={() => setView(v)} style={{ fontSize: 12, fontWeight: 700, padding: '7px 11px', border: 'none', cursor: 'pointer', background: view === v ? '#1a1a1a' : '#fff', color: view === v ? '#fff' : '#374151' }}>{l}</button>
+            <button key={l} onClick={() => setView(v)} style={{ fontSize: 12, fontWeight: 700, padding: '7px 11px', border: 'none', cursor: 'pointer', background: view === v ? '#1a1a1a' : 'var(--k-fff)', color: view === v ? '#fff' : 'var(--k-374151)' }}>{l}</button>
           ))}
         </div>
         {(() => {
@@ -150,16 +150,16 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
           const n = (sg: Segment) => inView.filter(p => segmentOf(p.type) === sg).length;
           const opts: ['all' | Segment, string][] = [['all', `Everyone (${inView.length})`], ...SEGMENTS.filter(sg => n(sg) > 0).map(sg => [sg, `${SEGMENT_LABEL[sg]} (${n(sg)})`] as ['all' | Segment, string])];
           return (
-            <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, overflow: 'hidden' }}>
               {opts.map(([v, l]) => (
-                <button key={v} onClick={() => setSegment(v)} style={{ fontSize: 12, fontWeight: 700, padding: '7px 11px', border: 'none', cursor: 'pointer', background: segment === v ? '#c9922c' : '#fff', color: segment === v ? '#111' : '#374151' }}>{l}</button>
+                <button key={v} onClick={() => setSegment(v)} style={{ fontSize: 12, fontWeight: 700, padding: '7px 11px', border: 'none', cursor: 'pointer', background: segment === v ? '#c9922c' : 'var(--k-fff)', color: segment === v ? 'var(--k-111)' : 'var(--k-374151)' }}>{l}</button>
               ))}
             </div>
           );
         })()}
       </div>
 
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', background: '#fff', maxHeight: 520 }}>
+      <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'auto', background: 'var(--k-fff)', maxHeight: 520 }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 760 }}>
           <thead><tr>
             {th('Prospect', 'who')}{th('Category', 'category')}{th('Contact')}
@@ -171,15 +171,15 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
                 <td style={TD}>
                   <div style={{ fontWeight: 700 }}>{who(p)}</div>
                   {p.askFor
-                    ? <div style={{ fontSize: 11.5, color: '#a06a12', fontWeight: 600 }}>📞 Ask for: {p.askFor}{p.locations && <span style={{ color: '#6b7280', fontWeight: 500 }}> · {p.locations}</span>}</div>
-                    : p.business && p.name && <div style={{ fontSize: 11.5, color: '#6b7280' }}>{p.name}</div>}
-                  {(p.unsubscribed || p.dead) && <div style={{ fontSize: 10.5, fontWeight: 800, color: '#b91c1c' }}>{p.dead ? 'DEAD EMAIL' : 'UNSUBSCRIBED'}</div>}
-                  {p.notEmailed && <div style={{ fontSize: 10.5, fontWeight: 800, color: '#6b7280' }}>NOT EMAILED YET — COLD CALL{!p.phone ? ' · NO PHONE ON FILE' : ''}</div>}
+                    ? <div style={{ fontSize: 11.5, color: 'var(--k-a06a12)', fontWeight: 600 }}>📞 Ask for: {p.askFor}{p.locations && <span style={{ color: 'var(--k-6b7280)', fontWeight: 500 }}> · {p.locations}</span>}</div>
+                    : p.business && p.name && <div style={{ fontSize: 11.5, color: 'var(--k-6b7280)' }}>{p.name}</div>}
+                  {(p.unsubscribed || p.dead) && <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--k-b91c1c)' }}>{p.dead ? 'DEAD EMAIL' : 'UNSUBSCRIBED'}</div>}
+                  {p.notEmailed && <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--k-6b7280)' }}>NOT EMAILED YET — COLD CALL{!p.phone ? ' · NO PHONE ON FILE' : ''}</div>}
                 </td>
-                <td style={{ ...TD, color: '#6b7280', maxWidth: 170 }}>{p.category}</td>
+                <td style={{ ...TD, color: 'var(--k-6b7280)', maxWidth: 170 }}>{p.category}</td>
                 <td style={TD}>
-                  {p.email && <div><a href={`mailto:${p.email}`} style={{ color: '#a06a12', textDecoration: 'none' }}>{p.email}</a></div>}
-                  {p.phone && <div><a href={`tel:${p.phone.replace(/[^\d+]/g, '')}`} style={{ color: '#374151', textDecoration: 'none' }}>{p.phone}</a></div>}
+                  {p.email && <div><a href={`mailto:${p.email}`} style={{ color: 'var(--k-a06a12)', textDecoration: 'none' }}>{p.email}</a></div>}
+                  {p.phone && <div><a href={`tel:${p.phone.replace(/[^\d+]/g, '')}`} style={{ color: 'var(--k-374151)', textDecoration: 'none' }}>{p.phone}</a></div>}
                 </td>
                 <td style={{ ...TD, textAlign: 'right' }}>{p.emailsSent}</td>
                 <td style={{ ...TD, textAlign: 'right' }}>{p.emailsOpened}</td>
@@ -188,11 +188,11 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
                 <td style={{ ...TD, textAlign: 'right' }}>{p.clicks || ''}</td>
               </tr>
             ))}
-            {visible.length === 0 && <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>{view === 'opened' ? 'No opens yet.' : view === 'cold' ? 'Everyone built for this property has been emailed.' : 'No one emailed yet.'}</td></tr>}
+            {visible.length === 0 && <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 13 }}>{view === 'opened' ? 'No opens yet.' : view === 'cold' ? 'Everyone built for this property has been emailed.' : 'No one emailed yet.'}</td></tr>}
           </tbody>
         </table>
       </div>
-      <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 7 }}>
+      <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 7 }}>
         Opens are approximate — Apple Mail pre-loads images, so some &ldquo;opens&rdquo; are automatic. Clicks that hit every link at once are usually corporate link scanners. Replies and booked calls are the real signal.
       </div>
     </div>

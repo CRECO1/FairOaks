@@ -270,14 +270,14 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
   });
 
   // ── Styles ────────────────────────────────────────────────────────────────
-  const thStyle: React.CSSProperties = { padding: '8px 10px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap', borderBottom: '2px solid #e2e8f0' };
-  const tdStyle: React.CSSProperties = { padding: '8px 10px', fontSize: 13, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
+  const thStyle: React.CSSProperties = { padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--k-94a3b8)', textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap', borderBottom: '2px solid var(--k-e2e8f0)' };
+  const tdStyle: React.CSSProperties = { padding: '8px 10px', fontSize: 13, color: 'var(--k-1e293b)', borderBottom: '1px solid var(--k-f1f5f9)', verticalAlign: 'middle' };
   const tdRight: React.CSSProperties = { ...tdStyle, textAlign: 'right' };
-  const inputStyle: React.CSSProperties = { width: 60, padding: '4px 6px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 6, textAlign: 'center' };
-  const noteInput: React.CSSProperties = { width: '100%', padding: '4px 6px', fontSize: 12, border: '1px solid #cbd5e1', borderRadius: 6 };
+  const inputStyle: React.CSSProperties = { width: 60, padding: '4px 6px', fontSize: 13, border: '1px solid var(--k-cbd5e1)', borderRadius: 6, textAlign: 'center' };
+  const noteInput: React.CSSProperties = { width: '100%', padding: '4px 6px', fontSize: 12, border: '1px solid var(--k-cbd5e1)', borderRadius: 6 };
   const tabBase: React.CSSProperties = { padding: '8px 18px', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, borderRadius: '8px 8px 0 0', transition: 'all .15s' };
-  const tabActive: React.CSSProperties = { ...tabBase, background: '#fff', color: '#1e293b', borderBottom: '2px solid #c9922c' };
-  const tabInactive: React.CSSProperties = { ...tabBase, background: 'transparent', color: '#94a3b8' };
+  const tabActive: React.CSSProperties = { ...tabBase, background: 'var(--k-fff)', color: 'var(--k-1e293b)', borderBottom: '2px solid #c9922c' };
+  const tabInactive: React.CSSProperties = { ...tabBase, background: 'transparent', color: 'var(--k-94a3b8)' };
 
   const isThisWeek = weekStart === getMondayOf(todayStr);
 
@@ -288,16 +288,16 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#1e293b' }}>📊 Activity Log</h2>
-          <p style={{ margin: '2px 0 0', fontSize: 13, color: '#64748b' }}>Track your weekly prospecting activity and performance metrics</p>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--k-1e293b)' }}>📊 Activity Log</h2>
+          <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--k-64748b)' }}>Track your weekly prospecting activity and performance metrics</p>
         </div>
         {/* Week navigation */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => shiftWeek(-1)} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 15, color: '#475569' }}>‹</button>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#334155', minWidth: 160, textAlign: 'center' }}>
+          <button onClick={() => shiftWeek(-1)} style={{ background: 'var(--k-f1f5f9)', border: '1px solid var(--k-e2e8f0)', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 15, color: 'var(--k-475569)' }}>‹</button>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-334155)', minWidth: 160, textAlign: 'center' }}>
             {isThisWeek ? '📅 This Week' : fmtWeekRange(weekStart)}
           </span>
-          <button onClick={() => shiftWeek(1)} disabled={isThisWeek} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 12px', cursor: isThisWeek ? 'not-allowed' : 'pointer', fontSize: 15, color: isThisWeek ? '#cbd5e1' : '#475569' }}>›</button>
+          <button onClick={() => shiftWeek(1)} disabled={isThisWeek} style={{ background: 'var(--k-f1f5f9)', border: '1px solid var(--k-e2e8f0)', borderRadius: 6, padding: '6px 12px', cursor: isThisWeek ? 'not-allowed' : 'pointer', fontSize: 15, color: isThisWeek ? '#cbd5e1' : 'var(--k-475569)' }}>›</button>
           {!isThisWeek && (
             <button onClick={() => { setWeekStart(getMondayOf(todayStr)); setEditing(null); }} style={{ background: '#c9922c', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#fff' }}>Today</button>
           )}
@@ -305,21 +305,21 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
       </div>
 
       {/* Tabs */}
-      <div style={{ borderBottom: '1px solid #e2e8f0', marginBottom: 0, display: 'flex', gap: 2 }}>
+      <div style={{ borderBottom: '1px solid var(--k-e2e8f0)', marginBottom: 0, display: 'flex', gap: 2 }}>
         <button style={tab === 'log' ? tabActive : tabInactive} onClick={() => setTab('log')}>📋 Daily Log</button>
         <button style={tab === 'scorecard' ? tabActive : tabInactive} onClick={() => setTab('scorecard')}>📊 Scorecard</button>
         <button style={tab === 'ratios' ? tabActive : tabInactive} onClick={() => { setTab('ratios'); loadAllTime(); }}>📐 Conversion Ratios</button>
       </div>
 
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e2e8f0)', borderTop: 'none', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
 
         {/* ── TAB: Daily Log ── */}
         {tab === 'log' && (
           <div style={{ overflowX: 'auto' }}>
-            {loading && <div style={{ padding: 20, color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>Loading…</div>}
+            {loading && <div style={{ padding: 20, color: 'var(--k-94a3b8)', fontSize: 13, textAlign: 'center' }}>Loading…</div>}
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
               <thead>
-                <tr style={{ background: '#f8fafc' }}>
+                <tr style={{ background: 'var(--k-f8fafc)' }}>
                   <th style={thStyle}>Day</th>
                   <th style={thStyle}>Date</th>
                   <th style={{ ...thStyle, textAlign: 'center' }}>📞 Block</th>
@@ -345,8 +345,8 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
 
                   return (
                     <tr key={date} style={{ background: rowBg }}>
-                      <td style={{ ...tdStyle, fontWeight: isToday ? 700 : 400, color: isToday ? '#c9922c' : '#64748b' }}>{DAYS[i]}</td>
-                      <td style={{ ...tdStyle, fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>
+                      <td style={{ ...tdStyle, fontWeight: isToday ? 700 : 400, color: isToday ? '#c9922c' : 'var(--k-64748b)' }}>{DAYS[i]}</td>
+                      <td style={{ ...tdStyle, fontSize: 12, color: 'var(--k-64748b)', whiteSpace: 'nowrap' }}>
                         {fmtDate(date)}{isToday && <span style={{ marginLeft: 4, fontSize: 10, background: '#c9922c', color: '#fff', borderRadius: 8, padding: '1px 5px', fontWeight: 700 }}>today</span>}
                       </td>
 
@@ -362,7 +362,7 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
                           ))}
                           <td style={{ ...tdRight, color: '#3b82f6' }}>{auto.new_records}</td>
                           <td style={{ ...tdRight, color: '#10b981' }}>{auto.tasks_done}</td>
-                          <td style={{ ...tdRight, color: auto.tasks_overdue > 0 ? '#ef4444' : '#94a3b8' }}>{auto.tasks_overdue}</td>
+                          <td style={{ ...tdRight, color: auto.tasks_overdue > 0 ? '#ef4444' : 'var(--k-94a3b8)' }}>{auto.tasks_overdue}</td>
                           <td style={tdStyle}>
                             <input type="text" value={editForm.notes} onChange={e => setEditForm(f => f ? { ...f, notes: e.target.value } : f)} style={{ ...noteInput, minWidth: 140 }} placeholder="Notes…" />
                           </td>
@@ -370,7 +370,7 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
                             <button onClick={() => saveDay(editForm)} disabled={isSaving} style={{ background: '#10b981', border: 'none', borderRadius: 6, padding: '5px 12px', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginRight: 4 }}>
                               {isSaving ? '…' : 'Save'}
                             </button>
-                            <button onClick={() => setEditing(null)} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 12, cursor: 'pointer', color: '#64748b' }}>✕</button>
+                            <button onClick={() => setEditing(null)} style={{ background: 'var(--k-f1f5f9)', border: '1px solid var(--k-e2e8f0)', borderRadius: 6, padding: '5px 8px', fontSize: 12, cursor: 'pointer', color: 'var(--k-64748b)' }}>✕</button>
                           </td>
                         </>
                       ) : (
@@ -384,10 +384,10 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
                           <td style={tdRight}>{log?.tours_meetings ?? <span style={{ color: '#e2e8f0' }}>—</span>}</td>
                           <td style={{ ...tdRight, color: '#3b82f6', fontWeight: 600 }}>{auto.new_records > 0 ? auto.new_records : <span style={{ color: '#e2e8f0' }}>—</span>}</td>
                           <td style={{ ...tdRight, color: '#10b981', fontWeight: 600 }}>{auto.tasks_done > 0 ? auto.tasks_done : <span style={{ color: '#e2e8f0' }}>—</span>}</td>
-                          <td style={{ ...tdRight, color: auto.tasks_overdue > 0 ? '#ef4444' : '#94a3b8', fontWeight: auto.tasks_overdue > 0 ? 700 : 400 }}>{auto.tasks_overdue > 0 ? auto.tasks_overdue : <span style={{ color: '#e2e8f0' }}>—</span>}</td>
-                          <td style={{ ...tdStyle, fontSize: 12, color: '#64748b', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log?.notes || ''}</td>
+                          <td style={{ ...tdRight, color: auto.tasks_overdue > 0 ? '#ef4444' : 'var(--k-94a3b8)', fontWeight: auto.tasks_overdue > 0 ? 700 : 400 }}>{auto.tasks_overdue > 0 ? auto.tasks_overdue : <span style={{ color: '#e2e8f0' }}>—</span>}</td>
+                          <td style={{ ...tdStyle, fontSize: 12, color: 'var(--k-64748b)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log?.notes || ''}</td>
                           <td style={tdStyle}>
-                            <button onClick={() => openEdit(date)} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', color: '#475569' }}>Log</button>
+                            <button onClick={() => openEdit(date)} style={{ background: 'var(--k-f8fafc)', border: '1px solid var(--k-e2e8f0)', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', color: 'var(--k-475569)' }}>Log</button>
                           </td>
                         </>
                       )}
@@ -396,21 +396,21 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
-                  <td colSpan={2} style={{ ...tdStyle, fontWeight: 700, color: '#334155' }}>Weekly Total</td>
-                  <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700 }}>{totals.calls_block_protected}<span style={{ fontSize: 11, color: '#94a3b8' }}>/7</span></td>
+                <tr style={{ background: 'var(--k-f8fafc)', borderTop: '2px solid var(--k-e2e8f0)' }}>
+                  <td colSpan={2} style={{ ...tdStyle, fontWeight: 700, color: 'var(--k-334155)' }}>Weekly Total</td>
+                  <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700 }}>{totals.calls_block_protected}<span style={{ fontSize: 11, color: 'var(--k-94a3b8)' }}>/7</span></td>
                   <td style={{ ...tdRight, fontWeight: 700 }}>{totals.prospecting_calls}</td>
                   <td style={{ ...tdRight, fontWeight: 700 }}>{totals.conversations}</td>
                   <td style={{ ...tdRight, fontWeight: 700 }}>{totals.door_touches}</td>
                   <td style={{ ...tdRight, fontWeight: 700 }}>{totals.tours_meetings}</td>
                   <td style={{ ...tdRight, fontWeight: 700, color: '#3b82f6' }}>{totals.new_records}</td>
                   <td style={{ ...tdRight, fontWeight: 700, color: '#10b981' }}>{totals.tasks_done}</td>
-                  <td style={{ ...tdRight, fontWeight: 700, color: totals.tasks_done > 0 ? '#ef4444' : '#94a3b8' }}></td>
+                  <td style={{ ...tdRight, fontWeight: 700, color: totals.tasks_done > 0 ? '#ef4444' : 'var(--k-94a3b8)' }}></td>
                   <td colSpan={2} style={tdStyle}></td>
                 </tr>
               </tfoot>
             </table>
-            <div style={{ padding: '8px 12px', fontSize: 11, color: '#94a3b8' }}>
+            <div style={{ padding: '8px 12px', fontSize: 11, color: 'var(--k-94a3b8)' }}>
               * Records, Done, Overdue are auto-pulled from the CRM and are read-only.
             </div>
           </div>
@@ -419,16 +419,16 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
         {/* ── TAB: Scorecard ── */}
         {tab === 'scorecard' && (
           <div style={{ padding: 24 }}>
-            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#1e293b' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: 'var(--k-1e293b)' }}>
               Week of {fmtWeekRange(weekStart)}
             </h3>
-            <p style={{ margin: '0 0 20px', fontSize: 12, color: '#94a3b8' }}>Weekly targets vs. actual activity</p>
+            <p style={{ margin: '0 0 20px', fontSize: 12, color: 'var(--k-94a3b8)' }}>Weekly targets vs. actual activity</p>
 
             {/* Leading indicators */}
-            <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Leading Indicators</h4>
+            <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--k-64748b)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Leading Indicators</h4>
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 28 }}>
               <thead>
-                <tr style={{ background: '#f8fafc' }}>
+                <tr style={{ background: 'var(--k-f8fafc)' }}>
                   <th style={thStyle}>Metric</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>Target</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>Actual</th>
@@ -461,11 +461,11 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
             </table>
 
             {/* Lagging indicators */}
-            <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Lagging Indicators (Results)</h4>
-            <p style={{ margin: '0 0 12px', fontSize: 12, color: '#94a3b8' }}>Enter weekly results — saves to today&apos;s log entry</p>
+            <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--k-64748b)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Lagging Indicators (Results)</h4>
+            <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--k-94a3b8)' }}>Enter weekly results — saves to today&apos;s log entry</p>
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
               <thead>
-                <tr style={{ background: '#f8fafc' }}>
+                <tr style={{ background: 'var(--k-f8fafc)' }}>
                   <th style={thStyle}>Metric</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>Target / Wk</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>Logged This Wk</th>
@@ -511,11 +511,11 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
         {/* ── TAB: Conversion Ratios ── */}
         {tab === 'ratios' && (
           <div style={{ padding: 24 }}>
-            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Personal Conversion Physics</h3>
-            <p style={{ margin: '0 0 20px', fontSize: 12, color: '#94a3b8' }}>All-time cumulative ratios — your personal prospecting &quot;physics&quot;</p>
+            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: 'var(--k-1e293b)' }}>Personal Conversion Physics</h3>
+            <p style={{ margin: '0 0 20px', fontSize: 12, color: 'var(--k-94a3b8)' }}>All-time cumulative ratios — your personal prospecting &quot;physics&quot;</p>
 
             {allLogs.length === 0 && !loading && (
-              <p style={{ color: '#94a3b8', fontSize: 13 }}>No data yet. Start logging daily activity to see your conversion ratios.</p>
+              <p style={{ color: 'var(--k-94a3b8)', fontSize: 13 }}>No data yet. Start logging daily activity to see your conversion ratios.</p>
             )}
 
             {/* Cumulative totals summary */}
@@ -530,18 +530,18 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
                 { label: 'Listings Won',   value: cumulative.listings_won },
                 { label: 'Deals Closed',   value: cumulative.deals_closed },
               ].map(c => (
-                <div key={c.label} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 16px', minWidth: 100, textAlign: 'center' }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b' }}>{c.value}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginTop: 2 }}>{c.label}</div>
+                <div key={c.label} style={{ background: 'var(--k-f8fafc)', border: '1px solid var(--k-e2e8f0)', borderRadius: 10, padding: '10px 16px', minWidth: 100, textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--k-1e293b)' }}>{c.value}</div>
+                  <div style={{ fontSize: 11, color: 'var(--k-94a3b8)', fontWeight: 600, marginTop: 2 }}>{c.label}</div>
                 </div>
               ))}
             </div>
 
             {/* Ratio table */}
-            <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Conversion Funnel</h4>
+            <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--k-64748b)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Conversion Funnel</h4>
             <table style={{ width: '100%', borderCollapse: 'collapse', maxWidth: 640 }}>
               <thead>
-                <tr style={{ background: '#f8fafc' }}>
+                <tr style={{ background: 'var(--k-f8fafc)' }}>
                   <th style={thStyle}>Stage</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>From</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>To</th>
@@ -569,7 +569,7 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
                       <td style={tdRight}>{row.to.toLocaleString()} {row.toL}</td>
                       <td style={{ ...tdRight, fontWeight: 700 }}>
                         {pct === null
-                          ? <span style={{ color: '#94a3b8' }}>—</span>
+                          ? <span style={{ color: 'var(--k-94a3b8)' }}>—</span>
                           : <span style={{ display: 'inline-block', background: bgColor, color: textCol, borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700 }}>{pct}%</span>
                         }
                       </td>
@@ -579,7 +579,7 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
               </tbody>
             </table>
 
-            <div style={{ marginTop: 24, padding: '14px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, fontSize: 12, color: '#92400e' }}>
+            <div style={{ marginTop: 24, padding: '14px 16px', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 10, fontSize: 12, color: 'var(--k-92400e)' }}>
               <strong>How to read this:</strong> These are your personal conversion ratios built from all logged activity. Use them to back-calculate how many calls you need to hit your listing or deal goal. Example: if calls → listings = 2%, you need 50 calls per listing.
             </div>
           </div>

@@ -25,16 +25,16 @@ interface Payload {
   recentLeads: { id: string; at: string; site: string; channel: string; deals: number; stages: string[] }[];
 }
 
-const card: React.CSSProperties = { background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 };
+const card: React.CSSProperties = { background: 'var(--k-fff)', borderRadius: 10, border: '1px solid var(--k-e0e0e0)', padding: '16px 20px', marginBottom: 14 };
 const title: React.CSSProperties = { fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, fontWeight: 600, marginBottom: 12 };
 const th: React.CSSProperties = { background: 'transparent', color: MUTE, fontWeight: 600, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', border: 'none', position: 'static', textAlign: 'right' };
 const siteShort = (h: string) => h.replace('www.', '').replace('fairoaksrealtygroup.com', 'Fair Oaks').replace('crecotx.com', 'CRECO').replace('elkhornpoint.com', 'Elkhorn Point').replace('fairoaksranchplaza.com', 'Ranch Plaza');
 
 const TIERS: { key: keyof Payload['quality']; label: string; color: string; hint: string }[] = [
-  { key: 'acted', label: 'Took action', color: '#15803d', hint: 'Tapped to call/email/text, hit a button, downloaded, started a form, or came in on an email link.' },
+  { key: 'acted', label: 'Took action', color: 'var(--k-15803d)', hint: 'Tapped to call/email/text, hit a button, downloaded, started a form, or came in on an email link.' },
   { key: 'engaged', label: 'Engaged', color: '#65a30d', hint: 'Stayed 8+ seconds, scrolled, or viewed 2+ pages.' },
   { key: 'glance', label: 'Glanced', color: '#d6b25e', hint: 'A real browser that viewed one page and left.' },
-  { key: 'automated', label: 'Likely automated', color: '#9ca3af', hint: 'Hit from a cloud-provider city with no engagement at all.' },
+  { key: 'automated', label: 'Likely automated', color: 'var(--k-9ca3af)', hint: 'Hit from a cloud-provider city with no engagement at all.' },
   { key: 'unverified', label: 'Unverified', color: '#d1d5db', hint: 'No browser environment reported — the tracker before the Oct 7 upgrade. Not counted as real.' },
 ];
 
@@ -80,13 +80,13 @@ export default function TrafficFunnel({ authToken, isMobile, site, days, humanOn
 
   const toggle = (on: boolean, label: string, value: boolean) => (
     <button key={label} onClick={() => onHumanChange(value)} aria-pressed={on} style={{
-      padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: `1px solid ${on ? GOLD : '#d1d5db'}`,
-      background: on ? GOLD : '#fff', color: on ? '#fff' : '#374151', borderRadius: value ? '6px 0 0 6px' : '0 6px 6px 0',
+      padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: `1px solid ${on ? GOLD : 'var(--k-d1d5db)'}`,
+      background: on ? GOLD : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-374151)', borderRadius: value ? '6px 0 0 6px' : '0 6px 6px 0',
     }}>{label}</button>
   );
 
   if (!data && loading) return <div style={card}><div style={title}>Traffic → dollars</div><div style={{ color: FAINT, fontSize: 13 }}>Loading…</div></div>;
-  if (!data) return <div style={card}><div style={title}>Traffic → dollars</div><div style={{ color: '#b91c1c', fontSize: 13 }}>{err ?? 'No data.'}</div></div>;
+  if (!data) return <div style={card}><div style={title}>Traffic → dollars</div><div style={{ color: 'var(--k-b91c1c)', fontSize: 13 }}>{err ?? 'No data.'}</div></div>;
 
   const q = data.quality;
   const t = data.total;
@@ -119,7 +119,7 @@ export default function TrafficFunnel({ authToken, isMobile, site, days, humanOn
           </thead>
           <tbody>
             {rows.map(r => (
-              <tr key={r.label} style={{ borderTop: '1px solid #f1f1f1', textAlign: 'right', color: '#374151' }}>
+              <tr key={r.label} style={{ borderTop: '1px solid #f1f1f1', textAlign: 'right', color: 'var(--k-374151)' }}>
                 <td style={{ textAlign: 'left', padding: '7px 6px 7px 0', fontWeight: 600, color: INK }}>{heading.includes('site') ? siteShort(r.label) : r.label}</td>
                 <td style={{ padding: '7px 6px' }}>{r.visitors.toLocaleString()}</td>
                 {!isMobile && <td style={{ padding: '7px 6px' }}>{r.engaged.toLocaleString()}</td>}
@@ -148,14 +148,14 @@ export default function TrafficFunnel({ authToken, isMobile, site, days, humanOn
         </div>
 
         {/* quality strip */}
-        <div style={{ fontSize: 13, color: '#374151', marginBottom: 8 }}>
+        <div style={{ fontSize: 13, color: 'var(--k-374151)', marginBottom: 8 }}>
           <strong style={{ color: INK }}>{q.real.toLocaleString()}</strong> of {q.total.toLocaleString()} visitors look like real people
           {q.total > 0 && <span style={{ color: MUTE }}> ({realPct}%)</span>}
         </div>
         <div style={{ display: 'flex', height: 14, borderRadius: 7, overflow: 'hidden', background: '#f1f1f1', marginBottom: 8 }} aria-hidden>
           {TIERS.map(tr => q[tr.key] > 0 && <div key={tr.key} title={`${tr.label}: ${q[tr.key]}`} style={{ width: `${(q[tr.key] / Math.max(q.total, 1)) * 100}%`, background: tr.color }} />)}
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 12, color: '#374151', marginBottom: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 12, color: 'var(--k-374151)', marginBottom: 6 }}>
           {TIERS.map(tr => (
             <span key={tr.key} title={tr.hint} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <span style={{ width: 9, height: 9, borderRadius: 2, background: tr.color, display: 'inline-block' }} />
@@ -168,7 +168,7 @@ export default function TrafficFunnel({ authToken, isMobile, site, days, humanOn
             “Unverified” are visits from before the tracking upgrade on {new Date(data.trackerUpgradedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}; they can’t be proven human, so they aren’t counted as real. This clears as the window moves past that date.
           </div>
         )}
-        {data.truncated && <div style={{ fontSize: 11.5, color: '#b45309' }}>Very high volume: showing the most recent 60,000 events in this window.</div>}
+        {data.truncated && <div style={{ fontSize: 11.5, color: 'var(--k-b45309)' }}>Very high volume: showing the most recent 60,000 events in this window.</div>}
       </div>
 
       {/* funnel */}
@@ -176,7 +176,7 @@ export default function TrafficFunnel({ authToken, isMobile, site, days, humanOn
         <div style={title}>From first visit to money</div>
         {steps.map((s, i) => (
           <div key={s.label} style={{ marginBottom: 9 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, color: '#374151' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, color: 'var(--k-374151)' }}>
               <span style={{ fontWeight: 600, color: INK }}>{s.label}</span>
               <span>
                 <strong>{s.n.toLocaleString()}</strong>
@@ -203,7 +203,7 @@ export default function TrafficFunnel({ authToken, isMobile, site, days, humanOn
           ))}
         </div>
         {t.noValue > 0 && (
-          <div style={{ fontSize: 12, color: '#b45309', marginTop: 12 }}>
+          <div style={{ fontSize: 12, color: 'var(--k-b45309)', marginTop: 12 }}>
             {t.noValue} deal{t.noValue === 1 ? ' has' : 's have'} no value entered, so the dollar totals understate what’s in flight. Add a value on the deal to count it.
           </div>
         )}
@@ -218,7 +218,7 @@ export default function TrafficFunnel({ authToken, isMobile, site, days, humanOn
         <div style={card}>
           <div style={title}>Latest leads</div>
           {data.recentLeads.slice(0, 6).map(l => (
-            <div key={l.id} style={{ display: 'flex', gap: 10, justifyContent: 'space-between', fontSize: 12.5, padding: '5px 0', borderTop: '1px solid #f6f6f6', color: '#374151' }}>
+            <div key={l.id} style={{ display: 'flex', gap: 10, justifyContent: 'space-between', fontSize: 12.5, padding: '5px 0', borderTop: '1px solid #f6f6f6', color: 'var(--k-374151)' }}>
               <span><strong style={{ color: INK }}>{siteShort(l.site)}</strong> · {l.channel}</span>
               <span style={{ color: MUTE }}>{l.deals ? `${l.deals} deal${l.deals === 1 ? '' : 's'} (${l.stages.join(', ')})` : 'no deal yet'} · {ago(l.at)}</span>
             </div>

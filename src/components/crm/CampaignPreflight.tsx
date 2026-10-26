@@ -72,13 +72,13 @@ export default function CampaignPreflight({ campaigns, authToken, isMobile, onCl
 
   return (
     <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1001, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={onClose}>
-      <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 640, boxShadow: '0 24px 80px rgba(0,0,0,.3)', overflow: 'hidden', fontFamily: "'DM Sans',sans-serif" }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
+      <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, width: '100%', maxWidth: 640, boxShadow: '0 24px 80px rgba(0,0,0,.3)', overflow: 'hidden', fontFamily: "'DM Sans',sans-serif" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--k-e5e7eb)', background: 'var(--k-fafafa)' }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Pre-send check</div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Before {campaigns.length === 1 ? 'this campaign goes' : `these ${campaigns.length} campaigns go`} live to real inboxes.</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-111)' }}>Pre-send check</div>
+            <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 2 }}>Before {campaigns.length === 1 ? 'this campaign goes' : `these ${campaigns.length} campaigns go`} live to real inboxes.</div>
           </div>
-          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1, padding: '0 4px', minWidth: 32, minHeight: 32 }}>×</button>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--k-9ca3af)', lineHeight: 1, padding: '0 4px', minWidth: 32, minHeight: 32 }}>×</button>
         </div>
 
         <div style={{ padding: '14px 20px', maxHeight: isMobile ? undefined : '65vh', overflowY: isMobile ? undefined : 'auto' }}>
@@ -86,21 +86,21 @@ export default function CampaignPreflight({ campaigns, authToken, isMobile, onCl
             const r = results[c.id];
             return (
               <div key={c.id} style={{ marginBottom: campaigns.length > 1 ? 18 : 0 }}>
-                {campaigns.length > 1 && <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111', marginBottom: 8, overflowWrap: 'anywhere' }}>{c.name}</div>}
+                {campaigns.length > 1 && <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--k-111)', marginBottom: 8, overflowWrap: 'anywhere' }}>{c.name}</div>}
                 {!r ? (
-                  <div style={{ padding: '24px 0', textAlign: 'center', color: '#9ca3af', fontSize: 13.5 }}>Checking recipients, personal fields, links and timing…</div>
+                  <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 13.5 }}>Checking recipients, personal fields, links and timing…</div>
                 ) : 'error' in r ? (
-                  <div style={{ padding: 12, color: '#991b1b', fontSize: 13.5 }}>{r.error}</div>
+                  <div style={{ padding: 12, color: 'var(--k-991b1b)', fontSize: 13.5 }}>{r.error}</div>
                 ) : (
                   <>
                     {r.checks.filter(k => showPasses || k.status !== 'pass').map(k => (
-                      <div key={k.key} style={{ display: 'flex', gap: 10, padding: '9px 0', borderTop: '1px solid #f3f4f6' }}>
+                      <div key={k.key} style={{ display: 'flex', gap: 10, padding: '9px 0', borderTop: '1px solid var(--k-f3f4f6)' }}>
                         <span aria-label={k.status} style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: TONE[k.status].bg, color: TONE[k.status].fg }}>{MARK[k.status]}</span>
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 13.5, fontWeight: 600, color: '#111' }}>{k.label}</div>
-                          <div style={{ fontSize: 13, color: '#4b5563', marginTop: 1, lineHeight: 1.45, overflowWrap: 'anywhere' }}>{k.detail}</div>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)' }}>{k.label}</div>
+                          <div style={{ fontSize: 13, color: 'var(--k-4b5563)', marginTop: 1, lineHeight: 1.45, overflowWrap: 'anywhere' }}>{k.detail}</div>
                           {k.items && k.items.length > 0 && (
-                            <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12.5, color: '#6b7280', lineHeight: 1.5 }}>
+                            <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12.5, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>
                               {k.items.map((it, i) => <li key={i} style={{ overflowWrap: 'anywhere' }}>{it}</li>)}
                             </ul>
                           )}
@@ -111,7 +111,7 @@ export default function CampaignPreflight({ campaigns, authToken, isMobile, onCl
                       </div>
                     ))}
                     {!showPasses && r.checks.some(k => k.status === 'pass') && (
-                      <div style={{ fontSize: 12.5, color: '#16a34a', padding: '9px 0', borderTop: '1px solid #f3f4f6' }}>
+                      <div style={{ fontSize: 12.5, color: 'var(--k-16a34a)', padding: '9px 0', borderTop: '1px solid var(--k-f3f4f6)' }}>
                         ✓ {r.checks.filter(k => k.status === 'pass').length} other checks passed
                       </div>
                     )}
@@ -121,15 +121,15 @@ export default function CampaignPreflight({ campaigns, authToken, isMobile, onCl
             );
           })}
           {done && (
-            <button onClick={() => setShowPasses(v => !v)} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 12.5, cursor: 'pointer', padding: '4px 0', fontFamily: 'inherit', textDecoration: 'underline' }}>
+            <button onClick={() => setShowPasses(v => !v)} style={{ background: 'none', border: 'none', color: 'var(--k-6b7280)', fontSize: 12.5, cursor: 'pointer', padding: '4px 0', fontFamily: 'inherit', textDecoration: 'underline' }}>
               {showPasses ? 'Hide passed checks' : 'Show every check'}
             </button>
           )}
         </div>
 
-        <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', background: '#fafafa', flexWrap: 'wrap' }}>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--k-e5e7eb)', display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', background: 'var(--k-fafafa)', flexWrap: 'wrap' }}>
           {done && blocked.length > 0 && (
-            <span style={{ fontSize: 12.5, color: '#991b1b', marginRight: 'auto' }}>
+            <span style={{ fontSize: 12.5, color: 'var(--k-991b1b)', marginRight: 'auto' }}>
               {ready.length ? `${blocked.length} campaign${blocked.length > 1 ? 's' : ''} can't go yet — fix the ✕ items.` : 'Fix the ✕ items before activating.'}
             </span>
           )}

@@ -12,13 +12,13 @@ interface Props { authToken?: string; showToast?: (m: string) => void; isMobile?
 
 const SITE = 'https://fairoaksranchplaza.com';
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
-const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif" };
-const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4, display: 'block' };
-const btn: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', minHeight: 38, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
+const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif" };
+const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 4, display: 'block' };
+const btn: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '8px 12px', minHeight: 38, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
 const primary: React.CSSProperties = { ...btn, color: '#fff', background: '#C9922C', border: '1px solid #C9922C' };
 const STATUS: Record<string, { text: string; color: string }> = {
-  invited: { text: 'Invited — no reply yet', color: '#6b7280' }, submitted: { text: 'Needs your review', color: '#b45309' },
-  approved: { text: 'Confirmed & approved', color: '#166534' }, declined: { text: 'Declined', color: '#991b1b' },
+  invited: { text: 'Invited — no reply yet', color: 'var(--k-6b7280)' }, submitted: { text: 'Needs your review', color: 'var(--k-b45309)' },
+  approved: { text: 'Confirmed & approved', color: 'var(--k-166534)' }, declined: { text: 'Declined', color: 'var(--k-991b1b)' },
 };
 
 async function shrink(file: File): Promise<string> {
@@ -89,8 +89,8 @@ export default function PlazaListings({ authToken, showToast, isMobile }: Props)
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-        <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 620 }}>
-          The businesses on <a href={`${SITE}/directory`} target="_blank" rel="noopener noreferrer" style={{ color: '#a06a12', fontWeight: 700 }}>fairoaksranchplaza.com</a>. Send each one its private link; they add their logo and details, then you <b>Approve</b> to publish. Businesses already on the plaza’s monument sign are live now with name and suite only.
+        <div style={{ fontSize: 13, color: 'var(--k-6b7280)', maxWidth: 620 }}>
+          The businesses on <a href={`${SITE}/directory`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--k-a06a12)', fontWeight: 700 }}>fairoaksranchplaza.com</a>. Send each one its private link; they add their logo and details, then you <b>Approve</b> to publish. Businesses already on the plaza’s monument sign are live now with name and suite only.
         </div>
         {!adding && <button style={primary} onClick={() => setAdding(true)}>＋ Add business</button>}
       </div>
@@ -103,7 +103,7 @@ export default function PlazaListings({ authToken, showToast, isMobile }: Props)
       </div>
 
       {adding && (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 14, display: 'grid', gap: 12 }}>
+        <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: 16, marginBottom: 14, display: 'grid', gap: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr 1.4fr', gap: 12 }}>
             <div><span style={label}>Business name</span><input style={input} value={newBiz.name} onChange={e => setNewBiz({ ...newBiz, name: e.target.value })} /></div>
             <div><span style={label}>Suite</span><input style={input} value={newBiz.suite} onChange={e => setNewBiz({ ...newBiz, suite: e.target.value })} /></div>
@@ -121,23 +121,23 @@ export default function PlazaListings({ authToken, showToast, isMobile }: Props)
         </div>
       )}
 
-      {rows === null && <div style={{ color: '#9ca3af' }}>Loading…</div>}
+      {rows === null && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
       <div style={{ display: 'grid', gap: 10 }}>
         {shown.map(l => {
           const st = l.invite ? STATUS[l.invite.status] : null;
           const sub = l.invite?.submitted;
           return (
-            <div key={l.id} style={{ background: '#fff', border: `1px solid ${l.invite?.status === 'submitted' ? '#f59e0b' : '#e5e7eb'}`, borderRadius: 12, padding: '14px 16px' }}>
+            <div key={l.id} style={{ background: 'var(--k-fff)', border: `1px solid ${l.invite?.status === 'submitted' ? '#f59e0b' : 'var(--k-e5e7eb)'}`, borderRadius: 12, padding: '14px 16px' }}>
               <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 {l.logo_url
                   // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={l.logo_url} alt="" style={{ width: 64, height: 64, objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }} />
-                  : <div style={{ width: 64, height: 64, border: '1px dashed #d1d5db', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#9ca3af' }}>no logo</div>}
+                  ? <img src={l.logo_url} alt="" style={{ width: 64, height: 64, objectFit: 'contain', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)' }} />
+                  : <div style={{ width: 64, height: 64, border: '1px dashed var(--k-d1d5db)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--k-9ca3af)' }}>no logo</div>}
                 <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: l.published ? '#16a34a' : '#9ca3af' }}>{l.published ? 'Live on site' : 'Not public'} · Bldg {l.building ?? '—'} · Suite {l.suite || '—'}</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{l.name}{l.category ? <span style={{ fontWeight: 500, color: '#6b7280', fontSize: 13 }}> · {l.category}</span> : null}</div>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: l.published ? 'var(--k-16a34a)' : 'var(--k-9ca3af)' }}>{l.published ? 'Live on site' : 'Not public'} · Bldg {l.building ?? '—'} · Suite {l.suite || '—'}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{l.name}{l.category ? <span style={{ fontWeight: 500, color: 'var(--k-6b7280)', fontSize: 13 }}> · {l.category}</span> : null}</div>
                   {st && <div style={{ fontSize: 13, fontWeight: 700, color: st.color }}>{st.text}</div>}
-                  <div style={{ fontSize: 12.5, color: '#6b7280' }}>{l.invite?.contact_name || l.invite?.contact_email ? `Contact: ${[l.invite?.contact_name, l.invite?.contact_email].filter(Boolean).join(' · ')}` : 'No contact on file'}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)' }}>{l.invite?.contact_name || l.invite?.contact_email ? `Contact: ${[l.invite?.contact_name, l.invite?.contact_email].filter(Boolean).join(' · ')}` : 'No contact on file'}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button style={btn} onClick={() => copy(l)}>Copy link</button>
@@ -148,16 +148,16 @@ export default function PlazaListings({ authToken, showToast, isMobile }: Props)
               </div>
 
               {l.invite?.status === 'submitted' && sub && (
-                <div style={{ marginTop: 12, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: 14 }}>
+                <div style={{ marginTop: 12, background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: 14 }}>
                   <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>Submitted by {sub.contact_name || 'the business'}{l.invite.submitted_at ? ` on ${new Date(l.invite.submitted_at).toLocaleDateString()}` : ''} — review, then approve</div>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '6px 18px', fontSize: 13.5 }}>
                     {([['Name', sub.display_name, l.name], ['Category', sub.category, l.category], ['Phone', sub.phone, l.phone], ['Website', sub.website, l.website], ['Hours', sub.hours, l.hours], ['Description', sub.description, l.description]] as const).map(([k, nv, ov]) => (
                       <div key={k} style={{ gridColumn: k === 'Description' || k === 'Hours' ? '1 / -1' : undefined }}>
-                        <b>{k}:</b> {nv || <i style={{ color: '#9ca3af' }}>—</i>}{(nv || '') !== (ov || '') && ov ? <span style={{ color: '#9ca3af' }}> (was: {ov})</span> : null}
+                        <b>{k}:</b> {nv || <i style={{ color: 'var(--k-9ca3af)' }}>—</i>}{(nv || '') !== (ov || '') && ov ? <span style={{ color: 'var(--k-9ca3af)' }}> (was: {ov})</span> : null}
                       </div>
                     ))}
                   </div>
-                  {sub.logo_data && (/* eslint-disable-next-line @next/next/no-img-element */ <div style={{ marginTop: 10 }}><b style={{ fontSize: 13 }}>New logo:</b><br /><img src={sub.logo_data} alt="Submitted logo" style={{ width: 120, height: 120, objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', marginTop: 4 }} /></div>)}
+                  {sub.logo_data && (/* eslint-disable-next-line @next/next/no-img-element */ <div style={{ marginTop: 10 }}><b style={{ fontSize: 13 }}>New logo:</b><br /><img src={sub.logo_data} alt="Submitted logo" style={{ width: 120, height: 120, objectFit: 'contain', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', marginTop: 4 }} /></div>)}
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button style={primary} onClick={() => post({ action: 'approve', id: l.id }, 'Approved — live within 5 minutes')}>Approve &amp; publish</button>
                     <button style={btn} onClick={() => { if (window.confirm('Decline this submission? Nothing will be published.')) post({ action: 'decline', id: l.id }, 'Declined'); }}>Decline</button>
@@ -183,7 +183,7 @@ export default function PlazaListings({ authToken, showToast, isMobile }: Props)
                     <button style={primary} onClick={async () => { if (await patch(l.id, { ...form, building: form.building }, 'Saved')) setEditing(null); }}>Save</button>
                     <label style={{ ...btn, display: 'inline-flex', alignItems: 'center' }}>Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={e => { uploadLogo(l, e.target.files?.[0]); e.target.value = ''; }} /></label>
                     <button style={btn} onClick={() => { if (window.confirm('Replace this business’s private link? The old link stops working and any submission is cleared.')) post({ action: 'newlink', id: l.id }, 'New link created — copy it'); }}>New link</button>
-                    <button style={{ ...btn, color: '#b91c1c' }} onClick={() => { if (window.confirm(`Delete "${l.name}" from the directory?`)) fetch(`/api/crm/plaza-listings?id=${l.id}`, { method: 'DELETE', headers: auth(authToken) }).then(() => { showToast?.('Deleted'); load(); }); }}>Delete</button>
+                    <button style={{ ...btn, color: 'var(--k-b91c1c)' }} onClick={() => { if (window.confirm(`Delete "${l.name}" from the directory?`)) fetch(`/api/crm/plaza-listings?id=${l.id}`, { method: 'DELETE', headers: auth(authToken) }).then(() => { showToast?.('Deleted'); load(); }); }}>Delete</button>
                   </div>
                 </div>
               )}

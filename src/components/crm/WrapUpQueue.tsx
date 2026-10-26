@@ -42,31 +42,31 @@ export default function WrapUpQueue({ calls, authToken, businessUnit, isMobile, 
 
   return (
     <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }} onClick={onClose}>
-      <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', padding: '16px 18px 22px', boxShadow: '0 24px 80px rgba(0,0,0,.3)', fontFamily: "'DM Sans',sans-serif" }} onClick={e => e.stopPropagation()}>
+      <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: isMobile ? '16px 16px 0 0' : 16, width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', padding: '16px 18px 22px', boxShadow: '0 24px 80px rgba(0,0,0,.3)', fontFamily: "'DM Sans',sans-serif" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>📝 Wrap-up queue</div>
-            <div style={{ fontSize: 12, color: '#9ca3af' }}>{finished ? `${done} of ${ids.length} wrapped up` : `Call ${i + 1} of ${ids.length} · ${done} done`}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-111)' }}>📝 Wrap-up queue</div>
+            <div style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{finished ? `${done} of ${ids.length} wrapped up` : `Call ${i + 1} of ${ids.length} · ${done} done`}</div>
           </div>
-          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 22, color: '#9ca3af', cursor: 'pointer', lineHeight: 1, minWidth: 32, minHeight: 32 }}>×</button>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--k-9ca3af)', cursor: 'pointer', lineHeight: 1, minWidth: 32, minHeight: 32 }}>×</button>
         </div>
-        <div style={{ height: 4, background: '#f3f4f6', borderRadius: 2, marginBottom: 14, overflow: 'hidden' }}><div style={{ width: `${ids.length ? (Math.min(i, ids.length) / ids.length) * 100 : 100}%`, height: '100%', background: '#c9922c' }} /></div>
+        <div style={{ height: 4, background: 'var(--k-f3f4f6)', borderRadius: 2, marginBottom: 14, overflow: 'hidden' }}><div style={{ width: `${ids.length ? (Math.min(i, ids.length) / ids.length) * 100 : 100}%`, height: '100%', background: '#c9922c' }} /></div>
 
         {finished ? (
           <div style={{ textAlign: 'center', padding: '28px 0 8px' }}>
             <div style={{ fontSize: 40 }}>✅</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginTop: 6 }}>{done === ids.length ? 'Every call has a note.' : `Done — ${ids.length - done} skipped.`}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--k-374151)', marginTop: 6 }}>{done === ids.length ? 'Every call has a note.' : `Done — ${ids.length - done} skipped.`}</div>
             <button onClick={onClose} style={{ marginTop: 14, fontSize: 13, fontWeight: 700, padding: '10px 18px', minHeight: 44, border: 'none', borderRadius: 8, background: '#c9922c', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>Close</button>
           </div>
         ) : (
           <>
-            <div style={{ background: '#faf7ef', borderLeft: '3px solid #c9922c', borderRadius: 4, padding: '10px 12px', marginBottom: 4 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#111', overflowWrap: 'anywhere' }}>{call!.contact?.name || call!.caller_name || pretty(num)}{call!.contact?.type ? <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280' }}> · {call!.contact.type}</span> : null}</div>
-              <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+            <div style={{ background: 'var(--k-faf7ef)', borderLeft: '3px solid #c9922c', borderRadius: 4, padding: '10px 12px', marginBottom: 4 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-111)', overflowWrap: 'anywhere' }}>{call!.contact?.name || call!.caller_name || pretty(num)}{call!.contact?.type ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)' }}> · {call!.contact.type}</span> : null}</div>
+              <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 2 }}>
                 {call!.direction === 'outbound' ? 'Outbound' : 'Inbound'} · {when(call!.started_at)}{call!.duration_sec ? ` · ${dur(call!.duration_sec)}` : ''}{call!.answered_by_name ? ` · ${call!.answered_by_name.split(' ')[0]} answered` : ''}{(call!.contact || call!.caller_name) && num ? ` · ${pretty(num)}` : ''}
               </div>
-              {h && <div style={{ fontSize: 12.5, color: '#4b5563', marginTop: 4 }}>🔁 {h.prior + 1}{h.prior + 1 === 2 ? 'nd' : h.prior + 1 === 3 ? 'rd' : 'th'} call · last {when(h.last.at)} — {h.last.label}{h.last.by ? ` (${h.last.by})` : ''}</div>}
-              {call!.intent && <div style={{ fontSize: 12.5, color: '#a06a12', fontWeight: 600, marginTop: 4 }}>{call!.intent}</div>}
+              {h && <div style={{ fontSize: 12.5, color: 'var(--k-4b5563)', marginTop: 4 }}>🔁 {h.prior + 1}{h.prior + 1 === 2 ? 'nd' : h.prior + 1 === 3 ? 'rd' : 'th'} call · last {when(h.last.at)} — {h.last.label}{h.last.by ? ` (${h.last.by})` : ''}</div>}
+              {call!.intent && <div style={{ fontSize: 12.5, color: 'var(--k-a06a12)', fontWeight: 600, marginTop: 4 }}>{call!.intent}</div>}
             </div>
             {/* key = the call, so the panel resets for each one */}
             <CallWrapUp
@@ -81,7 +81,7 @@ export default function WrapUpQueue({ calls, authToken, businessUnit, isMobile, 
               onMention={onMention}
             />
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
-              <button onClick={advance} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', minHeight: 36 }}>Skip this one</button>
+              <button onClick={advance} style={{ background: 'none', border: 'none', color: 'var(--k-6b7280)', fontSize: 13, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', minHeight: 36 }}>Skip this one</button>
             </div>
           </>
         )}

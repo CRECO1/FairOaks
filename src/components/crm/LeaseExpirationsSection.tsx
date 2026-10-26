@@ -58,14 +58,14 @@ export default function LeaseExpirationsSection({ authToken, onToast, onCreated 
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>🔑 Lease Renewals</h2>
-          <p style={{ fontSize: 14, color: '#6b7280' }}>
+          <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: 'var(--k-111)', marginBottom: 4 }}>🔑 Lease Renewals</h2>
+          <p style={{ fontSize: 14, color: 'var(--k-6b7280)' }}>
             {shown.length} lease{shown.length === 1 ? '' : 's'} expiring {windowMonths >= 99 ? 'ahead' : `in the next ${windowMonths} months`} · outreach starts ~{DEFAULT_LEAD_DAYS} days out
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <select value={windowMonths} onChange={e => setWindowMonths(Number(e.target.value))}
-            style={{ padding: '7px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, background: '#fff', color: '#374151', cursor: 'pointer' }}>
+            style={{ padding: '7px 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, background: 'var(--k-fff)', color: 'var(--k-374151)', cursor: 'pointer' }}>
             {[3, 6, 12].map(m => <option key={m} value={m}>Next {m} months</option>)}
             <option value={99}>All upcoming</option>
           </select>
@@ -77,9 +77,9 @@ export default function LeaseExpirationsSection({ authToken, onToast, onCreated 
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>Loading…</div>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--k-9ca3af)' }}>Loading…</div>
       ) : shown.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--k-9ca3af)' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🔑</div>
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>No leases expiring in this window</div>
           <div style={{ fontSize: 13 }}>Add a <strong>lease expiration date</strong> on a contact to start tracking renewals.</div>
@@ -93,26 +93,26 @@ export default function LeaseExpirationsSection({ authToken, onToast, onCreated 
             const lead = c.lxp_follow_up_days && c.lxp_follow_up_days > 0 ? c.lxp_follow_up_days : DEFAULT_LEAD_DAYS;
             const dueNow = days <= lead;
             const prospected = c.lxp_prospected_for === c.lease_expiration_date;
-            const chip = days <= 90 ? { bg: '#fee2e2', color: '#dc2626' } : days <= 180 ? { bg: '#fff7ed', color: '#c2410c' } : { bg: '#f1f5f9', color: '#475569' };
+            const chip = days <= 90 ? { bg: '#fee2e2', color: 'var(--k-dc2626)' } : days <= 180 ? { bg: '#fff7ed', color: 'var(--k-c2410c)' } : { bg: '#f1f5f9', color: 'var(--k-475569)' };
             const expLabel = new Date(c.lease_expiration_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             return (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: `1px solid ${dueNow && !prospected ? '#f0e2c4' : '#eef0f2'}`, borderRadius: 10, padding: '12px 15px' }}>
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--k-fff)', border: `1px solid ${dueNow && !prospected ? 'var(--k-f0e2c4)' : '#eef0f2'}`, borderRadius: 10, padding: '12px 15px' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{name}</span>
-                    {c.business_name && hasName && <span style={{ fontSize: 12, color: '#9ca3af' }}>· {c.business_name}</span>}
-                    {c.type && <span style={{ fontSize: 11, color: '#9ca3af' }}>{c.type}</span>}
+                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{name}</span>
+                    {c.business_name && hasName && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>· {c.business_name}</span>}
+                    {c.type && <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>{c.type}</span>}
                   </div>
-                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>Expires {expLabel}</div>
+                  <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>Expires {expLabel}</div>
                 </div>
                 <span style={{ background: chip.bg, color: chip.color, fontSize: 11.5, fontWeight: 700, borderRadius: 20, padding: '3px 10px', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   {days <= 0 ? 'expired' : `${days}d`}
                 </span>
                 {prospected ? (
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#16a34a', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ In queue</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--k-16a34a)', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ In queue</span>
                 ) : (
                   <button onClick={() => run([c.id])} disabled={busy}
-                    style={{ fontSize: 12.5, fontWeight: 700, color: dueNow ? '#fff' : '#a06a12', background: dueNow ? '#c9922c' : '#fff', border: dueNow ? 'none' : '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: busy ? 'default' : 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    style={{ fontSize: 12.5, fontWeight: 700, color: dueNow ? '#fff' : 'var(--k-a06a12)', background: dueNow ? '#c9922c' : 'var(--k-fff)', border: dueNow ? 'none' : '1px solid var(--k-f0e2c4)', borderRadius: 7, padding: '6px 12px', cursor: busy ? 'default' : 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
                     ＋ Call
                   </button>
                 )}
