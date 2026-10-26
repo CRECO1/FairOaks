@@ -30,6 +30,8 @@ function stripInlineTags(s: string): string {
     .replace(/\s*[-–]\s*target\b[^\n]*?(?=\s*[-–]\s*floor)/gi, '')
     .replace(/\s*[-–]\s*floor\b[^\n;]*/gi, '')
     .replace(/\s*Source:\s*Bexar\s*CAD[^\n.]*\.?/gi, '')
+    // Internal notes can carry an @teammate tag; it is a CRM note-tag, never flyer copy.
+    .replace(/(^|\s)@\w+/g, '$1')
     .replace(/\s{2,}/g, ' ').trim();
 }
 // Free text (description): strip inline tags, then drop any whole sentence that is internal.

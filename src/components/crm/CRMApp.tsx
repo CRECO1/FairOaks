@@ -1085,6 +1085,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [mentions, setMentions] = useState<any[]>([]); // crm_notifications for current user
   const [mentionsLoaded, setMentionsLoaded] = useState(false);
   const [showAllMentions, setShowAllMentions] = useState(false);
+  // Bumped when a bell notification links to a property, so the Properties tab remounts and opens it even if already showing.
+  const [propLinkNonce, setPropLinkNonce] = useState(0);
   const [linkedNoteIds, setLinkedNoteIds] = useState<Set<string>>(new Set()); // other contact IDs to receive same note
   const [dealNotesText, setDealNotesText] = useState(''); // controlled value for active deal notes
 
@@ -3365,6 +3367,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (rows.length) await supabase.from('crm_notifications').insert(rows);
   }
 
+  // A tag in a property / suite / rent-roll note → bell notification for that teammate (once per person per property).
+  const noteMention = (ids: string[], message: string, entityType: string, entityId?: string) =>
+    createMentionNotifications(ids, `@${profile?.first_name} ${message}`, entityType, entityId);
+
   async function markMentionRead(id: string) {
     await supabase.from('crm_notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
     setMentions(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
@@ -5278,7 +5284,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients();
                                 } else if (n.entity_type === 'task') {
                                   setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks();
-                                } else if (n.entity_type === 'deal' && n.entity_id) {
+                                } else if (n.entity_type === 'listing' && n.entity_id) {
+                  // A note tag on a property (Internal Notes / Rent Roll): open that property's card.
+                  rememberView(`${businessUnit}:listing`, n.entity_id);
+                  setPage('properties'); setPropertiesTab('listings'); setPropLinkNonce(x => x + 1);
+                } else if (n.entity_type === 'suite') {
+                  setPage('properties'); setPropertiesTab('floorplan');
+                } else if (n.entity_type === 'deal' && n.entity_id) {
                                   // A deal mention used to just mark itself read and go nowhere.
                                   const d = deals.find(x => x.id === n.entity_id);
                                   if (d) { setPage('deals'); openDeal(d); }
@@ -10293,6 +10305,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               )}
               {propertiesTab === 'listings' && (
                 <ListingsSection
+                  key={`listings-${propLinkNonce}`}
+                  onMention={noteMention}
                   businessUnit={businessUnit}
                   isAdmin={isAdmin}
                   authToken={session?.access_token}
@@ -10313,6 +10327,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               )}
               {propertiesTab === 'floorplan' && (
                 <PropertiesFloorPlan
+                  profiles={profiles}
+                  onMention={noteMention}
                   businessUnit={businessUnit}
                   isAdmin={isAdmin}
                   authToken={session?.access_token}

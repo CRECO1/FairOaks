@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 
 /**
  * PropertiesFloorPlan — interactive, click-to-edit office floor plans for the
@@ -222,9 +223,12 @@ interface Props {
   isAdmin: boolean;
   authToken?: string;
   onToast?: (msg: string) => void;
+  /** Teammates for the @ picker in the suite notes; with onMention, a tag notifies them when the suite is saved. */
+  profiles?: Array<{ id: string; first_name: string; last_name: string; role?: string }>;
+  onMention?: (ids: string[], message: string, entityType: string, entityId?: string) => void;
 }
 
-export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, onToast }: Props) {
+export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, onToast, profiles = [], onMention }: Props) {
   const [rows, setRows] = useState<Record<string, SuiteRow>>({});
   const [building, setBuilding] = useState<BuildingKey>('bldg1');
   const [floor, setFloor] = useState<1 | 2>(1);
@@ -297,6 +301,12 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
       });
       const data = await res.json();
       if (!res.ok) { onToast?.(data.error || 'Save failed'); return; }
+      // Notify only people newly @-tagged in this suite's notes by this save.
+      if (onMention && profiles.length) {
+        const had = new Set(parseMentionIds(current(def).notes ?? '', profiles));
+        const fresh = parseMentionIds(form.notes ?? '', profiles).filter(id => !had.has(id));
+        if (fresh.length) onMention(fresh, `mentioned you in the notes for suite ${form.suite_number || def.defNumber}${form.tenant_name ? ` (${form.tenant_name})` : ''}`, 'suite');
+      }
       setRows(prev => ({ ...prev, [`${def.building}:${def.floor}:${def.key}`]: data.suite }));
       onToast?.('✅ Suite updated');
       setSelKey(null);
@@ -505,7 +515,9 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
           </div>
 
           <label style={lbl}>Notes</label>
-          <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} style={{ ...inp, resize: 'vertical' }} />
+          {profiles.length
+            ? <MentionTextarea value={form.notes} onChange={v => setForm({ ...form, notes: v })} profiles={profiles} rows={3} placeholder="Notes… (@ to tag a teammate)" style={{ ...inp, resize: 'vertical' }} />
+            : <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} style={{ ...inp, resize: 'vertical' }} />}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button onClick={save} disabled={saving} style={{ flex: 1, padding: '10px', borderRadius: 7, border: 'none', cursor: saving ? 'default' : 'pointer', background: '#c9922c', color: '#111', fontWeight: 700, fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>

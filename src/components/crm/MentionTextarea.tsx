@@ -24,6 +24,12 @@ interface Props {
   className?: string;
   style?: React.CSSProperties;
   id?: string;
+  /** For use inside a table cell / inline editor. */
+  rows?: number;
+  onBlur?: React.FocusEventHandler<HTMLTextAreaElement>;
+  onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>;
+  /** Hide the "will be notified on save" line (the host shows its own, or saves on blur). */
+  hideHint?: boolean;
 }
 
 // Parse all @FirstName mentions from text → return matching profile IDs
@@ -104,7 +110,7 @@ export function parseMentionContactIds(text: string, contacts: MentionContact[],
   return [...out];
 }
 
-export default function MentionTextarea({ value, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts = [], onCreateContact, placeholder, className, style, id }: Props) {
+export default function MentionTextarea({ value, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts = [], onCreateContact, placeholder, className, style, id, rows, onBlur, onKeyDown, hideHint }: Props) {
   const [creating, setCreating] = useState(false);
   const [search, setSearch]     = useState('');
   const [showDrop, setShowDrop] = useState(false);
@@ -192,10 +198,12 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
           placeholder={placeholder}
           value={value}
           onChange={handleChange}
-          onBlur={() => setTimeout(() => setShowDrop(false), 150)}
+          rows={rows}
+          onKeyDown={onKeyDown}
+          onBlur={e => { onBlur?.(e); setTimeout(() => setShowDrop(false), 150); }}
         />
 
-        {value.includes('@') && (() => {
+        {!hideHint && value.includes('@') && (() => {
           const team = parseMentionIds(value, profiles);
           const tagged = parseMentionContactIds(value, contacts, profiles);
           const names = (ids: string[], list: { id: string }[], label: (x: never) => string) =>

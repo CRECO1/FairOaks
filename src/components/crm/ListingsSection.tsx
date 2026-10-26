@@ -10,6 +10,7 @@ import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
 import { defaultEsignMessage } from '@/lib/esign-message';
 import RentRoll from '@/components/crm/RentRoll';
+import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 import LeasingActivity from '@/components/crm/LeasingActivity';
 import EmailProspects from '@/components/crm/EmailProspects';
 import PropertyPerformance from '@/components/crm/PropertyPerformance';
@@ -107,6 +108,9 @@ interface Props {
   // Bumped by the parent after the composer sends, so a newly-imported document
   // appears in the property's Transaction Docs list without reopening the panel.
   reloadSignal?: number;
+  // A teammate was @-tagged in a note on this property (Internal Notes, Rent Roll notes). The parent
+  // writes the bell notification: (ids, "mentioned you in …", entity type, entity id).
+  onMention?: (ids: string[], message: string, entityType: string, entityId?: string) => void;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -188,7 +192,7 @@ const fieldTypeLabel = (t: string) => t === 'signature' ? 'Signature' : t === 'i
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, clients, onToast, onAddDocument, onSignFile, reloadSignal }: Props) {
+export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, clients, onToast, onAddDocument, onSignFile, reloadSignal, onMention }: Props) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -493,6 +497,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     });
     if (!res.ok) { onToast('Error saving listing'); return; }
     const { listing } = await res.json();
+    // Notify only people newly @-tagged in the Internal Notes by this save.
+    if (onMention) {
+      const had = new Set(parseMentionIds(active.notes ?? '', profiles));
+      const fresh = parseMentionIds(String(editForm.notes ?? ''), profiles).filter(id => !had.has(id));
+      if (fresh.length) onMention(fresh, `mentioned you in the notes for ${listing.name || listing.address || 'a property'}`, 'listing', active.id);
+    }
     setListings(prev => prev.map(l => l.id === active.id ? listing : l));
     setActive(listing);
     setDirty(false);
@@ -830,6 +840,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setCreating(false);
     if (!res.ok) { onToast('Error creating listing'); return; }
     const { listing } = await res.json();
+    if (onMention) {
+      const fresh = parseMentionIds(String(newForm.notes ?? ''), profiles);
+      if (fresh.length) onMention(fresh, `mentioned you in the notes for ${listing.name || listing.address || 'a new property'}`, 'listing', listing.id);
+    }
     setListings(prev => [listing, ...prev]);
     setShowNew(false);
     setNewForm(BLANK_FORM);
@@ -1147,7 +1161,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         {SEC('Internal', 'never shown on the flyer')}
         <div>
           {LBL('Internal Notes')}
-          <textarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Showing instructions, landlord contact, commission notes…" />
+          <MentionTextarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} profiles={profiles} value={form.notes} onChange={v => set('notes', v)} placeholder="Showing instructions, landlord contact, commission notes… (@ to tag a teammate)" />
         </div>
       </div>
     );
@@ -1599,7 +1613,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               )}
 
               {activeTab === 'rentroll' && canSeeRentRoll && (
-                <RentRoll listingId={active.id} authToken={authToken} isAdmin={isAdmin} contacts={clients} onToast={onToast} />
+                <RentRoll listingId={active.id} listingName={active.name || active.address || ''} authToken={authToken} isAdmin={isAdmin} contacts={clients} onToast={onToast} profiles={profiles} onMention={onMention} />
               )}
 
               {activeTab === 'leasing' && canSeeRentRoll && (
