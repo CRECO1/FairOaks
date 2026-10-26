@@ -23,6 +23,7 @@ import CampaignEngagedPanel from '@/components/crm/CampaignEngagedPanel';
 import CampaignPreflight from '@/components/crm/CampaignPreflight';
 import CallTapPrompt from '@/components/crm/CallTapPrompt';
 import MentionTextarea, { parseMentionContactIds, parseMentionIds } from '@/components/crm/MentionTextarea';
+import Ico, { type IcoName } from '@/components/crm/Ico';
 
 // Heavy CRM sections are code-split so /crm no longer ships them all in one
 // bundle — each loads its own chunk the first time its tab or modal opens
@@ -913,6 +914,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Dashboard: the reporting charts collapse into a "Numbers" section so the
   // action center (what needs attention today/this week) leads. Default closed.
   const [showNumbers, setShowNumbers] = useState(false);
+  // Light / dark. Chrome and the dashboard follow it; other pages keep their light canvas until they move onto the tokens.
+  const [crmTheme, setCrmTheme] = useState<'light' | 'dark'>('light');
+  useEffect(() => { try { if (localStorage.getItem('crm:theme') === 'dark') setCrmTheme('dark'); } catch { /* private mode */ } }, []);
+  useEffect(() => { try { localStorage.setItem('crm:theme', crmTheme); } catch { /* private mode */ } }, [crmTheme]);
 
   // Kanban drag state
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
@@ -4680,9 +4685,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── UI ────────────────────────────────────────────────────────────────────────
   return (
-    <div className="crm-app-shell" style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: '#f2f2f2' }}>
+    <div className="crm-app-shell" data-crm-theme={crmTheme} style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: '#f2f2f2' }}>
       <CrmShield exempt={isSuperAdmin} name={`${profile.first_name} ${profile.last_name}`.trim()} email={profile.email} token={session?.access_token} page={page} />
       <style>{`
+        /* Design tokens. Light values equal the colours the CRM already used, so light mode is unchanged; dark swaps them. */
+        .crm-app-shell{--c-canvas:#f2f2f2;--c-surface:#ffffff;--c-surface-2:#fafafa;--c-ink:#111111;--c-ink-2:#374151;--c-muted:#6b7280;--c-faint:#9ca3af;--c-line:#e0e0e0;--c-line-2:#f0f0f0;--c-header:#ffffff;
+          --c-danger:#dc2626;--c-danger-soft:#fee2e2;--c-danger-line:#fecaca;--c-warn-soft:#fff7ed;--c-warn-line:#fed7aa;--c-warn-ink:#c2410c;--c-ok-soft:#f0fdf4;--c-ok-line:#bbf7d0;--c-ok-ink:#16a34a;}
+        .crm-app-shell[data-crm-theme="dark"]{--c-canvas:#0e0d0b;--c-surface:#171512;--c-surface-2:#1d1a16;--c-ink:#f2ede2;--c-ink-2:#d8d2c4;--c-muted:#a39c8c;--c-faint:#7d7667;--c-line:#2b2720;--c-line-2:#221f19;--c-header:#141210;
+          --c-danger:#ef8a76;--c-danger-soft:#33201b;--c-danger-line:#5a2c22;--c-warn-soft:#2e2412;--c-warn-line:#5a4418;--c-warn-ink:#e3b45a;--c-ok-soft:#18281f;--c-ok-line:#285a3a;--c-ok-ink:#76c595;}
+        .dk-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start;}
+        .dk-main,.dk-side{min-width:0;}
+        @media(max-width:1180px){.dk-grid{grid-template-columns:1fr;}}
+        .dk-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin-bottom:18px;}
+        .dk-kpi{background:var(--c-surface);border:1px solid var(--c-line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:5px;min-width:0;text-align:left;font-family:inherit;}
+        button.dk-kpi{cursor:pointer;transition:border-color .15s;}
+        button.dk-kpi:hover{border-color:#c9922c;}
+        .dk-kpi .l{font-size:12px;color:var(--c-muted);}
+        .dk-kpi .v{font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:700;line-height:1;color:var(--c-ink);font-variant-numeric:tabular-nums;}
+        .dk-kpi .s{font-size:12px;color:var(--c-muted);}
+        .dk-kpi.hot .v{color:var(--c-danger);}
+        .dk-seg{display:flex;height:6px;border-radius:99px;overflow:hidden;gap:2px;margin-top:1px;}
+        .dk-seg i{display:block;}
+        .dk-card{background:var(--c-surface);border:1px solid var(--c-line);border-radius:12px;padding:16px 18px;margin-bottom:14px;}
+        .dk-card h4{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;color:var(--c-muted);margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+        .dk-card h4 button{background:none;border:none;font-size:12px;letter-spacing:0;text-transform:none;color:#c9922c;cursor:pointer;font-weight:600;font-family:inherit;}
+        .dk-fr{display:grid;grid-template-columns:92px minmax(0,1fr) 70px;gap:10px;align-items:center;font-size:13px;color:var(--c-ink);margin-bottom:10px;}
+        .dk-fr .tr{height:20px;background:var(--c-surface-2);border:1px solid var(--c-line);border-radius:6px;overflow:hidden;}
+        .dk-fr .tr i{display:block;height:100%;background:#c9922c;}
+        .dk-fr small{display:block;color:var(--c-muted);font-size:11px;}
+        .dk-fr b{text-align:right;font-variant-numeric:tabular-nums;}
+        .dk-lm{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;align-items:end;height:128px;}
+        .dk-lm div{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%;font-size:11px;color:var(--c-muted);}
+        .dk-lm i{display:block;width:100%;max-width:34px;border-radius:6px 6px 2px 2px;background:rgba(201,146,44,.16);border:1px solid #c9922c;}
+        .dk-lm .n{color:var(--c-ink);font-weight:700;font-size:13px;}
+        .dk-lm .soon i{background:#c9922c;}
+        .dk-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--c-muted);margin-top:10px;}
+        @media(max-width:480px){.dk-fr{grid-template-columns:72px minmax(0,1fr) 62px;}.dk-lm{height:110px;}}
         /* The marketing site's global base styles (globals.css) leak into the CRM: every input /
            select / textarea got min-height:3rem (= 60px at the site's 20px root) and the site's
            large body font, and every checkbox became 25x60. Reset them here, ahead of the CRM's
@@ -4876,9 +4914,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Overview</div>
-          <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>🏠 &nbsp;Dashboard</button>
+          <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}><Ico n="home" />Dashboard</button>
           <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); }}>
-            ✅ &nbsp;Tasks
+            <Ico n="check" />Tasks
             {overdueMine(tasks, profile?.id) > 0 && (
               <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
                 {overdueMine(tasks, profile?.id)}
@@ -4888,17 +4926,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
-          <button className={`crm-nav${page === 'deals' && !filter ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); }}>📋 &nbsp;All Deals <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#111', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span></button>
+          <button className={`crm-nav${page === 'deals' && !filter ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); }}><Ico n="deals" />All Deals <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#111', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span></button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>People</div>
-          <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); }}>👥 &nbsp;Contacts <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? '#111' : 'rgba(255,255,255,.4)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span></button>
-          {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); }}>🤝 &nbsp;Broker / Agents</button>}
+          <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); }}><Ico n="users" />Contacts <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? '#111' : 'rgba(255,255,255,.4)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span></button>
+          {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); }}><Ico n="briefcase" />Broker / Agents</button>}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
-          <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
-          <button className={`crm-nav${['campaigns', 'action-plans', 'social'].includes(page) ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadCampaignProjects(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Marketing</button>
+          <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}><Ico n="calendar" />Calendar</button>
+          <button className={`crm-nav${['campaigns', 'action-plans', 'social'].includes(page) ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadCampaignProjects(); loadProfiles(); setCampaignAgentFilter(null); }}><Ico n="megaphone" />Marketing</button>
           {/* Billing — links to the CRECO billing surface (crecotx.com),
               which is a separate Next.js app deployed independently. Opens
               in a new tab so CRM state isn't lost. Admin-only because
@@ -4912,7 +4950,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               rel="noopener noreferrer"
               className="crm-nav"
             >
-              🧾 &nbsp;Billing
+              <Ico n="receipt" />Billing
               <span
                 style={{
                   marginLeft: 'auto',
@@ -4927,15 +4965,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </span>
             </a>
           )}
-          <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}>🏢 &nbsp;Properties</button>
-          <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}>📄 &nbsp;Transaction Docs</button>
-          <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}>✍️ &nbsp;E-Sign</button>
-          <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}>📞 &nbsp;Calling Log</button>
-          <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}>👁 &nbsp;{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
+          <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}><Ico n="building" />Properties</button>
+          <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}><Ico n="file" />Transaction Docs</button>
+          <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}><Ico n="pen" />E-Sign</button>
+          <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}><Ico n="phone" />Calling Log</button>
+          <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
           {/* Owner-only. The server also 403s non-super_admin, so hiding this
               is convenience, not the access control. */}
-          {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => setPage('lead-attribution')}>📊 &nbsp;Lead Attribution</button>}
-          {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => setPage('plaza-site')}>🌳 &nbsp;Plaza Site{plazaPending > 0 && <span style={{ marginLeft: 8, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>{plazaPending}</span>}</button>}
+          {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => setPage('lead-attribution')}><Ico n="chart" />Lead Attribution</button>}
+          {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => setPage('plaza-site')}><Ico n="tree" />Plaza Site{plazaPending > 0 && <span style={{ marginLeft: 8, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>{plazaPending}</span>}</button>}
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -5063,9 +5101,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Nav sections */}
               <div style={{ padding: '16px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Overview</div>
-                <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => { setPage('dashboard'); setMobileMenuOpen(false); }}>🏠 &nbsp;Dashboard</button>
+                <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => { setPage('dashboard'); setMobileMenuOpen(false); }}><Ico n="home" />Dashboard</button>
                 <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); setMobileMenuOpen(false); }}>
-                  ✅ &nbsp;Tasks
+                  <Ico n="check" />Tasks
                   {overdueMine(tasks, profile?.id) > 0 && (
                     <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
                       {overdueMine(tasks, profile?.id)}
@@ -5077,7 +5115,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ padding: '14px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Deal Flow</div>
                 <button className={`crm-nav${page === 'deals' ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); setMobileMenuOpen(false); }}>
-                  📋 &nbsp;All Deals
+                  <Ico n="deals" />All Deals
                   <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#111', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span>
                 </button>
               </div>
@@ -5085,28 +5123,28 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ padding: '14px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>People</div>
                 <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); setMobileMenuOpen(false); }}>
-                  👥 &nbsp;Contacts
+                  <Ico n="users" />Contacts
                   <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? '#111' : 'rgba(255,255,255,.4)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span>
                 </button>
-                {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}>🤝 &nbsp;Broker / Agents</button>}
+                {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}><Ico n="briefcase" />Broker / Agents</button>}
               </div>
 
               <div style={{ padding: '14px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Tools</div>
-                <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); setMobileMenuOpen(false); }}>📅 &nbsp;Calendar</button>
-                <button className={`crm-nav${['campaigns', 'action-plans', 'social'].includes(page) ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); setMobileMenuOpen(false); }}>📣 &nbsp;Marketing</button>
+                <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); setMobileMenuOpen(false); }}><Ico n="calendar" />Calendar</button>
+                <button className={`crm-nav${['campaigns', 'action-plans', 'social'].includes(page) ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); setMobileMenuOpen(false); }}><Ico n="megaphone" />Marketing</button>
                 {isAdmin && (
                   <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
-                    🧾 &nbsp;Billing <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>↗</span>
+                    <Ico n="receipt" />Billing <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>↗</span>
                   </a>
                 )}
-                <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => { setPage('properties'); setMobileMenuOpen(false); }}>🏢 &nbsp;Properties</button>
-                <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => { setPage('transaction-docs'); setMobileMenuOpen(false); }}>📄 &nbsp;Transaction Docs</button>
-                <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => { setPage('esign'); setMobileMenuOpen(false); }}>✍️ &nbsp;E-Sign</button>
-                <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); setMobileMenuOpen(false); }}>📞 &nbsp;Calling Log</button>
-                <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}>👁 &nbsp;{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
-                {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => { setPage('lead-attribution'); setMobileMenuOpen(false); }}>📊 &nbsp;Lead Attribution</button>}
-                {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => { setPage('plaza-site'); setMobileMenuOpen(false); }}>🌳 &nbsp;Plaza Site{plazaPending > 0 && <span style={{ marginLeft: 8, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>{plazaPending}</span>}</button>}
+                <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => { setPage('properties'); setMobileMenuOpen(false); }}><Ico n="building" />Properties</button>
+                <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => { setPage('transaction-docs'); setMobileMenuOpen(false); }}><Ico n="file" />Transaction Docs</button>
+                <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => { setPage('esign'); setMobileMenuOpen(false); }}><Ico n="pen" />E-Sign</button>
+                <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); setMobileMenuOpen(false); }}><Ico n="phone" />Calling Log</button>
+                <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
+                {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => { setPage('lead-attribution'); setMobileMenuOpen(false); }}><Ico n="chart" />Lead Attribution</button>}
+                {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => { setPage('plaza-site'); setMobileMenuOpen(false); }}><Ico n="tree" />Plaza Site{plazaPending > 0 && <span style={{ marginLeft: 8, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>{plazaPending}</span>}</button>}
               </div>
 
               {isAdmin && businessUnit === 'residential' && (
@@ -5147,19 +5185,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         )}
 
         {/* Desktop topbar */}
-        {!isTabletOrMobile && <div style={{ background: '#fff', borderBottom: '1px solid #e0e0e0', padding: '13px 26px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 600, flex: 1 }}>
+        {!isTabletOrMobile && <div style={{ background: 'var(--c-header)', borderBottom: '1px solid var(--c-line)', padding: '13px 26px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 600, flex: 1, color: 'var(--c-ink)' }}>
             {pageLabel[page]}
           </h2>
           {/* Global search trigger */}
           <button onClick={() => { setShowSearch(true); setSearchQuery(''); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: '#9ca3af', fontSize: 14, transition: 'all .15s' }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9922c'; e.currentTarget.style.color = '#374151'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.color = '#9ca3af'; }}>
-            🔍 <span>Search…</span>
-            <kbd style={{ fontSize: 11, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '1px 5px', fontFamily: 'monospace', marginLeft: 4 }}>⌘K</kbd>
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c-line)', background: 'var(--c-surface-2)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: 'var(--c-faint)', fontSize: 14, transition: 'all .15s' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9922c'; e.currentTarget.style.color = 'var(--c-ink-2)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--c-line)'; e.currentTarget.style.color = 'var(--c-faint)'; }}>
+            <Ico n="search" size={15} /> <span>Search…</span>
+            <kbd style={{ fontSize: 11, background: 'var(--c-surface)', border: '1px solid var(--c-line)', borderRadius: 4, padding: '1px 5px', fontFamily: 'monospace', marginLeft: 4 }}>⌘K</kbd>
           </button>
 
+          {/* Light / dark */}
+          <button onClick={() => setCrmTheme(t => (t === 'dark' ? 'light' : 'dark'))} aria-label={crmTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} title={crmTheme === 'dark' ? 'Light theme' : 'Dark theme'}
+            style={{ width: 38, height: 38, borderRadius: 8, border: '1px solid var(--c-line)', background: 'var(--c-surface-2)', color: 'var(--c-ink-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Ico n={crmTheme === 'dark' ? 'sun' : 'moon'} size={17} />
+          </button>
           {/* Notification Bell */}
           {(() => {
             const now = Date.now();
@@ -5187,8 +5230,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             return (
               <div style={{ position: 'relative' }}>
                 <button onClick={() => { setShowNotifications(n => !n); loadMentions(); }} title="Notifications"
-                  style={{ position: 'relative', width: 38, height: 38, borderRadius: 8, border: `1px solid ${totalAlerts > 0 ? '#fde68a' : '#e5e7eb'}`, background: showNotifications ? '#fef9f0' : totalAlerts > 0 ? '#fffbeb' : '#f9fafb', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all .15s' }}>
-                  🔔
+                  style={{ position: 'relative', width: 38, height: 38, borderRadius: 8, border: `1px solid ${totalAlerts > 0 ? 'var(--c-warn-line)' : 'var(--c-line)'}`, background: showNotifications ? 'var(--c-warn-soft)' : totalAlerts > 0 ? 'var(--c-warn-soft)' : 'var(--c-surface-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all .15s' }}>
+                  <Ico n="bell" size={17} style={{ color: 'var(--c-ink-2)' }} />
                   {totalAlerts > 0 && (
                     <span style={{ position: 'absolute', top: 3, right: 3, width: 15, height: 15, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #fff' }}>
                       {totalAlerts > 9 ? '9+' : totalAlerts}
@@ -5374,7 +5417,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>}
 
         {/* Content */}
-        <div className="crm-page-scroll" style={{ flex: 1, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' || page === 'action-plans' ? 0 : isMobile ? 14 : isTabletOrMobile ? 20 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
+        <div className="crm-page-scroll" style={{ flex: 1, background: page === 'dashboard' ? 'var(--c-canvas)' : undefined, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' || page === 'action-plans' ? 0 : isMobile ? 14 : isTabletOrMobile ? 20 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
 
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
@@ -5411,7 +5454,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const nothing = !overdue.length && !dueToday.length && !thisWeek.length && !inContract.length && !stalled.length && !listCalls.length;
 
                 const cname = (id?: string) => { const c = clients.find(x => x.id === id); return c ? `${c.first_name} ${c.last_name}` : ''; };
-                const tIcon = (t: CRMTask) => t.type === 'call' ? '📞' : t.type === 'email' ? '✉️' : '🔔';
+                const tIcon = (t: CRMTask) => <Ico n={t.type === 'call' ? 'phone' : t.type === 'email' ? 'mail' : 'bell'} size={15} />;
                 const openTask = (t: CRMTask) => { const c = clients.find(x => x.id === t.client_id); if (c) { setPage('contacts'); setActiveClient(c); } else { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); } };
                 const allTasksLink = <button onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>All tasks →</button>;
                 const head = (color: string, label: string, right?: React.ReactNode) => (
@@ -5421,44 +5464,126 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 );
                 const taskRow = (t: CRMTask, badge: React.ReactNode) => (
-                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8 }}>
-                    <span style={{ fontSize: 14, flexShrink: 0 }}>{tIcon(t)}</span>
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--c-surface-2)', border: '1px solid var(--c-line-2)', borderRadius: 8 }}>
+                    <span style={{ display: 'flex', flexShrink: 0, color: 'var(--c-muted)' }}>{tIcon(t)}</span>
                     <button onClick={() => openTask(t)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'DM Sans',sans-serif" }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                      {cname(t.client_id) && <div style={{ fontSize: 11, color: '#6b7280' }}>{cname(t.client_id)}</div>}
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                      {cname(t.client_id) && <div style={{ fontSize: 11, color: 'var(--c-muted)' }}>{cname(t.client_id)}</div>}
                     </button>
                     {badge}
-                    <button onClick={() => completeTask(t.id)} title="Mark done" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 10px', fontSize: 12, color: '#16a34a', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>Done ✓</button>
+                    <button onClick={() => completeTask(t.id)} title="Mark done" style={{ background: 'var(--c-ok-soft)', border: '1px solid var(--c-ok-line)', borderRadius: 6, padding: '3px 10px', fontSize: 12, color: 'var(--c-ok-ink)', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>Done ✓</button>
                   </div>
                 );
                 const dealRow = (d: Deal, sub: string, bg: string, bd: string) => (
                   <button key={d.id} onClick={() => { setPage('deals'); openDeal(d); }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: bg, border: `1px solid ${bd}`, borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client}{d.property ? ` — ${d.property}` : ''}</div>
-                      <div style={{ fontSize: 11, color: '#6b7280' }}>{sub}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client}{d.property ? ` — ${d.property}` : ''}</div>
+                      <div style={{ fontSize: 11, color: 'var(--c-muted)' }}>{sub}</div>
                     </div>
-                    {d.value > 0 && <span style={{ fontSize: 12, color: '#6b7280', flexShrink: 0 }}>{d.value >= 1e6 ? `$${(d.value / 1e6).toFixed(1)}M` : `$${Math.round(d.value / 1e3)}K`}</span>}
+                    {d.value > 0 && <span style={{ fontSize: 12, color: 'var(--c-muted)', flexShrink: 0 }}>{d.value >= 1e6 ? `$${(d.value / 1e6).toFixed(1)}M` : `$${Math.round(d.value / 1e3)}K`}</span>}
                   </button>
+                );
+
+                // ── Numbers for the KPI strip and the side cards ──
+                const nowMs = Date.now();
+                const fmtM = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
+                const sumV = (arr: Deal[]) => arr.reduce((acc, x) => acc + (Number(x.value) || 0), 0);
+                const stageRows = (['Prospect', 'Active', 'LOI', 'In Contract'] as const).map(st => { const ds = deals.filter(x => x.stage === st); return { st, n: ds.length, v: sumV(ds) }; });
+                const maxStageV = Math.max(1, ...stageRows.map(r => r.v));
+                const oldestOverdue = overdue.length ? Math.max(...overdue.map(t => Math.floor((nowMs - localDate(t.due_date).getTime()) / 864e5))) : 0;
+                const leaseRows = clients.filter(c => c.lease_expiration_date)
+                  .map(c => ({ c, days: Math.ceil((new Date(String(c.lease_expiration_date).slice(0, 10) + 'T00:00:00').getTime() - nowMs) / 864e5) }));
+                const leaseNext = leaseRows.filter(x => x.days >= 0).sort((x, y) => x.days - y.days);
+                const lease90 = leaseNext.filter(x => x.days <= 90);
+                const leaseExpired = leaseRows.filter(x => x.days < 0 && x.days >= -30).length;
+                const monthBuckets = Array.from({ length: 7 }, (_, i) => { const m = new Date(); m.setDate(1); m.setMonth(m.getMonth() + i); return { y: m.getFullYear(), mo: m.getMonth(), label: m.toLocaleDateString('en-US', { month: 'short' }), n: 0, soon: i < 3 }; });
+                for (const x of leaseNext) { const ld = new Date(String(x.c.lease_expiration_date).slice(0, 10) + 'T00:00:00'); const bk = monthBuckets.find(m2 => m2.y === ld.getFullYear() && m2.mo === ld.getMonth()); if (bk) bk.n += 1; }
+                const maxMonth = Math.max(1, ...monthBuckets.map(m2 => m2.n));
+                const noContactInfo = clients.filter(c => !c.email && !c.phone && !c.cell_phone).length;
+                const kpis = (
+                  <div className="dk-kpis">
+                    <button className="dk-kpi" onClick={() => setPage('deals')}>
+                      <span className="l">Active pipeline</span>
+                      <span className="v">{fmtM(sumV(deals.filter(x => x.stage === 'Active')))}</span>
+                      <span className="s">{deals.filter(x => x.stage === 'Active').length} deals{stageRows[0].v > 0 ? ` · ${fmtM(stageRows[0].v)} in prospects` : ''}</span>
+                    </button>
+                    <button className={`dk-kpi${overdue.length ? ' hot' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); }}>
+                      <span className="l">Overdue tasks</span>
+                      <span className="v">{overdue.length}</span>
+                      <span className="s">{overdue.length ? `Oldest is ${oldestOverdue} day${oldestOverdue === 1 ? '' : 's'}` : 'Nothing late'}</span>
+                    </button>
+                    <div className="dk-kpi">
+                      <span className="l">Workload today</span>
+                      <span className="v">{overdue.length + dueToday.length}</span>
+                      <div className="dk-seg" role="img" aria-label={`${overdue.length} overdue, ${dueToday.length} due today`}>
+                        {overdue.length > 0 && <i style={{ flex: overdue.length, background: 'var(--c-danger)' }} />}
+                        {dueToday.length > 0 && <i style={{ flex: dueToday.length, background: '#c9922c' }} />}
+                      </div>
+                      <span className="s">{overdue.length} overdue · {dueToday.length} due today</span>
+                    </div>
+                    <div className="dk-kpi">
+                      <span className="l">Leases ending soon</span>
+                      <span className="v">{lease90.length}</span>
+                      <span className="s">{lease90.length ? `Next: ${lease90[0].c.business_name || `${lease90[0].c.first_name} ${lease90[0].c.last_name}`.trim()}, ${new Date(String(lease90[0].c.lease_expiration_date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'None in the next 90 days'}</span>
+                    </div>
+                    <button className="dk-kpi" onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); }}>
+                      <span className="l">Contacts</span>
+                      <span className="v">{clients.length.toLocaleString()}</span>
+                      <span className="s">{noContactInfo > 0 ? `${noContactInfo.toLocaleString()} still need an email or phone` : 'All have contact details'}</span>
+                    </button>
+                  </div>
+                );
+                const sideCards = (
+                  <>
+                    <div className="dk-card">
+                      <h4>Pipeline by stage <button onClick={() => setPage('deals')}>Open deal flow</button></h4>
+                      {stageRows.map(r => (
+                        <div className="dk-fr" key={r.st}>
+                          <span>{r.st}<small>{r.n} deal{r.n === 1 ? '' : 's'}</small></span>
+                          <div className="tr"><i style={{ width: `${r.v > 0 ? Math.max(2, Math.round((r.v / maxStageV) * 100)) : 0}%` }} /></div>
+                          <b>{r.v > 0 ? fmtM(r.v) : '—'}</b>
+                        </div>
+                      ))}
+                    </div>
+                    {leaseRows.length > 0 && (
+                      <div className="dk-card">
+                        <h4>Leases by month</h4>
+                        <div className="dk-lm" role="img" aria-label={`Leases ending by month: ${monthBuckets.map(m2 => `${m2.label} ${m2.n}`).join(', ')}`}>
+                          {monthBuckets.map(m2 => (
+                            <div key={`${m2.y}-${m2.mo}`} className={m2.soon ? 'soon' : ''}>
+                              <span className="n">{m2.n}</span>
+                              <i style={{ height: `${m2.n > 0 ? Math.max(8, Math.round((m2.n / maxMonth) * 80)) : 3}%` }} />
+                              {m2.label}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="dk-legend"><span>Darker bars are inside 90 days</span>{leaseExpired > 0 && <span>{leaseExpired} expired in the last 30 days</span>}</div>
+                      </div>
+                    )}
+                  </>
                 );
 
                 return (
                   <div style={{ marginBottom: 20 }}>
                     <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 26 : 32, fontWeight: 700, color: '#111', lineHeight: 1.1 }}>{greet}, {profile.first_name.replace(/\.$/, '')}.</div>
-                      <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
+                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 26 : 32, fontWeight: 700, color: 'var(--c-ink)', lineHeight: 1.1 }}>{greet}, {profile.first_name.replace(/\.$/, '')}.</div>
+                      <div style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 4 }}>
                         {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                         {' · '}
                         {nothing ? "you're all caught up 🎉" : [overdue.length ? `${overdue.length} overdue` : '', `${dueToday.length} due today`, thisWeek.length ? `${thisWeek.length} this week` : ''].filter(Boolean).join(' · ')}
                       </div>
                     </div>
 
+                    {kpis}
+
                     {nothing && (
-                      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '22px 20px', textAlign: 'center', marginBottom: 16 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>🎉 Nothing needs your attention right now.</div>
-                        <div style={{ fontSize: 13, color: '#15803d', marginTop: 4 }}>No tasks due, and your active deals are current.</div>
+                      <div style={{ background: 'var(--c-ok-soft)', border: '1px solid var(--c-ok-line)', borderRadius: 10, padding: '22px 20px', textAlign: 'center', marginBottom: 16 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-ok-ink)' }}>🎉 Nothing needs your attention right now.</div>
+                        <div style={{ fontSize: 13, color: 'var(--c-ok-ink)', marginTop: 4 }}>No tasks due, and your active deals are current.</div>
                       </div>
                     )}
 
+                    <div className="dk-grid"><div className="dk-main">
                     {listCalls.length > 0 && (() => {
                       const groups = new Map<string, number>();
                       for (const t of listCalls) {
@@ -5467,70 +5592,72 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       }
                       const top = [...groups.entries()].sort((a, b) => b[1] - a[1]);
                       return (
-                        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', borderLeft: '4px solid #6b7280', padding: '16px 20px', marginBottom: 14 }}>
-                          {head('#374151', `📞 Your call list — ${listCalls.length} to go`,
+                        <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
+                          {head('var(--c-ink-2)', `Your call list — ${listCalls.length} to go`,
                             <button onClick={() => { setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Open Call Queue →</button>)}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {top.slice(0, 4).map(([g, n]) => (
-                              <div key={g} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#374151' }}>
+                              <div key={g} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: 'var(--c-ink-2)' }}>
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g}</span>
                                 <strong>{n}</strong>
                               </div>
                             ))}
-                            {top.length > 4 && <div style={{ fontSize: 12, color: '#9ca3af' }}>+{top.length - 4} more lists</div>}
+                            {top.length > 4 && <div style={{ fontSize: 12, color: 'var(--c-faint)' }}>+{top.length - 4} more lists</div>}
                           </div>
                         </div>
                       );
                     })()}
 
                     {overdue.length > 0 && (
-                      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fecaca', padding: '16px 20px', marginBottom: 14 }}>
-                        {head('#dc2626', `⚠️ Overdue — ${overdue.length}`, allTasksLink)}
+                      <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-danger-line)', padding: '16px 20px', marginBottom: 14 }}>
+                        {head('var(--c-danger)', `Overdue — ${overdue.length}`, allTasksLink)}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {overdue.slice(0, 6).map(t => { const dOd = Math.max(1, Math.floor((Date.now() - localDate(t.due_date).getTime()) / 864e5)); return taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>{dOd}d</span>); })}
-                          {overdue.length > 6 && <div style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>+{overdue.length - 6} more overdue</div>}
+                          {overdue.slice(0, 6).map(t => { const dOd = Math.max(1, Math.floor((Date.now() - localDate(t.due_date).getTime()) / 864e5)); return taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: 'var(--c-danger-soft)', color: 'var(--c-danger)', fontWeight: 700, flexShrink: 0 }}>{dOd}d</span>); })}
+                          {overdue.length > 6 && <div style={{ fontSize: 12, color: 'var(--c-faint)', textAlign: 'center' }}>+{overdue.length - 6} more overdue</div>}
                         </div>
                       </div>
                     )}
 
                     {dueToday.length > 0 && (
-                      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', borderLeft: '4px solid #c9922c', padding: '16px 20px', marginBottom: 14 }}>
-                        {head('#6b7280', `📋 Due today — ${dueToday.length}`, allTasksLink)}
+                      <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
+                        {head('var(--c-muted)', `Due today — ${dueToday.length}`, allTasksLink)}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {dueToday.map(t => taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: '#fef3c7', color: '#92400e', fontWeight: 700, flexShrink: 0 }}>Today</span>))}
+                          {dueToday.map(t => taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: 'var(--c-warn-soft)', color: 'var(--c-warn-ink)', fontWeight: 700, flexShrink: 0 }}>Today</span>))}
                         </div>
                       </div>
                     )}
 
                     {(thisWeek.length > 0 || inContract.length > 0) && (
-                      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 }}>
-                        {head('#6b7280', '🗓 This week')}
+                      <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
+                        {head('var(--c-muted)', 'This week')}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {inContract.map(d => dealRow(d, 'In contract — keep it moving to close', '#fef9f0', '#fde68a'))}
-                          {thisWeek.map(t => taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: '#f3f4f6', color: '#6b7280', fontWeight: 700, flexShrink: 0 }}>{localDate(t.due_date).toLocaleDateString('en-US', { weekday: 'short' })}</span>))}
+                          {inContract.map(d => dealRow(d, 'In contract — keep it moving to close', 'var(--c-warn-soft)', 'var(--c-warn-line)'))}
+                          {thisWeek.map(t => taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: 'var(--c-surface-2)', color: 'var(--c-muted)', fontWeight: 700, flexShrink: 0 }}>{localDate(t.due_date).toLocaleDateString('en-US', { weekday: 'short' })}</span>))}
                         </div>
                       </div>
                     )}
 
                     {stalled.length > 0 && (
-                      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fed7aa', padding: '16px 20px', marginBottom: 14 }}>
-                        {head('#c2410c', `🕗 Deals gone quiet — ${stalled.length}`)}
-                        <div style={{ marginBottom: 8, fontSize: 12, color: '#6b7280' }}>Active deals with no touch in 2+ weeks.</div>
+                      <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-warn-line)', padding: '16px 20px', marginBottom: 14 }}>
+                        {head('var(--c-warn-ink)', `Deals gone quiet — ${stalled.length}`)}
+                        <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--c-muted)' }}>Active deals with no touch in 2+ weeks.</div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {stalled.slice(0, 5).map(d => dealRow(d, `Last touch ${d.last_touch ? new Date(d.last_touch).toLocaleDateString() : '—'}`, '#fff7ed', '#fed7aa'))}
+                          {stalled.slice(0, 5).map(d => dealRow(d, `Last touch ${d.last_touch ? new Date(d.last_touch).toLocaleDateString() : '—'}`, 'var(--c-warn-soft)', 'var(--c-warn-line)'))}
                         </div>
                       </div>
                     )}
+                    </div>
+                    <div className="dk-side">{sideCards}</div></div>
                   </div>
                 );
               })()}
 
               {/* ── Numbers — reporting charts, collapsed by default so the action
                      center above stays the focus. ── */}
-              <button onClick={() => setShowNumbers(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: '#fff', border: '1px solid #e0e0e0', borderRadius: 10, padding: '12px 18px', marginBottom: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                <span style={{ fontSize: 13, color: '#6b7280', transition: 'transform .15s', transform: showNumbers ? 'rotate(90deg)' : 'none' }}>▸</span>
-                <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 700 }}>📊 Numbers — pipeline, commissions & trends</span>
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9ca3af' }}>{showNumbers ? 'Hide' : 'Show'}</span>
+              <button onClick={() => setShowNumbers(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'var(--c-surface)', border: '1px solid var(--c-line)', borderRadius: 10, padding: '12px 18px', marginBottom: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                <span style={{ fontSize: 13, color: 'var(--c-muted)', transition: 'transform .15s', transform: showNumbers ? 'rotate(90deg)' : 'none' }}>▸</span>
+                <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', fontWeight: 700 }}>Numbers — pipeline, commissions & trends</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c-faint)' }}>{showNumbers ? 'Hide' : 'Show'}</span>
               </button>
               {showNumbers && (<>
               {/* Deal stat cards */}
@@ -5541,10 +5668,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   { label: 'Closed YTD', val: deals.filter(d => d.stage === 'Closed').length, sub: 'this year' },
                   { label: isAdmin ? 'Agents' : 'My Deals', val: isAdmin ? profiles.filter(p => p.role === 'agent').length : deals.length, sub: isAdmin ? 'active agents' : 'total' },
                 ].map(s => (
-                  <div key={s.label} style={{ background: '#fff', borderRadius: 10, padding: '18px 20px', border: '1px solid #e0e0e0', borderLeft: '4px solid #c9922c' }}>
-                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', marginBottom: 6 }}>{s.label}</div>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 34, fontWeight: 700, color: '#111', lineHeight: 1 }}>{s.val}</div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3 }}>{s.sub}</div>
+                  <div key={s.label} style={{ background: 'var(--c-surface)', borderRadius: 10, padding: '18px 20px', border: '1px solid var(--c-line)' }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', marginBottom: 6 }}>{s.label}</div>
+                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 34, fontWeight: 700, color: 'var(--c-ink)', lineHeight: 1 }}>{s.val}</div>
+                    <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 3 }}>{s.sub}</div>
                   </div>
                 ))}
               </div>
@@ -5552,7 +5679,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* ── Pipeline by Stage chart ── */}
               {deals.length > 0 && (() => {
                 const STAGE_COLORS_CHART: Record<string, string> = {
-                  Prospect: '#9ca3af', Active: '#3b82f6', LOI: '#a855f7',
+                  Prospect: 'var(--c-faint)', Active: '#3b82f6', LOI: '#a855f7',
                   'In Contract': '#f59e0b', Closed: '#22c55e', Lost: '#ef4444',
                 };
                 const fmtV = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${n.toFixed(0)}`;
@@ -5563,9 +5690,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 })).filter(s => s.count > 0);
                 const maxCount = Math.max(...stageCounts.map(s => s.count), 1);
                 return (
-                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 }}>
+                  <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600 }}>📊 Pipeline by Stage</div>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', fontWeight: 600 }}>📊 Pipeline by Stage</div>
                       <button onClick={() => setPage('deals')} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
                         View Pipeline →
                       </button>
@@ -5573,8 +5700,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
                       {stageCounts.map(({ stage, count, value }) => (
                         <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ width: isMobile ? 72 : 88, fontSize: 12, color: '#374151', fontWeight: 500, flexShrink: 0, textAlign: 'right' }}>{stage}</div>
-                          <div style={{ flex: 1, height: 24, background: '#f3f4f6', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
+                          <div style={{ width: isMobile ? 72 : 88, fontSize: 12, color: 'var(--c-ink-2)', fontWeight: 500, flexShrink: 0, textAlign: 'right' }}>{stage}</div>
+                          <div style={{ flex: 1, height: 24, background: 'var(--c-surface-2)', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
                             <div style={{
                               width: `${Math.round(count / maxCount * 100)}%`,
                               height: '100%',
@@ -5588,7 +5715,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                           </div>
                           {value > 0 && (
-                            <div style={{ fontSize: 12, color: '#6b7280', flexShrink: 0, minWidth: isMobile ? 48 : 64, textAlign: 'right' }}>{fmtV(value)}</div>
+                            <div style={{ fontSize: 12, color: 'var(--c-muted)', flexShrink: 0, minWidth: isMobile ? 48 : 64, textAlign: 'right' }}>{fmtV(value)}</div>
                           )}
                         </div>
                       ))}
@@ -5614,17 +5741,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const curKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
                 const fmtG = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${n.toFixed(0)}`;
                 return (
-                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 }}>
-                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, marginBottom: 16 }}>📈 Monthly GCI — Last 6 Months</div>
+                  <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', fontWeight: 600, marginBottom: 16 }}>📈 Monthly GCI — Last 6 Months</div>
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 6 : 10, height: 90 }}>
                       {months.map(({ key, label, gci }) => {
                         const barH = gci > 0 ? Math.max(Math.round(gci / maxGci * 72), 8) : 4;
                         const isCur = key === curKey;
                         return (
                           <div key={key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, height: '100%', justifyContent: 'flex-end' }}>
-                            {gci > 0 && <div style={{ fontSize: isMobile ? 9 : 10, color: isCur ? '#c9922c' : '#9ca3af', textAlign: 'center', lineHeight: 1 }}>{fmtG(gci)}</div>}
-                            <div style={{ width: '70%', height: barH, background: isCur ? '#c9922c' : '#d1d5db', borderRadius: '3px 3px 0 0', transition: 'height .5s ease' }} title={`${label}: ${fmtG(gci)}`} />
-                            <div style={{ fontSize: isMobile ? 10 : 11, color: isCur ? '#c9922c' : '#9ca3af', fontWeight: isCur ? 700 : 400 }}>{label}</div>
+                            {gci > 0 && <div style={{ fontSize: isMobile ? 9 : 10, color: isCur ? '#c9922c' : 'var(--c-faint)', textAlign: 'center', lineHeight: 1 }}>{fmtG(gci)}</div>}
+                            <div style={{ width: '70%', height: barH, background: isCur ? '#c9922c' : 'var(--c-line)', borderRadius: '3px 3px 0 0', transition: 'height .5s ease' }} title={`${label}: ${fmtG(gci)}`} />
+                            <div style={{ fontSize: isMobile ? 10 : 11, color: isCur ? '#c9922c' : 'var(--c-faint)', fontWeight: isCur ? 700 : 400 }}>{label}</div>
                           </div>
                         );
                       })}
@@ -5644,22 +5771,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const pendingCount = ytd.filter(c => c.status === 'pending').length;
                 const fmt = (n: number) => n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1_000).toFixed(1)}K` : `$${n.toFixed(0)}`;
                 return (
-                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e8dcc8', padding: '16px 20px', marginBottom: 14 }}>
+                  <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-warn-line)', padding: '16px 20px', marginBottom: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600 }}>💰 {thisYear} Commission Summary</div>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', fontWeight: 600 }}>💰 {thisYear} Commission Summary</div>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        {paidCount > 0 && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 12, fontWeight: 600, background: '#d1fae5', color: '#065f46' }}>✓ {paidCount} paid</span>}
-                        {pendingCount > 0 && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 12, fontWeight: 600, background: '#fef3c7', color: '#92400e' }}>{pendingCount} pending</span>}
+                        {paidCount > 0 && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 12, fontWeight: 600, background: 'var(--c-ok-soft)', color: 'var(--c-ok-ink)' }}>✓ {paidCount} paid</span>}
+                        {pendingCount > 0 && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 12, fontWeight: 600, background: 'var(--c-warn-soft)', color: 'var(--c-warn-ink)' }}>{pendingCount} pending</span>}
                       </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3,1fr)', gap: 10 }}>
                       {[
                         { label: 'Gross GCI', val: totalGCI, color: '#c9922c' },
-                        { label: 'Agent Net', val: totalAgentNet, color: '#059669' },
-                        { label: 'Brokerage Net', val: totalBrokerNet, color: '#374151' },
+                        { label: 'Agent Net', val: totalAgentNet, color: 'var(--c-ok-ink)' },
+                        { label: 'Brokerage Net', val: totalBrokerNet, color: 'var(--c-ink-2)' },
                       ].map(s => (
-                        <div key={s.label} style={{ background: '#f9f5ef', borderRadius: 8, padding: '12px 14px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500, marginBottom: 4 }}>{s.label}</div>
+                        <div key={s.label} style={{ background: 'var(--c-warn-soft)', borderRadius: 8, padding: '12px 14px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--c-faint)', fontWeight: 500, marginBottom: 4 }}>{s.label}</div>
                           <div style={{ fontSize: 22, fontWeight: 700, color: s.color, fontFamily: "'Cormorant Garamond',serif" }}>{fmt(s.val)}</div>
                         </div>
                       ))}
@@ -5678,37 +5805,37 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const pipeGCI = activePipe.reduce((s, d) => s + d.value * RATE, 0);
                 const totalPipeVal = inContract.reduce((s, d) => s + d.value, 0) + activePipe.reduce((s, d) => s + d.value, 0);
                 return (
-                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 }}>
+                  <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600 }}>📈 Commission Pipeline Forecast</div>
-                      <span style={{ fontSize: 12, color: '#9ca3af' }}>est. at 3% avg rate</span>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', fontWeight: 600 }}>📈 Commission Pipeline Forecast</div>
+                      <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>est. at 3% avg rate</span>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3,1fr)', gap: 10, marginBottom: inContract.length > 0 ? 14 : 0 }}>
                       {[
                         { label: 'In Contract GCI', val: contractGCI, color: '#c9922c', count: inContract.length },
                         { label: 'Active Pipeline GCI', val: pipeGCI, color: '#3b82f6', count: activePipe.length },
-                        { label: 'Total Pipeline Value', val: totalPipeVal, color: '#374151', count: inContract.length + activePipe.length },
+                        { label: 'Total Pipeline Value', val: totalPipeVal, color: 'var(--c-ink-2)', count: inContract.length + activePipe.length },
                       ].map(s => (
-                        <div key={s.label} style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500, marginBottom: 4 }}>{s.label}</div>
+                        <div key={s.label} style={{ background: 'var(--c-surface-2)', borderRadius: 8, padding: '12px 14px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--c-faint)', fontWeight: 500, marginBottom: 4 }}>{s.label}</div>
                           <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "'Cormorant Garamond',serif" }}>{fmtC(s.val)}</div>
-                          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{s.count} deal{s.count !== 1 ? 's' : ''}</div>
+                          <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 2 }}>{s.count} deal{s.count !== 1 ? 's' : ''}</div>
                         </div>
                       ))}
                     </div>
                     {inContract.length > 0 && (
-                      <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 12 }}>
-                        <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 8 }}>Deals In Contract</div>
+                      <div style={{ borderTop: '1px solid var(--c-line-2)', paddingTop: 12 }}>
+                        <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--c-faint)', fontWeight: 600, marginBottom: 8 }}>Deals In Contract</div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {inContract.slice(0, 5).map(d => (
                             <button key={d.id} onClick={() => { setPage('deals'); openDeal(d); }}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 7, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                              <span style={{ fontSize: 13, fontWeight: 600, color: '#111', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client}{d.property ? ` — ${d.property}` : ''}</span>
-                              <span style={{ fontSize: 12, color: '#6b7280', flexShrink: 0 }}>{fmtC(d.value)}</span>
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--c-warn-soft)', border: '1px solid var(--c-warn-line)', borderRadius: 7, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-ink)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client}{d.property ? ` — ${d.property}` : ''}</span>
+                              <span style={{ fontSize: 12, color: 'var(--c-muted)', flexShrink: 0 }}>{fmtC(d.value)}</span>
                               <span style={{ fontSize: 12, color: '#c9922c', flexShrink: 0, fontWeight: 700 }}>~{fmtC(d.value * RATE)} GCI</span>
                             </button>
                           ))}
-                          {inContract.length > 5 && <div style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>+{inContract.length - 5} more in contract</div>}
+                          {inContract.length > 5 && <div style={{ fontSize: 12, color: 'var(--c-faint)', textAlign: 'center' }}>+{inContract.length - 5} more in contract</div>}
                         </div>
                       </div>
                     )}
@@ -5721,30 +5848,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const typeBreakdown = CLIENT_TYPES.map(t => ({ type: t, count: clients.filter(c => c.type === t).length })).filter(x => x.count > 0);
                 const total = clients.length;
                 return (
-                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 26 }}>
+                  <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 26 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600 }}>Contacts by Type</div>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', fontWeight: 600 }}>Contacts by Type</div>
                       <button onClick={() => setPage('contacts')} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>View all {total} →</button>
                     </div>
                     {/* Bar */}
                     <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 14, gap: 1 }}>
                       {typeBreakdown.map(({ type, count }) => {
-                        const colors: Record<string, string> = { 'Buyer': '#3b82f6', 'Seller': '#f97316', 'Tenant': '#22c55e', 'Landlord/Investor': '#a855f7', 'Agent': '#0ea5e9', 'Broker': '#64748b' };
+                        const colors: Record<string, string> = { 'Buyer': '#3b82f6', 'Seller': '#f97316', 'Tenant': '#22c55e', 'Landlord/Investor': '#a855f7', 'Agent': '#0ea5e9', 'Broker': 'var(--c-muted)' };
                         return <div key={type} style={{ flex: count, background: colors[type] ?? '#c9922c', minWidth: 4 }} title={`${type}: ${count}`} />;
                       })}
                     </div>
                     {/* Legend */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
                       {typeBreakdown.map(({ type, count }) => {
-                        const colors: Record<string, string> = { 'Buyer': '#3b82f6', 'Seller': '#f97316', 'Tenant': '#22c55e', 'Landlord/Investor': '#a855f7', 'Agent': '#0ea5e9', 'Broker': '#64748b' };
+                        const colors: Record<string, string> = { 'Buyer': '#3b82f6', 'Seller': '#f97316', 'Tenant': '#22c55e', 'Landlord/Investor': '#a855f7', 'Agent': '#0ea5e9', 'Broker': 'var(--c-muted)' };
                         const emoji = type === 'Buyer' ? '🏡' : type === 'Seller' ? '🪧' : type === 'Tenant' ? '🔑' : type === 'Landlord/Investor' ? '🏢' : type === 'Agent' ? '🤝' : '🏛';
                         return (
                           <button key={type} onClick={() => setPage('contacts')}
                             style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'DM Sans',sans-serif" }}>
                             <span style={{ width: 10, height: 10, borderRadius: 2, background: colors[type] ?? '#c9922c', flexShrink: 0 }} />
-                            <span style={{ fontSize: 13, color: '#374151' }}>{emoji} {type}</span>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{count}</span>
-                            <span style={{ fontSize: 12, color: '#9ca3af' }}>({Math.round(count / total * 100)}%)</span>
+                            <span style={{ fontSize: 13, color: 'var(--c-ink-2)' }}>{emoji} {type}</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-ink)' }}>{count}</span>
+                            <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>({Math.round(count / total * 100)}%)</span>
                           </button>
                         );
                       })}
@@ -5774,9 +5901,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const show = lxpTenants.slice(0, 5);
 
                 return (
-                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fed7aa', padding: '16px 20px', marginBottom: 26 }}>
+                  <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-warn-line)', padding: '16px 20px', marginBottom: 26 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#c2410c', fontWeight: 600 }}>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-warn-ink)', fontWeight: 600 }}>
                         🗓 Lease Expirations — {lxpTenants.length} Tenant{lxpTenants.length !== 1 ? 's' : ''}
                       </div>
                       <button
@@ -5787,26 +5914,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                     {/* Tier pills */}
                     <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                      {expired   > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>🔴 Expired: {expired}</span>}
-                      {within90  > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: '#fed7aa', color: '#c2410c' }}>🟠 &lt;90 days: {within90}</span>}
-                      {within180 > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: '#fef9c3', color: '#a16207' }}>🟡 90–180 days: {within180}</span>}
+                      {expired   > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: 'var(--c-danger-soft)', color: 'var(--c-danger)' }}>🔴 Expired: {expired}</span>}
+                      {within90  > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: 'var(--c-warn-line)', color: 'var(--c-warn-ink)' }}>🟠 &lt;90 days: {within90}</span>}
+                      {within180 > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: 'var(--c-warn-soft)', color: 'var(--c-warn-ink)' }}>🟡 90–180 days: {within180}</span>}
                     </div>
                     {/* Top 5 soonest */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {show.map(c => {
-                        const bg    = c.daysLeft < 0 ? '#fee2e2' : c.daysLeft < 90 ? '#fff7ed' : '#fefce8';
-                        const color = c.daysLeft < 0 ? '#dc2626' : c.daysLeft < 90 ? '#c2410c' : '#a16207';
+                        const bg    = c.daysLeft < 0 ? 'var(--c-danger-soft)' : c.daysLeft < 90 ? 'var(--c-warn-soft)' : 'var(--c-warn-soft)';
+                        const color = c.daysLeft < 0 ? '#dc2626' : c.daysLeft < 90 ? 'var(--c-warn-ink)' : 'var(--c-warn-ink)';
                         const label = c.daysLeft < 0 ? `Expired ${Math.abs(c.daysLeft)}d ago` : c.daysLeft === 0 ? 'Expires today' : `${c.daysLeft}d left`;
                         return (
                           <button key={c.id}
                             onClick={() => { setPage('contacts'); setActiveClient(c); }}
-                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                            <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--c-surface-2)', border: '1px solid var(--c-line-2)', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                            <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--c-ink)', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                               {(c.first_name[0] ?? '') + (c.last_name[0] ?? '')}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
-                              <div style={{ fontSize: 11, color: '#6b7280' }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
+                              <div style={{ fontSize: 11, color: 'var(--c-muted)' }}>
                                 {c.business_name ? `${c.business_name} · ` : ''}LXP {new Date(c.lease_expiration_date!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                               </div>
                             </div>
@@ -5818,7 +5945,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       })}
                     </div>
                     {lxpTenants.length > 5 && (
-                      <div style={{ marginTop: 10, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
+                      <div style={{ marginTop: 10, fontSize: 12, color: 'var(--c-faint)', textAlign: 'center' }}>
                         +{lxpTenants.length - 5} more — <button onClick={() => { setPage('contacts'); setContactTypeFilter('Tenant'); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>view all</button>
                       </div>
                     )}
@@ -5837,9 +5964,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 if (neverTouchedTenants.length === 0) return null;
                 const show = neverTouchedTenants.slice(0, 5);
                 return (
-                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fee2e2', padding: '16px 20px', marginBottom: 26 }}>
+                  <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid #fee2e2', padding: '16px 20px', marginBottom: 26 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#dc2626', fontWeight: 600 }}>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-danger)', fontWeight: 600 }}>
                         🔑 Tenants Never Contacted — {neverTouchedTenants.length}
                       </div>
                       <button
@@ -5848,31 +5975,31 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         View All →
                       </button>
                     </div>
-                    <div style={{ marginBottom: 10, fontSize: 12, color: '#6b7280' }}>
+                    <div style={{ marginBottom: 10, fontSize: 12, color: 'var(--c-muted)' }}>
                       These tenants have been added but never had a call, email, or note logged.
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {show.map(c => (
                         <button key={c.id}
                           onClick={() => { setPage('contacts'); setActiveClient(c); }}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                          <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--c-surface-2)', border: '1px solid var(--c-line-2)', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                          <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--c-ink)', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                             {(c.first_name[0] ?? '') + (c.last_name[0] ?? '')}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
-                            <div style={{ fontSize: 11, color: '#6b7280' }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--c-muted)' }}>
                               {c.business_name ? `${c.business_name} · ` : ''}Added {new Date(c.created_at).toLocaleDateString()}
                             </div>
                           </div>
-                          <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>
+                          <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: 'var(--c-danger-soft)', color: 'var(--c-danger)', fontWeight: 700, flexShrink: 0 }}>
                             Never
                           </span>
                         </button>
                       ))}
                     </div>
                     {neverTouchedTenants.length > 5 && (
-                      <div style={{ marginTop: 10, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
+                      <div style={{ marginTop: 10, fontSize: 12, color: 'var(--c-faint)', textAlign: 'center' }}>
                         +{neverTouchedTenants.length - 5} more — <button onClick={() => { setPage('contacts'); setContactTypeFilter('Tenant'); setContactSort('never'); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>view all</button>
                       </div>
                     )}
