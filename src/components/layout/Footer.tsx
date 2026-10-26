@@ -218,6 +218,10 @@ export function Footer() {
                 Terms of Service
               </Link>
               <span className="text-caption text-white/40">TREC License #9014367-BB</span>
+              {/* Credit link to the studio that built the site (same owner); a real local backlink for High Ground. */}
+              <a href="https://highgroundautomation.com" className="text-caption text-white/40 transition-colors hover:text-white/70">
+                Website by High Ground Automation
+              </a>
             </div>
           </div>
         </Container>
