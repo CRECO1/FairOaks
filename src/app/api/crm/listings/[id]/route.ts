@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, notFound } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
+import { cleanIdList } from '@/lib/clean-id-list';
 
 const ALLOWED = ['name','address','city','state','zip','type','status','asking_price','sq_ft','lot_size','year_built','description','notes','highlights','flyer_headline','zoning','elevator','grade_level_doors','dock_high_doors','flyer_type','co_agent_id','latitude','longitude','listing_agent_id','assigned_agent_ids','is_restricted'];
 
@@ -23,6 +24,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const k of ALLOWED) if (k in body) update[k] = body[k] !== '' ? body[k] : null;
+  // Contacts @-tagged in the Internal Notes (derived by the form from the note text; silent, never notified).
+  if ('tagged_contact_ids' in body) update.tagged_contact_ids = cleanIdList(body.tagged_contact_ids);
   // Yes/No/unknown columns are booleans: anything that isn't clearly yes/no is "unknown", never a stray string.
   for (const k of ['elevator', 'grade_level_doors', 'dock_high_doors']) {
     if (k in update) { const v = update[k]; update[k] = (v === true || v === 'true') ? true : (v === false || v === 'false') ? false : null; }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { guardRead, capLimit } from '@/lib/crm-read-guard';
+import { cleanIdList } from '@/lib/clean-id-list';
 
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
     listing_agent_id: isAdminRole(ctx.role) ? (listing_agent_id || ctx.userId) : ctx.userId,
     assigned_agent_ids: Array.isArray(assigned_agent_ids) ? assigned_agent_ids : [],
     is_restricted: !!is_restricted,
+    tagged_contact_ids: cleanIdList(body.tagged_contact_ids),
     business_unit: isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial'),
     created_by: ctx.userId,
   }).select().single();

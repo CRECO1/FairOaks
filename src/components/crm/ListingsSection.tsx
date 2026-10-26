@@ -10,7 +10,7 @@ import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
 import { defaultEsignMessage } from '@/lib/esign-message';
 import RentRoll from '@/components/crm/RentRoll';
-import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
+import MentionTextarea, { parseMentionIds, parseMentionContactIds } from '@/components/crm/MentionTextarea';
 import LeasingActivity from '@/components/crm/LeasingActivity';
 import EmailProspects from '@/components/crm/EmailProspects';
 import PropertyPerformance from '@/components/crm/PropertyPerformance';
@@ -26,6 +26,7 @@ import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDr
 interface Listing {
   id: string;
   business_unit: string;
+  tagged_contact_ids?: string[];
   name: string;
   address?: string;
   city?: string;
@@ -486,6 +487,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       body.latitude = m ? Number(m[1]) : null; body.longitude = m ? Number(m[2]) : null;
       delete (body as Record<string, unknown>).map_pin; }
     body.sq_ft        = editForm.sq_ft !== '' ? Number(editForm.sq_ft) : null;
+    // Contacts @-tagged in the Internal Notes (silent): derived from the text, so the tag and the sentence can't drift apart.
+    body.tagged_contact_ids = parseMentionContactIds(String(editForm.notes ?? ''), clients, profiles);
     for (const k of ['elevator', 'grade_level_doors', 'dock_high_doors'] as const) {
       const v = (editForm as Record<string, string>)[k];
       body[k] = v === '' ? null : v === 'true';     // unanswered stays unknown, not "No"
@@ -832,6 +835,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     const body: Record<string, unknown> = { ...newForm, business_unit: businessUnit };
     body.asking_price = newForm.asking_price !== '' ? Number(newForm.asking_price) : null;
     body.sq_ft        = newForm.sq_ft !== '' ? Number(newForm.sq_ft) : null;
+    body.tagged_contact_ids = parseMentionContactIds(String(newForm.notes ?? ''), clients, profiles);
     const res = await fetch('/api/crm/listings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders },
@@ -1161,7 +1165,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         {SEC('Internal', 'never shown on the flyer')}
         <div>
           {LBL('Internal Notes')}
-          <MentionTextarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} profiles={profiles} value={form.notes} onChange={v => set('notes', v)} placeholder="Showing instructions, landlord contact, commission notes… (@ to tag a teammate)" />
+          <MentionTextarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} profiles={profiles} contacts={clients} value={form.notes} onChange={v => set('notes', v)} placeholder="Showing instructions, landlord contact, commission notes… (@ to tag a teammate or a contact)" />
         </div>
       </div>
     );

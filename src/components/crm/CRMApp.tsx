@@ -1087,6 +1087,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showAllMentions, setShowAllMentions] = useState(false);
   // Bumped when a bell notification links to a property, so the Properties tab remounts and opens it even if already showing.
   const [propLinkNonce, setPropLinkNonce] = useState(0);
+  // Properties whose Internal Notes @-tag a contact — for the contact card's "Tagged in property notes". Loaded the first
+  // time a contact card opens (a couple of dozen rows), and refreshed when it is reopened after a few minutes.
+  const [taggedListings, setTaggedListings] = useState<Array<{ id: string; name: string; address?: string; status?: string; tagged_contact_ids?: string[] }>>([]);
+  const taggedListingsAt = useRef(0);
   const [linkedNoteIds, setLinkedNoteIds] = useState<Set<string>>(new Set()); // other contact IDs to receive same note
   const [dealNotesText, setDealNotesText] = useState(''); // controlled value for active deal notes
 
@@ -3370,6 +3374,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // A tag in a property / suite / rent-roll note → bell notification for that teammate (once per person per property).
   const noteMention = (ids: string[], message: string, entityType: string, entityId?: string) =>
     createMentionNotifications(ids, `@${profile?.first_name} ${message}`, entityType, entityId);
+
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!activeClient?.id || !token) return;
+    if (Date.now() - taggedListingsAt.current < 5 * 60_000) return;
+    taggedListingsAt.current = Date.now();
+    fetch('/api/crm/listings?limit=200', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (j?.listings) setTaggedListings((j.listings as typeof taggedListings).filter(l => (l.tagged_contact_ids ?? []).length > 0)); })
+      .catch(() => { /* the section just doesn't show */ });
+  }, [activeClient?.id, session?.access_token]);
 
   async function markMentionRead(id: string) {
     await supabase.from('crm_notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
@@ -12707,6 +12722,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <button key={d.id} onClick={() => openDeal(d)} title="Open this deal"
                               style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fdf6e9', border: '1px solid #f0e2c4', borderRadius: 20, padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                               {d.property || d.client} <span style={{ fontWeight: 500, color: '#b08a4a' }}>· {d.stage}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Properties whose Internal Notes @-tag this contact */}
+                  {(() => {
+                    const tagged = taggedListings.filter(l => (l.tagged_contact_ids || []).includes(c.id));
+                    if (!tagged.length) return null;
+                    return (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 6 }}>🏢 Tagged in property notes</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {tagged.map(l => (
+                            <button key={l.id} title="Open this property"
+                              onClick={() => { rememberView(`${businessUnit}:listing`, l.id); setActiveClient(null); setPage('properties'); setPropertiesTab('listings'); setPropLinkNonce(x => x + 1); }}
+                              style={{ fontSize: 12.5, fontWeight: 700, color: '#0f766e', background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: 20, padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                              {l.name || l.address}
                             </button>
                           ))}
                         </div>
