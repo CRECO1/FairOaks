@@ -7,6 +7,7 @@ import { sendMissedCallTexts } from '@/lib/missed-call-text';
 import { sendBotCallTexts } from '@/lib/bot-call-text';
 import { sendBotCallEmails } from '@/lib/bot-call-email';
 import { sendInstantMissedAlerts } from '@/lib/call-sla';
+import { processVoicemails } from '@/lib/voicemail-ai';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -33,6 +34,9 @@ export async function GET(req: NextRequest) {
     // Owners, due times, contact links, junk and already-returned call-backs (lib/call-routing).
     let tidy: Record<string, unknown> = {};
     try { tidy = await tidyCallLog(db); } catch (e) { tidy = { error: e instanceof Error ? e.message : String(e) }; }
+    // Read new voicemails: summary, owner, contact card, same-day call task, call-back email (lib/voicemail-ai.ts).
+    let voicemails: Record<string, unknown> = {};
+    try { voicemails = { ...(await processVoicemails(db)) }; } catch (e) { voicemails = { error: e instanceof Error ? e.message : String(e) }; }
     // Instant "missed call — call back now" email to the owner (lib/call-sla.ts).
     let instant: Record<string, unknown> = {};
     try { instant = await sendInstantMissedAlerts(db, { minAgeSec: 30 }); } catch (e) { instant = { error: e instanceof Error ? e.message : String(e) }; }
@@ -45,7 +49,7 @@ export async function GET(req: NextRequest) {
     // "Confirm your details" EMAIL to callers who gave one (off unless BOT_CALL_EMAIL is set — lib/bot-call-email.ts).
     let botEmail: Record<string, unknown> = {};
     try { botEmail = await sendBotCallEmails(db); } catch (e) { botEmail = { error: e instanceof Error ? e.message : String(e) }; }
-    return NextResponse.json({ ok: true, ...r, texts, tidy, textback, botText, botEmail, instant });
+    return NextResponse.json({ ok: true, ...r, texts, tidy, voicemails, textback, botText, botEmail, instant });
   } catch (e) {
     console.error('[cron/talkroute-sync]', e);
     return dbError('cron/talkroute-sync', e);

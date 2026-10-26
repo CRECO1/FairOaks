@@ -548,7 +548,7 @@ export const LEAD_LABEL: Record<LeadType, string> = { prospective_tenant: 'Prosp
 const LEAD_TYPES = Object.keys(LEAD_LABEL) as LeadType[];
 export interface CallSummary { callback_at: string | null; language: Lang; summary: string; intent: string | null; property: string | null; caller_name: string | null; callback_number: string | null; caller_email: string | null; needs_follow_up: boolean; urgency: 'low' | 'normal' | 'high'; lead_type: LeadType; hot: boolean }
 
-export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null }): Promise<CallSummary | null> {
+export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null }, opts: { voicemail?: boolean } = {}): Promise<CallSummary | null> {
   if (!turns.some(t => t.role === 'caller' && t.text.trim())) return null;
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const transcript = turns.map(t => `${t.role === 'bot' ? 'Receptionist' : 'Caller'}: ${t.text}`).join('\n');
@@ -557,7 +557,7 @@ export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string |
       model: VOICEBOT_MODEL,
       max_tokens: 1500,   // thinking shares this budget; 600 risked a truncated JSON (and a lost summary) on a long call
       output_config: { effort: 'low' },
-      messages: [{ role: 'user', content: `This is the transcript of a phone call our AI receptionist answered for a real estate brokerage. Caller ID: ${ctx.callerNumber ? prettyPhone(ctx.callerNumber) : 'unknown'}${ctx.contact ? ` (CRM contact: ${ctx.contact.name})` : ''}.
+      messages: [{ role: 'user', content: `${opts.voicemail ? 'This is the transcript of a voicemail a caller left for a real estate brokerage — nobody answered or replied, so there is nothing the caller was told.' : 'This is the transcript of a phone call our AI receptionist answered for a real estate brokerage.'} Caller ID: ${ctx.callerNumber ? prettyPhone(ctx.callerNumber) : 'unknown'}${ctx.contact ? ` (CRM contact: ${ctx.contact.name})` : ''}.
 
 ${transcript}
 

@@ -30,17 +30,27 @@ const splitName = (full: string) => {
   return { first: parts[0] ?? '', last: parts.slice(1).join(' ') };
 };
 
+/** A Talkroute voicemail that lib/voicemail-ai has already summarized. */
+function isReadVoicemail(call: { source?: string | null; kind?: string | null; ai_meta?: Record<string, unknown> | null }): boolean {
+  return call.source === 'talkroute' && call.kind === 'voicemail' && !!call.ai_meta?.voicemail_ai;
+}
+/** The caller's name: what they SAID on a voicemail (the Talkroute caller-ID label is not a person), else the logged name. */
+function callerNameFor(call: { source?: string | null; kind?: string | null; caller_name?: string | null; ai_meta?: Record<string, unknown> | null }): string {
+  return String((isReadVoicemail(call) ? call.ai_meta?.spoken_name : call.caller_name) ?? '').trim();
+}
+
 /** Is this call a lead worth a contact card? Pure, so the rule can be checked against real calls. */
 export function isPhoneLead(call: {
-  direction?: string | null; source?: string | null; caller_name?: string | null; intent?: string | null;
-  summary?: string | null; needs_follow_up?: boolean | null; contact_id?: string | null;
+  direction?: string | null; source?: string | null; kind?: string | null; caller_name?: string | null; intent?: string | null;
+  summary?: string | null; needs_follow_up?: boolean | null; contact_id?: string | null; ai_meta?: Record<string, unknown> | null;
 }): boolean {
   if (call.contact_id || call.direction !== 'inbound') return false;
-  // Only calls the bot actually held a conversation on. A phone-system call's caller_name is a
-  // caller-ID label ("HPI INC"), a hang-up has nothing to save: neither is a lead.
-  if (call.source !== 'voicebot') return false;
+  // Only calls the bot actually held a conversation on — or a voicemail whose transcript has been read
+  // (lib/voicemail-ai). A phone-system call's caller_name is a caller-ID label ("HPI INC"), a hang-up has
+  // nothing to save: neither is a lead.
+  if (call.source !== 'voicebot' && !isReadVoicemail(call)) return false;
   if (junkKind({ intent: call.intent ?? null, summary: call.summary ?? null })) return false;
-  const name = String(call.caller_name ?? '').trim();
+  const name = callerNameFor(call);
   const said = String(call.intent ?? '').trim();
   const saidNothing = !said || /\b(unknown|nothing|no (details|information|info)|silent|did not|didn't|hung up|hang[- ]?up)\b/i.test(said);
   // A name, or a stated purpose, is what makes a caller a lead.
@@ -50,12 +60,12 @@ export function isPhoneLead(call: {
 export async function ensureContactForCall(db: SupabaseClient, callId: string): Promise<PhoneLeadResult> {
   try {
     const { data: call } = await db.from('crm_call_log')
-      .select('id, business_unit, source, direction, from_number, callback_number, caller_name, contact_id, intent, summary, needs_follow_up, follow_up_assignee, ai_meta')
+      .select('id, business_unit, source, kind, direction, from_number, callback_number, caller_name, contact_id, intent, summary, needs_follow_up, follow_up_assignee, ai_meta')
       .eq('id', callId).maybeSingle();
     if (!call) return null;
     if (call.contact_id) return { contactId: call.contact_id as string, created: false };
     if (!isPhoneLead(call as never)) return null;
-    const name = String(call.caller_name ?? '').trim();
+    const name = callerNameFor(call as never);
 
     const unit = call.business_unit as string;
     // Never file a contact under one of OUR lines (a forwarded call can carry it as the caller ID).
@@ -99,7 +109,7 @@ export async function ensureContactForCall(db: SupabaseClient, callId: string): 
     const rec: Record<string, unknown> = {
       first_name: first, type: filing.type, business_unit: unit,
       agent_id: owner, assigned_agent_ids: backup && backup !== owner ? [backup] : [],
-      lead_source: call.source === 'voicebot' ? 'Phone (voice bot)' : 'Phone call', channel: 'phone',
+      lead_source: call.source === 'voicebot' ? 'Phone (voice bot)' : call.kind === 'voicemail' ? 'Phone — voicemail' : 'Phone call', channel: 'phone',
       unsubscribe_token: randomUUID(), phone: number,
       tags: ['New Lead', ...(filing.tag ? [filing.tag] : []), ...(meta.hot ? ['Hot Lead'] : []), ...(meta.language === 'es' ? ['Spanish Speaker'] : [])],
     };
