@@ -2,19 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
+import { cleanIdList } from '@/lib/clean-id-list';
 
 // Vendors + building info for a property folder (crm_listing_vendors). Two flavours in
 // one table via `category`: 'vendor' (service / vendor / contact / phone) and
 // 'building_info' (label / notes — dumpster code, watering day, shut-off valves…).
 // Access derives from the parent listing, like the other listing-scoped routes.
 
-const EDITABLE = ['category', 'label', 'vendor', 'contact', 'phone', 'notes', 'sort_order'] as const;
+const EDITABLE = ['category', 'label', 'vendor', 'contact', 'phone', 'notes', 'tagged_contact_ids', 'sort_order'] as const;
 
 function clean(body: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of EDITABLE) {
     if (!(k in body)) continue;
     const v = body[k];
+    if (k === 'tagged_contact_ids') { out[k] = cleanIdList(v); continue; }
     if (v === '' || v === null || v === undefined) { out[k] = null; continue; }
     if (k === 'sort_order') { const n = Number(v); out[k] = Number.isFinite(n) ? n : null; continue; }
     if (k === 'category') { out[k] = v === 'building_info' ? 'building_info' : 'vendor'; continue; }

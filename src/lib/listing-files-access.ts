@@ -17,6 +17,18 @@ export const LISTING_FILES_BUCKET = 'listing-files';
  *   or in assigned_agent_ids.
  * Returns the listing row, or null for no-such / forbidden (callers answer 404).
  */
+/** The listing-access rule on an already-fetched row (admin; else same workspace, and Restricted needs owner/assigned). */
+export function listingAccessible(row: Record<string, unknown>, ctx: CrmContext): boolean {
+  if (isAdminRole(ctx.role)) return true;
+  if (row.business_unit !== ctx.businessUnit) return false;
+  if (row.is_restricted) {
+    const owner = row.listing_agent_id === ctx.userId;
+    const assigned = Array.isArray(row.assigned_agent_ids) && (row.assigned_agent_ids as string[]).includes(ctx.userId);
+    if (!owner && !assigned) return false;
+  }
+  return true;
+}
+
 export async function assertCanAccessListing(listingId: string, ctx: CrmContext): Promise<Record<string, unknown> | null> {
   const { data } = await adminClient()
     .from('crm_listings')
@@ -24,14 +36,7 @@ export async function assertCanAccessListing(listingId: string, ctx: CrmContext)
     .eq('id', listingId).maybeSingle();
   const row = data as Record<string, unknown> | null;
   if (!row) return null;
-  if (isAdminRole(ctx.role)) return row;
-  if (row.business_unit !== ctx.businessUnit) return null;
-  if (row.is_restricted) {
-    const owner = row.listing_agent_id === ctx.userId;
-    const assigned = Array.isArray(row.assigned_agent_ids) && (row.assigned_agent_ids as string[]).includes(ctx.userId);
-    if (!owner && !assigned) return null;
-  }
-  return row;
+  return listingAccessible(row, ctx) ? row : null;
 }
 
 /**
@@ -47,6 +52,15 @@ export async function assertCanAccessListing(listingId: string, ctx: CrmContext)
  * Covers the reconciliation packets as well, since those bill straight off the
  * roll and would otherwise be a way around it.
  */
+/** The rent-roll rule on an already-fetched row: admin, or same workspace AND the caller's own / assigned property. */
+export function rentRollAccessible(row: Record<string, unknown>, ctx: CrmContext): boolean {
+  if (isAdminRole(ctx.role)) return true;
+  if (row.business_unit !== ctx.businessUnit) return false;
+  const owner = row.listing_agent_id === ctx.userId;
+  const assigned = Array.isArray(row.assigned_agent_ids) && (row.assigned_agent_ids as string[]).includes(ctx.userId);
+  return owner || assigned;
+}
+
 export async function assertCanSeeRentRoll(listingId: string, ctx: CrmContext): Promise<Record<string, unknown> | null> {
   const { data } = await adminClient()
     .from('crm_listings')
@@ -54,11 +68,7 @@ export async function assertCanSeeRentRoll(listingId: string, ctx: CrmContext): 
     .eq('id', listingId).maybeSingle();
   const row = data as Record<string, unknown> | null;
   if (!row) return null;
-  if (isAdminRole(ctx.role)) return row;
-  if (row.business_unit !== ctx.businessUnit) return null;
-  const owner = row.listing_agent_id === ctx.userId;
-  const assigned = Array.isArray(row.assigned_agent_ids) && (row.assigned_agent_ids as string[]).includes(ctx.userId);
-  return owner || assigned ? row : null;
+  return rentRollAccessible(row, ctx) ? row : null;
 }
 
 /** True when the caller may access `listingId` (workspace + Restricted-flag aware). */

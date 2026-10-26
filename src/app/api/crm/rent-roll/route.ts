@@ -4,6 +4,7 @@ import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { tenancies } from '@/lib/rent-roll-tenancy';
+import { cleanIdList } from '@/lib/clean-id-list';
 
 // Rent roll = one editable row per suite on a property folder (crm_property_tenants).
 // It merges what used to live across three spreadsheet tabs — the rent roll, the suite
@@ -13,7 +14,7 @@ import { tenancies } from '@/lib/rent-roll-tenancy';
 // Columns an agent may write. Everything else (ids, timestamps) is server-owned.
 const EDITABLE = ['tenant_name', 'suite', 'building', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration',
   'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'mailbox_box', 'keys', 'email', 'phone', 'contact_name', 'mail_only',
-  'contact_id', 'renewal_status', 'notes', 'sort_order', 'is_backup',
+  'contact_id', 'renewal_status', 'notes', 'tagged_contact_ids', 'sort_order', 'is_backup',
   // Leasing Activity report fields (prospect pipeline + the owner's report columns).
   'leasing_status', 'tenant_use', 'activity_date', 'proposed_rent', 'proposed_ti', 'is_national', 'renewal_type', 'prev_rent_psf'] as const;
 const NUMERIC = new Set(['size_sf', 'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'keys', 'sort_order', 'proposed_rent', 'proposed_ti', 'prev_rent_psf']);
@@ -28,6 +29,7 @@ function clean(body: Record<string, unknown>): Record<string, unknown> {
   for (const k of EDITABLE) {
     if (!(k in body)) continue;
     const v = body[k];
+    if (k === 'tagged_contact_ids') { out[k] = cleanIdList(v); continue; }
     if (k === 'is_backup') { out[k] = v === true || v === 'true' || v === 1 || v === '1'; continue; }
     if (k === 'is_national') { out[k] = v === null || v === '' || v === undefined ? null : (v === true || v === 'true' || v === 1 || v === '1' || /^y/i.test(String(v))); continue; }
     if (v === '' || v === null || v === undefined) { out[k] = null; continue; }

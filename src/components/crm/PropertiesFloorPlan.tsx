@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
+import MentionTextarea, { parseMentionIds, parseMentionContactIds, type MentionContact } from '@/components/crm/MentionTextarea';
 
 /**
  * PropertiesFloorPlan — interactive, click-to-edit office floor plans for the
@@ -29,6 +29,7 @@ interface SuiteRow {
   sq_ft: number | null;
   lease_expiration: string | null;
   notes: string | null;
+  tagged_contact_ids?: string[] | null;
 }
 
 type Shape =
@@ -226,9 +227,11 @@ interface Props {
   /** Teammates for the @ picker in the suite notes; with onMention, a tag notifies them when the suite is saved. */
   profiles?: Array<{ id: string; first_name: string; last_name: string; role?: string }>;
   onMention?: (ids: string[], message: string, entityType: string, entityId?: string) => void;
+  /** CRM contacts, so a suite note can tag one (silent — the contact is never notified). */
+  contacts?: MentionContact[];
 }
 
-export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, onToast, profiles = [], onMention }: Props) {
+export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, onToast, profiles = [], onMention, contacts = [] }: Props) {
   const [rows, setRows] = useState<Record<string, SuiteRow>>({});
   const [building, setBuilding] = useState<BuildingKey>('bldg1');
   const [floor, setFloor] = useState<1 | 2>(1);
@@ -297,6 +300,8 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
           building: def.building, business_unit: businessUnit, floor: def.floor, suite_key: def.key,
           suite_number: form.suite_number, tenant_name: form.tenant_name, status: form.status,
           color: form.color, lease_expiration: form.lease_expiration, notes: form.notes,
+          // Contacts @-tagged in the notes: derived from the text, so the tag and the sentence can't drift apart.
+          tagged_contact_ids: parseMentionContactIds(form.notes ?? '', contacts, profiles),
         }),
       });
       const data = await res.json();
@@ -516,7 +521,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
 
           <label style={lbl}>Notes</label>
           {profiles.length
-            ? <MentionTextarea value={form.notes} onChange={v => setForm({ ...form, notes: v })} profiles={profiles} rows={3} placeholder="Notes… (@ to tag a teammate)" style={{ ...inp, resize: 'vertical' }} />
+            ? <MentionTextarea value={form.notes} onChange={v => setForm({ ...form, notes: v })} profiles={profiles} contacts={contacts} rows={3} placeholder="Notes… (@ to tag a teammate or a contact)" style={{ ...inp, resize: 'vertical' }} />
             : <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} style={{ ...inp, resize: 'vertical' }} />}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

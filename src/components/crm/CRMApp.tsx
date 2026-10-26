@@ -1087,10 +1087,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showAllMentions, setShowAllMentions] = useState(false);
   // Bumped when a bell notification links to a property, so the Properties tab remounts and opens it even if already showing.
   const [propLinkNonce, setPropLinkNonce] = useState(0);
-  // Properties whose Internal Notes @-tag a contact — for the contact card's "Tagged in property notes". Loaded the first
-  // time a contact card opens (a couple of dozen rows), and refreshed when it is reopened after a few minutes.
-  const [taggedListings, setTaggedListings] = useState<Array<{ id: string; name: string; address?: string; status?: string; tagged_contact_ids?: string[] }>>([]);
-  const taggedListingsAt = useRef(0);
+  // Property notes that @-tag a contact — the property's Internal Notes, suite notes, Rent Roll notes, vendor / building notes
+  // (GET /api/crm/note-tags, access-checked per source). Loaded when a contact card opens; a contact's list is reused for 5 minutes.
+  const [noteTags, setNoteTags] = useState<Record<string, Array<{ kind: 'property' | 'suite' | 'rentroll' | 'vendor'; listing_id: string | null; label: string; detail: string }>>>({});
+  const noteTagsAt = useRef<Record<string, number>>({});
   const [linkedNoteIds, setLinkedNoteIds] = useState<Set<string>>(new Set()); // other contact IDs to receive same note
   const [dealNotesText, setDealNotesText] = useState(''); // controlled value for active deal notes
 
@@ -3377,12 +3377,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   useEffect(() => {
     const token = session?.access_token;
-    if (!activeClient?.id || !token) return;
-    if (Date.now() - taggedListingsAt.current < 5 * 60_000) return;
-    taggedListingsAt.current = Date.now();
-    fetch('/api/crm/listings?limit=200', { headers: { Authorization: `Bearer ${token}` } })
+    const id = activeClient?.id;
+    if (!id || !token) return;
+    if (Date.now() - (noteTagsAt.current[id] ?? 0) < 5 * 60_000) return;
+    noteTagsAt.current[id] = Date.now();
+    fetch(`/api/crm/note-tags?contact_id=${id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => (r.ok ? r.json() : null))
-      .then(j => { if (j?.listings) setTaggedListings((j.listings as typeof taggedListings).filter(l => (l.tagged_contact_ids ?? []).length > 0)); })
+      .then(j => { if (j?.items) setNoteTags(prev => ({ ...prev, [id]: j.items })); })
       .catch(() => { /* the section just doesn't show */ });
   }, [activeClient?.id, session?.access_token]);
 
@@ -10343,6 +10344,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {propertiesTab === 'floorplan' && (
                 <PropertiesFloorPlan
                   profiles={profiles}
+                  contacts={clients}
                   onMention={noteMention}
                   businessUnit={businessUnit}
                   isAdmin={isAdmin}
@@ -12729,19 +12731,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     );
                   })()}
 
-                  {/* Properties whose Internal Notes @-tag this contact */}
+                  {/* Property notes that @-tag this contact: Internal Notes, suite, Rent Roll and vendor / building notes */}
                   {(() => {
-                    const tagged = taggedListings.filter(l => (l.tagged_contact_ids || []).includes(c.id));
-                    if (!tagged.length) return null;
+                    const items = noteTags[c.id] ?? [];
+                    if (!items.length) return null;
                     return (
                       <div style={{ marginTop: 10 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 6 }}>🏢 Tagged in property notes</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {tagged.map(l => (
-                            <button key={l.id} title="Open this property"
-                              onClick={() => { rememberView(`${businessUnit}:listing`, l.id); setActiveClient(null); setPage('properties'); setPropertiesTab('listings'); setPropLinkNonce(x => x + 1); }}
+                          {items.map((it, i) => (
+                            <button key={`${it.kind}-${it.listing_id}-${i}`} title={`${it.detail} — open`}
+                              onClick={() => {
+                                setActiveClient(null); setPage('properties');
+                                if (it.kind === 'suite') { setPropertiesTab('floorplan'); return; }
+                                if (it.listing_id) rememberView(`${businessUnit}:listing`, it.listing_id);
+                                if (it.kind === 'rentroll') rememberView(`${businessUnit}:listing-tab`, 'rentroll');
+                                setPropertiesTab('listings'); setPropLinkNonce(x => x + 1);
+                              }}
                               style={{ fontSize: 12.5, fontWeight: 700, color: '#0f766e', background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: 20, padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                              {l.name || l.address}
+                              {it.label} <span style={{ fontWeight: 500, color: '#5eaaa3' }}>· {it.detail}</span>
                             </button>
                           ))}
                         </div>

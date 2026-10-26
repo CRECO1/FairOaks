@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, getCrmAdmin, isAdminRole, unauthorized, forbidden } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { tenancies } from '@/lib/rent-roll-tenancy';
+import { cleanIdList } from '@/lib/clean-id-list';
 
 // 8000 Fair Oaks Pkwy — the only property the Floor Plans view draws.
 const FLOOR_PLAN_LISTING_ID = '12e83ca0-539f-48d0-bf0e-579503d9a147';
@@ -131,6 +132,8 @@ export async function PUT(req: NextRequest) {
     sq_ft: sq_ft === '' || sq_ft == null ? null : Number(sq_ft),
     lease_expiration: lease_expiration === '' || lease_expiration == null ? null : lease_expiration,
     notes: notes ?? null,
+    // Contacts @-tagged in the notes (silent). Only touched when the caller sends it, so other edits never wipe them.
+    ...('tagged_contact_ids' in (body ?? {}) ? { tagged_contact_ids: cleanIdList(body.tagged_contact_ids) } : {}),
     updated_by: caller.id,
     updated_at: new Date().toISOString(),
     // The Floor Plans view draws one property — 8000 Fair Oaks Pkwy. Tag its suites so

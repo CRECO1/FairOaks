@@ -1,7 +1,7 @@
 'use client';
 
 import { tenancies, shortDate } from '@/lib/rent-roll-tenancy';
-import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
+import MentionTextarea, { parseMentionIds, parseMentionContactIds } from '@/components/crm/MentionTextarea';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import EmailProspects from '@/components/crm/EmailProspects';
 
@@ -16,10 +16,10 @@ export interface RentRollRow {
   monthly_rent?: number | null; annual_rent?: number | null; rent_psf?: number | null; pct_share?: number | null;
   mailbox_box?: string | null; keys?: number | null; email?: string | null; phone?: string | null; contact_name?: string | null;
   contact_id?: string | null; crm_clients?: CrmContact | null;
-  renewal_status?: string | null; notes?: string | null; sort_order?: number | null; is_backup?: boolean | null;
+  renewal_status?: string | null; notes?: string | null; tagged_contact_ids?: string[] | null; sort_order?: number | null; is_backup?: boolean | null;
 }
 export interface CrmContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; phone?: string; cell_phone?: string; type?: string }
-interface VendorRow { id: string; category: string; label?: string | null; vendor?: string | null; contact?: string | null; phone?: string | null; notes?: string | null; sort_order?: number | null }
+interface VendorRow { id: string; category: string; tagged_contact_ids?: string[] | null; label?: string | null; vendor?: string | null; contact?: string | null; phone?: string | null; notes?: string | null; sort_order?: number | null }
 
 const GOLD = '#c9922c';
 const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
@@ -111,9 +111,10 @@ function Cell({ value, onSave, align, width, placeholder, type = 'text', bold, m
  * A notes cell with the @ picker. Same behaviour as Cell (saves on blur, Enter commits, Esc reverts) but a tag
  * (@Zack) opens the teammate list and tells the host, which notifies the person once the note is saved.
  */
-function NoteCell({ value, onSave, profiles }: {
+function NoteCell({ value, onSave, profiles, contacts }: {
   value: string | null | undefined; onSave: (v: string) => void;
   profiles?: Array<{ id: string; first_name: string; last_name: string; role?: string }>;
+  contacts?: Array<{ id: string; first_name?: string; last_name?: string; business_name?: string; type?: string }>;
 }) {
   const [v, setV] = useState<string>(value ?? '');
   const dirty = useRef(false);
@@ -129,6 +130,7 @@ function NoteCell({ value, onSave, profiles }: {
       value={v}
       onChange={x => { dirty.current = true; setV(x); }}
       profiles={profiles}
+      contacts={contacts}
       rows={1}
       hideHint
       onBlur={commit}
@@ -260,6 +262,9 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
   }, [expanded]);
 
   // Optimistic save — the row updates on screen immediately, then persists.
+  // Contacts available to @-tag in a note: the property's contacts plus any made inline here. Tags are silent.
+  const noteContacts = localContacts.length ? [...localContacts, ...contacts] : contacts;
+  const tagsOf = (text: string) => parseMentionContactIds(text, noteContacts, profiles ?? []);
   // Notify only people newly @-tagged by this edit.
   const tagNotify = (next: string, prev: string | null | undefined, what: string) => {
     if (!onMention || !profiles?.length) return;
@@ -267,9 +272,9 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
     const fresh = parseMentionIds(next, profiles).filter(id => !had.has(id));
     if (fresh.length) onMention(fresh, `mentioned you in the rent roll notes for ${what}${listingName ? ` — ${listingName}` : ''}`, 'listing', listingId);
   };
-  const saveCell = async (id: string, field: keyof RentRollRow, value: string) => {
-    setRows(rs => rs.map(r => r.id === id ? { ...r, [field]: value === '' ? null : value } as RentRollRow : r));
-    const res = await fetch('/api/crm/rent-roll', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ id, [field]: value }) });
+  const saveCell = async (id: string, field: keyof RentRollRow, value: string, extra: Record<string, unknown> = {}) => {
+    setRows(rs => rs.map(r => r.id === id ? { ...r, [field]: value === '' ? null : value, ...extra } as RentRollRow : r));
+    const res = await fetch('/api/crm/rent-roll', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ id, [field]: value, ...extra }) });
     if (!res.ok) { onToast?.('Could not save that change'); load(); return; }
     const j = await res.json().catch(() => ({}));
     if (j.row) setRows(rs => rs.map(r => r.id === id ? j.row : r));
@@ -366,9 +371,9 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
     if (!res.ok) { onToast?.('Could not remove the suite'); return; }
     setRows(rs => rs.filter(x => x.id !== r.id)); onToast?.('Suite removed');
   };
-  const saveVendor = async (id: string, field: keyof VendorRow, value: string) => {
-    setVendors(vs => vs.map(v => v.id === id ? { ...v, [field]: value || null } as VendorRow : v));
-    const res = await fetch('/api/crm/listing-vendors', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ id, [field]: value }) });
+  const saveVendor = async (id: string, field: keyof VendorRow, value: string, extra: Record<string, unknown> = {}) => {
+    setVendors(vs => vs.map(v => v.id === id ? { ...v, [field]: value || null, ...extra } as VendorRow : v));
+    const res = await fetch('/api/crm/listing-vendors', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ id, [field]: value, ...extra }) });
     if (!res.ok) onToast?.('Could not save that change');
   };
   const addVendor = async (category: 'vendor' | 'building_info') => {
@@ -520,7 +525,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
                   <td style={TD}><Cell value={r.email} onSave={v => saveCell(r.id, 'email', v)} /></td>
                   <td style={TD}><Cell value={r.phone} onSave={v => saveCell(r.id, 'phone', v)} /></td>
                   <td style={TD}><ContactCell row={r} contacts={localContacts.length ? [...localContacts, ...contacts] : contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} onCreate={n => createContact(n, r)} /></td>
-                  <td style={TD}><NoteCell value={r.notes} profiles={profiles} onSave={v => { tagNotify(v, r.notes, r.tenant_name || r.suite || 'a suite'); saveCell(r.id, 'notes', v); }} /></td>
+                  <td style={TD}><NoteCell value={r.notes} profiles={profiles} contacts={noteContacts} onSave={v => { tagNotify(v, r.notes, r.tenant_name || r.suite || 'a suite'); saveCell(r.id, 'notes', v, { tagged_contact_ids: tagsOf(v) }); }} /></td>
                   <td style={{ ...TD, textAlign: 'center' }}>
                     {isAdmin && <button onClick={() => removeSuite(r)} title="Remove suite" style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}
                   </td>
@@ -559,7 +564,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
                   <td style={TD}><ContactCell row={r} contacts={localContacts.length ? [...localContacts, ...contacts] : contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} onCreate={n => createContact(n, r)} /></td>
                   <td style={TD}><Cell value={r.phone} onSave={v => saveCell(r.id, 'phone', v)} /></td>
                   <td style={TD}><Cell value={r.email} onSave={v => saveCell(r.id, 'email', v)} /></td>
-                  <td style={TD}><NoteCell value={r.notes} profiles={profiles} onSave={v => { tagNotify(v, r.notes, r.tenant_name || r.suite || 'a suite'); saveCell(r.id, 'notes', v); }} /></td>
+                  <td style={TD}><NoteCell value={r.notes} profiles={profiles} contacts={noteContacts} onSave={v => { tagNotify(v, r.notes, r.tenant_name || r.suite || 'a suite'); saveCell(r.id, 'notes', v, { tagged_contact_ids: tagsOf(v) }); }} /></td>
                   <td style={{ ...TD, textAlign: 'center' }}>
                     {isAdmin && <button onClick={() => removeSuite(r)} title="Remove backup tenant" style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}
                   </td>
@@ -596,7 +601,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
                   <td style={TD}><Cell value={v.vendor} onSave={x => saveVendor(v.id, 'vendor', x)} /></td>
                   <td style={TD}><Cell value={v.contact} onSave={x => saveVendor(v.id, 'contact', x)} /></td>
                   <td style={TD}><Cell value={v.phone} onSave={x => saveVendor(v.id, 'phone', x)} /></td>
-                  <td style={TD}><NoteCell value={v.notes} profiles={profiles} onSave={x => { tagNotify(x, v.notes, v.label || v.vendor || 'a vendor'); saveVendor(v.id, 'notes', x); }} /></td>
+                  <td style={TD}><NoteCell value={v.notes} profiles={profiles} contacts={noteContacts} onSave={x => { tagNotify(x, v.notes, v.label || v.vendor || 'a vendor'); saveVendor(v.id, 'notes', x, { tagged_contact_ids: tagsOf(x) }); }} /></td>
                   <td style={{ ...TD, textAlign: 'center' }}>{isAdmin && <button onClick={() => removeVendor(v.id, v.label || v.vendor || undefined)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}</td>
                 </tr>
               ))}
@@ -617,7 +622,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
           {infoRows.map(v => (
             <div key={v.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fff', border: '1px solid #eef0f2', borderRadius: 8, padding: '2px 4px 2px 0' }}>
               <div style={{ flex: '0 0 210px' }}><Cell value={v.label} bold onSave={x => saveVendor(v.id, 'label', x)} /></div>
-              <div style={{ flex: 1 }}><NoteCell value={v.notes} profiles={profiles} onSave={x => { tagNotify(x, v.notes, v.label || 'the building'); saveVendor(v.id, 'notes', x); }} /></div>
+              <div style={{ flex: 1 }}><NoteCell value={v.notes} profiles={profiles} contacts={noteContacts} onSave={x => { tagNotify(x, v.notes, v.label || 'the building'); saveVendor(v.id, 'notes', x, { tagged_contact_ids: tagsOf(x) }); }} /></div>
               {isAdmin && <button onClick={() => removeVendor(v.id, v.label || v.vendor || undefined)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '8px 6px' }}>✕</button>}
             </div>
           ))}
