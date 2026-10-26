@@ -122,7 +122,10 @@ async function agedLeadBackstop(db: AnyDb): Promise<{ checked: number; created: 
     .select('id, first_name, last_name, email, phone, created_at, agent_id, assigned_agent_ids, lead_hold, lead_source, lead_site, channel, utm_campaign, notes')
     .gte('created_at', new Date(now - AGED_MAX_DAYS * 86_400_000).toISOString())
     .lte('created_at', new Date(now - LOOKBACK_HOURS * 3_600_000).toISOString())
-    .is('unsubscribed_at', null).limit(500);
+    // Filtered in the database, not afterwards: 3,000+ contacts (broker/owner imports) fall in this window and only a
+    // few dozen are web leads, so a plain .limit() kept an arbitrary 500 of them and silently dropped the real leads.
+    .or('lead_site.eq.crecotx.com,lead_source.ilike.website%,lead_source.ilike.creco website%')
+    .is('unsubscribed_at', null).order('created_at', { ascending: false }).limit(500);
   if (error) throw new Error(error.message);
   const leads = (rows as Lead[]).filter(l => isInboundWebLead(l) && isSiteForm(l) && (l.notes ?? '').trim() !== '' && !NOT_A_SALES_LEAD.test(l.notes ?? ''));
   if (!leads.length) return { checked: 0, created: 0 };
