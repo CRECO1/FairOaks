@@ -561,13 +561,23 @@ export async function upsertTexts(db: SupabaseClient, rows: TextRow[]): Promise<
   return { inserted: fresh.length };
 }
 
+/**
+ * Can a person actually answer this message? A short code ("37542 — your verification code") and an empty
+ * (media-only / blank) message cannot be replied to, and they buried the one real text in the queue.
+ */
+export function isReplyable(m: { from_number?: string | null; body?: string | null }): boolean {
+  const digits = String(m.from_number ?? '').replace(/\D/g, '');
+  if (digits.length > 0 && digits.length < 10) return false;   // SMS short code
+  return String(m.body ?? '').trim().length > 0;
+}
+
 /** The latest message in a thread decides: inbound & unhandled → flag it; anything outbound after it clears the thread. */
 export async function refreshTextFollowUps(db: SupabaseClient, conversationIds: string[]): Promise<void> {
   for (const cid of conversationIds) {
-    const { data } = await db.from('crm_text_messages').select('id, direction, handled_at, needs_follow_up').eq('conversation_id', cid).order('sent_at', { ascending: false }).limit(1);
+    const { data } = await db.from('crm_text_messages').select('id, direction, handled_at, needs_follow_up, from_number, body').eq('conversation_id', cid).order('sent_at', { ascending: false }).limit(1);
     const last = data?.[0];
     if (!last) continue;
-    const flag = last.direction === 'inbound' && !last.handled_at;
+    const flag = last.direction === 'inbound' && !last.handled_at && isReplyable(last);
     // Only the newest message carries the flag, so the queue shows each thread once.
     await db.from('crm_text_messages').update({ needs_follow_up: false }).eq('conversation_id', cid).neq('id', last.id).eq('needs_follow_up', true);
     if (last.needs_follow_up !== flag) await db.from('crm_text_messages').update({ needs_follow_up: flag }).eq('id', last.id);
