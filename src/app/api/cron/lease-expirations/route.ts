@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runLeaseProspecting } from '@/lib/lease-prospecting';
+import { runLeaseProspecting, runRentRollProspecting } from '@/lib/lease-prospecting';
 
 // Daily: create renewal call tasks for tenants that have entered their lease-
 // expiration outreach window. Idempotent (crm_clients.lxp_prospected_for), so it is
@@ -14,5 +14,8 @@ export async function GET(req: NextRequest) {
   }
   const commercial = await runLeaseProspecting('commercial', { commit: true });
   const residential = await runLeaseProspecting('residential', { commit: true });
-  return NextResponse.json({ commercial: commercial.created, residential: residential.created });
+  // Leases that exist only on the Rent Roll (no contact, or a contact whose date doesn't match) — lib/lease-prospecting.
+  let rentRoll: { created: number; rows: string[] } | { error: string };
+  try { rentRoll = await runRentRollProspecting('commercial', { commit: true }); } catch (e) { rentRoll = { error: e instanceof Error ? e.message : String(e) }; console.error('[cron/lease-expirations] rent roll', e); }
+  return NextResponse.json({ commercial: commercial.created, residential: residential.created, rentRoll });
 }
