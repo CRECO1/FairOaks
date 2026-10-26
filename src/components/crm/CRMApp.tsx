@@ -4693,6 +4693,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           --c-danger:#dc2626;--c-danger-soft:#fee2e2;--c-danger-line:#fecaca;--c-warn-soft:#fff7ed;--c-warn-line:#fed7aa;--c-warn-ink:#c2410c;--c-ok-soft:#f0fdf4;--c-ok-line:#bbf7d0;--c-ok-ink:#16a34a;}
         .crm-app-shell[data-crm-theme="dark"]{--c-canvas:#0e0d0b;--c-surface:#171512;--c-surface-2:#1d1a16;--c-ink:#f2ede2;--c-ink-2:#d8d2c4;--c-muted:#a39c8c;--c-faint:#7d7667;--c-line:#2b2720;--c-line-2:#221f19;--c-header:#141210;
           --c-danger:#ef8a76;--c-danger-soft:#33201b;--c-danger-line:#5a2c22;--c-warn-soft:#2e2412;--c-warn-line:#5a4418;--c-warn-ink:#e3b45a;--c-ok-soft:#18281f;--c-ok-line:#285a3a;--c-ok-ink:#76c595;}
+        /* Cormorant draws old-style numerals by default (a "1" looks like a small "I"); the CRM is full of figures. */
+        .crm-app-shell{font-variant-numeric:lining-nums;}
+        @media(min-width:1181px){.dk-side{position:sticky;top:0;}}
         .dk-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start;}
         .dk-main,.dk-side{min-width:0;}
         @media(max-width:1180px){.dk-grid{grid-template-columns:1fr;}}
