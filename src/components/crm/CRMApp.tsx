@@ -1084,6 +1084,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [mentionedIds, setMentionedIds] = useState<string[]>([]); // profile IDs mentioned in current note
   const [mentions, setMentions] = useState<any[]>([]); // crm_notifications for current user
   const [mentionsLoaded, setMentionsLoaded] = useState(false);
+  const [showAllMentions, setShowAllMentions] = useState(false);
   const [linkedNoteIds, setLinkedNoteIds] = useState<Set<string>>(new Set()); // other contact IDs to receive same note
   const [dealNotesText, setDealNotesText] = useState(''); // controlled value for active deal notes
 
@@ -2065,23 +2066,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         return;
       }
     }
-    const { error } = await supabase.from('crm_clients').insert([{
+    const { data: createdRow, error } = await supabase.from('crm_clients').insert([{
       ...nc,
       agent_id: profile!.id,
       business_unit: businessUnit,
       // Contacts @-tagged in the notes — who else was in the meeting.
-      tagged_contact_ids: parseMentionContactIds(nc.notes, clients),
+      tagged_contact_ids: parseMentionContactIds(nc.notes, clients, profiles),
       // date columns reject empty strings — coerce to null
       lease_expiration_date: nc.lease_expiration_date || null,
       birthday: nc.birthday || null,
-    }]);
+    }]).select('id').single();
     if (error) { showToast('Error: ' + error.message); } else {
       showToast(`${nc.first_name} ${nc.last_name} added`);
-      if (mentionedIds.length) {
-        // We don't have the new client's ID from this insert, so use a generic message
-        await createMentionNotifications(mentionedIds, `@${profile?.first_name} mentioned you in notes for ${nc.first_name} ${nc.last_name}`, 'contact');
-        setMentionedIds([]);
-      }
+      // Read from the saved note (not from keystroke state, which a cancelled form leaves behind), linked to the new card.
+      const mentioned = parseMentionIds(nc.notes, profiles);
+      if (mentioned.length) await createMentionNotifications(mentioned, `@${profile?.first_name} mentioned you in notes for ${nc.first_name} ${nc.last_name}`, 'contact', createdRow?.id);
+      setMentionedIds([]);
       setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null, birthday: '' });
       setShowAddClient(false);
       loadClients(profile!, 0, true);
@@ -2255,7 +2255,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const { error } = await supabase.from('crm_clients').update({
       // Who else was in the meeting — parsed out of the notes, so the tag and the
       // sentence it appears in can never drift apart.
-      tagged_contact_ids: parseMentionContactIds(ec.notes, clients).filter(id => id !== editClient.id),
+      tagged_contact_ids: parseMentionContactIds(ec.notes, clients, profiles).filter(id => id !== editClient.id),
       first_name: ec.first_name,
       last_name: ec.last_name,
       business_name: ec.business_name,
@@ -2291,10 +2291,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         setClients(prev => prev.map(c => linkedArr.includes(c.id) ? { ...c, notes: ec.notes } : c));
         setLinkedNoteIds(new Set());
       }
-      if (mentionedIds.length) {
-        await createMentionNotifications(mentionedIds, `@${profile?.first_name} mentioned you in notes for ${ec.first_name} ${ec.last_name}`, 'contact', editClient.id);
-        setMentionedIds([]);
-      }
+      // Only people newly @mentioned in this edit — read from the notes themselves, so a cancelled edit can't leak a tag into this save.
+      const alreadyTagged = new Set(parseMentionIds(editClient.notes ?? '', profiles));
+      const freshTags = parseMentionIds(ec.notes, profiles).filter(id => !alreadyTagged.has(id));
+      if (freshTags.length) await createMentionNotifications(freshTags, `@${profile?.first_name} mentioned you in notes for ${ec.first_name} ${ec.last_name}`, 'contact', editClient.id);
+      setMentionedIds([]);
       showToast(`${ec.first_name} ${ec.last_name} updated${linkedCount > 0 ? ` · notes synced to ${linkedCount} contact${linkedCount !== 1 ? 's' : ''}` : ''}`);
       setClients(prev => prev.map(c => c.id === editClient.id ? { ...c, ...ec } : c));
       setEditClient(null);
@@ -3258,7 +3259,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const now = new Date().toISOString();
     // Who else was on the call / in the meeting, parsed from the note itself so the
     // tag and the sentence can never drift apart.
-    const tagged = parseMentionContactIds(note, clients).filter(id => id !== clientId);
+    const tagged = parseMentionContactIds(note, clients, profiles).filter(id => id !== clientId);
     const { error } = await supabase.from('crm_client_activities').insert([{
       client_id: clientId,
       agent_id: profile!.id,
@@ -5267,7 +5268,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <button onClick={markAllMentionsRead} style={{ background: 'none', border: 'none', fontSize: 11, color: '#6d28d9', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Mark all read</button>
                               )}
                             </div>
-                            {mentions.slice(0, 5).map(n => (
+                            {mentions.slice(0, showAllMentions ? 30 : 5).map(n => (
                               <button key={n.id} onClick={() => {
                                 markMentionRead(n.id);
                                 if (n.entity_type === 'contact' && n.entity_id) {
@@ -5277,6 +5278,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients();
                                 } else if (n.entity_type === 'task') {
                                   setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks();
+                                } else if (n.entity_type === 'deal' && n.entity_id) {
+                                  // A deal mention used to just mark itself read and go nowhere.
+                                  const d = deals.find(x => x.id === n.entity_id);
+                                  if (d) { setPage('deals'); openDeal(d); }
                                 }
                                 setShowNotifications(false);
                               }}
@@ -5288,7 +5293,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </div>
                               </button>
                             ))}
-                            {mentions.length > 5 && <div style={{ fontSize: 12, color: '#9ca3af', paddingTop: 4 }}>+{mentions.length - 5} more</div>}
+                            {mentions.length > 5 && (
+                              <button onClick={() => setShowAllMentions(v => !v)} style={{ background: 'none', border: 'none', padding: '4px 0 0', fontSize: 12, color: '#6d28d9', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                                {showAllMentions ? 'Show fewer' : `Show all (+${mentions.length - 5} more)`}
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -10557,8 +10566,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             // Contacts tagged OUTSIDE the notes (pulled onto the deal by the Copilot) must survive a notes edit:
                             // keep every existing tag the OLD notes didn't produce, then add what the new notes mention. Removing an
                             // @mention from the text still untags that contact. (This used to rebuild the list from the text alone.)
-                            const fromOldNotes = new Set(parseMentionContactIds(activeDeal.notes ?? '', clients));
-                            const tagged = [...new Set([...(activeDeal.tagged_contact_ids ?? []).filter(id => !fromOldNotes.has(id)), ...parseMentionContactIds(dealNotesText, clients)])];
+                            const fromOldNotes = new Set(parseMentionContactIds(activeDeal.notes ?? '', clients, profiles));
+                            const tagged = [...new Set([...(activeDeal.tagged_contact_ids ?? []).filter(id => !fromOldNotes.has(id)), ...parseMentionContactIds(dealNotesText, clients, profiles)])];
                             // Notify once, on save, and only people newly @mentioned — it used to fire on every keystroke.
                             const already = new Set(parseMentionIds(activeDeal.notes ?? '', profiles));
                             const fresh = parseMentionIds(dealNotesText, profiles).filter(id => !already.has(id));
@@ -12421,12 +12430,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                         <button className="crm-btn crm-btn-primary crm-btn-sm" disabled={saving}
                           onClick={async () => {
-                            const tagged = parseMentionContactIds(notesDraft, clients).filter(id => id !== c.id);
+                            const tagged = parseMentionContactIds(notesDraft, clients, profiles).filter(id => id !== c.id);
+                            // The box says "@Brian will be notified on save" — so notify, once, only people newly @mentioned.
+                            const hadTags = new Set(parseMentionIds(c.notes ?? '', profiles));
+                            const freshTags = parseMentionIds(notesDraft, profiles).filter(id => !hadTags.has(id));
                             setSaving(true);
                             const { error } = await supabase.from('crm_clients')
                               .update({ notes: notesDraft, tagged_contact_ids: tagged }).eq('id', c.id);
                             setSaving(false);
                             if (error) { showToast('Could not save the note'); return; }
+                            if (freshTags.length) createMentionNotifications(freshTags, `@${profile?.first_name} mentioned you in notes for ${`${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'a contact'}`, 'contact', c.id);
                             setClients(prev => prev.map(x => x.id === c.id ? { ...x, notes: notesDraft, tagged_contact_ids: tagged } : x));
                             setActiveClient(prev => prev ? { ...prev, notes: notesDraft, tagged_contact_ids: tagged } : prev);
                             setEditingNotes(false);
@@ -13653,7 +13666,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   onChange={v => setEc({ ...ec, notes: v })}
                   onMentionedIds={setMentionedIds} />
                 {(() => {
-                  const tagged = parseMentionContactIds(ec.notes, clients).filter(id => id !== editClient?.id);
+                  const tagged = parseMentionContactIds(ec.notes, clients, profiles).filter(id => id !== editClient?.id);
                   if (!tagged.length) return null;
                   return (
                     <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280' }}>

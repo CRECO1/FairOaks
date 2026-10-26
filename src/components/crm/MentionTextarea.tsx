@@ -52,8 +52,12 @@ export function mentionMatchesName(token: string, firstName: string): boolean {
 // Parse all @mentions from text → return matching profile IDs. An exact first-name
 // match wins; only when a token has no exact match do prefixes/nicknames apply (and
 // only if that resolves to a single person, so a vague token never pings the wrong one).
+// The @ must start a word: "john@ed.com" is an email address, not a tag for Ed.
+const MENTION_RE = /(?:^|[^\w.@])@(\w+)/g;
+const mentionTokens = (text: string): string[] => [...text.matchAll(MENTION_RE)].map(m => m[1].toLowerCase());
+
 export function parseMentionIds(text: string, profiles: Profile[]): string[] {
-  const hits = [...text.matchAll(/@(\w+)/g)].map(m => m[1].toLowerCase());
+  const hits = mentionTokens(text);
   if (!hits.length) return [];
   const out = new Set<string>();
   for (const h of new Set(hits)) {
@@ -65,17 +69,39 @@ export function parseMentionIds(text: string, profiles: Profile[]): string[] {
   return [...out];
 }
 
-// The single word a contact is mentioned by — their first name, or the first word of
-// the business name for company records.
-export const contactToken = (c: MentionContact): string =>
-  ((c.first_name || c.business_name || '').trim().split(/\s+/)[0] || '').replace(/\W/g, '');
+const ascii = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\W/g, '');
 export const contactLabel = (c: MentionContact): string =>
   c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
 
-export function parseMentionContactIds(text: string, contacts: MentionContact[]): string[] {
-  const hits = [...text.matchAll(/@(\w+)/g)].map(m => m[1].toLowerCase());
-  if (!hits.length) return [];
-  return contacts.filter(c => { const t = contactToken(c).toLowerCase(); return t && hits.includes(t); }).map(c => c.id);
+/**
+ * The word a contact is tagged by: first + last name joined ("@BrianMartin"), or the business name for a
+ * company record. It used to be the FIRST name alone, so "@Brian" — meant for teammate Brian — also tagged
+ * every one of the 13 other Brians in the book (and "@Michael" would tag every Michael).
+ */
+export const contactToken = (c: MentionContact): string =>
+  ascii(c.first_name || c.last_name ? `${c.first_name ?? ''}${c.last_name ?? ''}` : (c.business_name ?? ''));
+
+// The old tag: first name (or first word of the business name). Still honoured for notes written before the change.
+const legacyContactToken = (c: MentionContact): string =>
+  ascii((c.first_name || c.business_name || '').trim().split(/\s+/)[0] || '');
+
+/**
+ * Contacts tagged in a note. A full-name tag ("@BrianMartin") matches that contact. An old first-name tag
+ * ("@Michael") still matches — but only when exactly one contact in the book has that first name, and never
+ * when the word is a teammate's name (that is a notification for the teammate, not a tag on a contact).
+ */
+export function parseMentionContactIds(text: string, contacts: MentionContact[], profiles: Profile[]): string[] {
+  const hits = new Set(mentionTokens(text));
+  if (!hits.size) return [];
+  const out = new Set<string>();
+  for (const t of hits) {
+    if (parseMentionIds(`@${t}`, profiles).length) continue;   // @Brian / @Zack: a teammate
+    const full = contacts.filter(c => contactToken(c).toLowerCase() === t);
+    if (full.length) { full.forEach(c => out.add(c.id)); continue; }
+    const legacy = contacts.filter(c => legacyContactToken(c).toLowerCase() === t);
+    if (legacy.length === 1) out.add(legacy[0].id);
+  }
+  return [...out];
 }
 
 export default function MentionTextarea({ value, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts = [], onCreateContact, placeholder, className, style, id }: Props) {
@@ -95,16 +121,16 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
   // Contacts only surface once there's something to match on, so the menu doesn't open
   // with hundreds of names.
   const contactHits = search.length === 0 ? [] :
-    contacts.filter(c => contactLabel(c).toLowerCase().includes(search.toLowerCase()) && contactToken(c)).slice(0, 6);
+    contacts.filter(c => contactToken(c) && (contactLabel(c).toLowerCase().includes(search.toLowerCase()) || contactToken(c).toLowerCase().includes(search.toLowerCase()))).slice(0, 6);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val    = e.target.value;
     const cursor = e.target.selectionStart ?? val.length;
     const before = val.slice(0, cursor);
-    const match  = before.match(/@(\w*)$/);
+    const match  = before.match(/(?:^|[^\w.@])@(\w*)$/);
 
     if (match) {
-      setAtPos(cursor - match[0].length);
+      setAtPos(cursor - match[1].length - 1);   // position of the @ itself
       setSearch(match[1]);
       setShowDrop(true);
       if (taRef.current) {
@@ -118,7 +144,7 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
 
     onChange(val);
     if (onMentionedIds) onMentionedIds(parseMentionIds(val, profiles));
-    if (onMentionedContactIds) onMentionedContactIds(parseMentionContactIds(val, contacts));
+    if (onMentionedContactIds) onMentionedContactIds(parseMentionContactIds(val, contacts, profiles));
   }, [onChange, onMentionedIds, onMentionedContactIds, profiles, contacts]);
 
   const insertMention = useCallback((token: string) => {
@@ -128,7 +154,7 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
     const next    = before + mention + after;
     onChange(next);
     if (onMentionedIds) onMentionedIds(parseMentionIds(next, profiles));
-    if (onMentionedContactIds) onMentionedContactIds(parseMentionContactIds(next, contacts));
+    if (onMentionedContactIds) onMentionedContactIds(parseMentionContactIds(next, contacts, profiles));
     setShowDrop(false);
     setSearch('');
     setTimeout(() => {
@@ -171,7 +197,7 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
 
         {value.includes('@') && (() => {
           const team = parseMentionIds(value, profiles);
-          const tagged = parseMentionContactIds(value, contacts);
+          const tagged = parseMentionContactIds(value, contacts, profiles);
           const names = (ids: string[], list: { id: string }[], label: (x: never) => string) =>
             ids.map(i => label(list.find(x => x.id === i) as never)).filter(Boolean);
           const teamNames = names(team, profiles, (p: Profile) => `@${p.first_name}`);
