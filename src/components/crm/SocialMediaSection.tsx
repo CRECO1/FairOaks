@@ -88,11 +88,11 @@ interface Props {
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const PLATFORM_CONFIG: Record<SocialPlatform, { label: string; emoji: string; color: string; charLimit: number; bgClass: string }> = {
-  facebook:  { label: 'Facebook',  emoji: 'facebook',  color: '#1877F2', charLimit: 63206, bgClass: '' },
-  instagram: { label: 'Instagram', emoji: 'instagram', color: '#E1306C', charLimit: 2200,  bgClass: '' },
-  linkedin:  { label: 'LinkedIn',  emoji: 'linkedin',  color: '#0A66C2', charLimit: 3000,  bgClass: '' },
+  facebook:  { label: 'Facebook',  emoji: 'facebook',  color: 'var(--k-1877f2)', charLimit: 63206, bgClass: '' },
+  instagram: { label: 'Instagram', emoji: 'instagram', color: 'var(--k-e1306c)', charLimit: 2200,  bgClass: '' },
+  linkedin:  { label: 'LinkedIn',  emoji: 'linkedin',  color: 'var(--k-0a66c2)', charLimit: 3000,  bgClass: '' },
   twitter:   { label: 'Twitter/X', emoji: 'twitter',   color: '#1DA1F2', charLimit: 280,   bgClass: '' },
-  youtube:   { label: 'YouTube',   emoji: 'youtube',   color: '#FF0000', charLimit: 5000,  bgClass: '' },
+  youtube:   { label: 'YouTube',   emoji: 'youtube',   color: 'var(--k-ff0000)', charLimit: 5000,  bgClass: '' },
 };
 
 const ALL_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'youtube'];
@@ -1099,7 +1099,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       setComposerContent(newValue);
                       requestAnimationFrame(() => { el.focus(); el.setSelectionRange(newStart, newEnd); });
                     }}
-                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
+                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: 'var(--k-1a1a2e)', lineHeight: 1 }}
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#C9A84C'; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--k-e5e7eb)'; }}
                   >B</button>
@@ -1145,7 +1145,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       type="button"
                       title="Insert emoji"
                       onClick={() => { setEmojiPickerOpen(o => !o); setHashtagPickerOpen(false); }}
-                      style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: emojiPickerOpen ? '#fef9ec' : 'var(--k-fff)', fontSize: 14, cursor: 'pointer', lineHeight: 1, borderColor: emojiPickerOpen ? '#C9A84C' : 'var(--k-e5e7eb)' }}
+                      style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: emojiPickerOpen ? 'var(--k-fef9ec)' : 'var(--k-fff)', fontSize: 14, cursor: 'pointer', lineHeight: 1, borderColor: emojiPickerOpen ? '#C9A84C' : 'var(--k-e5e7eb)' }}
                     >😊</button>
                     {emojiPickerOpen && (
                       <div
@@ -1260,7 +1260,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   style={{
                     border: '2px dashed var(--k-e5e7eb)', borderRadius: 12, padding: composerMediaUrls.length > 0 ? '12px' : '20px',
                     textAlign: 'center', cursor: uploadingMedia ? 'default' : 'pointer',
-                    background: composerMediaUrls.length > 0 ? '#f8fff9' : 'var(--k-fafafa)',
+                    background: composerMediaUrls.length > 0 ? 'var(--k-f8fff9)' : 'var(--k-fafafa)',
                     opacity: uploadingMedia ? 0.7 : 1,
                     transition: 'all .15s',
                   }}
@@ -2435,7 +2435,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     onClick={() => setSelectedInboxItem(item)}
                     style={{
                       width: '100%', textAlign: 'left', padding: '14px 16px',
-                      borderBottom: '1px solid var(--k-f5f5f5)', background: selectedInboxItem?.id === item.id ? '#f0f9ff' : 'var(--k-fff)',
+                      borderBottom: '1px solid var(--k-f5f5f5)', background: selectedInboxItem?.id === item.id ? 'var(--k-f0f9ff)' : 'var(--k-fff)',
                       border: 'none', cursor: 'pointer', display: 'block',
                       borderLeft: selectedInboxItem?.id === item.id ? '3px solid #1DA1F2' : '3px solid transparent',
                     }}
@@ -2919,7 +2919,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-000)' }}>fairoaksrealtygroup</div>
-                  <div style={{ fontSize: 12, color: '#8e8e8e' }}>{timeStr}</div>
+                  <div style={{ fontSize: 12, color: 'var(--k-8e8e8e)' }}>{timeStr}</div>
                 </div>
                 <button onClick={() => setPreviewPostId(null)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#8e8e8e', cursor: 'pointer', lineHeight: 1 }}>✕</button>
               </div>
@@ -2950,7 +2950,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   <span style={{ fontWeight: 700 }}>fairoaksrealtygroup </span>
                   <span style={{ whiteSpace: 'pre-wrap' }}>
                     {post.content.split(' ').map((word, wi) => (
-                      <span key={wi} style={{ color: word.startsWith('#') || word.startsWith('@') ? '#00376b' : 'inherit' }}>{word} </span>
+                      <span key={wi} style={{ color: word.startsWith('#') || word.startsWith('@') ? 'var(--k-00376b)' : 'inherit' }}>{word} </span>
                     ))}
                   </span>
                 </div>

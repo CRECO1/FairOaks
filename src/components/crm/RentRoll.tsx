@@ -94,7 +94,7 @@ function Cell({ value, onSave, align, width, placeholder, type = 'text', bold, m
       inputMode={money ? 'decimal' : undefined}
       placeholder={placeholder}
       onChange={e => { dirty.current = true; setV(e.target.value); }}
-      onFocus={e => { setFocused(true); e.currentTarget.style.background = '#fffdf3'; e.currentTarget.style.boxShadow = `inset 0 0 0 2px ${GOLD}33`; }}
+      onFocus={e => { setFocused(true); e.currentTarget.style.background = 'var(--k-fffdf3)'; e.currentTarget.style.boxShadow = `inset 0 0 0 2px ${GOLD}33`; }}
       onBlur={e => { commit(); e.currentTarget.style.background = 'transparent'; e.currentTarget.style.boxShadow = 'none'; }}
       onKeyDown={e => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
@@ -507,7 +507,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
               const inactive = t?.status === 'replaced';
               return (
                 <tr key={r.id} title={t?.status === 'replaced' ? `Replaced by ${t.successor?.tenant_name ?? 'a new lease'} from ${shortDate(t.successor?.lease_start)} — not counted` : t?.status === 'upcoming' ? `Signed lease starting ${shortDate(r.lease_start)} — not counted until then` : undefined}
-                  style={{ background: vac ? '#fbfbfc' : t?.status === 'upcoming' ? '#f8fbff' : 'var(--k-fff)', opacity: inactive ? 0.55 : 1 }}>
+                  style={{ background: vac ? '#fbfbfc' : t?.status === 'upcoming' ? 'var(--k-f8fbff)' : 'var(--k-fff)', opacity: inactive ? 0.55 : 1 }}>
                   <td style={TD}><Cell value={r.suite} bold onSave={v => saveCell(r.id, 'suite', v)} /></td>
                   <td style={TD}><Cell value={r.building} onSave={v => saveCell(r.id, 'building', v)} /></td>
                   <td style={TD}><Cell value={r.tenant_name} bold={!vac} placeholder="Vacant" onSave={v => saveCell(r.id, 'tenant_name', v)} /></td>

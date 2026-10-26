@@ -414,9 +414,9 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             { label: 'Voicemails', value: stats.voicemail, sub: 'last 7 days', pick: 'voicemail' as const },
             { label: 'Texts to answer', value: threads.filter(t => t.unanswered).length, sub: `${threads.length} thread${threads.length === 1 ? '' : 's'}`, tone: threads.some(t => t.unanswered) ? '#b91c1c' : undefined, pick: 'texts' as const },
           ].map(c => (
-            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ flex: '1 1 120px', minWidth: 112, background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : '#eef0f3'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ flex: '1 1 120px', minWidth: 112, background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : 'var(--k-eef0f3)'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
               <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--k-9ca3af)', fontWeight: 700 }}>{c.label}</div>
-              <div style={{ fontSize: 21, fontWeight: 700, marginTop: 3, color: c.tone || '#111827' }}>{c.value}</div>
+              <div style={{ fontSize: 21, fontWeight: 700, marginTop: 3, color: c.tone || 'var(--k-111827)' }}>{c.value}</div>
               <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{c.sub}</div>
             </button>
           ))}
@@ -542,7 +542,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                 const who = t.contact?.name || pretty(t.number);
                 const msgs = thread[t.conversation_id];
                 return (
-                  <div key={t.conversation_id} style={{ background: 'var(--k-fff)', border: `1px solid ${t.unanswered ? '#f3e4c4' : '#eef0f2'}`, borderLeft: `4px solid ${t.unanswered ? '#c9922c' : 'var(--k-e5e7eb)'}`, borderRadius: 12, padding: '12px 14px' }}>
+                  <div key={t.conversation_id} style={{ background: 'var(--k-fff)', border: `1px solid ${t.unanswered ? 'var(--k-f3e4c4)' : '#eef0f2'}`, borderLeft: `4px solid ${t.unanswered ? '#c9922c' : 'var(--k-e5e7eb)'}`, borderRadius: 12, padding: '12px 14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 6 }}>
                       <span style={{ fontSize: 20, flexShrink: 0 }}>💬</span>
                       <div style={{ flex: '1 1 220px', minWidth: 0, cursor: 'pointer' }} onClick={() => openTextThread(t)}>
@@ -679,11 +679,11 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         ? <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={mini} title="Let this number through again">Unblock</button>
                         : <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={{ ...mini, color: 'var(--k-991b1b)' }} title="Hang up on this number if it calls the bot line again">🚫 Block this number</button>)}
                       {!c.contact && !needsWrap(c) && c.outcome !== 'spam' && (c.from_number || c.to_number || c.callback_number) && <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} disabled={busy === c.id} style={mini} title="Save this caller as a contact, or link them to one">＋ Contact</button>}
-                      {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }} title="Delete this record">✕</button>}
+                      {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...mini, color: '#e5b4b4', borderColor: 'var(--k-f3e4e4)' }} title="Delete this record">✕</button>}
                     </div>
                   </div>
                   {pending && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: 9, paddingTop: 9, borderTop: '1px dashed #f0e6cf' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: 9, paddingTop: 9, borderTop: '1px dashed var(--k-f0e6cf)' }}>
                       <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#c9922c' }}>Call back</span>
                       <button onClick={() => setDue(c, preset('hour'))} disabled={busy === c.id} style={chip}>+1h</button>
                       <button onClick={() => setDue(c, preset('eod'))} disabled={busy === c.id} style={chip}>Today 5p</button>

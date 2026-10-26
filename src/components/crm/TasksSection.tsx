@@ -85,7 +85,7 @@ function ContactSearch({
             ) : filtered.map(c => (
               <button type="button" key={c.id} onClick={() => { onChange(c.id); setOpen(false); setQ(''); }}
                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', border: 'none',
-                  background: c.id === value ? '#fef9ee' : 'transparent',
+                  background: c.id === value ? 'var(--k-fef9ee)' : 'transparent',
                   cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
                 onMouseEnter={e => { if (c.id !== value) e.currentTarget.style.background = 'var(--k-f9fafb)'; }}
                 onMouseLeave={e => { if (c.id !== value) e.currentTarget.style.background = 'transparent'; }}>
@@ -162,7 +162,7 @@ const URGENCY_CFG = [
   { key: 'overdue', label: 'Overdue',   color: '#ef4444', defaultOpen: true  },
   { key: 'today',   label: 'Today',     color: '#c9922c', defaultOpen: true  },
   { key: 'week',    label: 'This Week', color: '#3b82f6', defaultOpen: true  },
-  { key: 'later',   label: 'Later',     color: '#8b5cf6', defaultOpen: true  },
+  { key: 'later',   label: 'Later',     color: 'var(--k-8b5cf6)', defaultOpen: true  },
   { key: 'nodate',  label: 'No Date',   color: 'var(--k-9ca3af)', defaultOpen: false },
   { key: 'done',    label: 'Done',      color: '#22c55e', defaultOpen: false },
 ] as const;

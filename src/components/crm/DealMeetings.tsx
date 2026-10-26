@@ -27,7 +27,7 @@ const contactName = (c: PickContact) => c.business_name || `${c.first_name ?? ''
 const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
-const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', color: '#7a5410', borderRadius: 20, padding: '3px 9px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' };
+const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', color: 'var(--k-7a5410)', borderRadius: 20, padding: '3px 9px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' };
 
 export default function DealMeetings({ dealId, clientId, clients = [], authToken, businessUnit, showToast }: Props) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -160,14 +160,14 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
 
       {/* ── Log / edit form ── */}
       {!readOnly && editing !== null && (
-        <div style={{ border: '1px solid #eef0f2', borderRadius: 12, padding: 14, marginBottom: 14, background: '#fcfcfb' }}>
+        <div style={{ border: '1px solid #eef0f2', borderRadius: 12, padding: 14, marginBottom: 14, background: 'var(--k-fcfcfb)' }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-6b7280)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Note</label>
           <textarea className="crm-input" autoFocus style={{ marginTop: 3, width: '100%', minHeight: 78, resize: 'vertical' }} value={note} onChange={e => setNote(e.target.value)} placeholder="What happened, what was decided, next steps…" />
 
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-6b7280)', textTransform: 'uppercase', letterSpacing: 0.4, display: 'block', marginTop: 10 }}>Tag contacts in this deal</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '5px 0' }}>
             {attendees.map(a => (
-              <span key={a.id} style={chip}>{a.name}<button onClick={() => setAttendees(list => list.filter(x => x.id !== a.id))} style={{ border: 'none', background: 'none', color: '#b0873a', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button></span>
+              <span key={a.id} style={chip}>{a.name}<button onClick={() => setAttendees(list => list.filter(x => x.id !== a.id))} style={{ border: 'none', background: 'none', color: 'var(--k-b0873a)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button></span>
             ))}
           </div>
           <div style={{ position: 'relative' }}>

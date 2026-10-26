@@ -396,7 +396,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           return (
             <span key={s.id} title={`${s.name} — ${signed ? 'signed' : declined ? 'declined' : isCur ? 'waiting' : 'later'}`}
               style={{ width: 26, height: 26, borderRadius: '50%', marginLeft: i ? -6 : 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 800, border: '2px solid var(--k-fff)', boxSizing: 'border-box',
-                background: signed ? '#16a34a' : declined ? '#dc2626' : isCur ? '#fdf0d5' : '#f1f2f4', color: signed || declined ? '#fff' : isCur ? 'var(--k-92400e)' : 'var(--k-9ca3af)',
+                background: signed ? '#16a34a' : declined ? '#dc2626' : isCur ? 'var(--k-fdf0d5)' : '#f1f2f4', color: signed || declined ? '#fff' : isCur ? 'var(--k-92400e)' : 'var(--k-9ca3af)',
                 outline: isCur ? '1.5px solid #c9922c' : 'none' }}>
               {signed ? '✓' : (s.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()}
             </span>
@@ -450,7 +450,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {attention.map(a => (
-              <div key={a.env.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: a.tone === 'bad' ? '#fef6f6' : 'var(--k-fffaf0)', border: `1px solid ${a.tone === 'bad' ? '#f8d7d7' : '#f6e3b8'}`, borderRadius: 10, padding: '9px 13px' }}>
+              <div key={a.env.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: a.tone === 'bad' ? 'var(--k-fef6f6)' : 'var(--k-fffaf0)', border: `1px solid ${a.tone === 'bad' ? 'var(--k-f8d7d7)' : 'var(--k-f6e3b8)'}`, borderRadius: 10, padding: '9px 13px' }}>
                 <div style={{ flex: '1 1 240px', minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.env.title || 'Document'}</div>
                   <div style={{ fontSize: 12.5, color: a.tone === 'bad' ? 'var(--k-b91c1c)' : 'var(--k-92400e)' }}>{a.text}</div>
@@ -779,7 +779,7 @@ const ACT_LOOK: Record<string, { icon: string; label: string; color: string }> =
   email_complained:{ icon: '⚠️', label: 'Marked as spam', color: 'var(--k-b91c1c)' },
   email_delayed:   { icon: '⏱', label: 'Delivery delayed', color: 'var(--k-92400e)' },
   email_failed:    { icon: '⚠️', label: 'Email failed to send', color: 'var(--k-b91c1c)' },
-  in_person_started: { icon: '🖊', label: 'Signed in person', color: '#5b3d91' },
+  in_person_started: { icon: '🖊', label: 'Signed in person', color: 'var(--k-5b3d91)' },
   signer_added:   { icon: '➕', label: 'Signer added', color: 'var(--k-6b7280)' },
   signer_updated: { icon: '✏️', label: 'Signer updated', color: 'var(--k-6b7280)' },
   archived:  { icon: '🗄', label: 'Archived', color: 'var(--k-6b7280)' },

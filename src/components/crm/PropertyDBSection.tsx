@@ -225,7 +225,7 @@ function PropertyThumb({ p, height }: { p: Property; height: number }) {
   const src = firstPhoto || (typeof p.flyer_url === 'string' && p.flyer_url ? p.flyer_url : '');
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
-    return <div style={{ height, width: '100%', background: 'linear-gradient(135deg,#eef1f4,#e2e6ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c2c8cf', fontSize: Math.round(height * 0.3) }}>🏢</div>;
+    return <div style={{ height, width: '100%', background: 'linear-gradient(135deg,#eef1f4,var(--k-e2e6ea))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c2c8cf', fontSize: Math.round(height * 0.3) }}>🏢</div>;
   }
   return (
     <img src={src} alt={p.name || p.address || 'property'} loading="lazy"
@@ -355,7 +355,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
 
   const sortTh = (key: string, label: string, align: 'left' | 'right' = 'left') => (
     <th onClick={() => setSort(s => (s.key === key ? { key, dir: (s.dir === 1 ? -1 : 1) as 1 | -1 } : { key, dir: 1 }))}
-      style={{ padding: '12px 12px', fontWeight: 700, textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', color: sort.key === key ? '#b07d1f' : 'var(--k-9ca3af)' }}>
+      style={{ padding: '12px 12px', fontWeight: 700, textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', color: sort.key === key ? 'var(--k-b07d1f)' : 'var(--k-9ca3af)' }}>
       {label}<span style={{ opacity: sort.key === key ? 1 : 0.3 }}>{sort.key === key ? (sort.dir === 1 ? ' ↑' : ' ↓') : ' ↕'}</span>
     </th>
   );
@@ -427,7 +427,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               <div style={{ width: 52, height: 40, borderRadius: 6, background: '#eef0f2', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ height: 11, width: `${52 + ((i * 11) % 26)}%`, background: '#eef0f2', borderRadius: 4 }} />
-                <div style={{ height: 9, width: `${32 + ((i * 7) % 20)}%`, background: '#f3f5f7', borderRadius: 4, marginTop: 7 }} />
+                <div style={{ height: 9, width: `${32 + ((i * 7) % 20)}%`, background: 'var(--k-f3f5f7)', borderRadius: 4, marginTop: 7 }} />
               </div>
               <div style={{ width: 74, height: 11, background: '#eef0f2', borderRadius: 4, flexShrink: 0 }} />
             </div>
@@ -550,8 +550,8 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                 const ell: React.CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
                 return (
                   <tr key={p.id} onClick={() => setActive(p)}
-                    style={{ borderTop: '1px solid #f4f5f7', cursor: 'pointer', background: 'var(--k-fff)' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')}
+                    style={{ borderTop: '1px solid var(--k-f4f5f7)', cursor: 'pointer', background: 'var(--k-fff)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-fbf8f1)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'var(--k-fff)')}>
                     <td style={{ padding: '10px 12px 10px 16px', verticalAlign: 'top' }}>
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
@@ -768,7 +768,7 @@ function ContactCardRow({ label, contact, fallbackName, fallbackCompany, fallbac
       role={clickable ? 'button' : undefined}
       tabIndex={clickable ? 0 : undefined}
       onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen!(); } } : undefined}
-      style={{ background: contact ? '#f4f9f4' : '#fbfbfa', border: `1px solid ${contact ? '#cfe6cf' : '#eef0f2'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: clickable ? 'pointer' : 'default' }}>
+      style={{ background: contact ? 'var(--k-f4f9f4)' : '#fbfbfa', border: `1px solid ${contact ? 'var(--k-cfe6cf)' : '#eef0f2'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: clickable ? 'pointer' : 'default' }}>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
           {label}
@@ -822,7 +822,7 @@ function BrokerCardModal({ contact, listings, onClose, onOpenListing, isMobile }
             {listings.length} listing{listings.length === 1 ? '' : 's'} from this broker
           </div>
           {listings.slice(0, 40).map((l) => (
-            <button key={l.id} onClick={() => onOpenListing?.(l)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'var(--k-fafafa)', border: '1px solid #f0f1f3', borderRadius: 9, padding: '10px 12px', marginBottom: 6, cursor: onOpenListing ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
+            <button key={l.id} onClick={() => onOpenListing?.(l)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'var(--k-fafafa)', border: '1px solid var(--k-f0f1f3)', borderRadius: 9, padding: '10px 12px', marginBottom: 6, cursor: onOpenListing ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)' }}>{l.name || l.address || 'Untitled'}</div>
               <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 1 }}>{[l.address, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</div>
             </button>
@@ -1039,7 +1039,7 @@ function ContactPicker({ authToken, linked, initialQuery, draft, onLink, createT
         <span style={{ fontSize: 16 }}>🔗</span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-166534)' }}>{contactLabel(linked)}</div>
-          <div style={{ fontSize: 12, color: '#4b7a4b' }}>{[contactCompany(linked), contactPhone(linked), linked.email].filter(Boolean).join(' · ') || 'Linked contact'}</div>
+          <div style={{ fontSize: 12, color: 'var(--k-4b7a4b)' }}>{[contactCompany(linked), contactPhone(linked), linked.email].filter(Boolean).join(' · ') || 'Linked contact'}</div>
         </div>
         <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, color: 'var(--k-15803d)', background: 'var(--k-dcfce7)', padding: '3px 8px', borderRadius: 20 }}>from contacts</span>
         <button type="button" onClick={() => onLink(null)} style={{ border: 'none', background: 'transparent', color: 'var(--k-6b7280)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>✕ Unlink</button>
@@ -1062,7 +1062,7 @@ function ContactPicker({ authToken, linked, initialQuery, draft, onLink, createT
             {!busy && results.map(c => (
               <button type="button" key={c.id} onClick={() => { onLink(c); setOpen(false); }}
                 style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 6px', cursor: 'pointer', borderRadius: 6 }}
-                onMouseOver={e => (e.currentTarget.style.background = '#f7f4ec')}
+                onMouseOver={e => (e.currentTarget.style.background = 'var(--k-f7f4ec)')}
                 onMouseOut={e => (e.currentTarget.style.background = 'transparent')}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)' }}>{contactLabel(c)}{c.type ? <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', fontWeight: 500 }}> · {c.type}</span> : null}</div>
                 <div style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>{[contactCompany(c), contactPhone(c), c.email].filter(Boolean).join(' · ')}</div>
@@ -1263,7 +1263,7 @@ function AddPropertyModal({
           <label
             onDragOver={e => e.preventDefault()}
             onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) readFlyer(f); }}
-            style={{ display: 'block', border: '2px dashed #e0cfa0', background: reading ? '#fbf3df' : 'var(--k-fffdf6)', borderRadius: 12, padding: '18px 16px', textAlign: 'center', cursor: reading ? 'default' : 'pointer', marginBottom: 16 }}>
+            style={{ display: 'block', border: '2px dashed var(--k-e0cfa0)', background: reading ? 'var(--k-fbf3df)' : 'var(--k-fffdf6)', borderRadius: 12, padding: '18px 16px', textAlign: 'center', cursor: reading ? 'default' : 'pointer', marginBottom: 16 }}>
             {/* accept="image/*" reliably offers the camera on phones and lets iOS
                 hand back a JPEG (HEIC photos are converted on capture). */}
             <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
@@ -1273,7 +1273,7 @@ function AddPropertyModal({
             ) : (
               <>
                 <div style={{ fontSize: 22, marginBottom: 4 }}>{isMobile ? '📸' : '📄'}</div>
-                <div style={{ fontWeight: 700, color: '#8a6a1e', fontSize: 14 }}>{isMobile ? 'Take a photo of the flyer to auto-fill' : 'Upload a flyer to auto-fill'}</div>
+                <div style={{ fontWeight: 700, color: 'var(--k-8a6a1e)', fontSize: 14 }}>{isMobile ? 'Take a photo of the flyer to auto-fill' : 'Upload a flyer to auto-fill'}</div>
                 <div style={{ fontSize: 12, color: '#b08a4a', marginTop: 3 }}>{isMobile ? 'Snap a photo, or choose a PDF/image' : 'Drop a PDF or image here, or click to browse'} — the details are read from it and filled in below for you to review.</div>
               </>
             )}

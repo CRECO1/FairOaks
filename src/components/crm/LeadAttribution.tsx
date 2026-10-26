@@ -103,7 +103,7 @@ function JourneyTrail({ steps, totalSec }: { steps: JourneyStep[]; totalSec: num
         return (
           <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {i > 0 && <span style={{ color: FAINT }}>→</span>}
-            <span style={{ fontSize: 12, color: 'var(--k-374151)', background: '#f6f2e9', border: '1px solid #ecdfc4', borderRadius: 5, padding: '2px 7px' }}>
+            <span style={{ fontSize: 12, color: 'var(--k-374151)', background: 'var(--k-f6f2e9)', border: '1px solid var(--k-ecdfc4)', borderRadius: 5, padding: '2px 7px' }}>
               <span style={{ fontWeight: 600 }}>{s.p}</span>
               {dwell && <span style={{ color: MUTE }}> · {dwell}</span>}
             </span>
@@ -231,7 +231,7 @@ function ConnectGa({ detail, label, viewing, token, reason, actionUrl }: {
         </div>
       )}
 
-      {error && <div style={{ marginTop: 10, fontSize: 12.5, color: '#b00020' }}>{error}</div>}
+      {error && <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--k-b00020)' }}>{error}</div>}
       {mismatch && <div style={{ marginTop: 8, fontSize: 12.5, color: GOLD_DEEP }}>Viewing <strong>{viewing}</strong>; the connected property measures {covers}.</div>}
       {detail && !apiDisabled && <div style={{ marginTop: 8, fontSize: 12.5, color: MUTE }}>Status: {detail}</div>}
     </div>
@@ -255,7 +255,7 @@ function GaConnected({ label, via, token }: { label: string; via?: string; token
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 12.5, color: 'var(--k-374151)', flex: '1 1 260px' }}>
           <strong>Google Analytics — {label}</strong>
-          <span style={{ color: '#1a7f37', fontWeight: 700 }}> · Connected ✓</span>
+          <span style={{ color: 'var(--k-1a7f37)', fontWeight: 700 }}> · Connected ✓</span>
           {via === 'oauth' && <span style={{ color: MUTE }}> (Google sign-in)</span>}
           <span style={{ color: MUTE }}> · traffic for this site only. The panels above cover all three sites.</span>
         </div>
@@ -748,7 +748,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
                       </tr>
                       {open && canOpen && (
                         <tr>
-                          <td colSpan={8} style={{ padding: '4px 10px 12px 0', borderBottom: '1px solid var(--k-f5f5f5)', background: '#fcfbf8' }}>
+                          <td colSpan={8} style={{ padding: '4px 10px 12px 0', borderBottom: '1px solid var(--k-f5f5f5)', background: 'var(--k-fcfbf8)' }}>
                             {hasJourney && (
                               <>
                                 <div style={{ fontSize: 11, color: MUTE, margin: '2px 0 6px' }}>

@@ -311,7 +311,7 @@ function EmailRecipients({ to, cc }: { to?: string | null; cc?: string | null })
         style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: total > 1 ? 'var(--k-6b7280)' : 'var(--k-9ca3af)', cursor: 'pointer' }}>
         {summary} <span style={{ fontSize: 10 }}>{open ? '▾' : '▸'}</span>
       </button>
-      {open && <div style={{ marginTop: 4, padding: '6px 9px', background: 'var(--k-f9fafb)', border: '1px solid #eef0f2', borderRadius: 8 }}>{row('To', tos)}{row('Cc', ccs)}</div>}
+      {open && <div style={{ marginTop: 4, padding: '6px 9px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-eef0f2)', borderRadius: 8 }}>{row('To', tos)}{row('Cc', ccs)}</div>}
     </div>
   );
 }
@@ -429,7 +429,7 @@ function timeAgo(dateStr: string | undefined | null): { label: string; color: st
   if (days < 1)  return { label: 'Today',     color: 'var(--k-16a34a)', bg: '#dcfce7' };
   if (days === 1) return { label: 'Yesterday', color: 'var(--k-16a34a)', bg: '#dcfce7' };
   if (days < 14) return { label: `${days}d ago`, color: 'var(--k-16a34a)', bg: '#dcfce7' };
-  if (days < 30) return { label: `${days}d ago`, color: '#d97706', bg: '#fef9c3' };
+  if (days < 30) return { label: `${days}d ago`, color: 'var(--k-d97706)', bg: '#fef9c3' };
   if (days < 60) return { label: `${days}d ago`, color: 'var(--k-a16207)', bg: '#fef9c3' };
   if (days < 90) return { label: `${days}d ago`, color: 'var(--k-c2410c)', bg: '#fed7aa' };
   return { label: `${days}d ago`, color: 'var(--k-dc2626)', bg: '#fee2e2' };
@@ -458,7 +458,7 @@ const valNote = (t?: string) => isLease(t) ? 'gross lease value — total over t
 const STAGE_COLORS: Record<string, { bg: string; border: string; dot: string }> = {
   'Prospect':    { bg: '#f9fafb', border: 'var(--k-d1d5db)', dot: '#9ca3af' },
   'Active':      { bg: '#eff6ff', border: 'var(--k-bfdbfe)', dot: '#3b82f6' },
-  'LOI':         { bg: '#faf5ff', border: '#e9d5ff', dot: '#a855f7' },
+  'LOI':         { bg: '#faf5ff', border: 'var(--k-e9d5ff)', dot: '#a855f7' },
   'In Contract': { bg: '#fffbeb', border: 'var(--k-fde68a)', dot: '#f59e0b' },
   'Closed':      { bg: '#f0fdf4', border: 'var(--k-bbf7d0)', dot: '#22c55e' },
   'Lost':        { bg: '#fef2f2', border: 'var(--k-fecaca)', dot: '#ef4444' },
@@ -4694,8 +4694,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell[data-crm-theme="dark"]{--c-canvas:#0e0d0b;--c-surface:#171512;--c-surface-2:#1d1a16;--c-ink:#f2ede2;--c-ink-2:#d8d2c4;--c-muted:#a39c8c;--c-faint:#7d7667;--c-line:#2b2720;--c-line-2:#221f19;--c-header:#141210;
           --c-danger:#ef8a76;--c-danger-soft:#33201b;--c-danger-line:#5a2c22;--c-warn-soft:#2e2412;--c-warn-line:#5a4418;--c-warn-ink:#e3b45a;--c-ok-soft:#18281f;--c-ok-line:#285a3a;--c-ok-ink:#76c595;}
         /* Per-colour variables used by the page styles: the light value is the original colour (light mode is unchanged), dark swaps it. */
-        .crm-app-shell{--k-000:#000;--k-0369a1:#0369a1;--k-059669:#059669;--k-065f46:#065f46;--k-111:#111;--k-15803d:#15803d;--k-166534:#166534;--k-16a34a:#16a34a;--k-1a1a1a:#1a1a1a;--k-1d4ed8:#1d4ed8;--k-1e293b:#1e293b;--k-1e40af:#1e40af;--k-1f2937:#1f2937;--k-2563eb:#2563eb;--k-334155:#334155;--k-3730a3:#3730a3;--k-374151:#374151;--k-4338ca:#4338ca;--k-475569:#475569;--k-4b5563:#4b5563;--k-64748b:#64748b;--k-6b7280:#6b7280;--k-6d28d9:#6d28d9;--k-86efac:#86efac;--k-92400e:#92400e;--k-94a3b8:#94a3b8;--k-991b1b:#991b1b;--k-9ca3af:#9ca3af;--k-a06a12:#a06a12;--k-a16207:#a16207;--k-a8741a:#a8741a;--k-b0b0b0:#b0b0b0;--k-b45309:#b45309;--k-b91c1c:#b91c1c;--k-bae6fd:#bae6fd;--k-bbf7d0:#bbf7d0;--k-bfdbfe:#bfdbfe;--k-c2410c:#c2410c;--k-c7d2fe:#c7d2fe;--k-cbd5e1:#cbd5e1;--k-ccc:#ccc;--k-d1d5db:#d1d5db;--k-d1fae5:#d1fae5;--k-dbeafe:#dbeafe;--k-dc2626:#dc2626;--k-dcfce7:#dcfce7;--k-ddd:#ddd;--k-e0e0e0:#e0e0e0;--k-e0e7ff:#e0e7ff;--k-e0f2fe:#e0f2fe;--k-e2e8f0:#e2e8f0;--k-e5e7eb:#e5e7eb;--k-e6d3a2:#e6d3a2;--k-e8dcc8:#e8dcc8;--k-e8e8e8:#e8e8e8;--k-e8eaed:#e8eaed;--k-e8edf2:#e8edf2;--k-ecfdf5:#ecfdf5;--k-ede9fe:#ede9fe;--k-eee:#eee;--k-eef2ff:#eef2ff;--k-efefef:#efefef;--k-eff6ff:#eff6ff;--k-f0e2c4:#f0e2c4;--k-f0ece3:#f0ece3;--k-f0f0f0:#f0f0f0;--k-f0fdf4:#f0fdf4;--k-f1f5f9:#f1f5f9;--k-f2f2f2:#f2f2f2;--k-f3f4f6:#f3f4f6;--k-f5f3ff:#f5f3ff;--k-f5f5f5:#f5f5f5;--k-f8fafc:#f8fafc;--k-f9f5ef:#f9f5ef;--k-f9fafb:#f9fafb;--k-faf7ef:#faf7ef;--k-fafafa:#fafafa;--k-fafbfd:#fafbfd;--k-fca5a5:#fca5a5;--k-fcd34d:#fcd34d;--k-fde68a:#fde68a;--k-fdf6e8:#fdf6e8;--k-fdf6e9:#fdf6e9;--k-fecaca:#fecaca;--k-fed7aa:#fed7aa;--k-fee2e2:#fee2e2;--k-fef2f2:#fef2f2;--k-fef3c7:#fef3c7;--k-fef9c3:#fef9c3;--k-fef9f0:#fef9f0;--k-fff:#fff;--k-fff1f2:#fff1f2;--k-fff7ed:#fff7ed;--k-fffaf0:#fffaf0;--k-fffbeb:#fffbeb;--k-fffbf2:#fffbf2;--k-fffdf6:#fffdf6;}
-        .crm-app-shell[data-crm-theme="dark"]{--k-000:#f2ede2;--k-0369a1:#8ab4f8;--k-059669:#76c595;--k-065f46:#76c595;--k-111:#f2ede2;--k-15803d:#76c595;--k-166534:#76c595;--k-16a34a:#76c595;--k-1a1a1a:#f2ede2;--k-1d4ed8:#8ab4f8;--k-1e293b:#f2ede2;--k-1e40af:#8ab4f8;--k-1f2937:#f2ede2;--k-2563eb:#8ab4f8;--k-334155:#d8d2c4;--k-3730a3:#8ab4f8;--k-374151:#d8d2c4;--k-4338ca:#8ab4f8;--k-475569:#d8d2c4;--k-4b5563:#d8d2c4;--k-64748b:#a39c8c;--k-6b7280:#a39c8c;--k-6d28d9:#b79cf0;--k-86efac:#285a3a;--k-92400e:#e3b45a;--k-94a3b8:#7d7667;--k-991b1b:#ef8a76;--k-9ca3af:#7d7667;--k-a06a12:#e3b45a;--k-a16207:#e3b45a;--k-a8741a:#e3b45a;--k-b0b0b0:#7d7667;--k-b45309:#e3b45a;--k-b91c1c:#ef8a76;--k-bae6fd:#2a4468;--k-bbf7d0:#285a3a;--k-bfdbfe:#2a4468;--k-c2410c:#e3b45a;--k-c7d2fe:#2a4468;--k-cbd5e1:#3a352b;--k-ccc:#3a352b;--k-d1d5db:#3a352b;--k-d1fae5:#18281f;--k-dbeafe:#172336;--k-dc2626:#ef8a76;--k-dcfce7:#18281f;--k-ddd:#2b2720;--k-e0e0e0:#2b2720;--k-e0e7ff:#172336;--k-e0f2fe:#172336;--k-e2e8f0:#2b2720;--k-e5e7eb:#2b2720;--k-e6d3a2:#5a4418;--k-e8dcc8:#5a4418;--k-e8e8e8:#2b2720;--k-e8eaed:#2b2720;--k-e8edf2:#2b2720;--k-ecfdf5:#18281f;--k-ede9fe:#241b36;--k-eee:#2b2720;--k-eef2ff:#172336;--k-efefef:#2b2720;--k-eff6ff:#172336;--k-f0e2c4:#5a4418;--k-f0ece3:#5a4418;--k-f0f0f0:#25211b;--k-f0fdf4:#18281f;--k-f1f5f9:#25211b;--k-f2f2f2:#0e0d0b;--k-f3f4f6:#25211b;--k-f5f3ff:#241b36;--k-f5f5f5:#1d1a16;--k-f8fafc:#1d1a16;--k-f9f5ef:#2e2412;--k-f9fafb:#1d1a16;--k-faf7ef:#2e2412;--k-fafafa:#1d1a16;--k-fafbfd:#1d1a16;--k-fca5a5:#5a2c22;--k-fcd34d:#5a4418;--k-fde68a:#5a4418;--k-fdf6e8:#2e2412;--k-fdf6e9:#2e2412;--k-fecaca:#5a2c22;--k-fed7aa:#5a4418;--k-fee2e2:#33201b;--k-fef2f2:#33201b;--k-fef3c7:#2e2412;--k-fef9c3:#2e2412;--k-fef9f0:#2e2412;--k-fff:#171512;--k-fff1f2:#33201b;--k-fff7ed:#2e2412;--k-fffaf0:#2e2412;--k-fffbeb:#2e2412;--k-fffbf2:#2e2412;--k-fffdf6:#2e2412;color-scheme:dark;}
+        .crm-app-shell{--k-000:#000;--k-00376b:#00376b;--k-0369a1:#0369a1;--k-059669:#059669;--k-065f46:#065f46;--k-075985:#075985;--k-0a66c2:#0a66c2;--k-0e7490:#0e7490;--k-0f766e:#0f766e;--k-111:#111;--k-111827:#111827;--k-14532d:#14532d;--k-15803d:#15803d;--k-166534:#166534;--k-16a34a:#16a34a;--k-1877f2:#1877f2;--k-1a1a1a:#1a1a1a;--k-1a1a2e:#1a1a2e;--k-1a7f37:#1a7f37;--k-1d4ed8:#1d4ed8;--k-1e293b:#1e293b;--k-1e40af:#1e40af;--k-1f2937:#1f2937;--k-2563eb:#2563eb;--k-334155:#334155;--k-3730a3:#3730a3;--k-374151:#374151;--k-3b82f6:#3b82f6;--k-4338ca:#4338ca;--k-475569:#475569;--k-4b5563:#4b5563;--k-4b7a4b:#4b7a4b;--k-4b7d5b:#4b7d5b;--k-4c0519:#4c0519;--k-5b3d91:#5b3d91;--k-64748b:#64748b;--k-6b7280:#6b7280;--k-6d28d9:#6d28d9;--k-78350f:#78350f;--k-78716c:#78716c;--k-7a5410:#7a5410;--k-7c5a12:#7c5a12;--k-7e22ce:#7e22ce;--k-86efac:#86efac;--k-8a6a1e:#8a6a1e;--k-8a6d3b:#8a6d3b;--k-8b5cf6:#8b5cf6;--k-8e8e8e:#8e8e8e;--k-92400e:#92400e;--k-94a3b8:#94a3b8;--k-991b1b:#991b1b;--k-99f6e4:#99f6e4;--k-9a3412:#9a3412;--k-9a6e18:#9a6e18;--k-9ca3af:#9ca3af;--k-9f1239:#9f1239;--k-a06a12:#a06a12;--k-a16207:#a16207;--k-a8741a:#a8741a;--k-b00020:#b00020;--k-b07d1f:#b07d1f;--k-b0873a:#b0873a;--k-b08a4a:#b08a4a;--k-b0b0b0:#b0b0b0;--k-b45309:#b45309;--k-b91c1c:#b91c1c;--k-bae6fd:#bae6fd;--k-bbf7d0:#bbf7d0;--k-be123c:#be123c;--k-be185d:#be185d;--k-bfdbfe:#bfdbfe;--k-c2410c:#c2410c;--k-c7d2fe:#c7d2fe;--k-c9ead4:#c9ead4;--k-cbd5c0:#cbd5c0;--k-cbd5e1:#cbd5e1;--k-ccc:#ccc;--k-cdeed8:#cdeed8;--k-cfe3fb:#cfe3fb;--k-cfe6cf:#cfe6cf;--k-d1d5db:#d1d5db;--k-d1fae5:#d1fae5;--k-d6f0dd:#d6f0dd;--k-d97706:#d97706;--k-d9d4c4:#d9d4c4;--k-dbeafe:#dbeafe;--k-dc2626:#dc2626;--k-dcfce7:#dcfce7;--k-ddd:#ddd;--k-ddd6fe:#ddd6fe;--k-ded2f2:#ded2f2;--k-e0cfa0:#e0cfa0;--k-e0d4b8:#e0d4b8;--k-e0e0e0:#e0e0e0;--k-e0e7ff:#e0e7ff;--k-e0f2fe:#e0f2fe;--k-e1306c:#e1306c;--k-e2e5e9:#e2e5e9;--k-e2e6ea:#e2e6ea;--k-e2e8f0:#e2e8f0;--k-e5e7eb:#e5e7eb;--k-e5e9ef:#e5e9ef;--k-e6d3a2:#e6d3a2;--k-e8dcc8:#e8dcc8;--k-e8e6df:#e8e6df;--k-e8e8e8:#e8e8e8;--k-e8eaed:#e8eaed;--k-e8edf2:#e8edf2;--k-e9d5ff:#e9d5ff;--k-e9ecef:#e9ecef;--k-ecdfc4:#ecdfc4;--k-eceae4:#eceae4;--k-ececf0:#ececf0;--k-eceef1:#eceef1;--k-eceff3:#eceff3;--k-ecfdf5:#ecfdf5;--k-ede9fe:#ede9fe;--k-eee:#eee;--k-eef0f2:#eef0f2;--k-eef0f3:#eef0f3;--k-eef1f4:#eef1f4;--k-eef2f7:#eef2f7;--k-eef2ff:#eef2ff;--k-ef4444:#ef4444;--k-efefef:#efefef;--k-eff6ff:#eff6ff;--k-f0d9a8:#f0d9a8;--k-f0e2c4:#f0e2c4;--k-f0e6cf:#f0e6cf;--k-f0ebe0:#f0ebe0;--k-f0ece3:#f0ece3;--k-f0f0f0:#f0f0f0;--k-f0f1f3:#f0f1f3;--k-f0f7ff:#f0f7ff;--k-f0f9ff:#f0f9ff;--k-f0fdf4:#f0fdf4;--k-f0fdfa:#f0fdfa;--k-f1d9a0:#f1d9a0;--k-f1f2f4:#f1f2f4;--k-f1f5f9:#f1f5f9;--k-f2f2f2:#f2f2f2;--k-f3e4c4:#f3e4c4;--k-f3e4e4:#f3e4e4;--k-f3e8ff:#f3e8ff;--k-f3e9d0:#f3e9d0;--k-f3f4f6:#f3f4f6;--k-f3f5f7:#f3f5f7;--k-f4f5f7:#f4f5f7;--k-f4f9f4:#f4f9f4;--k-f5f3ff:#f5f3ff;--k-f5f5f5:#f5f5f5;--k-f6e3b8:#f6e3b8;--k-f6f2e9:#f6f2e9;--k-f7f4ec:#f7f4ec;--k-f7f7f5:#f7f7f5;--k-f7fdf9:#f7fdf9;--k-f8d7d7:#f8d7d7;--k-f8fafc:#f8fafc;--k-f8fbff:#f8fbff;--k-f8fff9:#f8fff9;--k-f9f5ef:#f9f5ef;--k-f9fafb:#f9fafb;--k-faf7ef:#faf7ef;--k-faf7ff:#faf7ff;--k-fafaf7:#fafaf7;--k-fafafa:#fafafa;--k-fafbfd:#fafbfd;--k-fbf3df:#fbf3df;--k-fbf6e9:#fbf6e9;--k-fbf8f1:#fbf8f1;--k-fbfbfa:#fbfbfa;--k-fbfbfc:#fbfbfc;--k-fca5a5:#fca5a5;--k-fcd34d:#fcd34d;--k-fcfbf8:#fcfbf8;--k-fcfcfb:#fcfcfb;--k-fde68a:#fde68a;--k-fdf0d5:#fdf0d5;--k-fdf3dd:#fdf3dd;--k-fdf4e3:#fdf4e3;--k-fdf6e3:#fdf6e3;--k-fdf6e8:#fdf6e8;--k-fdf6e9:#fdf6e9;--k-fecaca:#fecaca;--k-fecdd3:#fecdd3;--k-fed7aa:#fed7aa;--k-fee2e2:#fee2e2;--k-fef2f2:#fef2f2;--k-fef3c7:#fef3c7;--k-fef3e2:#fef3e2;--k-fef6f6:#fef6f6;--k-fef9c3:#fef9c3;--k-fef9ec:#fef9ec;--k-fef9ee:#fef9ee;--k-fef9f0:#fef9f0;--k-ff0000:#ff0000;--k-fff:#fff;--k-fff1f2:#fff1f2;--k-fff5f5:#fff5f5;--k-fff7e6:#fff7e6;--k-fff7ed:#fff7ed;--k-fff8e6:#fff8e6;--k-fffaf0:#fffaf0;--k-fffbeb:#fffbeb;--k-fffbf2:#fffbf2;--k-fffdf3:#fffdf3;--k-fffdf5:#fffdf5;--k-fffdf6:#fffdf6;--k-fffdf7:#fffdf7;--k-fffdf8:#fffdf8;}
+        .crm-app-shell[data-crm-theme="dark"]{--k-000:#f2ede2;--k-00376b:#84bef5;--k-0369a1:#8ab4f8;--k-059669:#76c595;--k-065f46:#76c595;--k-075985:#8accef;--k-0a66c2:#8abdf0;--k-0e7490:#8ed7eb;--k-0f766e:#91e8e2;--k-111:#f2ede2;--k-111827:#a7b5d3;--k-14532d:#9adfb6;--k-15803d:#76c595;--k-166534:#76c595;--k-16a34a:#76c595;--k-1877f2:#8ab6ef;--k-1a1a1a:#f2ede2;--k-1a1a2e:#adadcc;--k-1a7f37:#97e2ad;--k-1d4ed8:#8ab4f8;--k-1e293b:#f2ede2;--k-1e40af:#8ab4f8;--k-1f2937:#f2ede2;--k-2563eb:#8ab4f8;--k-334155:#d8d2c4;--k-3730a3:#8ab4f8;--k-374151:#d8d2c4;--k-3b82f6:#89b0f0;--k-4338ca:#8ab4f8;--k-475569:#d8d2c4;--k-4b5563:#d8d2c4;--k-4b7a4b:#afcaaf;--k-4b7d5b:#afcbb8;--k-4c0519:#ee8ba7;--k-5b3d91:#b6a6d4;--k-64748b:#a39c8c;--k-6b7280:#a39c8c;--k-6d28d9:#b79cf0;--k-78350f:#e9b191;--k-78716c:#c0bcba;--k-7a5410:#e8c991;--k-7c5a12:#e7cc93;--k-7e22ce:#c094e5;--k-86efac:#285a3a;--k-8a6a1e:#e1cb98;--k-8a6d3b:#d3c3a6;--k-8b5cf6:#a98aef;--k-8e8e8e:#bdbdbd;--k-92400e:#e3b45a;--k-94a3b8:#7d7667;--k-991b1b:#ef8a76;--k-99f6e4:#256558;--k-9a3412:#e9a690;--k-9a6e18:#e6ca94;--k-9ca3af:#7d7667;--k-9f1239:#ea90a9;--k-a06a12:#e3b45a;--k-a16207:#e3b45a;--k-a8741a:#e3b45a;--k-b00020:#f58499;--k-b07d1f:#e4c895;--k-b0873a:#d9c5a0;--k-b08a4a:#d4c3a6;--k-b0b0b0:#7d7667;--k-b45309:#e3b45a;--k-b91c1c:#ef8a76;--k-bae6fd:#2a4468;--k-bbf7d0:#285a3a;--k-be123c:#eb8ea5;--k-be185d:#e891b5;--k-bfdbfe:#2a4468;--k-c2410c:#e3b45a;--k-c7d2fe:#2a4468;--k-c9ead4:#34563f;--k-cbd5c0:#454c3d;--k-cbd5e1:#3a352b;--k-ccc:#3a352b;--k-cdeed8:#32583f;--k-cfe3fb:#254265;--k-cfe6cf:#395139;--k-d1d5db:#3a352b;--k-d1fae5:#18281f;--k-d6f0dd:#33563d;--k-d97706:#f2c087;--k-d9d4c4:#4d493d;--k-dbeafe:#172336;--k-dc2626:#ef8a76;--k-dcfce7:#18281f;--k-ddd:#2b2720;--k-ddd6fe:#2d2169;--k-ded2f2:#40305a;--k-e0cfa0:#584e32;--k-e0d4b8:#544b36;--k-e0e0e0:#2b2720;--k-e0e7ff:#172336;--k-e0f2fe:#172336;--k-e1306c:#e793af;--k-e2e5e9:#40444a;--k-e2e6ea:#23262a;--k-e2e8f0:#2b2720;--k-e5e7eb:#2b2720;--k-e5e9ef:#3c434e;--k-e6d3a2:#5a4418;--k-e8dcc8:#5a4418;--k-e8e6df:#4b483f;--k-e8e8e8:#2b2720;--k-e8eaed:#2b2720;--k-e8edf2:#2b2720;--k-e9d5ff:#431f6b;--k-e9ecef:#3f454b;--k-ecdfc4:#584c31;--k-eceae4:#4b483e;--k-ececf0:#404049;--k-eceef1:#3f444b;--k-eceff3:#3c444d;--k-ecfdf5:#18281f;--k-ede9fe:#241b36;--k-eee:#2b2720;--k-eef0f2:#40454a;--k-eef0f3:#3e444b;--k-eef1f4:#22262b;--k-eef2f7:#1f252e;--k-eef2ff:#172336;--k-ef4444:#ec8d8d;--k-efefef:#2b2720;--k-eff6ff:#172336;--k-f0d9a8:#604f2a;--k-f0e2c4:#5a4418;--k-f0e6cf:#594d31;--k-f0ebe0:#524a38;--k-f0ece3:#5a4418;--k-f0f0f0:#25211b;--k-f0f1f3:#414349;--k-f0f7ff:#11253b;--k-f0f9ff:#112a3b;--k-f0fdf4:#18281f;--k-f0fdfa:#16362f;--k-f1d9a0:#615029;--k-f1f2f4:#404349;--k-f1f5f9:#25211b;--k-f2f2f2:#0e0d0b;--k-f3e4c4:#5e4e2c;--k-f3e4e4:#533636;--k-f3e8ff:#25113b;--k-f3e9d0:#332c1a;--k-f3f4f6:#25211b;--k-f3f5f7:#22262a;--k-f4f5f7:#3f434b;--k-f4f9f4:#202c20;--k-f5f3ff:#241b36;--k-f5f5f5:#1d1a16;--k-f6e3b8:#625028;--k-f6f2e9:#2f2a1d;--k-f7f4ec:#2f2a1e;--k-f7f7f5:#292924;--k-f7fdf9:#1a3322;--k-f8d7d7:#5f2a2a;--k-f8fafc:#1d1a16;--k-f8fbff:#11233b;--k-f8fff9:#113b17;--k-f9f5ef:#2e2412;--k-f9fafb:#1d1a16;--k-faf7ef:#2e2412;--k-faf7ff:#21113b;--k-fafaf7:#2b2b21;--k-fafafa:#1d1a16;--k-fafbfd:#1d1a16;--k-fbf3df:#372d16;--k-fbf6e9:#352d18;--k-fbf8f1:#322b1b;--k-fbfbfa:#292924;--k-fbfbfc:#232329;--k-fca5a5:#5a2c22;--k-fcd34d:#5a4418;--k-fcfbf8:#2f2a1e;--k-fcfcfb:#292923;--k-fde68a:#5a4418;--k-fdf0d5:#392d13;--k-fdf3dd:#392d14;--k-fdf4e3:#382c14;--k-fdf6e3:#382f14;--k-fdf6e8:#2e2412;--k-fdf6e9:#2e2412;--k-fecaca:#5a2c22;--k-fecdd3:#692029;--k-fed7aa:#5a4418;--k-fee2e2:#33201b;--k-fef2f2:#33201b;--k-fef3c7:#2e2412;--k-fef3e2:#3a2a13;--k-fef6f6:#371515;--k-fef9c3:#2e2412;--k-fef9ec:#392f13;--k-fef9ee:#392d14;--k-fef9f0:#2e2412;--k-ff0000:#f58484;--k-fff:#171512;--k-fff1f2:#33201b;--k-fff5f5:#3b1111;--k-fff7e6:#3b2e11;--k-fff7ed:#2e2412;--k-fff8e6:#3b3011;--k-fffaf0:#2e2412;--k-fffbeb:#2e2412;--k-fffbf2:#2e2412;--k-fffdf3:#3b3411;--k-fffdf5:#3b3311;--k-fffdf6:#2e2412;--k-fffdf7:#3b3111;--k-fffdf8:#3b2f11;color-scheme:dark;}
         /* Cormorant draws old-style numerals by default (a "1" looks like a small "I"); the CRM is full of figures. */
         .crm-app-shell{font-variant-numeric:lining-nums;}
         @media(min-width:1181px){.dk-side{position:sticky;top:0;}}
@@ -4808,18 +4808,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .ctc-stat.click{cursor:pointer;transition:border-color .12s,transform .12s;}
         .ctc-stat.click:hover{border-color:#c9922c;transform:translateY(-1px);}
         .ctc-seg{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;}
-        .ctc-chip{background:var(--k-fff);border:1px solid #e2e5e9;border-radius:30px;padding:6px 14px;font-size:13px;font-weight:600;color:var(--k-4b5563);cursor:pointer;display:flex;align-items:center;gap:7px;font-family:'DM Sans',sans-serif;transition:all .12s;}
+        .ctc-chip{background:var(--k-fff);border:1px solid var(--k-e2e5e9);border-radius:30px;padding:6px 14px;font-size:13px;font-weight:600;color:var(--k-4b5563);cursor:pointer;display:flex;align-items:center;gap:7px;font-family:'DM Sans',sans-serif;transition:all .12s;}
         .ctc-chip:hover{border-color:#c9922c;}
         .ctc-chip.on{background:#141414;color:#fff;border-color:#141414;}
-        .ctc-chip .n{font-size:11.5px;font-weight:700;background:#eef1f4;color:var(--k-6b7280);border-radius:10px;padding:0 7px;}
+        .ctc-chip .n{font-size:11.5px;font-weight:700;background:var(--k-eef1f4);color:var(--k-6b7280);border-radius:10px;padding:0 7px;}
         .ctc-chip.on .n{background:#c9922c;color:var(--k-111);}
         .ctc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
         .ctc-card{background:var(--k-fff);border:1px solid var(--k-e8eaed);border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;flex-direction:column;position:relative;transition:box-shadow .15s,transform .15s,border-color .15s;}
-        .ctc-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.09);transform:translateY(-2px);border-color:#e0d4b8;}
-        .ctc-card.sel{border-color:#c9922c;background:#fffdf8;}
+        .ctc-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.09);transform:translateY(-2px);border-color:var(--k-e0d4b8);}
+        .ctc-card.sel{border-color:#c9922c;background:var(--k-fffdf8);}
         .ctc-chk{position:absolute;top:6px;left:6px;width:16px;height:16px;accent-color:#c9922c;opacity:0;cursor:pointer;z-index:3;background:var(--k-fff);border-radius:4px;}
         .ctc-card:hover .ctc-chk,.ctc-chk:checked{opacity:1;}
-        .ctc-acts{margin-top:auto;border-top:1px solid #f1f2f4;display:grid;grid-template-columns:repeat(4,1fr);}
+        .ctc-acts{margin-top:auto;border-top:1px solid var(--k-f1f2f4);display:grid;grid-template-columns:repeat(4,1fr);}
         .ctc-acts button{border:none;background:var(--k-fff);padding:11px 0;cursor:pointer;color:var(--k-6b7280);display:flex;align-items:center;justify-content:center;gap:5px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:12.5px;position:relative;transition:all .12s;}
         .ctc-acts button+button{border-left:1px solid #f1f2f4;}
         .ctc-acts button:hover{background:var(--k-fffbf2);color:#c9922c;}
@@ -5819,7 +5819,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3,1fr)', gap: 10, marginBottom: inContract.length > 0 ? 14 : 0 }}>
                       {[
                         { label: 'In Contract GCI', val: contractGCI, color: '#c9922c', count: inContract.length },
-                        { label: 'Active Pipeline GCI', val: pipeGCI, color: '#3b82f6', count: activePipe.length },
+                        { label: 'Active Pipeline GCI', val: pipeGCI, color: 'var(--k-3b82f6)', count: activePipe.length },
                         { label: 'Total Pipeline Value', val: totalPipeVal, color: 'var(--c-ink-2)', count: inContract.length + activePipe.length },
                       ].map(s => (
                         <div key={s.label} style={{ background: 'var(--c-surface-2)', borderRadius: 8, padding: '12px 14px', textAlign: 'center' }}>
@@ -6242,7 +6242,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <>
                 {/* Bulk action bar — admin only (works on all screen sizes now) */}
                 {isAdmin && selectedClientIds.size > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 14px', background: 'var(--k-fef9f0)', border: '1px solid #f0d9a8', borderRadius: 8, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 14px', background: 'var(--k-fef9f0)', border: '1px solid var(--k-f0d9a8)', borderRadius: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-92400e)' }}>
                       {selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''} selected
                     </span>
@@ -6349,8 +6349,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {(tags.length > 0 || clientDeals.length > 0 || enrolls.length > 0) && (
                           <div style={{ padding: '0 16px 13px', display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                             {activeDeals.slice(0, 2).map(d => <button key={d.id} onClick={() => openDeal(d)} style={{ fontSize: 11.5, color: 'var(--k-1e40af)', background: 'var(--k-eff6ff)', border: '1px solid var(--k-dbeafe)', borderRadius: 7, padding: '2px 8px', fontWeight: 600, cursor: 'pointer' }}>{d.property || d.type.split(' ')[0]}</button>)}
-                            {tags.slice(0, 3).map(t => { const gold = t.toLowerCase().includes('kendall') || t.toLowerCase().includes('hot'); return <span key={t} style={{ fontSize: 10.5, fontWeight: 600, background: gold ? '#fdf4e3' : 'var(--k-f3f4f6)', color: gold ? 'var(--k-92400e)' : 'var(--k-4b5563)', borderRadius: 6, padding: '2px 8px' }}>{t}</span>; })}
-                            {enrolls.slice(0, 1).map((en, i) => <span key={i} title={en.campaign_name} style={{ fontSize: 11, color: en.active !== false ? 'var(--k-1e40af)' : 'var(--k-9ca3af)', background: en.active !== false ? '#f0f7ff' : 'var(--k-f3f4f6)', border: `1px solid ${en.active !== false ? '#cfe3fb' : 'var(--k-e5e7eb)'}`, borderRadius: 7, padding: '2px 7px', fontWeight: 600, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📣 {en.campaign_name}</span>)}
+                            {tags.slice(0, 3).map(t => { const gold = t.toLowerCase().includes('kendall') || t.toLowerCase().includes('hot'); return <span key={t} style={{ fontSize: 10.5, fontWeight: 600, background: gold ? 'var(--k-fdf4e3)' : 'var(--k-f3f4f6)', color: gold ? 'var(--k-92400e)' : 'var(--k-4b5563)', borderRadius: 6, padding: '2px 8px' }}>{t}</span>; })}
+                            {enrolls.slice(0, 1).map((en, i) => <span key={i} title={en.campaign_name} style={{ fontSize: 11, color: en.active !== false ? 'var(--k-1e40af)' : 'var(--k-9ca3af)', background: en.active !== false ? 'var(--k-f0f7ff)' : 'var(--k-f3f4f6)', border: `1px solid ${en.active !== false ? 'var(--k-cfe3fb)' : 'var(--k-e5e7eb)'}`, borderRadius: 7, padding: '2px 7px', fontWeight: 600, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📣 {en.campaign_name}</span>)}
                             {enrolls.length > 1 && <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', fontWeight: 700 }}>+{enrolls.length - 1}</span>}
                           </div>
                         )}
@@ -6495,7 +6495,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <td style={{ padding: '11px 14px', fontSize: 13, color: 'var(--k-9ca3af)' }}>{c.lead_source || '—'}</td>
                                     <td style={{ padding: '11px 14px' }}>
                                       <button onClick={() => setActiveClient(c)}
-                                        style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#fef3e2', color: 'var(--k-92400e)', border: '1px solid var(--k-fde68a)', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+                                        style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: 'var(--k-fef3e2)', color: 'var(--k-92400e)', border: '1px solid var(--k-fde68a)', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
                                         Open →
                                       </button>
                                     </td>
@@ -6853,7 +6853,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     </div>
                     <button onClick={() => setCallFiltersOpen(o => !o)}
-                      style={{ flexShrink: 0, minHeight: 44, padding: '0 14px', borderRadius: 10, border: `1px solid ${callFiltersOpen ? '#c9922c' : '#e2e5e9'}`, background: callFiltersOpen ? '#fdf3dd' : 'var(--k-fff)', color: 'var(--k-374151)', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                      style={{ flexShrink: 0, minHeight: 44, padding: '0 14px', borderRadius: 10, border: `1px solid ${callFiltersOpen ? '#c9922c' : '#e2e5e9'}`, background: callFiltersOpen ? 'var(--k-fdf3dd)' : 'var(--k-fff)', color: 'var(--k-374151)', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                       ⚙ Filters {callFiltersOpen ? '▴' : '▾'}
                     </button>
                   </div>
@@ -6969,7 +6969,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   return (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', background: 'var(--k-fffbf2)', border: '1px solid var(--k-f0e2c4)', borderRadius: 10, padding: '8px 12px', marginBottom: 10 }}>
                       <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--k-92400e)' }}>📤 Assign calls</span>
-                      <span style={{ fontSize: 12.5, color: '#78716c' }}>{callPicked.size ? `${callPicked.size} ticked` : `all ${queue.length} in this view`}</span>
+                      <span style={{ fontSize: 12.5, color: 'var(--k-78716c)' }}>{callPicked.size ? `${callPicked.size} ticked` : `all ${queue.length} in this view`}</span>
                       <select value={to} onChange={e => { setCallAssignTo(e.target.value); try { localStorage.setItem('crm:callAssignTo', e.target.value); } catch { /* ignore */ } }} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--k-e2e8f0)', fontSize: 13, fontWeight: 600, background: 'var(--k-fff)', fontFamily: "'DM Sans',sans-serif" }}>
                         {agents.map(p => <option key={p.id} value={p.id}>{p.id === profile?.id ? 'Me' : `${p.first_name} ${p.last_name ?? ''}`.trim()}</option>)}
                       </select>
@@ -7087,7 +7087,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
                           {[{ k: 'Calls', v: callMyDay.calls }, { k: 'Connected', v: callMyDay.talked }, { k: 'Voicemail', v: callMyDay.voicemail }, { k: 'Leads worked', v: callMyDay.leads }].map(x => (
-                            <div key={x.k} style={{ background: 'var(--k-fff)', border: '1px solid #eceff3', borderRadius: 10, padding: '10px 4px' }}>
+                            <div key={x.k} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-eceff3)', borderRadius: 10, padding: '10px 4px' }}>
                               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--k-111)' }}>{x.v}</div>
                               <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)' }}>{x.k}</div>
                             </div>
@@ -7285,7 +7285,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {curMeta && /^New lead/.test(curMeta.reason) && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 800, background: 'var(--k-dcfce7)', color: 'var(--k-166534)' }}>🆕 NEW LEAD</span>}
                             {c && isDnc(c) && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 800, background: 'var(--k-fee2e2)', color: 'var(--k-991b1b)' }}>🚫 DO NOT CALL</span>}
                             {carried && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)' }}>CARRIED OVER</span>}
-                            {cbm && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: 'var(--k-fff1f2)', color: '#be123c' }}>📞 {cbReason(cbm)} · waiting {ago(cbm.started_at)}</span>}
+                            {cbm && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: 'var(--k-fff1f2)', color: 'var(--k-be123c)' }}>📞 {cbReason(cbm)} · waiting {ago(cbm.started_at)}</span>}
                             {curMeta && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: curMeta.heat === 'hot' ? 'var(--k-fff1f2)' : curMeta.heat === 'cold' ? 'var(--k-eff6ff)' : 'var(--k-fffbeb)', color: curMeta.heat === 'hot' ? '#be123c' : curMeta.heat === 'cold' ? 'var(--k-1d4ed8)' : 'var(--k-b45309)' }}>{HEAT_ICON[curMeta.heat]} {curMeta.heat === 'hot' ? 'Hot' : curMeta.heat === 'cold' ? 'Cold' : 'Warm'}</span>}
                           </div>
                           {curMeta && /^New lead/.test(curMeta.reason) && (
@@ -7296,7 +7296,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </div>
                               )}
                               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-15803d)' }}>{curMeta.reason.replace(/^New lead · /, 'Came in via ')}</div>
-                              {curMeta.askFor ? <div style={{ fontSize: 15, color: '#14532d', lineHeight: 1.45, marginTop: 4 }}><b>They asked:</b> {curMeta.askFor}</div>
+                              {curMeta.askFor ? <div style={{ fontSize: 15, color: 'var(--k-14532d)', lineHeight: 1.45, marginTop: 4 }}><b>They asked:</b> {curMeta.askFor}</div>
                                 : <div style={{ fontSize: 13.5, color: 'var(--k-166534)', marginTop: 4 }}>No message left with the form — ask what they’re looking for.</div>}
                             </div>
                           )}
@@ -7381,7 +7381,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             return (
                               <div style={{ marginBottom: 12 }}>
                                 <button onClick={() => setCallScriptOpen(o => !o)}
-                                  style={{ width: '100%', textAlign: 'left', minHeight: 46, padding: '10px 14px', borderRadius: 10, border: `1px solid ${callScriptOpen ? '#c9922c' : '#eceef1'}`, background: callScriptOpen ? 'var(--k-fdf6e8)' : 'var(--k-fafafa)', fontSize: 13.5, fontWeight: 700, color: 'var(--k-374151)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                                  style={{ width: '100%', textAlign: 'left', minHeight: 46, padding: '10px 14px', borderRadius: 10, border: `1px solid ${callScriptOpen ? '#c9922c' : 'var(--k-eceef1)'}`, background: callScriptOpen ? 'var(--k-fdf6e8)' : 'var(--k-fafafa)', fontSize: 13.5, fontWeight: 700, color: 'var(--k-374151)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                                   📋 Voicemail script {callScriptOpen ? '▴' : '▾'}
                                 </button>
                                 {callScriptOpen && (
@@ -7417,7 +7417,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           {/* Tenant snapshot — what the marketing has done with this person (same numbers as the Rent Roll row) */}
                           {curMeta && isMobile && (
                             <button onClick={() => setCallSnapOpen(o => !o)}
-                              style={{ order: 20, width: '100%', textAlign: 'left', minHeight: 46, padding: '10px 14px', marginBottom: 12, borderRadius: 10, border: '1px solid #e5e9ef', background: 'var(--k-f8fafc)', fontSize: 13.5, fontWeight: 700, color: 'var(--k-475569)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                              style={{ order: 20, width: '100%', textAlign: 'left', minHeight: 46, padding: '10px 14px', marginBottom: 12, borderRadius: 10, border: '1px solid var(--k-e5e9ef)', background: 'var(--k-f8fafc)', fontSize: 13.5, fontWeight: 700, color: 'var(--k-475569)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                               📣 Emailed {curMeta.emailsSent} · opened {curMeta.emailsOpened} · clicks {curMeta.clicks || 0} {callSnapOpen ? '▴' : '▾'}
                             </button>
                           )}
@@ -7453,15 +7453,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                           {/* A call-back: what they said (bot summary / voicemail transcript) and how long they've waited */}
                           {cbm && (
-                            <div style={{ background: 'var(--k-fff1f2)', border: '1px solid #fecdd3', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
+                            <div style={{ background: 'var(--k-fff1f2)', border: '1px solid var(--k-fecdd3)', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
                               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#be123c', marginBottom: 4 }}>
                                 {cbReason(cbm)} · {new Date(cbm.started_at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · waiting {ago(cbm.started_at)}{cbm.follow_up_due ? ` · due ${new Date(cbm.follow_up_due).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}
                               </div>
                               {(cbm.summary || cbm.intent || cbm.transcript) ? (
-                                <div style={{ fontSize: 14.5, color: '#4c0519', lineHeight: 1.5 }}>
+                                <div style={{ fontSize: 14.5, color: 'var(--k-4c0519)', lineHeight: 1.5 }}>
                                   {cbm.intent && <b>{cbm.intent}. </b>}{(cbm.summary || cbm.transcript || '').slice(0, 420)}
                                 </div>
-                              ) : <div style={{ fontSize: 13.5, color: '#9f1239' }}>No message left — just the missed call.</div>}
+                              ) : <div style={{ fontSize: 13.5, color: 'var(--k-9f1239)' }}>No message left — just the missed call.</div>}
                               {!cbm.contact_id && <div style={{ fontSize: 12, color: '#9f1239', marginTop: 6 }}>Not in your contacts yet — save them from the Calling Log after the call.</div>}
                               {isAdmin && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
@@ -7492,7 +7492,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                           {/* No one to ask for: say so, and what to do about it */}
                           {curMeta && !askLine && !curMeta.askFor && !(c?.first_name?.trim() && c?.last_name?.trim()) && (
-                            <div style={{ background: 'var(--k-fff7ed)', border: '1px solid var(--k-fed7aa)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13.5, color: '#9a3412', lineHeight: 1.45 }}>
+                            <div style={{ background: 'var(--k-fff7ed)', border: '1px solid var(--k-fed7aa)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13.5, color: 'var(--k-9a3412)', lineHeight: 1.45 }}>
                               <b style={{ letterSpacing: .5, fontSize: 11, textTransform: 'uppercase' }}>No point of contact on file</b><br />
                               We only have the business and a phone. Ask who handles leasing / the property, then put their name on the contact so the next call has it.
                             </div>
@@ -7500,7 +7500,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                           {/* Who to ask for (from the contact research) */}
                           {(askLine || curMeta?.askFor) && !(curMeta && /^New lead/.test(curMeta.reason) && !askLine) && (
-                            <div style={{ background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, color: '#78350f', lineHeight: 1.45 }}>
+                            <div style={{ background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, color: 'var(--k-78350f)', lineHeight: 1.45 }}>
                               <b style={{ letterSpacing: .5, fontSize: 11, textTransform: 'uppercase', color: 'var(--k-b45309)' }}>{curMeta?.askFor && !askLine ? 'Context' : 'Ask for'}</b><br />{askLine || curMeta?.askFor}
                             </div>
                           )}
@@ -7711,7 +7711,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 600 }}>
                           {isEditing ? `${editAgentForm.first_name} ${editAgentForm.last_name}`.trim() || 'Editing…' : `${a.first_name} ${a.last_name}`}
-                          {' '}<span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: a.role === 'super_admin' ? '#f3e8ff' : a.role === 'admin' ? 'var(--k-fef3c7)' : 'var(--k-e0f2fe)', color: a.role === 'super_admin' ? '#7e22ce' : a.role === 'admin' ? 'var(--k-92400e)' : 'var(--k-0369a1)' }}>{a.role === 'super_admin' ? 'Super Admin' : a.role === 'admin' ? 'Admin' : 'Agent'}</span>
+                          {' '}<span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: a.role === 'super_admin' ? 'var(--k-f3e8ff)' : a.role === 'admin' ? 'var(--k-fef3c7)' : 'var(--k-e0f2fe)', color: a.role === 'super_admin' ? 'var(--k-7e22ce)' : a.role === 'admin' ? 'var(--k-92400e)' : 'var(--k-0369a1)' }}>{a.role === 'super_admin' ? 'Super Admin' : a.role === 'admin' ? 'Admin' : 'Agent'}</span>
                         </div>
                         <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 1 }}>{isEditing ? editAgentForm.email : a.email}</div>
                       </div>
@@ -8383,7 +8383,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       const sender = camp.sender_agent_id ? profiles.find(p => p.id === camp.sender_agent_id) : null;
                       const sent = camp.send_count ?? 0;
                       return (
-                      <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: isMobile ? 10 : 14, padding: '12px 16px', background: selectedCampaignIds.has(camp.id) ? '#fffdf5' : 'var(--k-fff)', borderRadius: 12, border: selectedCampaignIds.has(camp.id) ? '1px solid #e6c866' : '1px solid var(--k-f0f0f0)' }}>
+                      <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: isMobile ? 10 : 14, padding: '12px 16px', background: selectedCampaignIds.has(camp.id) ? 'var(--k-fffdf5)' : 'var(--k-fff)', borderRadius: 12, border: selectedCampaignIds.has(camp.id) ? '1px solid #e6c866' : '1px solid var(--k-f0f0f0)' }}>
                         {isAdmin && (
                           <input type="checkbox" checked={selectedCampaignIds.has(camp.id)} onChange={() => setSelectedCampaignIds(prev => { const n = new Set(prev); n.has(camp.id) ? n.delete(camp.id) : n.add(camp.id); return n; })} aria-label={`Select ${camp.name}`} style={{ width: 16, height: 16, flexShrink: 0, cursor: 'pointer', accentColor: '#c9922c' }} />
                         )}
@@ -8473,7 +8473,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     </select>
                                   </div>
                                 )}
-                                {isAdmin && <button onClick={() => { deleteCampaign(camp.id); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid var(--k-f3f4f6)', background: 'none', cursor: 'pointer', color: '#ef4444', fontFamily: "'DM Sans',sans-serif" }}>🗑 Delete</button>}
+                                {isAdmin && <button onClick={() => { deleteCampaign(camp.id); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid var(--k-f3f4f6)', background: 'none', cursor: 'pointer', color: 'var(--k-ef4444)', fontFamily: "'DM Sans',sans-serif" }}>🗑 Delete</button>}
                               </div>
                             </>
                           )}
@@ -9109,7 +9109,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   const displayName = [en.client?.first_name, en.client?.last_name].filter(Boolean).join(' ') || en.client?.business_name || en.client?.email || '—';
                                   const initials = en.client?.first_name?.[0] || en.client?.last_name?.[0] || en.client?.business_name?.[0] || en.client?.email?.[0] || '?';
                                   return (
-                                  <div key={en.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: selectedUnenrollIds.includes(en.client_id) ? '#fff5f5' : 'var(--k-fff)', border: `1px solid ${selectedUnenrollIds.includes(en.client_id) ? 'var(--k-fecaca)' : 'var(--k-e5e7eb)'}`, borderRadius: 8, transition: 'all .1s' }}>
+                                  <div key={en.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: selectedUnenrollIds.includes(en.client_id) ? 'var(--k-fff5f5)' : 'var(--k-fff)', border: `1px solid ${selectedUnenrollIds.includes(en.client_id) ? 'var(--k-fecaca)' : 'var(--k-e5e7eb)'}`, borderRadius: 8, transition: 'all .1s' }}>
                                     {!isCompleted && (
                                       <input type="checkbox" checked={selectedUnenrollIds.includes(en.client_id)} style={{ accentColor: '#ef4444', cursor: 'pointer', flexShrink: 0 }}
                                         onChange={e => setSelectedUnenrollIds(prev => e.target.checked ? [...prev, en.client_id] : prev.filter(id => id !== en.client_id))} />
@@ -9167,10 +9167,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 {/* Lead with what is real. "Opens" are inflated — Apple Mail marks every delivered email as opened — so a 43% open
                                     rate next to a 4% click rate used to read as a great result. Clicks and engaged people come first; opens are
                                     shown, muted, with the caveat. */}
-                                <div style={{ background: '#fffdf7', border: '1px solid var(--k-f0e2c4)', borderRadius: 12, padding: '14px 12px', textAlign: 'center', gridColumn: 'span 2' }}>
-                                  <div style={{ fontSize: 11, color: '#9A6E18', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Real click rate</div>
+                                <div style={{ background: 'var(--k-fffdf7)', border: '1px solid var(--k-f0e2c4)', borderRadius: 12, padding: '14px 12px', textAlign: 'center', gridColumn: 'span 2' }}>
+                                  <div style={{ fontSize: 11, color: 'var(--k-9a6e18)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Real click rate</div>
                                   <div style={{ fontSize: 32, fontWeight: 700, color: '#9A6E18', fontFamily: "'Cormorant Garamond',serif", lineHeight: 1 }}>{activeCampaign?.click_rate != null ? `${activeCampaign.click_rate}%` : '—'}</div>
-                                  <div style={{ height: 4, background: '#f3e9d0', borderRadius: 4, overflow: 'hidden', margin: '10px 0 4px' }}>
+                                  <div style={{ height: 4, background: 'var(--k-f3e9d0)', borderRadius: 4, overflow: 'hidden', margin: '10px 0 4px' }}>
                                     <div style={{ height: '100%', width: `${Math.min(100, (activeCampaign?.click_rate ?? 0) * 4)}%`, background: '#c9922c', borderRadius: 4, transition: 'width .5s' }} />
                                   </div>
                                   <div style={{ fontSize: 11, color: '#c9a86a' }}>{activeCampaign?.click_count ?? 0} of {trackedCount} clicked · spam-filter checks excluded</div>
@@ -10630,7 +10630,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 })}
               </div>
               {/* Tabs */}
-              <div className="crm-tabs-scroll" style={{ display: 'flex', borderBottom: '2px solid #f0ebe0', marginBottom: 18 }}>
+              <div className="crm-tabs-scroll" style={{ display: 'flex', borderBottom: '2px solid var(--k-f0ebe0)', marginBottom: 18 }}>
                 {(['overview', 'client', 'emails', 'docs', 'esign', 'intel', 'commission'] as const).map(t => (
                   <button key={t} onClick={() => { setDealTab(t); if (t === 'docs' && activeDeal) loadDealDocs(activeDeal.id); }}
                     style={{ padding: isMobile ? '11px 14px' : '8px 18px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? 'var(--k-111)' : 'var(--k-6b7280)', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
@@ -10975,7 +10975,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {/* Rich text editor */}
                         <div style={{ marginTop: 4, border: '1px solid var(--k-d1d5db)', borderRadius: 6, overflow: 'hidden', background: 'var(--k-fff)', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                           {/* Formatting toolbar */}
-                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 8px', background: 'var(--k-fafafa)', borderBottom: '1px solid #e9ecef' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 8px', background: 'var(--k-fafafa)', borderBottom: '1px solid var(--k-e9ecef)' }}>
                             {/* Font family */}
                             <select className="rtb-select" aria-label="Font family" defaultValue="Arial" onChange={e => richCmd('fontName', e.target.value)} style={{ padding: '0 6px', maxWidth: 104 }}>
                               {['Arial','Georgia','Times New Roman','Courier New','Verdana','Trebuchet MS'].map(f => <option key={f} value={f}>{f === 'Times New Roman' ? 'Times' : f === 'Trebuchet MS' ? 'Trebuchet' : f}</option>)}
@@ -11352,7 +11352,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       // Blanks still waiting to be filled live in the dropdown above.
                       const inUse = dealForms.filter(f => f.url);
                       const row = (f: typeof dealForms[number], w: boolean) => (
-                        <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: w ? '#fbfbfc' : 'var(--k-fffdf6)', border: '1px solid ' + (w ? '#ececf0' : 'var(--k-f0e2c4)'), borderRadius: 8, padding: '10px 14px' }}>
+                        <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: w ? 'var(--k-fbfbfc)' : 'var(--k-fffdf6)', border: '1px solid ' + (w ? 'var(--k-ececf0)' : 'var(--k-f0e2c4)'), borderRadius: 8, padding: '10px 14px' }}>
                           <span style={{ fontSize: 20, flexShrink: 0, opacity: w ? 0.5 : 1 }}>{w ? '◻️' : '📄'}</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
@@ -12114,7 +12114,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   const next = checked ? nc.asset_types.filter(x => x !== at) : [...nc.asset_types, at];
                                   setNc({ ...nc, asset_types: next });
                                 }} style={{ accentColor: '#0369a1', width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }} />
-                                <span style={{ fontSize: 13, fontWeight: checked ? 600 : 400, color: checked ? '#075985' : 'var(--k-374151)' }}>{at}</span>
+                                <span style={{ fontSize: 13, fontWeight: checked ? 600 : 400, color: checked ? 'var(--k-075985)' : 'var(--k-374151)' }}>{at}</span>
                               </label>
                             );
                           })}
@@ -12856,7 +12856,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           {tagged.map(d => (
                             <button key={d.id} onClick={() => openDeal(d)} title="Open this deal"
                               style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', borderRadius: 20, padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                              {d.property || d.client} <span style={{ fontWeight: 500, color: '#b08a4a' }}>· {d.stage}</span>
+                              {d.property || d.client} <span style={{ fontWeight: 500, color: 'var(--k-b08a4a)' }}>· {d.stage}</span>
                             </button>
                           ))}
                         </div>
@@ -12881,7 +12881,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 if (it.kind === 'rentroll') rememberView(`${businessUnit}:listing-tab`, 'rentroll');
                                 setPropertiesTab('listings'); setPropLinkNonce(x => x + 1);
                               }}
-                              style={{ fontSize: 12.5, fontWeight: 700, color: '#0f766e', background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: 20, padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                              style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-0f766e)', background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 20, padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                               {it.label} <span style={{ fontWeight: 500, color: '#5eaaa3' }}>· {it.detail}</span>
                             </button>
                           ))}
@@ -13396,7 +13396,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 {/* Team Contact Toggle — owner or admin only */}
                 {(isAdmin || c.agent_id === profile!.id) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: c.is_shared ? 'var(--k-f5f3ff)' : 'var(--k-f9fafb)', borderRadius: 8, border: `1px solid ${c.is_shared ? '#ddd6fe' : 'var(--k-e5e7eb)'}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: c.is_shared ? 'var(--k-f5f3ff)' : 'var(--k-f9fafb)', borderRadius: 8, border: `1px solid ${c.is_shared ? 'var(--k-ddd6fe)' : 'var(--k-e5e7eb)'}` }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-374151)' }}>🏢 Team Contact</div>
                       <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>Visible to all agents on the team — for shared brokers, landlords, and industry contacts.</div>
@@ -14397,7 +14397,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
                         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{`${cl.members[0].first_name ?? ''} ${cl.members[0].last_name ?? ''}`.trim() || cl.members[0].business_name}</span>
-                          <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 7px', borderRadius: 8, background: cl.kind === 'email' ? 'var(--k-dcfce7)' : '#eef2f7', color: cl.kind === 'email' ? 'var(--k-166534)' : 'var(--k-475569)' }}>{cl.kind === 'email' ? 'same email' : 'same name'}</span>
+                          <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 7px', borderRadius: 8, background: cl.kind === 'email' ? 'var(--k-dcfce7)' : 'var(--k-eef2f7)', color: cl.kind === 'email' ? 'var(--k-166534)' : 'var(--k-475569)' }}>{cl.kind === 'email' ? 'same email' : 'same name'}</span>
                         </div>
                         <button className="crm-btn crm-btn-gold crm-btn-sm" disabled={mergeBusy === cl.key} onClick={() => mergeCluster(cl)} style={{ flexShrink: 0, opacity: mergeBusy === cl.key ? 0.6 : 1 }}>
                           {mergeBusy === cl.key ? 'Merging…' : `Merge ${cl.members.length} →`}

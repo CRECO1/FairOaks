@@ -350,7 +350,7 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
                     </div>
                   ) : (
                     <>
-                      {isCurrent && <button disabled={busy} onClick={signInPerson} title="Open this signer's page on this device" style={{ ...mini, color: '#5b3d91', borderColor: '#ded2f2', background: '#faf7ff' }}>🖊 In person</button>}
+                      {isCurrent && <button disabled={busy} onClick={signInPerson} title="Open this signer's page on this device" style={{ ...mini, color: '#5b3d91', borderColor: 'var(--k-ded2f2)', background: 'var(--k-faf7ff)' }}>🖊 In person</button>}
                       {isCurrent && !s.in_person && <button disabled={busy} onClick={() => act({ action: 'nudge' }, `Reminder sent to ${s.email} ✓`)} style={{ ...mini, color: 'var(--k-a06a12)', borderColor: 'var(--k-f0e2c4)' }}>🔔 Nudge</button>}
                       <button onClick={() => { setEditId(s.id); setEditName(s.name); setEditEmail(s.email); setEditRole(s.signer_role); }} title="Change who signs — name, email, or role" style={mini}>✎ Edit signer</button>
                       <button onClick={() => copyLink(s.id)} title="Copy this signer's private link to share manually" style={mini}>🔗 Link</button>

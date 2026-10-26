@@ -140,8 +140,8 @@ const TYPE_COLORS: Record<string, { bg: string; color: string }> = {
   Industrial:  { bg: '#f1f5f9', color: 'var(--k-475569)' },
   Land:        { bg: '#dcfce7', color: 'var(--k-15803d)' },
   Multifamily: { bg: '#f3e8ff', color: '#7e22ce' },
-  'Mixed-Use': { bg: '#fce7f3', color: '#be185d' },
-  Medical:     { bg: '#cffafe', color: '#0e7490' },
+  'Mixed-Use': { bg: '#fce7f3', color: 'var(--k-be185d)' },
+  Medical:     { bg: '#cffafe', color: 'var(--k-0e7490)' },
   Flex:        { bg: '#fff7ed', color: 'var(--k-c2410c)' },
 };
 
@@ -1273,7 +1273,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       </div>
                     ) : <span />}
                     {(perfById[l.id]?.real || perfById[l.id]?.inquiries) ? (
-                      <span title="Real visitors and inquiries on this property's web pages, last 30 days" style={{ marginLeft: 'auto', fontSize: 11, color: '#9A6E18', fontWeight: 700, background: '#fdf6e3', borderRadius: 10, padding: '1px 8px' }}>
+                      <span title="Real visitors and inquiries on this property's web pages, last 30 days" style={{ marginLeft: 'auto', fontSize: 11, color: '#9A6E18', fontWeight: 700, background: 'var(--k-fdf6e3)', borderRadius: 10, padding: '1px 8px' }}>
                         👁 {perfById[l.id].real}{perfById[l.id].inquiries ? ` · ✉ ${perfById[l.id].inquiries}` : ''} <span style={{ fontWeight: 500, color: '#b9965a' }}>30d</span>
                       </span>
                     ) : null}
@@ -1312,7 +1312,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
             {/* Panel header: the title keeps the full width; status chips + flyer actions sit on their own row beneath it
                 (they used to share the title's row and squeezed it to one word per line, eating half the panel's height). */}
-            <div style={{ padding: '16px 24px 0', borderBottom: '1px solid #eceae4', background: 'var(--k-fff)', flexShrink: 0 }}>
+            <div style={{ padding: '16px 24px 0', borderBottom: '1px solid var(--k-eceae4)', background: 'var(--k-fff)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div title={active.name} style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1.2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>{active.name}</div>
@@ -1438,7 +1438,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                           const ghost: React.CSSProperties = { ...btn, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)' };
                           const menuItem: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: 'var(--k-374151)' };
                           return (
-                            <div key={f.id} style={{ background: signed ? '#f7fdf9' : 'var(--k-fffdf6)', border: `1px solid ${signed ? '#c9ead4' : 'var(--k-f0e2c4)'}`, borderRadius: 10, padding: '12px 14px', position: 'relative' }}>
+                            <div key={f.id} style={{ background: signed ? 'var(--k-f7fdf9)' : 'var(--k-fffdf6)', border: `1px solid ${signed ? 'var(--k-c9ead4)' : 'var(--k-f0e2c4)'}`, borderRadius: 10, padding: '12px 14px', position: 'relative' }}>
                               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                                 <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1.2 }}>📄</span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1508,7 +1508,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       </div>
                     );
                     const row = (f: (typeof files)[number]) => (
-                      <div key={f.id} style={{ background: 'var(--k-fff)', border: '1px solid #e8e6df', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div key={f.id} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e8e6df)', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
                         <span style={{ fontSize: 22, flexShrink: 0 }}>{fileIcon(f.file_type, f.category)}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div title={f.name} style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--k-1a1a1a)', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' } as React.CSSProperties}>{f.name}</div>
@@ -1548,7 +1548,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                               input.files = e.dataTransfer.files;                                   // hand the dropped file to the same handler the button uses
                               input.dispatchEvent(new Event('change', { bubbles: true }));
                             }}
-                            style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: dropOver ? '#fff8e6' : '#fafaf7', border: `1.5px dashed ${dropOver ? '#c9922c' : '#d9d4c4'}`, borderRadius: 10, padding: '10px 12px', marginBottom: 14, transition: 'background .12s, border-color .12s' }}>
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: dropOver ? 'var(--k-fff8e6)' : 'var(--k-fafaf7)', border: `1.5px dashed ${dropOver ? '#c9922c' : 'var(--k-d9d4c4)'}`, borderRadius: 10, padding: '10px 12px', marginBottom: 14, transition: 'background .12s, border-color .12s' }}>
                             <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
                               style={{ padding: '8px 16px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13.5, fontWeight: 700, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.6 : 1, whiteSpace: 'nowrap', minHeight: 40 }}>
                               {uploading ? 'Uploading…' : '＋ Upload a file'}
@@ -1678,7 +1678,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         };
                         return (
                           <div key={d.id} style={{ border: '1px solid #eef0f2', borderRadius: 12, background: 'var(--k-fff)', overflow: 'hidden' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: '#fbfbfa', borderBottom: '1px solid var(--k-f3f4f6)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'var(--k-fbfbfa)', borderBottom: '1px solid var(--k-f3f4f6)' }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                   <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>{d.client || 'Unnamed'}</span>
@@ -1796,7 +1796,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         </div>
 
                         {notImages.length > 0 && (
-                          <div style={{ fontSize: 12.5, color: '#7c5a12', background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', borderRadius: 9, padding: '9px 12px', marginBottom: 12 }}>
+                          <div style={{ fontSize: 12.5, color: 'var(--k-7c5a12)', background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', borderRadius: 9, padding: '9px 12px', marginBottom: 12 }}>
                             ⚠ {notImages.length} file{notImages.length === 1 ? '' : 's'} here {notImages.length === 1 ? 'is' : 'are'} not an image ({notImages.map(f => f.name).join(', ')}) — {notImages.length === 1 ? 'it won\u2019t' : 'they won\u2019t'} appear on the flyer. Move {notImages.length === 1 ? 'it' : 'them'} to Documents.
                           </div>
                         )}
@@ -2161,12 +2161,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         const summary = Object.entries(counts).map(([t, n]) => n > 1 ? `${n} ${fieldTypeLabel(t)}` : fieldTypeLabel(t)).join(' + ');
                         const hasSigner = sendSigners.some(s => s.role === g.role && s.email.includes('@') && s.name.trim());
                         return (
-                          <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, rowGap: 4, fontSize: 12, background: 'var(--k-fff)', border: '1px solid #d6f0dd', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
+                          <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, rowGap: 4, fontSize: 12, background: 'var(--k-fff)', border: '1px solid var(--k-d6f0dd)', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
                             <select value={g.role} disabled={!g.keep} onChange={e => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, role: e.target.value } : x))}
-                              title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-166534)', background: '#f7fdf9', border: '1px solid #cdeed8', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
+                              title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-166534)', background: '#f7fdf9', border: '1px solid var(--k-cdeed8)', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
                               {SIGNER_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                             </select>
-                            <span style={{ flex: '1 1 100px', minWidth: 0, color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
+                            <span style={{ flex: '1 1 100px', minWidth: 0, color: 'var(--k-4b7d5b)', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
                             {g.keep && !hasSigner && <span title="No signer below is set to this party yet — add one (or change a signer's role) so this block gets signed" style={{ fontSize: 10, fontWeight: 700, color: 'var(--k-b45309)', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 5, padding: '1px 5px' }}>no signer</span>}
                             <span style={{ flex: 1 }} />
                             {g.keep
@@ -2175,7 +2175,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                           </div>
                         );
                       })}
-                      {(anyRemoved || sendFieldGroups.some(g => g.keep && g.role !== g.origRole)) && <div style={{ fontSize: 11, color: '#8a6d3b' }}>Field changes save to the document when you send. Removed fields won’t be signed.</div>}
+                      {(anyRemoved || sendFieldGroups.some(g => g.keep && g.role !== g.origRole)) && <div style={{ fontSize: 11, color: 'var(--k-8a6d3b)' }}>Field changes save to the document when you send. Removed fields won’t be signed.</div>}
                       <button onClick={goPlaceFields} title="Open the document to place initials, a date, or a text field for a signer to fill in" style={{ marginTop: 6, width: '100%', fontSize: 12.5, fontWeight: 800, color: 'var(--k-a06a12)', background: 'var(--k-fffdf6)', border: '1.5px solid var(--k-e6d3a2)', borderRadius: 8, padding: '9px 10px', cursor: 'pointer' }}>✒ Add initials, dates &amp; other fields</button>
                     </div>
                   )}
@@ -2192,7 +2192,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               {sendSigners.map((s, i) => {
                 const q = s.name.trim().toLowerCase();
                 const sugg = sendPick === i && q ? clients.filter(c => (c.business_name || `${c.first_name} ${c.last_name}`).toLowerCase().includes(q)).slice(0, 6) : [];
-                const rc: React.CSSProperties = { fontSize: 12, fontWeight: 800, lineHeight: 1, color: '#8a6d3b', background: '#fbf6e9', border: '1px solid var(--k-e6d3a2)', borderRadius: 5, cursor: 'pointer', padding: '3px 6px' };
+                const rc: React.CSSProperties = { fontSize: 12, fontWeight: 800, lineHeight: 1, color: '#8a6d3b', background: 'var(--k-fbf6e9)', border: '1px solid var(--k-e6d3a2)', borderRadius: 5, cursor: 'pointer', padding: '3px 6px' };
                 return (
                   <div key={i} style={{ border: '1px solid #eef0f2', borderRadius: 10, padding: 10, background: 'var(--k-fff)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
