@@ -73,16 +73,16 @@ function kindIcon(c: CallRow): string {
 }
 function resultBadge(c: CallRow): { text: string; bg: string; fg: string } {
   const r = c.result ?? '';
-  if (r === 'blocked') return { text: '🚫 Blocked', bg: '#fee2e2', fg: '#991b1b' };
-  if (c.source === 'voicebot') return r === 'in_progress' ? { text: 'On the line', bg: '#dbeafe', fg: '#1d4ed8' } : { text: 'Bot answered', bg: '#ede9fe', fg: '#6d28d9' };
-  if (c.kind === 'voicemail') return { text: 'Voicemail', bg: '#fef3c7', fg: '#92400e' };
-  if (r === 'missed') return { text: 'Missed', bg: '#fee2e2', fg: '#b91c1c' };
-  if (r === 'left_voicemail') return { text: 'We left a voicemail', bg: '#fef3c7', fg: '#92400e' };
-  if (r === 'no_answer') return { text: 'We called · no answer', bg: '#f3f4f6', fg: '#6b7280' };
-  if (r === 'wrong_number') return { text: 'Wrong number', bg: '#fee2e2', fg: '#991b1b' };
-  if (r === 'answered') return { text: c.direction === 'outbound' ? 'Outbound' : 'Answered', bg: '#dcfce7', fg: '#15803d' };
-  if (r === 'hangup') return c.direction !== 'outbound' && c.duration_sec != null && c.duration_sec < 60 ? { text: 'Gave up waiting', bg: '#ffedd5', fg: '#9a3412' } : { text: 'Hung up', bg: '#f3f4f6', fg: '#6b7280' };
-  return { text: r || (c.direction === 'outbound' ? 'Outbound' : 'Call'), bg: '#f3f4f6', fg: '#6b7280' };
+  if (r === 'blocked') return { text: '🚫 Blocked', bg: 'var(--k-fee2e2)', fg: 'var(--k-991b1b)' };
+  if (c.source === 'voicebot') return r === 'in_progress' ? { text: 'On the line', bg: 'var(--k-dbeafe)', fg: 'var(--k-1d4ed8)' } : { text: 'Bot answered', bg: 'var(--k-ede9fe)', fg: 'var(--k-6d28d9)' };
+  if (c.kind === 'voicemail') return { text: 'Voicemail', bg: 'var(--k-fef3c7)', fg: 'var(--k-92400e)' };
+  if (r === 'missed') return { text: 'Missed', bg: 'var(--k-fee2e2)', fg: 'var(--k-b91c1c)' };
+  if (r === 'left_voicemail') return { text: 'We left a voicemail', bg: 'var(--k-fef3c7)', fg: 'var(--k-92400e)' };
+  if (r === 'no_answer') return { text: 'We called · no answer', bg: 'var(--k-f3f4f6)', fg: 'var(--k-6b7280)' };
+  if (r === 'wrong_number') return { text: 'Wrong number', bg: 'var(--k-fee2e2)', fg: 'var(--k-991b1b)' };
+  if (r === 'answered') return { text: c.direction === 'outbound' ? 'Outbound' : 'Answered', bg: 'var(--k-dcfce7)', fg: 'var(--k-15803d)' };
+  if (r === 'hangup') return c.direction !== 'outbound' && c.duration_sec != null && c.duration_sec < 60 ? { text: 'Gave up waiting', bg: 'var(--k-ffedd5)', fg: '#9a3412' } : { text: 'Hung up', bg: 'var(--k-f3f4f6)', fg: 'var(--k-6b7280)' };
+  return { text: r || (c.direction === 'outbound' ? 'Outbound' : 'Call'), bg: 'var(--k-f3f4f6)', fg: 'var(--k-6b7280)' };
 }
 
 // Compact "2h" / "3d" from a millisecond gap — never blank, floors at 1m.
@@ -405,14 +405,14 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       {stats && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
           {[
-            { label: 'Needs call back', value: stats.follow_up, sub: stats.overdue ? `${stats.overdue} overdue now` : 'open follow-ups', tone: stats.follow_up ? '#b91c1c' : '#15803d', pick: 'follow_up' as const },
-            { label: 'Needs a note', value: stats.wrapup ?? 0, sub: 'answered calls, 30 days', tone: stats.wrapup ? '#a06a12' : '#15803d', pick: 'wrapup' as const },
+            { label: 'Needs call back', value: stats.follow_up, sub: stats.overdue ? `${stats.overdue} overdue now` : 'open follow-ups', tone: stats.follow_up ? 'var(--k-b91c1c)' : 'var(--k-15803d)', pick: 'follow_up' as const },
+            { label: 'Needs a note', value: stats.wrapup ?? 0, sub: 'answered calls, 30 days', tone: stats.wrapup ? 'var(--k-a06a12)' : 'var(--k-15803d)', pick: 'wrapup' as const },
             { label: 'Today', value: stats.today, sub: 'calls', pick: 'all' as const },
             { label: 'This week', value: stats.week, sub: 'calls', pick: 'all' as const },
-            { label: 'Bot answered', value: stats.bot, sub: 'last 7 days', tone: '#6d28d9', pick: 'bot' as const },
-            { label: 'Missed', value: stats.missed, sub: 'last 7 days', tone: stats.missed ? '#92400e' : undefined, pick: 'missed' as const },
+            { label: 'Bot answered', value: stats.bot, sub: 'last 7 days', tone: 'var(--k-6d28d9)', pick: 'bot' as const },
+            { label: 'Missed', value: stats.missed, sub: 'last 7 days', tone: stats.missed ? 'var(--k-92400e)' : undefined, pick: 'missed' as const },
             { label: 'Voicemails', value: stats.voicemail, sub: 'last 7 days', pick: 'voicemail' as const },
-            { label: 'Texts to answer', value: threads.filter(t => t.unanswered).length, sub: `${threads.length} thread${threads.length === 1 ? '' : 's'}`, tone: threads.some(t => t.unanswered) ? '#b91c1c' : undefined, pick: 'texts' as const },
+            { label: 'Texts to answer', value: threads.filter(t => t.unanswered).length, sub: `${threads.length} thread${threads.length === 1 ? '' : 's'}`, tone: threads.some(t => t.unanswered) ? 'var(--k-b91c1c)' : undefined, pick: 'texts' as const },
           ].map(c => (
             <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ flex: '1 1 120px', minWidth: 112, background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : 'var(--k-eef0f3)'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
               <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--k-9ca3af)', fontWeight: 700 }}>{c.label}</div>
@@ -637,7 +637,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         {c.blocked && c.result !== 'blocked' && <span title={c.blocked.reason ?? undefined} style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-991b1b)', background: 'var(--k-fee2e2)', borderRadius: 6, padding: '2px 7px' }}>🚫 Number blocked{c.blocked.source === 'auto' ? ' (auto)' : ''}</span>}
                         {urgent && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-b91c1c)', background: 'var(--k-fee2e2)', borderRadius: 6, padding: '2px 7px' }}>🚨 Urgent</span>}
                         {pending && di && <span title={c.follow_up_due ? formatCentral(c.follow_up_due) : undefined} style={{ fontSize: 11, fontWeight: 700, color: di.overdue ? 'var(--k-b91c1c)' : 'var(--k-a06a12)', background: di.overdue ? 'var(--k-fee2e2)' : 'var(--k-fef3c7)', borderRadius: 6, padding: '2px 7px' }}>⏰ {di.label}</span>}
-                        {pending && !di && (() => { const aH = (Date.now() - new Date(c.started_at).getTime()) / 3_600_000; const col = aH >= 72 ? '#b91c1c' : aH >= 24 ? '#a06a12' : '#9ca3af'; return <span style={{ fontSize: 11, fontWeight: aH >= 24 ? 700 : 600, color: col }}>waiting {waiting(c)}</span>; })()}
+                        {pending && !di && (() => { const aH = (Date.now() - new Date(c.started_at).getTime()) / 3_600_000; const col = aH >= 72 ? 'var(--k-b91c1c)' : aH >= 24 ? 'var(--k-a06a12)' : '#9ca3af'; return <span style={{ fontSize: 11, fontWeight: aH >= 24 ? 700 : 600, color: col }}>waiting {waiting(c)}</span>; })()}
                         {pending && c.assignee_name && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-3730a3)', background: 'var(--k-e0e7ff)', borderRadius: 6, padding: '2px 7px' }}>→ {c.assignee_name}</span>}
                         {c.handled_at && <span style={{ fontSize: 11, color: 'var(--k-15803d)', fontWeight: 700 }}>✓ Handled{c.handled_by_name ? ` by ${c.handled_by_name}` : ''}</span>}
                         {(() => { const o = outcomeMeta(c.outcome); return o ? <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} title={c.wrapped_by_name ? `Wrapped up by ${c.wrapped_by_name}` : 'Change'} style={{ fontSize: 11, fontWeight: 700, color: o.fg, background: o.bg, border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>{o.label}</button> : null; })()}

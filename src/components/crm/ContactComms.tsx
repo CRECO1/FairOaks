@@ -18,12 +18,12 @@ const pretty = (n: string | null) => { const d = String(n ?? '').replace(/\D/g, 
 
 function badge(c: CallRow): { text: string; bg: string; fg: string } {
   const r = c.result ?? '';
-  if (c.source === 'voicebot') return { text: 'Bot answered', bg: '#ede9fe', fg: '#6d28d9' };
-  if (c.kind === 'voicemail') return { text: 'Voicemail', bg: '#fef3c7', fg: '#92400e' };
-  if (r === 'missed') return { text: 'Missed', bg: '#fee2e2', fg: '#b91c1c' };
-  if (r === 'hangup') return c.direction !== 'outbound' && (c.duration_sec ?? 99) < 60 ? { text: 'Gave up waiting', bg: '#ffedd5', fg: '#9a3412' } : { text: 'Hung up', bg: '#f3f4f6', fg: '#6b7280' };
-  if (r === 'answered') return { text: c.direction === 'outbound' ? 'We called' : 'Answered', bg: '#dcfce7', fg: '#15803d' };
-  return { text: c.direction === 'outbound' ? 'We called' : 'Call', bg: '#f3f4f6', fg: '#6b7280' };
+  if (c.source === 'voicebot') return { text: 'Bot answered', bg: 'var(--k-ede9fe)', fg: 'var(--k-6d28d9)' };
+  if (c.kind === 'voicemail') return { text: 'Voicemail', bg: 'var(--k-fef3c7)', fg: 'var(--k-92400e)' };
+  if (r === 'missed') return { text: 'Missed', bg: 'var(--k-fee2e2)', fg: 'var(--k-b91c1c)' };
+  if (r === 'hangup') return c.direction !== 'outbound' && (c.duration_sec ?? 99) < 60 ? { text: 'Gave up waiting', bg: 'var(--k-ffedd5)', fg: '#9a3412' } : { text: 'Hung up', bg: 'var(--k-f3f4f6)', fg: 'var(--k-6b7280)' };
+  if (r === 'answered') return { text: c.direction === 'outbound' ? 'We called' : 'Answered', bg: 'var(--k-dcfce7)', fg: 'var(--k-15803d)' };
+  return { text: c.direction === 'outbound' ? 'We called' : 'Call', bg: 'var(--k-f3f4f6)', fg: 'var(--k-6b7280)' };
 }
 
 export default function ContactComms({ clientId, authToken, businessUnit, showToast, onOpenLog }: Props) {

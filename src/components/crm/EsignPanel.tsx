@@ -21,7 +21,7 @@ const roleLabel = (r: string) => (ROLES.find(([v]) => v === r)?.[1] as string) |
 const fieldTypeLabel = (t: string) => t === 'signature' ? 'Signature' : t === 'initial' ? 'Initials' : t === 'date' ? 'Date' : t.charAt(0).toUpperCase() + t.slice(1);
 const cName = (c: PickContact) => c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
 const INP: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-1a1a1a)', background: 'var(--k-fff)', boxSizing: 'border-box' };
-const ctrl: React.CSSProperties = { fontSize: 12, fontWeight: 800, lineHeight: 1, color: '#8a6d3b', background: '#fbf6e9', border: '1px solid var(--k-e6d3a2)', borderRadius: 5, cursor: 'pointer', padding: '3px 6px' };
+const ctrl: React.CSSProperties = { fontSize: 12, fontWeight: 800, lineHeight: 1, color: '#8a6d3b', background: 'var(--k-fbf6e9)', border: '1px solid var(--k-e6d3a2)', borderRadius: 5, cursor: 'pointer', padding: '3px 6px' };
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', whiteSpace: 'nowrap' };
 const signedCount = (e?: Envelope) => (e?.crm_envelope_signers || []).filter(s => s.status === 'signed' || s.signed_at).length;
 const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day' : `${d} days`; };
@@ -126,7 +126,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
                 return (
                   <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, rowGap: 4, fontSize: 12, background: 'var(--k-fff)', border: '1px solid #d6f0dd', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
                     <select value={g.role} disabled={!g.keep} onChange={e => setFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, role: e.target.value } : x))}
-                      title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-166534)', background: '#f7fdf9', border: '1px solid #cdeed8', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
+                      title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-166534)', background: 'var(--k-f7fdf9)', border: '1px solid #cdeed8', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
                       {ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                     <span style={{ flex: '1 1 100px', minWidth: 0, color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>

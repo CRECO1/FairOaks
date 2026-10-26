@@ -35,11 +35,11 @@ const money = (n?: number | null) => (n === null || n === undefined || n === '' 
 function leaseStatus(exp?: string | null): { label: string; bg: string; color: string } | null {
   if (!exp) return null;
   const days = Math.floor((new Date(exp + 'T00:00:00').getTime() - new Date(new Date().toDateString()).getTime()) / 86400000);
-  if (days < 0) return { label: 'Expired', bg: '#fee2e2', color: 'var(--k-b91c1c)' };
-  if (days <= 60) return { label: `${days}d left`, bg: '#fee2e2', color: 'var(--k-b91c1c)' };
-  if (days <= 90) return { label: '61-90 days', bg: '#ffedd5', color: 'var(--k-c2410c)' };
-  if (days <= 120) return { label: '91-120 days', bg: '#fef9c3', color: 'var(--k-a16207)' };
-  return { label: 'Current', bg: '#f0fdf4', color: 'var(--k-15803d)' };
+  if (days < 0) return { label: 'Expired', bg: 'var(--k-fee2e2)', color: 'var(--k-b91c1c)' };
+  if (days <= 60) return { label: `${days}d left`, bg: 'var(--k-fee2e2)', color: 'var(--k-b91c1c)' };
+  if (days <= 90) return { label: '61-90 days', bg: 'var(--k-ffedd5)', color: 'var(--k-c2410c)' };
+  if (days <= 120) return { label: '91-120 days', bg: 'var(--k-fef9c3)', color: 'var(--k-a16207)' };
+  return { label: 'Current', bg: 'var(--k-f0fdf4)', color: 'var(--k-15803d)' };
 }
 
 type SortKey = 'suite' | 'building' | 'tenant_name' | 'size_sf' | 'lease_expiration' | 'monthly_rent' | 'annual_rent' | 'lease_type' | 'mailbox_box' | 'keys' | 'email' | 'phone' | 'contact_name';
@@ -192,7 +192,7 @@ function ContactCell({ row, contacts, onLink, onText, onCreate }: {
           if (e.key === 'Escape') { setOpen(false); return; }
           if (e.key === 'Enter') { if (matches[0]) { onLink(matches[0]); setOpen(false); } else { onText(q); setOpen(false); } }
         }}
-        style={{ width: '100%', border: 'none', outline: 'none', background: '#fffdf3', boxShadow: `inset 0 0 0 2px ${GOLD}33`,
+        style={{ width: '100%', border: 'none', outline: 'none', background: 'var(--k-fffdf3)', boxShadow: `inset 0 0 0 2px ${GOLD}33`,
           padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }} />
       <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 30, minWidth: 240, background: 'var(--k-fff)',
         border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.14)', overflow: 'hidden' }}>
@@ -207,7 +207,7 @@ function ContactCell({ row, contacts, onLink, onText, onCreate }: {
         {q.trim() && matches.length === 0 && (
           <>
             <button onClick={async () => { const c = await onCreate(q); if (c) { onLink(c); setOpen(false); } }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', borderBottom: '1px solid var(--k-f3f4f6)', background: '#fffdf3', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: GOLD, fontWeight: 700 }}>
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', borderBottom: '1px solid var(--k-f3f4f6)', background: 'var(--k-fffdf3)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: GOLD, fontWeight: 700 }}>
               ＋ Add “{q.trim()}” as a new contact
             </button>
             <button onClick={() => { onText(q); setOpen(false); }}
@@ -500,14 +500,14 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
               // A lease that hasn't started, or one a newer lease has taken over from, says
               // so in place of the expiry countdown — its own dates are left as entered.
               const st = t?.status === 'upcoming'
-                ? { label: `Starts ${shortDate(r.lease_start)}`, bg: '#eff6ff', color: 'var(--k-1d4ed8)' }
+                ? { label: `Starts ${shortDate(r.lease_start)}`, bg: 'var(--k-eff6ff)', color: 'var(--k-1d4ed8)' }
                 : t?.status === 'replaced'
-                  ? { label: `Replaced ${shortDate(t.successor?.lease_start)}`, bg: '#f3f4f6', color: 'var(--k-6b7280)' }
+                  ? { label: `Replaced ${shortDate(t.successor?.lease_start)}`, bg: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)' }
                   : leaseStatus(r.lease_expiration);
               const inactive = t?.status === 'replaced';
               return (
                 <tr key={r.id} title={t?.status === 'replaced' ? `Replaced by ${t.successor?.tenant_name ?? 'a new lease'} from ${shortDate(t.successor?.lease_start)} — not counted` : t?.status === 'upcoming' ? `Signed lease starting ${shortDate(r.lease_start)} — not counted until then` : undefined}
-                  style={{ background: vac ? '#fbfbfc' : t?.status === 'upcoming' ? 'var(--k-f8fbff)' : 'var(--k-fff)', opacity: inactive ? 0.55 : 1 }}>
+                  style={{ background: vac ? 'var(--k-fbfbfc)' : t?.status === 'upcoming' ? 'var(--k-f8fbff)' : 'var(--k-fff)', opacity: inactive ? 0.55 : 1 }}>
                   <td style={TD}><Cell value={r.suite} bold onSave={v => saveCell(r.id, 'suite', v)} /></td>
                   <td style={TD}><Cell value={r.building} onSave={v => saveCell(r.id, 'building', v)} /></td>
                   <td style={TD}><Cell value={r.tenant_name} bold={!vac} placeholder="Vacant" onSave={v => saveCell(r.id, 'tenant_name', v)} /></td>

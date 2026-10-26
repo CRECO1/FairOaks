@@ -6,13 +6,13 @@ import React, { useEffect, useState } from 'react';
 import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 
 export const OUTCOMES = [
-  { key: 'new_lead', label: 'New lead', bg: '#dcfce7', fg: '#166534' },
-  { key: 'client', label: 'Client', bg: '#dbeafe', fg: '#1e40af' },
-  { key: 'tenant', label: 'Tenant', bg: '#e0e7ff', fg: '#3730a3' },
+  { key: 'new_lead', label: 'New lead', bg: 'var(--k-dcfce7)', fg: 'var(--k-166534)' },
+  { key: 'client', label: 'Client', bg: 'var(--k-dbeafe)', fg: 'var(--k-1e40af)' },
+  { key: 'tenant', label: 'Tenant', bg: 'var(--k-e0e7ff)', fg: 'var(--k-3730a3)' },
   { key: 'vendor', label: 'Vendor', bg: '#f3e8ff', fg: '#6b21a8' },
-  { key: 'spam', label: 'Spam', bg: '#fee2e2', fg: '#991b1b' },
-  { key: 'personal', label: 'Personal', bg: '#f3f4f6', fg: '#4b5563' },
-  { key: 'other', label: 'Other', bg: '#f3f4f6', fg: '#4b5563' },
+  { key: 'spam', label: 'Spam', bg: 'var(--k-fee2e2)', fg: 'var(--k-991b1b)' },
+  { key: 'personal', label: 'Personal', bg: 'var(--k-f3f4f6)', fg: 'var(--k-4b5563)' },
+  { key: 'other', label: 'Other', bg: 'var(--k-f3f4f6)', fg: 'var(--k-4b5563)' },
 ] as const;
 export const outcomeMeta = (k: string | null | undefined) => OUTCOMES.find(o => o.key === k) ?? null;
 

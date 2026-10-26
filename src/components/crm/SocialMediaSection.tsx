@@ -277,13 +277,13 @@ function fmtNum(n: number): string {
 // Status badge styles
 function statusBadge(status: PostStatus) {
   const map: Record<PostStatus, { bg: string; color: string }> = {
-    draft:      { bg: '#f3f4f6', color: 'var(--k-6b7280)' },
-    scheduled:  { bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
-    published:  { bg: '#dcfce7', color: 'var(--k-15803d)' },
-    failed:     { bg: '#fee2e2', color: 'var(--k-dc2626)' },
-    cancelled:  { bg: '#fef3c7', color: 'var(--k-92400e)' },
+    draft:      { bg: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)' },
+    scheduled:  { bg: 'var(--k-dbeafe)', color: 'var(--k-1d4ed8)' },
+    published:  { bg: 'var(--k-dcfce7)', color: 'var(--k-15803d)' },
+    failed:     { bg: 'var(--k-fee2e2)', color: 'var(--k-dc2626)' },
+    cancelled:  { bg: 'var(--k-fef3c7)', color: 'var(--k-92400e)' },
   };
-  return map[status] || { bg: '#f3f4f6', color: 'var(--k-6b7280)' };
+  return map[status] || { bg: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)' };
 }
 
 // ── Unicode text formatting ────────────────────────────────────────────────────
@@ -933,7 +933,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       { key: 'drafts',    label: 'Drafts',    icon: '✏️', activeColor: '#1a1a2e' },
       { key: 'scheduled', label: 'Scheduled', icon: '📅', activeColor: '#1a1a2e' },
       { key: 'published', label: 'Published', icon: '✅', activeColor: '#1a1a2e' },
-      { key: 'failed',    label: 'Failed',    icon: '❌', activeColor: '#dc2626' },
+      { key: 'failed',    label: 'Failed',    icon: '❌', activeColor: 'var(--k-dc2626)' },
     ];
 
     return (
@@ -1166,7 +1166,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                                 requestAnimationFrame(() => { if (el) { el.focus(); el.setSelectionRange(pos + em.length, pos + em.length); } });
                               }}
                               style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', padding: '3px 0', borderRadius: 4, lineHeight: 1 }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#fef9ec'; }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--k-fef9ec)'; }}
                               onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
                             >{em}</button>
                           ))}
@@ -1181,7 +1181,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       type="button"
                       title="Add hashtag group"
                       onClick={() => { setHashtagPickerOpen(o => !o); setEmojiPickerOpen(false); }}
-                      style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: hashtagPickerOpen ? '#fef9ec' : 'var(--k-fff)', fontSize: 12, fontWeight: 700, cursor: 'pointer', color: 'var(--k-6b7280)', lineHeight: 1, borderColor: hashtagPickerOpen ? '#C9A84C' : 'var(--k-e5e7eb)' }}
+                      style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: hashtagPickerOpen ? 'var(--k-fef9ec)' : 'var(--k-fff)', fontSize: 12, fontWeight: 700, cursor: 'pointer', color: 'var(--k-6b7280)', lineHeight: 1, borderColor: hashtagPickerOpen ? '#C9A84C' : 'var(--k-e5e7eb)' }}
                     >#</button>
                     {hashtagPickerOpen && (
                       <div
@@ -1199,7 +1199,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                               requestAnimationFrame(() => textareaRef.current?.focus());
                             }}
                             style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '7px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#fef9ec'; }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--k-fef9ec)'; }}
                             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
                           >
                             <span style={{ fontWeight: 700, color: '#1a1a2e', marginRight: 6 }}>{group.label}</span>
@@ -1858,7 +1858,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                             <div style={{
                               padding: '12px 14px',
                               borderTop: '1px solid var(--k-dbeafe)',
-                              background: '#f0f7ff',
+                              background: 'var(--k-f0f7ff)',
                               display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
                             }}>
                               <input
@@ -2602,7 +2602,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       return 0;
     }
 
-    const heatmapColors: Record<number, string> = { 0: '#f3f4f6', 1: '#bfdbfe', 2: '#60a5fa', 3: '#1d4ed8' };
+    const heatmapColors: Record<number, string> = { 0: '#f3f4f6', 1: 'var(--k-bfdbfe)', 2: '#60a5fa', 3: 'var(--k-1d4ed8)' };
     const heatmapDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const heatmapHours = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
 

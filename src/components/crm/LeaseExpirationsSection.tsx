@@ -93,7 +93,7 @@ export default function LeaseExpirationsSection({ authToken, onToast, onCreated 
             const lead = c.lxp_follow_up_days && c.lxp_follow_up_days > 0 ? c.lxp_follow_up_days : DEFAULT_LEAD_DAYS;
             const dueNow = days <= lead;
             const prospected = c.lxp_prospected_for === c.lease_expiration_date;
-            const chip = days <= 90 ? { bg: '#fee2e2', color: 'var(--k-dc2626)' } : days <= 180 ? { bg: '#fff7ed', color: 'var(--k-c2410c)' } : { bg: '#f1f5f9', color: 'var(--k-475569)' };
+            const chip = days <= 90 ? { bg: 'var(--k-fee2e2)', color: 'var(--k-dc2626)' } : days <= 180 ? { bg: 'var(--k-fff7ed)', color: 'var(--k-c2410c)' } : { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' };
             const expLabel = new Date(c.lease_expiration_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             return (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--k-fff)', border: `1px solid ${dueNow && !prospected ? 'var(--k-f0e2c4)' : '#eef0f2'}`, borderRadius: 10, padding: '12px 15px' }}>

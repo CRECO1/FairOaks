@@ -134,7 +134,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
                           {items.map(f => (
                             <div key={f.id} onClick={() => openForm(f)}
                               style={{ display: 'flex', alignItems: 'flex-start', gap: 11, padding: isMobile ? '12px 10px' : '9px 10px', minHeight: isMobile ? 48 : undefined, borderRadius: 8, cursor: 'pointer' }}
-                              onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-fbf8f1)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                               <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 {/* Wraps rather than ellipsing: the TREC names run to ~95 characters
@@ -212,7 +212,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
               {forms.map(f => (
                 <button key={f.id} onClick={() => openForm(f, pickForDeal ?? undefined)}
                   style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: isMobile ? '13px 12px' : '11px 12px', minHeight: isMobile ? 48 : undefined, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-fbf8f1)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
                   <span style={{ fontSize: 20 }}>📄</span>
                   <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--k-1a1a1a)' }}>{f.name}</span>{f.form_code && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{f.form_code}</span>}</span>
                 </button>

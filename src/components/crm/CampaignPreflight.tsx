@@ -23,9 +23,9 @@ interface Props {
 
 const MARK = { pass: '✓', warn: '!', fail: '✕' } as const;
 const TONE = {
-  pass: { bg: '#dcfce7', fg: '#166534' },
-  warn: { bg: '#fef3c7', fg: '#92400e' },
-  fail: { bg: '#fee2e2', fg: '#991b1b' },
+  pass: { bg: 'var(--k-dcfce7)', fg: 'var(--k-166534)' },
+  warn: { bg: 'var(--k-fef3c7)', fg: 'var(--k-92400e)' },
+  fail: { bg: 'var(--k-fee2e2)', fg: 'var(--k-991b1b)' },
 } as const;
 
 export default function CampaignPreflight({ campaigns, authToken, isMobile, onClose, onActivated, onPreview, showToast }: Props) {
@@ -135,7 +135,7 @@ export default function CampaignPreflight({ campaigns, authToken, isMobile, onCl
           )}
           <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={onClose} style={isMobile ? { flex: 1, minHeight: 44 } : undefined}>Cancel</button>
           <button className="crm-btn crm-btn-sm" disabled={!done || !ready.length || busy} onClick={activate}
-            style={{ background: !done || !ready.length ? '#d1d5db' : warned ? '#b45309' : '#16a34a', color: '#fff', border: 'none', cursor: !done || !ready.length || busy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', ...(isMobile ? { flex: 2, minHeight: 44 } : {}) }}>
+            style={{ background: !done || !ready.length ? '#d1d5db' : warned ? '#b45309' : 'var(--k-16a34a)', color: '#fff', border: 'none', cursor: !done || !ready.length || busy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', ...(isMobile ? { flex: 2, minHeight: 44 } : {}) }}>
             {busy ? 'Activating…' : !done ? 'Checking…' : !ready.length ? 'Activate' : `${warned ? 'Activate anyway' : '▶ Activate'}${total ? ` · ${total} recipient${total > 1 ? 's' : ''}` : ''}`}
           </button>
         </div>

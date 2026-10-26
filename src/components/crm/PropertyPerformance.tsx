@@ -168,7 +168,7 @@ export default function PropertyPerformance({ listingId, authToken, isMobile, on
               {perf.tokens.map(t => {
                 const mine = paths.includes(t);
                 return (
-                  <span key={t} style={{ fontSize: 12, padding: '3px 9px', borderRadius: 999, background: mine ? '#fdf6e3' : 'var(--k-f3f4f6)', border: `1px solid ${mine ? 'var(--k-f1d9a0)' : 'var(--k-e5e7eb)'}`, color: 'var(--k-374151)' }}>
+                  <span key={t} style={{ fontSize: 12, padding: '3px 9px', borderRadius: 999, background: mine ? 'var(--k-fdf6e3)' : 'var(--k-f3f4f6)', border: `1px solid ${mine ? 'var(--k-f1d9a0)' : 'var(--k-e5e7eb)'}`, color: 'var(--k-374151)' }}>
                     {t}{mine && <button onClick={() => savePaths(paths.filter(x => x !== t))} aria-label={`Remove ${t}`} style={{ border: 'none', background: 'none', cursor: 'pointer', color: MUTE, marginLeft: 5 }}>✕</button>}
                   </span>
                 );

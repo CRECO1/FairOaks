@@ -21,10 +21,10 @@ interface Props {
 }
 
 const OUTCOMES = [
-  { k: 'answered', label: 'Talked to them', icon: '✅', bg: '#dcfce7', fg: '#166534' },
-  { k: 'left_voicemail', label: 'Left a voicemail', icon: '📬', bg: '#fef3c7', fg: '#92400e' },
-  { k: 'no_answer', label: 'No answer', icon: '📵', bg: '#f3f4f6', fg: '#374151' },
-  { k: 'wrong_number', label: 'Wrong number', icon: '❌', bg: '#fee2e2', fg: '#991b1b' },
+  { k: 'answered', label: 'Talked to them', icon: '✅', bg: 'var(--k-dcfce7)', fg: 'var(--k-166534)' },
+  { k: 'left_voicemail', label: 'Left a voicemail', icon: '📬', bg: 'var(--k-fef3c7)', fg: 'var(--k-92400e)' },
+  { k: 'no_answer', label: 'No answer', icon: '📵', bg: 'var(--k-f3f4f6)', fg: 'var(--k-374151)' },
+  { k: 'wrong_number', label: 'Wrong number', icon: '❌', bg: 'var(--k-fee2e2)', fg: 'var(--k-991b1b)' },
 ] as const;
 
 const digits10 = (s: string) => s.replace(/\D/g, '').slice(-10);

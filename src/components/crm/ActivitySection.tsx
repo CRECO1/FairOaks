@@ -91,8 +91,8 @@ function fmtWeekRange(mondayStr: string): string {
 
 function statusPill(actual: number, target: number) {
   const pct = target === 0 ? 100 : Math.round((actual / target) * 100);
-  const bg   = pct >= 90 ? '#d1fae5' : pct >= 60 ? '#fef3c7' : '#fee2e2';
-  const col  = pct >= 90 ? '#065f46' : pct >= 60 ? '#92400e' : '#991b1b';
+  const bg   = pct >= 90 ? 'var(--k-d1fae5)' : pct >= 60 ? 'var(--k-fef3c7)' : 'var(--k-fee2e2)';
+  const col  = pct >= 90 ? 'var(--k-065f46)' : pct >= 60 ? 'var(--k-92400e)' : 'var(--k-991b1b)';
   const label = pct >= 90 ? '✓ On Track' : pct >= 60 ? '⚠ Needs Work' : '✗ Off Track';
   return (
     <span style={{ display: 'inline-block', background: bg, color: col, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>
@@ -340,7 +340,7 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
                   const auto = autoStats[date] ?? { new_records: 0, tasks_done: 0, tasks_overdue: 0 };
                   const isToday  = date === todayStr;
                   const isEdit   = editing === date;
-                  const rowBg    = isToday ? '#fffbeb' : i % 2 === 0 ? '#fff' : '#fafafa';
+                  const rowBg    = isToday ? 'var(--k-fffbeb)' : i % 2 === 0 ? '#fff' : '#fafafa';
                   const isSaving = saving === date;
 
                   return (
@@ -560,8 +560,8 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
                   { label: 'Calls → Listings Won',     from: cumulative.prospecting_calls,     to: cumulative.listings_won,          fromL: 'Calls',        toL: 'Listings'   },
                 ].map(row => {
                   const pct = row.from === 0 ? null : (row.to / row.from * 100).toFixed(1);
-                  const bgColor = pct === null ? 'transparent' : Number(pct) >= 20 ? '#d1fae5' : Number(pct) >= 8 ? '#fef3c7' : '#fee2e2';
-                  const textCol = pct === null ? '#94a3b8' : Number(pct) >= 20 ? '#065f46' : Number(pct) >= 8 ? '#92400e' : '#991b1b';
+                  const bgColor = pct === null ? 'transparent' : Number(pct) >= 20 ? 'var(--k-d1fae5)' : Number(pct) >= 8 ? 'var(--k-fef3c7)' : 'var(--k-fee2e2)';
+                  const textCol = pct === null ? '#94a3b8' : Number(pct) >= 20 ? 'var(--k-065f46)' : Number(pct) >= 8 ? 'var(--k-92400e)' : 'var(--k-991b1b)';
                   return (
                     <tr key={row.label}>
                       <td style={tdStyle}>{row.label}</td>

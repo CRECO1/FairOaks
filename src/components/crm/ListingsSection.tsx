@@ -85,9 +85,9 @@ interface Deal {
 const DEAL_TYPES = ['Tenant Lease', 'Buyer Purchase', 'Landlord Listing', 'Seller Listing'];
 const DEAL_STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
 const STAGE_CHIP: Record<string, { bg: string; color: string }> = {
-  Prospect: { bg: '#f1f5f9', color: 'var(--k-475569)' }, Active: { bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
-  LOI: { bg: '#fef3c7', color: 'var(--k-b45309)' }, 'In Contract': { bg: '#e0e7ff', color: 'var(--k-4338ca)' },
-  Closed: { bg: '#dcfce7', color: 'var(--k-15803d)' }, Lost: { bg: '#fee2e2', color: 'var(--k-dc2626)' },
+  Prospect: { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' }, Active: { bg: 'var(--k-dbeafe)', color: 'var(--k-1d4ed8)' },
+  LOI: { bg: 'var(--k-fef3c7)', color: 'var(--k-b45309)' }, 'In Contract': { bg: 'var(--k-e0e7ff)', color: 'var(--k-4338ca)' },
+  Closed: { bg: 'var(--k-dcfce7)', color: 'var(--k-15803d)' }, Lost: { bg: 'var(--k-fee2e2)', color: 'var(--k-dc2626)' },
 };
 interface EnvSigner { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; signed_at?: string | null; viewed_at?: string | null }
 interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; crm_envelope_signers?: EnvSigner[] }
@@ -120,11 +120,11 @@ const TYPES = ['Retail', 'Office', 'Industrial', 'Land', 'Multifamily', 'Mixed-U
 const STATUSES = ['active', 'pending', 'leased', 'sold', 'off_market'];
 
 const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
-  active:     { label: 'Active',     bg: '#dcfce7', color: 'var(--k-15803d)' },
-  pending:    { label: 'Pending',    bg: '#fef3c7', color: 'var(--k-b45309)' },
-  leased:     { label: 'Leased',     bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
+  active:     { label: 'Active',     bg: 'var(--k-dcfce7)', color: 'var(--k-15803d)' },
+  pending:    { label: 'Pending',    bg: 'var(--k-fef3c7)', color: 'var(--k-b45309)' },
+  leased:     { label: 'Leased',     bg: 'var(--k-dbeafe)', color: 'var(--k-1d4ed8)' },
   sold:       { label: 'Sold',       bg: '#f3e8ff', color: '#7e22ce' },
-  off_market: { label: 'Off Market', bg: '#f1f5f9', color: 'var(--k-64748b)' },
+  off_market: { label: 'Off Market', bg: 'var(--k-f1f5f9)', color: 'var(--k-64748b)' },
 };
 
 const CATEGORIES = [
@@ -135,14 +135,14 @@ const CATEGORIES = [
 ];
 
 const TYPE_COLORS: Record<string, { bg: string; color: string }> = {
-  Retail:      { bg: '#fef3c7', color: 'var(--k-b45309)' },
-  Office:      { bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
-  Industrial:  { bg: '#f1f5f9', color: 'var(--k-475569)' },
-  Land:        { bg: '#dcfce7', color: 'var(--k-15803d)' },
+  Retail:      { bg: 'var(--k-fef3c7)', color: 'var(--k-b45309)' },
+  Office:      { bg: 'var(--k-dbeafe)', color: 'var(--k-1d4ed8)' },
+  Industrial:  { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' },
+  Land:        { bg: 'var(--k-dcfce7)', color: 'var(--k-15803d)' },
   Multifamily: { bg: '#f3e8ff', color: '#7e22ce' },
   'Mixed-Use': { bg: '#fce7f3', color: 'var(--k-be185d)' },
-  Medical:     { bg: '#cffafe', color: 'var(--k-0e7490)' },
-  Flex:        { bg: '#fff7ed', color: 'var(--k-c2410c)' },
+  Medical:     { bg: 'var(--k-cffafe)', color: 'var(--k-0e7490)' },
+  Flex:        { bg: 'var(--k-fff7ed)', color: 'var(--k-c2410c)' },
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1219,7 +1219,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         const gridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 16 };
         const renderCard = (l: Listing) => {
             const sc = STATUS_CFG[l.status ?? 'active'] ?? STATUS_CFG.active;
-            const tc = TYPE_COLORS[l.type ?? ''] ?? { bg: '#f1f5f9', color: 'var(--k-475569)' };
+            const tc = TYPE_COLORS[l.type ?? ''] ?? { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' };
             const agent = profiles.find(p => p.id === l.listing_agent_id);
             return (
               <div key={l.id} onClick={() => openListing(l)}
@@ -1327,7 +1327,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '10px 0 10px' }}>
                 {(() => {
                   const sc = STATUS_CFG[active.status ?? 'active'] ?? STATUS_CFG.active;
-                  const tc = TYPE_COLORS[active.type ?? ''] ?? { bg: '#f1f5f9', color: 'var(--k-475569)' };
+                  const tc = TYPE_COLORS[active.type ?? ''] ?? { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' };
                   return (
                     <>
                       <span style={{ ...sc, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 } as React.CSSProperties}>{sc.label}</span>
@@ -2163,7 +2163,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         return (
                           <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, rowGap: 4, fontSize: 12, background: 'var(--k-fff)', border: '1px solid var(--k-d6f0dd)', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
                             <select value={g.role} disabled={!g.keep} onChange={e => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, role: e.target.value } : x))}
-                              title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-166534)', background: '#f7fdf9', border: '1px solid var(--k-cdeed8)', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
+                              title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-166534)', background: 'var(--k-f7fdf9)', border: '1px solid var(--k-cdeed8)', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
                               {SIGNER_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                             </select>
                             <span style={{ flex: '1 1 100px', minWidth: 0, color: 'var(--k-4b7d5b)', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>

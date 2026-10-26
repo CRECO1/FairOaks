@@ -76,14 +76,14 @@ interface Props {
 }
 
 const ASSET_COLORS: Record<string, { bg: string; color: string }> = {
-  Retail:      { bg: '#fef3c7', color: 'var(--k-b45309)' },
-  Office:      { bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
-  Industrial:  { bg: '#f1f5f9', color: 'var(--k-475569)' },
-  Land:        { bg: '#dcfce7', color: 'var(--k-15803d)' },
+  Retail:      { bg: 'var(--k-fef3c7)', color: 'var(--k-b45309)' },
+  Office:      { bg: 'var(--k-dbeafe)', color: 'var(--k-1d4ed8)' },
+  Industrial:  { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' },
+  Land:        { bg: 'var(--k-dcfce7)', color: 'var(--k-15803d)' },
   Multifamily: { bg: '#f3e8ff', color: '#7e22ce' },
   'Mixed-Use': { bg: '#fce7f3', color: '#be185d' },
-  Medical:     { bg: '#cffafe', color: '#0e7490' },
-  Flex:        { bg: '#fff7ed', color: 'var(--k-c2410c)' },
+  Medical:     { bg: 'var(--k-cffafe)', color: '#0e7490' },
+  Flex:        { bg: 'var(--k-fff7ed)', color: 'var(--k-c2410c)' },
 };
 
 // Options for the agent Add-Property form (see AddPropertyModal).
@@ -164,7 +164,7 @@ async function downscaleIfLargeImage(file: File): Promise<File> {
 }
 
 function assetStyle(a?: string) {
-  return ASSET_COLORS[a ?? ''] ?? { bg: '#f1f5f9', color: 'var(--k-475569)' };
+  return ASSET_COLORS[a ?? ''] ?? { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' };
 }
 function fmtSf(n?: number | null) { return n ? `${Number(n).toLocaleString()} SF` : ''; }
 function fmt$(n?: number | null) {
@@ -180,9 +180,9 @@ function cityLine(p: Property) {
 }
 function statusPill(s?: string) {
   const v = (s || '').toLowerCase();
-  if (/vacan|avail/.test(v)) return { bg: '#dcfce7', color: 'var(--k-15803d)' };
-  if (/leas|occup|sold|pend/.test(v)) return { bg: '#dbeafe', color: 'var(--k-1d4ed8)' };
-  return { bg: '#f1f5f9', color: 'var(--k-64748b)' };
+  if (/vacan|avail/.test(v)) return { bg: 'var(--k-dcfce7)', color: 'var(--k-15803d)' };
+  if (/leas|occup|sold|pend/.test(v)) return { bg: 'var(--k-dbeafe)', color: 'var(--k-1d4ed8)' };
+  return { bg: 'var(--k-f1f5f9)', color: 'var(--k-64748b)' };
 }
 const muted = <span style={{ color: '#d1d5db' }}>—</span>;
 
@@ -199,9 +199,9 @@ function freshness(p: Property): { label: string; full: string; bg: string; colo
   const label = days <= 0 ? 'Today' : days === 1 ? 'Yesterday'
     : days < 7 ? `${days}d ago` : days < 31 ? `${Math.floor(days / 7)}w ago`
     : days < 365 ? `${Math.floor(days / 30)}mo ago` : `${Math.floor(days / 365)}y ago`;
-  const tone = days <= 7 ? { bg: '#ecfdf5', color: 'var(--k-15803d)' }
-    : days <= 45 ? { bg: '#f1f5f9', color: 'var(--k-64748b)' }
-    : { bg: '#fff7ed', color: 'var(--k-b45309)' };
+  const tone = days <= 7 ? { bg: 'var(--k-ecfdf5)', color: 'var(--k-15803d)' }
+    : days <= 45 ? { bg: 'var(--k-f1f5f9)', color: 'var(--k-64748b)' }
+    : { bg: 'var(--k-fff7ed)', color: 'var(--k-b45309)' };
   const full = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   return { label, full, ...tone };
 }
@@ -768,7 +768,7 @@ function ContactCardRow({ label, contact, fallbackName, fallbackCompany, fallbac
       role={clickable ? 'button' : undefined}
       tabIndex={clickable ? 0 : undefined}
       onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen!(); } } : undefined}
-      style={{ background: contact ? 'var(--k-f4f9f4)' : '#fbfbfa', border: `1px solid ${contact ? 'var(--k-cfe6cf)' : '#eef0f2'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: clickable ? 'pointer' : 'default' }}>
+      style={{ background: contact ? 'var(--k-f4f9f4)' : 'var(--k-fbfbfa)', border: `1px solid ${contact ? 'var(--k-cfe6cf)' : '#eef0f2'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: clickable ? 'pointer' : 'default' }}>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
           {label}
@@ -1035,7 +1035,7 @@ function ContactPicker({ authToken, linked, initialQuery, draft, onLink, createT
 
   if (linked) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#f4f9f4', border: '1px solid #cfe6cf', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--k-f4f9f4)', border: '1px solid #cfe6cf', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
         <span style={{ fontSize: 16 }}>🔗</span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-166534)' }}>{contactLabel(linked)}</div>

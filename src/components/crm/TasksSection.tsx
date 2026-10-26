@@ -76,7 +76,7 @@ function ContactSearch({
             {/* None option */}
             <button type="button" onClick={() => { onChange(''); setOpen(false); setQ(''); }}
               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', border: 'none',
-                background: !value ? '#fef9ee' : 'transparent', color: !value ? '#c9922c' : '#6b7280',
+                background: !value ? 'var(--k-fef9ee)' : 'transparent', color: !value ? '#c9922c' : '#6b7280',
                 fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontStyle: 'italic' }}>
               None
             </button>
@@ -139,16 +139,16 @@ interface Props {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const STATUS_CFG = {
-  open:        { label: 'Open',        bg: '#dbeafe', color: 'var(--k-1d4ed8)', dot: '#3b82f6' },
-  in_progress: { label: 'In Progress', bg: '#fef3c7', color: 'var(--k-b45309)', dot: '#f59e0b' },
-  done:        { label: 'Done',        bg: '#dcfce7', color: 'var(--k-15803d)', dot: '#22c55e' },
+  open:        { label: 'Open',        bg: 'var(--k-dbeafe)', color: 'var(--k-1d4ed8)', dot: '#3b82f6' },
+  in_progress: { label: 'In Progress', bg: 'var(--k-fef3c7)', color: 'var(--k-b45309)', dot: '#f59e0b' },
+  done:        { label: 'Done',        bg: 'var(--k-dcfce7)', color: 'var(--k-15803d)', dot: '#22c55e' },
 } as const;
 
 const PRIORITY_CFG = {
-  urgent: { label: 'Urgent', bg: '#fee2e2', color: 'var(--k-dc2626)' },
-  high:   { label: 'High',   bg: '#fed7aa', color: 'var(--k-c2410c)' },
-  normal: { label: 'Normal', bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
-  low:    { label: 'Low',    bg: '#f1f5f9', color: 'var(--k-64748b)' },
+  urgent: { label: 'Urgent', bg: 'var(--k-fee2e2)', color: 'var(--k-dc2626)' },
+  high:   { label: 'High',   bg: 'var(--k-fed7aa)', color: 'var(--k-c2410c)' },
+  normal: { label: 'Normal', bg: 'var(--k-dbeafe)', color: 'var(--k-1d4ed8)' },
+  low:    { label: 'Low',    bg: 'var(--k-f1f5f9)', color: 'var(--k-64748b)' },
 } as const;
 
 const GROUP_CFG = [
@@ -285,8 +285,8 @@ function DuePill({ value, overdue, isToday, onChange }: { value?: string; overdu
   };
   const quick = [{ label: 'Today', days: 0 }, { label: 'Tomorrow', days: 1 }, { label: 'In 3 days', days: 3 }, { label: 'Next week', days: 7 }];
   const pick = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); onChange(d.toISOString().slice(0, 10)); setPos(null); };
-  const color = overdue ? '#dc2626' : isToday ? '#a8741a' : value ? '#6b7280' : '#c7ccd1';
-  const bg = overdue ? '#fef2f2' : isToday ? '#fdf6e8' : 'transparent';
+  const color = overdue ? 'var(--k-dc2626)' : isToday ? 'var(--k-a8741a)' : value ? '#6b7280' : '#c7ccd1';
+  const bg = overdue ? 'var(--k-fef2f2)' : isToday ? 'var(--k-fdf6e8)' : 'transparent';
   return (
     <div ref={ref} style={{ display: 'inline-block' }} onClick={e => e.stopPropagation()}>
       <button onClick={toggle} title="Reschedule"
@@ -341,14 +341,14 @@ function ClientContactCard({ client }: { client: Client }) {
     });
   }
   const typeColors: Record<string, { bg: string; color: string }> = {
-    Buyer: { bg: '#dbeafe', color: 'var(--k-1d4ed8)' },
-    Seller: { bg: '#dcfce7', color: 'var(--k-15803d)' },
-    Tenant: { bg: '#fef3c7', color: 'var(--k-b45309)' },
+    Buyer: { bg: 'var(--k-dbeafe)', color: 'var(--k-1d4ed8)' },
+    Seller: { bg: 'var(--k-dcfce7)', color: 'var(--k-15803d)' },
+    Tenant: { bg: 'var(--k-fef3c7)', color: 'var(--k-b45309)' },
     'Landlord/Investor': { bg: '#f3e8ff', color: '#7e22ce' },
-    Agent: { bg: '#f1f5f9', color: 'var(--k-475569)' },
-    Broker: { bg: '#f1f5f9', color: 'var(--k-475569)' },
+    Agent: { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' },
+    Broker: { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' },
   };
-  const tc = client.type ? (typeColors[client.type] ?? { bg: '#f1f5f9', color: 'var(--k-475569)' }) : null;
+  const tc = client.type ? (typeColors[client.type] ?? { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' }) : null;
   return (
     <div style={{ marginTop: 8, background: 'var(--k-f8fafc)', border: '1px solid var(--k-e2e8f0)', borderRadius: 10, padding: '12px 14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>

@@ -332,7 +332,7 @@ function emailInitials(addr: string): string {
   return n.length >= 2 ? (n[0][0] + n[n.length - 1][0]).toUpperCase() : n[0].slice(0, 2).toUpperCase();
 }
 function emailAvatarColor(addr: string): string {
-  const colors = ['#4f46e5','#0891b2','#059669','#d97706','#dc2626','#7c3aed','#db2777','#0284c7'];
+  const colors = ['#4f46e5','#0891b2','var(--k-059669)','#d97706','var(--k-dc2626)','var(--k-7c3aed)','#db2777','#0284c7'];
   let h = 0; for (let i = 0; i < addr.length; i++) h = (h * 31 + addr.charCodeAt(i)) & 0xffffffff;
   return colors[Math.abs(h) % colors.length];
 }
@@ -423,16 +423,16 @@ function activityStampFull(dateStr: string | undefined | null): string {
 }
 
 function timeAgo(dateStr: string | undefined | null): { label: string; color: string; bg: string } {
-  if (!dateStr) return { label: 'Never', color: 'var(--k-dc2626)', bg: '#fee2e2' };
+  if (!dateStr) return { label: 'Never', color: 'var(--k-dc2626)', bg: 'var(--k-fee2e2)' };
   const diff = Date.now() - new Date(dateStr).getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days < 1)  return { label: 'Today',     color: 'var(--k-16a34a)', bg: '#dcfce7' };
-  if (days === 1) return { label: 'Yesterday', color: 'var(--k-16a34a)', bg: '#dcfce7' };
-  if (days < 14) return { label: `${days}d ago`, color: 'var(--k-16a34a)', bg: '#dcfce7' };
-  if (days < 30) return { label: `${days}d ago`, color: 'var(--k-d97706)', bg: '#fef9c3' };
-  if (days < 60) return { label: `${days}d ago`, color: 'var(--k-a16207)', bg: '#fef9c3' };
-  if (days < 90) return { label: `${days}d ago`, color: 'var(--k-c2410c)', bg: '#fed7aa' };
-  return { label: `${days}d ago`, color: 'var(--k-dc2626)', bg: '#fee2e2' };
+  if (days < 1)  return { label: 'Today',     color: 'var(--k-16a34a)', bg: 'var(--k-dcfce7)' };
+  if (days === 1) return { label: 'Yesterday', color: 'var(--k-16a34a)', bg: 'var(--k-dcfce7)' };
+  if (days < 14) return { label: `${days}d ago`, color: 'var(--k-16a34a)', bg: 'var(--k-dcfce7)' };
+  if (days < 30) return { label: `${days}d ago`, color: 'var(--k-d97706)', bg: 'var(--k-fef9c3)' };
+  if (days < 60) return { label: `${days}d ago`, color: 'var(--k-a16207)', bg: 'var(--k-fef9c3)' };
+  if (days < 90) return { label: `${days}d ago`, color: 'var(--k-c2410c)', bg: 'var(--k-fed7aa)' };
+  return { label: `${days}d ago`, color: 'var(--k-dc2626)', bg: 'var(--k-fee2e2)' };
 }
 
 function activityIcon(type: CRMActivity['type']): string {
@@ -456,12 +456,12 @@ const valNote = (t?: string) => isLease(t) ? 'gross lease value — total over t
 
 // ── Kanban Board ──────────────────────────────────────────────────────────────
 const STAGE_COLORS: Record<string, { bg: string; border: string; dot: string }> = {
-  'Prospect':    { bg: '#f9fafb', border: 'var(--k-d1d5db)', dot: '#9ca3af' },
-  'Active':      { bg: '#eff6ff', border: 'var(--k-bfdbfe)', dot: '#3b82f6' },
-  'LOI':         { bg: '#faf5ff', border: 'var(--k-e9d5ff)', dot: '#a855f7' },
-  'In Contract': { bg: '#fffbeb', border: 'var(--k-fde68a)', dot: '#f59e0b' },
-  'Closed':      { bg: '#f0fdf4', border: 'var(--k-bbf7d0)', dot: '#22c55e' },
-  'Lost':        { bg: '#fef2f2', border: 'var(--k-fecaca)', dot: '#ef4444' },
+  'Prospect':    { bg: 'var(--k-f9fafb)', border: 'var(--k-d1d5db)', dot: '#9ca3af' },
+  'Active':      { bg: 'var(--k-eff6ff)', border: 'var(--k-bfdbfe)', dot: '#3b82f6' },
+  'LOI':         { bg: 'var(--k-faf5ff)', border: 'var(--k-e9d5ff)', dot: 'var(--k-a855f7)' },
+  'In Contract': { bg: 'var(--k-fffbeb)', border: 'var(--k-fde68a)', dot: '#f59e0b' },
+  'Closed':      { bg: 'var(--k-f0fdf4)', border: 'var(--k-bbf7d0)', dot: '#22c55e' },
+  'Lost':        { bg: 'var(--k-fef2f2)', border: 'var(--k-fecaca)', dot: '#ef4444' },
 };
 
 function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, setDraggedDealId, setDragOverStage, handleDrop, openDeal, isMobile, onAddDeal }: {
@@ -4694,8 +4694,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell[data-crm-theme="dark"]{--c-text:#e9e3d6;--c-canvas:#0e0d0b;--c-surface:#171512;--c-surface-2:#1d1a16;--c-ink:#f2ede2;--c-ink-2:#d8d2c4;--c-muted:#a39c8c;--c-faint:#7d7667;--c-line:#2b2720;--c-line-2:#221f19;--c-header:#141210;
           --c-danger:#ef8a76;--c-danger-soft:#33201b;--c-danger-line:#5a2c22;--c-warn-soft:#2e2412;--c-warn-line:#5a4418;--c-warn-ink:#e3b45a;--c-ok-soft:#18281f;--c-ok-line:#285a3a;--c-ok-ink:#76c595;}
         /* Per-colour variables used by the page styles: the light value is the original colour (light mode is unchanged), dark swaps it. */
-        .crm-app-shell{--k-000:#000;--k-00376b:#00376b;--k-0369a1:#0369a1;--k-059669:#059669;--k-065f46:#065f46;--k-075985:#075985;--k-0a66c2:#0a66c2;--k-0e7490:#0e7490;--k-0f766e:#0f766e;--k-111:#111;--k-111827:#111827;--k-14532d:#14532d;--k-15803d:#15803d;--k-166534:#166534;--k-16a34a:#16a34a;--k-1877f2:#1877f2;--k-1a1a1a:#1a1a1a;--k-1a1a2e:#1a1a2e;--k-1a7f37:#1a7f37;--k-1d4ed8:#1d4ed8;--k-1e293b:#1e293b;--k-1e40af:#1e40af;--k-1f2937:#1f2937;--k-2563eb:#2563eb;--k-334155:#334155;--k-3730a3:#3730a3;--k-374151:#374151;--k-3b82f6:#3b82f6;--k-4338ca:#4338ca;--k-475569:#475569;--k-4b5563:#4b5563;--k-4b7a4b:#4b7a4b;--k-4b7d5b:#4b7d5b;--k-4c0519:#4c0519;--k-5b3d91:#5b3d91;--k-64748b:#64748b;--k-6b7280:#6b7280;--k-6d28d9:#6d28d9;--k-78350f:#78350f;--k-78716c:#78716c;--k-7a5410:#7a5410;--k-7c5a12:#7c5a12;--k-7e22ce:#7e22ce;--k-86efac:#86efac;--k-8a6a1e:#8a6a1e;--k-8a6d3b:#8a6d3b;--k-8b5cf6:#8b5cf6;--k-8e8e8e:#8e8e8e;--k-92400e:#92400e;--k-94a3b8:#94a3b8;--k-991b1b:#991b1b;--k-99f6e4:#99f6e4;--k-9a3412:#9a3412;--k-9a6e18:#9a6e18;--k-9ca3af:#9ca3af;--k-9f1239:#9f1239;--k-a06a12:#a06a12;--k-a16207:#a16207;--k-a8741a:#a8741a;--k-b00020:#b00020;--k-b07d1f:#b07d1f;--k-b0873a:#b0873a;--k-b08a4a:#b08a4a;--k-b0b0b0:#b0b0b0;--k-b45309:#b45309;--k-b91c1c:#b91c1c;--k-bae6fd:#bae6fd;--k-bbf7d0:#bbf7d0;--k-be123c:#be123c;--k-be185d:#be185d;--k-bfdbfe:#bfdbfe;--k-c2410c:#c2410c;--k-c7d2fe:#c7d2fe;--k-c9ead4:#c9ead4;--k-cbd5c0:#cbd5c0;--k-cbd5e1:#cbd5e1;--k-ccc:#ccc;--k-cdeed8:#cdeed8;--k-cfe3fb:#cfe3fb;--k-cfe6cf:#cfe6cf;--k-d1d5db:#d1d5db;--k-d1fae5:#d1fae5;--k-d6f0dd:#d6f0dd;--k-d97706:#d97706;--k-d9d4c4:#d9d4c4;--k-dbeafe:#dbeafe;--k-dc2626:#dc2626;--k-dcfce7:#dcfce7;--k-ddd:#ddd;--k-ddd6fe:#ddd6fe;--k-ded2f2:#ded2f2;--k-e0cfa0:#e0cfa0;--k-e0d4b8:#e0d4b8;--k-e0e0e0:#e0e0e0;--k-e0e7ff:#e0e7ff;--k-e0f2fe:#e0f2fe;--k-e1306c:#e1306c;--k-e2e5e9:#e2e5e9;--k-e2e6ea:#e2e6ea;--k-e2e8f0:#e2e8f0;--k-e5e7eb:#e5e7eb;--k-e5e9ef:#e5e9ef;--k-e6d3a2:#e6d3a2;--k-e8dcc8:#e8dcc8;--k-e8e6df:#e8e6df;--k-e8e8e8:#e8e8e8;--k-e8eaed:#e8eaed;--k-e8edf2:#e8edf2;--k-e9d5ff:#e9d5ff;--k-e9ecef:#e9ecef;--k-ecdfc4:#ecdfc4;--k-eceae4:#eceae4;--k-ececf0:#ececf0;--k-eceef1:#eceef1;--k-eceff3:#eceff3;--k-ecfdf5:#ecfdf5;--k-ede9fe:#ede9fe;--k-eee:#eee;--k-eef0f2:#eef0f2;--k-eef0f3:#eef0f3;--k-eef1f4:#eef1f4;--k-eef2f7:#eef2f7;--k-eef2ff:#eef2ff;--k-ef4444:#ef4444;--k-efefef:#efefef;--k-eff6ff:#eff6ff;--k-f0d9a8:#f0d9a8;--k-f0e2c4:#f0e2c4;--k-f0e6cf:#f0e6cf;--k-f0ebe0:#f0ebe0;--k-f0ece3:#f0ece3;--k-f0f0f0:#f0f0f0;--k-f0f1f3:#f0f1f3;--k-f0f7ff:#f0f7ff;--k-f0f9ff:#f0f9ff;--k-f0fdf4:#f0fdf4;--k-f0fdfa:#f0fdfa;--k-f1d9a0:#f1d9a0;--k-f1f2f4:#f1f2f4;--k-f1f5f9:#f1f5f9;--k-f2f2f2:#f2f2f2;--k-f3e4c4:#f3e4c4;--k-f3e4e4:#f3e4e4;--k-f3e8ff:#f3e8ff;--k-f3e9d0:#f3e9d0;--k-f3f4f6:#f3f4f6;--k-f3f5f7:#f3f5f7;--k-f4f5f7:#f4f5f7;--k-f4f9f4:#f4f9f4;--k-f5f3ff:#f5f3ff;--k-f5f5f5:#f5f5f5;--k-f6e3b8:#f6e3b8;--k-f6f2e9:#f6f2e9;--k-f7f4ec:#f7f4ec;--k-f7f7f5:#f7f7f5;--k-f7fdf9:#f7fdf9;--k-f8d7d7:#f8d7d7;--k-f8fafc:#f8fafc;--k-f8fbff:#f8fbff;--k-f8fff9:#f8fff9;--k-f9f5ef:#f9f5ef;--k-f9fafb:#f9fafb;--k-faf7ef:#faf7ef;--k-faf7ff:#faf7ff;--k-fafaf7:#fafaf7;--k-fafafa:#fafafa;--k-fafbfd:#fafbfd;--k-fbf3df:#fbf3df;--k-fbf6e9:#fbf6e9;--k-fbf8f1:#fbf8f1;--k-fbfbfa:#fbfbfa;--k-fbfbfc:#fbfbfc;--k-fca5a5:#fca5a5;--k-fcd34d:#fcd34d;--k-fcfbf8:#fcfbf8;--k-fcfcfb:#fcfcfb;--k-fde68a:#fde68a;--k-fdf0d5:#fdf0d5;--k-fdf3dd:#fdf3dd;--k-fdf4e3:#fdf4e3;--k-fdf6e3:#fdf6e3;--k-fdf6e8:#fdf6e8;--k-fdf6e9:#fdf6e9;--k-fecaca:#fecaca;--k-fecdd3:#fecdd3;--k-fed7aa:#fed7aa;--k-fee2e2:#fee2e2;--k-fef2f2:#fef2f2;--k-fef3c7:#fef3c7;--k-fef3e2:#fef3e2;--k-fef6f6:#fef6f6;--k-fef9c3:#fef9c3;--k-fef9ec:#fef9ec;--k-fef9ee:#fef9ee;--k-fef9f0:#fef9f0;--k-ff0000:#ff0000;--k-fff:#fff;--k-fff1f2:#fff1f2;--k-fff5f5:#fff5f5;--k-fff7e6:#fff7e6;--k-fff7ed:#fff7ed;--k-fff8e6:#fff8e6;--k-fffaf0:#fffaf0;--k-fffbeb:#fffbeb;--k-fffbf2:#fffbf2;--k-fffdf3:#fffdf3;--k-fffdf5:#fffdf5;--k-fffdf6:#fffdf6;--k-fffdf7:#fffdf7;--k-fffdf8:#fffdf8;}
-        .crm-app-shell[data-crm-theme="dark"]{--k-000:#f2ede2;--k-00376b:#84bef5;--k-0369a1:#8ab4f8;--k-059669:#76c595;--k-065f46:#76c595;--k-075985:#8accef;--k-0a66c2:#8abdf0;--k-0e7490:#8ed7eb;--k-0f766e:#91e8e2;--k-111:#f2ede2;--k-111827:#a7b5d3;--k-14532d:#9adfb6;--k-15803d:#76c595;--k-166534:#76c595;--k-16a34a:#76c595;--k-1877f2:#8ab6ef;--k-1a1a1a:#f2ede2;--k-1a1a2e:#adadcc;--k-1a7f37:#97e2ad;--k-1d4ed8:#8ab4f8;--k-1e293b:#f2ede2;--k-1e40af:#8ab4f8;--k-1f2937:#f2ede2;--k-2563eb:#8ab4f8;--k-334155:#d8d2c4;--k-3730a3:#8ab4f8;--k-374151:#d8d2c4;--k-3b82f6:#89b0f0;--k-4338ca:#8ab4f8;--k-475569:#d8d2c4;--k-4b5563:#d8d2c4;--k-4b7a4b:#afcaaf;--k-4b7d5b:#afcbb8;--k-4c0519:#ee8ba7;--k-5b3d91:#b6a6d4;--k-64748b:#a39c8c;--k-6b7280:#a39c8c;--k-6d28d9:#b79cf0;--k-78350f:#e9b191;--k-78716c:#c0bcba;--k-7a5410:#e8c991;--k-7c5a12:#e7cc93;--k-7e22ce:#c094e5;--k-86efac:#285a3a;--k-8a6a1e:#e1cb98;--k-8a6d3b:#d3c3a6;--k-8b5cf6:#a98aef;--k-8e8e8e:#bdbdbd;--k-92400e:#e3b45a;--k-94a3b8:#7d7667;--k-991b1b:#ef8a76;--k-99f6e4:#256558;--k-9a3412:#e9a690;--k-9a6e18:#e6ca94;--k-9ca3af:#7d7667;--k-9f1239:#ea90a9;--k-a06a12:#e3b45a;--k-a16207:#e3b45a;--k-a8741a:#e3b45a;--k-b00020:#f58499;--k-b07d1f:#e4c895;--k-b0873a:#d9c5a0;--k-b08a4a:#d4c3a6;--k-b0b0b0:#7d7667;--k-b45309:#e3b45a;--k-b91c1c:#ef8a76;--k-bae6fd:#2a4468;--k-bbf7d0:#285a3a;--k-be123c:#eb8ea5;--k-be185d:#e891b5;--k-bfdbfe:#2a4468;--k-c2410c:#e3b45a;--k-c7d2fe:#2a4468;--k-c9ead4:#34563f;--k-cbd5c0:#454c3d;--k-cbd5e1:#3a352b;--k-ccc:#3a352b;--k-cdeed8:#32583f;--k-cfe3fb:#254265;--k-cfe6cf:#395139;--k-d1d5db:#3a352b;--k-d1fae5:#18281f;--k-d6f0dd:#33563d;--k-d97706:#f2c087;--k-d9d4c4:#4d493d;--k-dbeafe:#172336;--k-dc2626:#ef8a76;--k-dcfce7:#18281f;--k-ddd:#2b2720;--k-ddd6fe:#2d2169;--k-ded2f2:#40305a;--k-e0cfa0:#584e32;--k-e0d4b8:#544b36;--k-e0e0e0:#2b2720;--k-e0e7ff:#172336;--k-e0f2fe:#172336;--k-e1306c:#e793af;--k-e2e5e9:#40444a;--k-e2e6ea:#23262a;--k-e2e8f0:#2b2720;--k-e5e7eb:#2b2720;--k-e5e9ef:#3c434e;--k-e6d3a2:#5a4418;--k-e8dcc8:#5a4418;--k-e8e6df:#4b483f;--k-e8e8e8:#2b2720;--k-e8eaed:#2b2720;--k-e8edf2:#2b2720;--k-e9d5ff:#431f6b;--k-e9ecef:#3f454b;--k-ecdfc4:#584c31;--k-eceae4:#4b483e;--k-ececf0:#404049;--k-eceef1:#3f444b;--k-eceff3:#3c444d;--k-ecfdf5:#18281f;--k-ede9fe:#241b36;--k-eee:#2b2720;--k-eef0f2:#40454a;--k-eef0f3:#3e444b;--k-eef1f4:#22262b;--k-eef2f7:#1f252e;--k-eef2ff:#172336;--k-ef4444:#ec8d8d;--k-efefef:#2b2720;--k-eff6ff:#172336;--k-f0d9a8:#604f2a;--k-f0e2c4:#5a4418;--k-f0e6cf:#594d31;--k-f0ebe0:#524a38;--k-f0ece3:#5a4418;--k-f0f0f0:#25211b;--k-f0f1f3:#414349;--k-f0f7ff:#11253b;--k-f0f9ff:#112a3b;--k-f0fdf4:#18281f;--k-f0fdfa:#16362f;--k-f1d9a0:#615029;--k-f1f2f4:#404349;--k-f1f5f9:#25211b;--k-f2f2f2:#0e0d0b;--k-f3e4c4:#5e4e2c;--k-f3e4e4:#533636;--k-f3e8ff:#25113b;--k-f3e9d0:#332c1a;--k-f3f4f6:#25211b;--k-f3f5f7:#22262a;--k-f4f5f7:#3f434b;--k-f4f9f4:#202c20;--k-f5f3ff:#241b36;--k-f5f5f5:#1d1a16;--k-f6e3b8:#625028;--k-f6f2e9:#2f2a1d;--k-f7f4ec:#2f2a1e;--k-f7f7f5:#292924;--k-f7fdf9:#1a3322;--k-f8d7d7:#5f2a2a;--k-f8fafc:#1d1a16;--k-f8fbff:#11233b;--k-f8fff9:#113b17;--k-f9f5ef:#2e2412;--k-f9fafb:#1d1a16;--k-faf7ef:#2e2412;--k-faf7ff:#21113b;--k-fafaf7:#2b2b21;--k-fafafa:#1d1a16;--k-fafbfd:#1d1a16;--k-fbf3df:#372d16;--k-fbf6e9:#352d18;--k-fbf8f1:#322b1b;--k-fbfbfa:#292924;--k-fbfbfc:#232329;--k-fca5a5:#5a2c22;--k-fcd34d:#5a4418;--k-fcfbf8:#2f2a1e;--k-fcfcfb:#292923;--k-fde68a:#5a4418;--k-fdf0d5:#392d13;--k-fdf3dd:#392d14;--k-fdf4e3:#382c14;--k-fdf6e3:#382f14;--k-fdf6e8:#2e2412;--k-fdf6e9:#2e2412;--k-fecaca:#5a2c22;--k-fecdd3:#692029;--k-fed7aa:#5a4418;--k-fee2e2:#33201b;--k-fef2f2:#33201b;--k-fef3c7:#2e2412;--k-fef3e2:#3a2a13;--k-fef6f6:#371515;--k-fef9c3:#2e2412;--k-fef9ec:#392f13;--k-fef9ee:#392d14;--k-fef9f0:#2e2412;--k-ff0000:#f58484;--k-fff:#171512;--k-fff1f2:#33201b;--k-fff5f5:#3b1111;--k-fff7e6:#3b2e11;--k-fff7ed:#2e2412;--k-fff8e6:#3b3011;--k-fffaf0:#2e2412;--k-fffbeb:#2e2412;--k-fffbf2:#2e2412;--k-fffdf3:#3b3411;--k-fffdf5:#3b3311;--k-fffdf6:#2e2412;--k-fffdf7:#3b3111;--k-fffdf8:#3b2f11;color-scheme:dark;}
+        .crm-app-shell{--k-000:#000;--k-00376b:#00376b;--k-0369a1:#0369a1;--k-059669:#059669;--k-065f46:#065f46;--k-075985:#075985;--k-0a66c2:#0a66c2;--k-0e7490:#0e7490;--k-0f766e:#0f766e;--k-111:#111;--k-111827:#111827;--k-14532d:#14532d;--k-15803d:#15803d;--k-166534:#166534;--k-16a34a:#16a34a;--k-1877f2:#1877f2;--k-1a1a1a:#1a1a1a;--k-1a1a2e:#1a1a2e;--k-1a7f37:#1a7f37;--k-1d4ed8:#1d4ed8;--k-1e293b:#1e293b;--k-1e40af:#1e40af;--k-1f2937:#1f2937;--k-2563eb:#2563eb;--k-334155:#334155;--k-3730a3:#3730a3;--k-374151:#374151;--k-3b82f6:#3b82f6;--k-4338ca:#4338ca;--k-475569:#475569;--k-4b5563:#4b5563;--k-4b7a4b:#4b7a4b;--k-4b7d5b:#4b7d5b;--k-4c0519:#4c0519;--k-5b3d91:#5b3d91;--k-64748b:#64748b;--k-6b21a8:#6b21a8;--k-6b7280:#6b7280;--k-6d28d9:#6d28d9;--k-78350f:#78350f;--k-78716c:#78716c;--k-7a5410:#7a5410;--k-7c3aed:#7c3aed;--k-7c5a12:#7c5a12;--k-7e22ce:#7e22ce;--k-86efac:#86efac;--k-8a6a1e:#8a6a1e;--k-8a6d3b:#8a6d3b;--k-8b5cf6:#8b5cf6;--k-8e8e8e:#8e8e8e;--k-92400e:#92400e;--k-94a3b8:#94a3b8;--k-991b1b:#991b1b;--k-99f6e4:#99f6e4;--k-9a3412:#9a3412;--k-9a6e18:#9a6e18;--k-9ca3af:#9ca3af;--k-9f1239:#9f1239;--k-a06a12:#a06a12;--k-a16207:#a16207;--k-a855f7:#a855f7;--k-a8741a:#a8741a;--k-b00020:#b00020;--k-b07d1f:#b07d1f;--k-b0873a:#b0873a;--k-b08a4a:#b08a4a;--k-b0b0b0:#b0b0b0;--k-b45309:#b45309;--k-b91c1c:#b91c1c;--k-bae6fd:#bae6fd;--k-bbf7d0:#bbf7d0;--k-be123c:#be123c;--k-be185d:#be185d;--k-bfdbfe:#bfdbfe;--k-c2410c:#c2410c;--k-c7d2fe:#c7d2fe;--k-c9ead4:#c9ead4;--k-cbd5c0:#cbd5c0;--k-cbd5e1:#cbd5e1;--k-ccc:#ccc;--k-cdeed8:#cdeed8;--k-cfe3fb:#cfe3fb;--k-cfe6cf:#cfe6cf;--k-cffafe:#cffafe;--k-d1d5db:#d1d5db;--k-d1fae5:#d1fae5;--k-d6f0dd:#d6f0dd;--k-d97706:#d97706;--k-d9d4c4:#d9d4c4;--k-dbeafe:#dbeafe;--k-dc2626:#dc2626;--k-dcfce7:#dcfce7;--k-ddd:#ddd;--k-ddd6fe:#ddd6fe;--k-ded2f2:#ded2f2;--k-e0cfa0:#e0cfa0;--k-e0d4b8:#e0d4b8;--k-e0e0e0:#e0e0e0;--k-e0e7ff:#e0e7ff;--k-e0f2fe:#e0f2fe;--k-e1306c:#e1306c;--k-e2e5e9:#e2e5e9;--k-e2e6ea:#e2e6ea;--k-e2e8f0:#e2e8f0;--k-e5e7eb:#e5e7eb;--k-e5e9ef:#e5e9ef;--k-e6d3a2:#e6d3a2;--k-e8dcc8:#e8dcc8;--k-e8e6df:#e8e6df;--k-e8e8e8:#e8e8e8;--k-e8eaed:#e8eaed;--k-e8edf2:#e8edf2;--k-e9d5ff:#e9d5ff;--k-e9ecef:#e9ecef;--k-ecdfc4:#ecdfc4;--k-eceae4:#eceae4;--k-ececf0:#ececf0;--k-eceef1:#eceef1;--k-eceff3:#eceff3;--k-ecfdf5:#ecfdf5;--k-ede9fe:#ede9fe;--k-eee:#eee;--k-eef0f2:#eef0f2;--k-eef0f3:#eef0f3;--k-eef1f4:#eef1f4;--k-eef2f7:#eef2f7;--k-eef2ff:#eef2ff;--k-ef4444:#ef4444;--k-efefef:#efefef;--k-eff6ff:#eff6ff;--k-f0d9a8:#f0d9a8;--k-f0e2c4:#f0e2c4;--k-f0e6cf:#f0e6cf;--k-f0ebe0:#f0ebe0;--k-f0ece3:#f0ece3;--k-f0f0f0:#f0f0f0;--k-f0f1f3:#f0f1f3;--k-f0f7ff:#f0f7ff;--k-f0f9ff:#f0f9ff;--k-f0fdf4:#f0fdf4;--k-f0fdfa:#f0fdfa;--k-f1d9a0:#f1d9a0;--k-f1f2f4:#f1f2f4;--k-f1f5f9:#f1f5f9;--k-f2f2f2:#f2f2f2;--k-f3e4c4:#f3e4c4;--k-f3e4e4:#f3e4e4;--k-f3e8ff:#f3e8ff;--k-f3e9d0:#f3e9d0;--k-f3f4f6:#f3f4f6;--k-f3f5f7:#f3f5f7;--k-f4f5f7:#f4f5f7;--k-f4f9f4:#f4f9f4;--k-f5f3ff:#f5f3ff;--k-f5f5f5:#f5f5f5;--k-f6e3b8:#f6e3b8;--k-f6f2e9:#f6f2e9;--k-f7f4ec:#f7f4ec;--k-f7f7f5:#f7f7f5;--k-f7fdf9:#f7fdf9;--k-f8d7d7:#f8d7d7;--k-f8fafc:#f8fafc;--k-f8fbff:#f8fbff;--k-f8fff9:#f8fff9;--k-f9f5ef:#f9f5ef;--k-f9fafb:#f9fafb;--k-faf5ff:#faf5ff;--k-faf7ef:#faf7ef;--k-faf7ff:#faf7ff;--k-fafaf7:#fafaf7;--k-fafafa:#fafafa;--k-fafbfd:#fafbfd;--k-fbf3df:#fbf3df;--k-fbf6e9:#fbf6e9;--k-fbf8f1:#fbf8f1;--k-fbfbfa:#fbfbfa;--k-fbfbfc:#fbfbfc;--k-fca5a5:#fca5a5;--k-fcd34d:#fcd34d;--k-fce7f3:#fce7f3;--k-fcfbf8:#fcfbf8;--k-fcfcfb:#fcfcfb;--k-fde68a:#fde68a;--k-fdf0d5:#fdf0d5;--k-fdf3dd:#fdf3dd;--k-fdf4e3:#fdf4e3;--k-fdf6e3:#fdf6e3;--k-fdf6e8:#fdf6e8;--k-fdf6e9:#fdf6e9;--k-fecaca:#fecaca;--k-fecdd3:#fecdd3;--k-fed7aa:#fed7aa;--k-fee2e2:#fee2e2;--k-fef2f2:#fef2f2;--k-fef3c7:#fef3c7;--k-fef3e2:#fef3e2;--k-fef6f6:#fef6f6;--k-fef9c3:#fef9c3;--k-fef9ec:#fef9ec;--k-fef9ee:#fef9ee;--k-fef9f0:#fef9f0;--k-fefce8:#fefce8;--k-ff0000:#ff0000;--k-ffedd5:#ffedd5;--k-fff:#fff;--k-fff1f2:#fff1f2;--k-fff5f5:#fff5f5;--k-fff7e6:#fff7e6;--k-fff7ed:#fff7ed;--k-fff8e6:#fff8e6;--k-fffaf0:#fffaf0;--k-fffbeb:#fffbeb;--k-fffbf2:#fffbf2;--k-fffdf3:#fffdf3;--k-fffdf5:#fffdf5;--k-fffdf6:#fffdf6;--k-fffdf7:#fffdf7;--k-fffdf8:#fffdf8;}
+        .crm-app-shell[data-crm-theme="dark"]{--k-000:#f2ede2;--k-00376b:#84bef5;--k-0369a1:#8ab4f8;--k-059669:#76c595;--k-065f46:#76c595;--k-075985:#8accef;--k-0a66c2:#8abdf0;--k-0e7490:#8ed7eb;--k-0f766e:#91e8e2;--k-111:#f2ede2;--k-111827:#a7b5d3;--k-14532d:#9adfb6;--k-15803d:#76c595;--k-166534:#76c595;--k-16a34a:#76c595;--k-1877f2:#8ab6ef;--k-1a1a1a:#f2ede2;--k-1a1a2e:#adadcc;--k-1a7f37:#97e2ad;--k-1d4ed8:#8ab4f8;--k-1e293b:#f2ede2;--k-1e40af:#8ab4f8;--k-1f2937:#f2ede2;--k-2563eb:#8ab4f8;--k-334155:#d8d2c4;--k-3730a3:#8ab4f8;--k-374151:#d8d2c4;--k-3b82f6:#89b0f0;--k-4338ca:#8ab4f8;--k-475569:#d8d2c4;--k-4b5563:#d8d2c4;--k-4b7a4b:#afcaaf;--k-4b7d5b:#afcbb8;--k-4c0519:#ee8ba7;--k-5b3d91:#b6a6d4;--k-64748b:#a39c8c;--k-6b21a8:#c097e3;--k-6b7280:#a39c8c;--k-6d28d9:#b79cf0;--k-78350f:#e9b191;--k-78716c:#c0bcba;--k-7a5410:#e8c991;--k-7c3aed:#b79cf0;--k-7c5a12:#e7cc93;--k-7e22ce:#c094e5;--k-86efac:#285a3a;--k-8a6a1e:#e1cb98;--k-8a6d3b:#d3c3a6;--k-8b5cf6:#a98aef;--k-8e8e8e:#bdbdbd;--k-92400e:#e3b45a;--k-94a3b8:#7d7667;--k-991b1b:#ef8a76;--k-99f6e4:#256558;--k-9a3412:#e9a690;--k-9a6e18:#e6ca94;--k-9ca3af:#7d7667;--k-9f1239:#ea90a9;--k-a06a12:#e3b45a;--k-a16207:#e3b45a;--k-a855f7:#b79cf0;--k-a8741a:#e3b45a;--k-b00020:#f58499;--k-b07d1f:#e4c895;--k-b0873a:#d9c5a0;--k-b08a4a:#d4c3a6;--k-b0b0b0:#7d7667;--k-b45309:#e3b45a;--k-b91c1c:#ef8a76;--k-bae6fd:#2a4468;--k-bbf7d0:#285a3a;--k-be123c:#eb8ea5;--k-be185d:#e891b5;--k-bfdbfe:#2a4468;--k-c2410c:#e3b45a;--k-c7d2fe:#2a4468;--k-c9ead4:#34563f;--k-cbd5c0:#454c3d;--k-cbd5e1:#3a352b;--k-ccc:#3a352b;--k-cdeed8:#32583f;--k-cfe3fb:#254265;--k-cfe6cf:#395139;--k-cffafe:#12373a;--k-d1d5db:#3a352b;--k-d1fae5:#18281f;--k-d6f0dd:#33563d;--k-d97706:#f2c087;--k-d9d4c4:#4d493d;--k-dbeafe:#172336;--k-dc2626:#ef8a76;--k-dcfce7:#18281f;--k-ddd:#2b2720;--k-ddd6fe:#2d2169;--k-ded2f2:#40305a;--k-e0cfa0:#584e32;--k-e0d4b8:#544b36;--k-e0e0e0:#2b2720;--k-e0e7ff:#172336;--k-e0f2fe:#172336;--k-e1306c:#e793af;--k-e2e5e9:#40444a;--k-e2e6ea:#23262a;--k-e2e8f0:#2b2720;--k-e5e7eb:#2b2720;--k-e5e9ef:#3c434e;--k-e6d3a2:#5a4418;--k-e8dcc8:#5a4418;--k-e8e6df:#4b483f;--k-e8e8e8:#2b2720;--k-e8eaed:#2b2720;--k-e8edf2:#2b2720;--k-e9d5ff:#431f6b;--k-e9ecef:#3f454b;--k-ecdfc4:#584c31;--k-eceae4:#4b483e;--k-ececf0:#404049;--k-eceef1:#3f444b;--k-eceff3:#3c444d;--k-ecfdf5:#18281f;--k-ede9fe:#241b36;--k-eee:#2b2720;--k-eef0f2:#40454a;--k-eef0f3:#3e444b;--k-eef1f4:#22262b;--k-eef2f7:#1f252e;--k-eef2ff:#172336;--k-ef4444:#ec8d8d;--k-efefef:#2b2720;--k-eff6ff:#172336;--k-f0d9a8:#604f2a;--k-f0e2c4:#5a4418;--k-f0e6cf:#594d31;--k-f0ebe0:#524a38;--k-f0ece3:#5a4418;--k-f0f0f0:#25211b;--k-f0f1f3:#414349;--k-f0f7ff:#11253b;--k-f0f9ff:#112a3b;--k-f0fdf4:#18281f;--k-f0fdfa:#16362f;--k-f1d9a0:#615029;--k-f1f2f4:#404349;--k-f1f5f9:#25211b;--k-f2f2f2:#0e0d0b;--k-f3e4c4:#5e4e2c;--k-f3e4e4:#533636;--k-f3e8ff:#25113b;--k-f3e9d0:#332c1a;--k-f3f4f6:#25211b;--k-f3f5f7:#22262a;--k-f4f5f7:#3f434b;--k-f4f9f4:#202c20;--k-f5f3ff:#241b36;--k-f5f5f5:#1d1a16;--k-f6e3b8:#625028;--k-f6f2e9:#2f2a1d;--k-f7f4ec:#2f2a1e;--k-f7f7f5:#292924;--k-f7fdf9:#1a3322;--k-f8d7d7:#5f2a2a;--k-f8fafc:#1d1a16;--k-f8fbff:#11233b;--k-f8fff9:#113b17;--k-f9f5ef:#2e2412;--k-f9fafb:#1d1a16;--k-faf5ff:#241b36;--k-faf7ef:#2e2412;--k-faf7ff:#21113b;--k-fafaf7:#2b2b21;--k-fafafa:#1d1a16;--k-fafbfd:#1d1a16;--k-fbf3df:#372d16;--k-fbf6e9:#352d18;--k-fbf8f1:#322b1b;--k-fbfbfa:#292924;--k-fbfbfc:#232329;--k-fca5a5:#5a2c22;--k-fcd34d:#5a4418;--k-fce7f3:#371629;--k-fcfbf8:#2f2a1e;--k-fcfcfb:#292923;--k-fde68a:#5a4418;--k-fdf0d5:#392d13;--k-fdf3dd:#392d14;--k-fdf4e3:#382c14;--k-fdf6e3:#382f14;--k-fdf6e8:#2e2412;--k-fdf6e9:#2e2412;--k-fecaca:#5a2c22;--k-fecdd3:#692029;--k-fed7aa:#5a4418;--k-fee2e2:#33201b;--k-fef2f2:#33201b;--k-fef3c7:#2e2412;--k-fef3e2:#3a2a13;--k-fef6f6:#371515;--k-fef9c3:#2e2412;--k-fef9ec:#392f13;--k-fef9ee:#392d14;--k-fef9f0:#2e2412;--k-fefce8:#2e2412;--k-ff0000:#f58484;--k-ffedd5:#3b2911;--k-fff:#171512;--k-fff1f2:#33201b;--k-fff5f5:#3b1111;--k-fff7e6:#3b2e11;--k-fff7ed:#2e2412;--k-fff8e6:#3b3011;--k-fffaf0:#2e2412;--k-fffbeb:#2e2412;--k-fffbf2:#2e2412;--k-fffdf3:#3b3411;--k-fffdf5:#3b3311;--k-fffdf6:#2e2412;--k-fffdf7:#3b3111;--k-fffdf8:#3b2f11;color-scheme:dark;}
         /* Cormorant draws old-style numerals by default (a "1" looks like a small "I"); the CRM is full of figures. */
         .crm-app-shell{font-variant-numeric:lining-nums;}
         @media(min-width:1181px){.dk-side{position:sticky;top:0;}}
@@ -5363,7 +5363,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 setShowNotifications(false);
                               }}
                                 style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: n.read_at ? 'var(--k-d1d5db)' : '#6d28d9', flexShrink: 0, marginTop: 4 }} />
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: n.read_at ? 'var(--k-d1d5db)' : 'var(--k-6d28d9)', flexShrink: 0, marginTop: 4 }} />
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 12, color: n.read_at ? 'var(--k-6b7280)' : 'var(--k-111)', fontWeight: n.read_at ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.message}</div>
                                   <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{new Date(n.created_at).toLocaleDateString()}</div>
@@ -5685,7 +5685,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* ── Pipeline by Stage chart ── */}
               {deals.length > 0 && (() => {
                 const STAGE_COLORS_CHART: Record<string, string> = {
-                  Prospect: 'var(--c-faint)', Active: '#3b82f6', LOI: '#a855f7',
+                  Prospect: 'var(--c-faint)', Active: '#3b82f6', LOI: 'var(--k-a855f7)',
                   'In Contract': '#f59e0b', Closed: '#22c55e', Lost: '#ef4444',
                 };
                 const fmtV = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${n.toFixed(0)}`;
@@ -5862,14 +5862,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {/* Bar */}
                     <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 14, gap: 1 }}>
                       {typeBreakdown.map(({ type, count }) => {
-                        const colors: Record<string, string> = { 'Buyer': '#3b82f6', 'Seller': '#f97316', 'Tenant': '#22c55e', 'Landlord/Investor': '#a855f7', 'Agent': '#0ea5e9', 'Broker': 'var(--c-muted)' };
+                        const colors: Record<string, string> = { 'Buyer': '#3b82f6', 'Seller': '#f97316', 'Tenant': '#22c55e', 'Landlord/Investor': 'var(--k-a855f7)', 'Agent': '#0ea5e9', 'Broker': 'var(--c-muted)' };
                         return <div key={type} style={{ flex: count, background: colors[type] ?? '#c9922c', minWidth: 4 }} title={`${type}: ${count}`} />;
                       })}
                     </div>
                     {/* Legend */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
                       {typeBreakdown.map(({ type, count }) => {
-                        const colors: Record<string, string> = { 'Buyer': '#3b82f6', 'Seller': '#f97316', 'Tenant': '#22c55e', 'Landlord/Investor': '#a855f7', 'Agent': '#0ea5e9', 'Broker': 'var(--c-muted)' };
+                        const colors: Record<string, string> = { 'Buyer': '#3b82f6', 'Seller': '#f97316', 'Tenant': '#22c55e', 'Landlord/Investor': 'var(--k-a855f7)', 'Agent': '#0ea5e9', 'Broker': 'var(--c-muted)' };
                         const emoji = type === 'Buyer' ? '🏡' : type === 'Seller' ? '🪧' : type === 'Tenant' ? '🔑' : type === 'Landlord/Investor' ? '🏢' : type === 'Agent' ? '🤝' : '🏛';
                         return (
                           <button key={type} onClick={() => setPage('contacts')}
@@ -5928,7 +5928,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {show.map(c => {
                         const bg    = c.daysLeft < 0 ? 'var(--c-danger-soft)' : c.daysLeft < 90 ? 'var(--c-warn-soft)' : 'var(--c-warn-soft)';
-                        const color = c.daysLeft < 0 ? '#dc2626' : c.daysLeft < 90 ? 'var(--c-warn-ink)' : 'var(--c-warn-ink)';
+                        const color = c.daysLeft < 0 ? 'var(--k-dc2626)' : c.daysLeft < 90 ? 'var(--c-warn-ink)' : 'var(--c-warn-ink)';
                         const label = c.daysLeft < 0 ? `Expired ${Math.abs(c.daysLeft)}d ago` : c.daysLeft === 0 ? 'Expires today' : `${c.daysLeft}d left`;
                         return (
                           <button key={c.id}
@@ -6465,7 +6465,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               {stale.slice(0, followUpLimit).map((c, i) => {
                                 const lastDate = c.last_touched_at ?? c.created_at;
                                 const daysAgo = lastDate ? Math.floor((Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
-                                const urgency = daysAgo === null ? '#dc2626' : daysAgo >= 90 ? '#dc2626' : daysAgo >= 60 ? '#d97706' : '#6b7280';
+                                const urgency = daysAgo === null ? 'var(--k-dc2626)' : daysAgo >= 90 ? 'var(--k-dc2626)' : daysAgo >= 60 ? '#d97706' : '#6b7280';
                                 return (
                                   <tr key={c.id} style={{ borderBottom: '1px solid var(--k-f3f4f6)', background: i % 2 === 0 ? 'var(--k-fff)' : 'var(--k-fafafa)' }}>
                                     <td style={{ padding: '11px 14px' }}>
@@ -6862,7 +6862,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {/* Focus chips: one tap to work just the new leads, just the call-backs, or just what's overdue */}
                 {callListMode === 'tasks' && (callFocusCounts.leads + callFocusCounts.callbacks + callFocusCounts.overdue > 0 || callFocus !== 'all') && (
                   <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 10, WebkitOverflowScrolling: 'touch' }}>
-                    {([['all', 'All', callQueueSeg.length, '#141414'], ['leads', '🆕 New leads', callFocusCounts.leads, '#15803d'], ['callbacks', '📞 Call-backs', callFocusCounts.callbacks, '#be123c'], ['overdue', '⏰ Overdue', callFocusCounts.overdue, '#dc2626']] as ['all' | 'leads' | 'callbacks' | 'overdue', string, number, string][])
+                    {([['all', 'All', callQueueSeg.length, '#141414'], ['leads', '🆕 New leads', callFocusCounts.leads, 'var(--k-15803d)'], ['callbacks', '📞 Call-backs', callFocusCounts.callbacks, '#be123c'], ['overdue', '⏰ Overdue', callFocusCounts.overdue, 'var(--k-dc2626)']] as ['all' | 'leads' | 'callbacks' | 'overdue', string, number, string][])
                       .filter(([k, , n]) => k === 'all' || n > 0 || k === callFocus)
                       .map(([k, label, n, col]) => {
                         const on = callFocus === k;
@@ -6870,7 +6870,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <button key={k} onClick={() => { setCallFocus(k); setCallSelectedId(null); }}
                             style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: isMobile ? 44 : 34, padding: '0 14px', borderRadius: 22, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
                               border: `1.5px solid ${on ? col : '#e2e5e9'}`, background: on ? col : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-374151)' }}>
-                            {label}<span style={{ fontSize: 12, fontWeight: 800, padding: '1px 8px', borderRadius: 10, background: on ? 'rgba(255,255,255,.25)' : '#eef1f4', color: on ? '#fff' : 'var(--k-6b7280)' }}>{n}</span>
+                            {label}<span style={{ fontSize: 12, fontWeight: 800, padding: '1px 8px', borderRadius: 10, background: on ? 'rgba(255,255,255,.25)' : 'var(--k-eef1f4)', color: on ? '#fff' : 'var(--k-6b7280)' }}>{n}</span>
                           </button>
                         );
                       })}
@@ -6927,8 +6927,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       return (
                         <button key={k} onClick={() => { setCallSegment(k); setCallSelectedId(null); }}
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
-                            border: `1px solid ${on ? '#c9922c' : '#e2e5e9'}`, background: on ? '#fdf3dd' : 'var(--k-fff)', color: on ? 'var(--k-92400e)' : 'var(--k-4b5563)' }}>
-                          {label}<span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : '#eef1f4', color: on ? 'var(--k-111)' : 'var(--k-6b7280)' }}>{n}</span>
+                            border: `1px solid ${on ? '#c9922c' : '#e2e5e9'}`, background: on ? 'var(--k-fdf3dd)' : 'var(--k-fff)', color: on ? 'var(--k-92400e)' : 'var(--k-4b5563)' }}>
+                          {label}<span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : 'var(--k-eef1f4)', color: on ? 'var(--k-111)' : 'var(--k-6b7280)' }}>{n}</span>
                         </button>
                       );
                     })}
@@ -6949,7 +6949,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <button key={k} onClick={() => { setCallPropView(k); setCallSelectedId(null); }}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
                               border: `1px solid ${on ? '#141414' : '#e2e5e9'}`, background: on ? '#141414' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-4b5563)' }}>
-                            {label}<span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : '#eef1f4', color: on ? 'var(--k-111)' : 'var(--k-6b7280)' }}>{n}</span>
+                            {label}<span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : 'var(--k-eef1f4)', color: on ? 'var(--k-111)' : 'var(--k-6b7280)' }}>{n}</span>
                           </button>
                         );
                       })}
@@ -6998,7 +6998,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
                             border: `1px solid ${on ? '#141414' : '#e2e5e9'}`, background: on ? '#141414' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-4b5563)' }}>
                           {a.name}
-                          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : a.n > 0 ? 'var(--k-fee2e2)' : '#eef1f4', color: on ? 'var(--k-111)' : a.n > 0 ? 'var(--k-dc2626)' : 'var(--k-6b7280)' }}>{a.n}</span>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : a.n > 0 ? 'var(--k-fee2e2)' : 'var(--k-eef1f4)', color: on ? 'var(--k-111)' : a.n > 0 ? 'var(--k-dc2626)' : 'var(--k-6b7280)' }}>{a.n}</span>
                         </button>
                       );
                     })}
@@ -7019,13 +7019,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const sum = (k: 'calls' | 'talked' | 'voicemail' | 'none') => Object.values(callPanel?.byAgent ?? {}).reduce((a, x) => a + x[k], 0);
                   const cards: { k: string; v: string | number; sub?: string; tone?: string }[] = [
                     { k: 'Calls made today', v: sum('calls') },
-                    { k: 'Talked to', v: sum('talked'), sub: sum('calls') ? `${Math.round((sum('talked') / sum('calls')) * 100)}% of calls` : undefined, tone: '#15803d' },
+                    { k: 'Talked to', v: sum('talked'), sub: sum('calls') ? `${Math.round((sum('talked') / sum('calls')) * 100)}% of calls` : undefined, tone: 'var(--k-15803d)' },
                     { k: 'Voicemail / no answer', v: sum('voicemail') + sum('none') },
-                    { k: 'Waiting for a call back', v: st?.follow_up ?? callbackTasks.length, sub: st?.overdue ? `${st.overdue} past due` : 'none overdue', tone: (st?.overdue ?? 0) > 0 ? '#b91c1c' : undefined },
+                    { k: 'Waiting for a call back', v: st?.follow_up ?? callbackTasks.length, sub: st?.overdue ? `${st.overdue} past due` : 'none overdue', tone: (st?.overdue ?? 0) > 0 ? 'var(--k-b91c1c)' : undefined },
                     { k: 'Missed (7 days)', v: st?.missed ?? '—', sub: st ? `${st.voicemail} voicemails` : undefined },
-                    { k: 'Calls need a note', v: st?.wrapup ?? '—', tone: (st?.wrapup ?? 0) > 0 ? '#a06a12' : undefined },
+                    { k: 'Calls need a note', v: st?.wrapup ?? '—', tone: (st?.wrapup ?? 0) > 0 ? 'var(--k-a06a12)' : undefined },
                     { k: 'Lead response (7d median)', v: leadResponse.median === null ? '—' : fmtMins(leadResponse.median), sub: leadResponse.n ? `${leadResponse.fast} of ${leadResponse.n} within 15 min` : 'no leads contacted yet', tone: leadResponse.median === null ? undefined : STL_COLORS[stlTone(leadResponse.median)].fg },
-                    { k: 'New leads waiting', v: leadResponse.waiting, sub: leadResponse.waiting ? `oldest ${fmtMins(leadResponse.oldest)}${leadResponse.late ? ` · ${leadResponse.late} past ${STL_LATE_MIN}m` : ''}` : 'all contacted', tone: leadResponse.late > 0 ? '#b91c1c' : undefined },
+                    { k: 'New leads waiting', v: leadResponse.waiting, sub: leadResponse.waiting ? `oldest ${fmtMins(leadResponse.oldest)}${leadResponse.late ? ` · ${leadResponse.late} past ${STL_LATE_MIN}m` : ''}` : 'all contacted', tone: leadResponse.late > 0 ? 'var(--k-b91c1c)' : undefined },
                   ];
                   return (
                     <div style={{ marginBottom: 16 }}>
@@ -7114,11 +7114,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const deal = c ? deals.find(d => d.client_id === c.id) ?? null : null;
                   const fmtDay = (s?: string | null) => s ? new Date(s.length <= 10 ? s + 'T12:00:00' : s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
                   const TYPE_COLORS: Record<string, { bg: string; fg: string }> = {
-                    Buyer: { bg: '#eff6ff', fg: '#2563eb' }, Seller: { bg: '#f0fdf4', fg: '#16a34a' },
-                    Tenant: { bg: '#fef3c7', fg: '#b45309' }, 'Landlord/Investor': { bg: '#faf5ff', fg: '#7e22ce' },
-                    Agent: { bg: '#f1f5f9', fg: '#475569' }, Broker: { bg: '#f1f5f9', fg: '#475569' },
+                    Buyer: { bg: 'var(--k-eff6ff)', fg: 'var(--k-2563eb)' }, Seller: { bg: 'var(--k-f0fdf4)', fg: 'var(--k-16a34a)' },
+                    Tenant: { bg: 'var(--k-fef3c7)', fg: 'var(--k-b45309)' }, 'Landlord/Investor': { bg: 'var(--k-faf5ff)', fg: '#7e22ce' },
+                    Agent: { bg: 'var(--k-f1f5f9)', fg: 'var(--k-475569)' }, Broker: { bg: 'var(--k-f1f5f9)', fg: 'var(--k-475569)' },
                   };
-                  const tcolor = c ? (TYPE_COLORS[c.type] ?? { bg: '#f1f5f9', fg: '#475569' }) : null;
+                  const tcolor = c ? (TYPE_COLORS[c.type] ?? { bg: 'var(--k-f1f5f9)', fg: 'var(--k-475569)' }) : null;
                   const followChips: { label: string; val: number | 'none' | null }[] = [
                     { label: 'Auto', val: null }, { label: 'Tomorrow', val: 1 },
                     { label: 'In 3 days', val: 3 }, { label: 'Next week', val: 7 }, { label: '2 weeks', val: 14 }, { label: 'None', val: 'none' },
@@ -7234,7 +7234,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <span style={{ fontSize: 11, color: 'var(--k-6b7280)' }}>{folded ? '▸' : '▾'}</span>
                                 <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 800, color: 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={label}>📣 {label}</span>
                                 {late > 0 && <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--k-b91c1c)', background: 'var(--k-fee2e2)', borderRadius: 8, padding: '1px 7px' }}>{late} late</span>}
-                                <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--k-6b7280)', background: '#eef1f4', borderRadius: 10, padding: '0 8px' }}>{items.length}</span>
+                                <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--k-6b7280)', background: 'var(--k-eef1f4)', borderRadius: 10, padding: '0 8px' }}>{items.length}</span>
                               </button>
                               {!folded && items.map(row)}
                             </div>
@@ -7614,12 +7614,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           return (
                             <div style={{ position: 'sticky', bottom: 0, zIndex: 2, display: isMobile ? 'grid' : 'flex', gridTemplateColumns: isMobile ? 'repeat(3, minmax(0, 1fr))' : undefined, gap: isMobile ? 8 : 10, flexWrap: 'wrap', alignItems: 'center', padding: isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '14px 26px', background: 'var(--k-fff)', borderTop: '1px solid #eceef1', boxShadow: '0 -4px 14px rgba(0,0,0,.05)' }}>
                               <span style={{ gridColumn: isMobile ? '1 / -1' : undefined, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 800, marginRight: 4 }}>How did it go?</span>
-                              {btn('✓ Connected', 'C', 'connected', '#bbf7d0', '#f0fdf4', '#16a34a')}
-                              {btn('📼 Voicemail', 'V', 'voicemail', '#fed7aa', '#fff7ed', '#c2410c')}
+                              {btn('✓ Connected', 'C', 'connected', 'var(--k-bbf7d0)', 'var(--k-f0fdf4)', 'var(--k-16a34a)')}
+                              {btn('📼 Voicemail', 'V', 'voicemail', 'var(--k-fed7aa)', 'var(--k-fff7ed)', 'var(--k-c2410c)')}
                               {btn('✕ No answer', 'N', 'no_answer', '#e5e7eb', '#fff', '#374151')}
-                              {btn('📅 Call back', 'B', 'call_back', '#bfdbfe', '#eff6ff', '#1d4ed8')}
+                              {btn('📅 Call back', 'B', 'call_back', 'var(--k-bfdbfe)', 'var(--k-eff6ff)', 'var(--k-1d4ed8)')}
                               {btn('🙅 Not interested', 'I', 'not_interested', '#e5e7eb', '#f9fafb', '#6b7280')}
-                              {btn('⚠ Wrong number', 'W', 'wrong_number', '#fecaca', '#fef2f2', '#b91c1c')}
+                              {btn('⚠ Wrong number', 'W', 'wrong_number', 'var(--k-fecaca)', 'var(--k-fef2f2)', 'var(--k-b91c1c)')}
 <button disabled={callActionInFlight} onClick={() => snoozeCall(current)}
                                 style={{ gridColumn: isMobile ? 'span 1' : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 46 : undefined, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                                 😴 Tomorrow
@@ -7646,7 +7646,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <button onClick={() => setCallReturnOpen(false)} aria-label="Not yet" style={{ background: 'none', border: 'none', fontSize: 26, lineHeight: 1, color: 'var(--k-9ca3af)', minWidth: 44, minHeight: 44, cursor: 'pointer' }}>×</button>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                              {([['✓ Talked to them', 'connected', '#dcfce7', '#166534'], ['📼 Left a voicemail', 'voicemail', '#fef3c7', '#92400e'], ['📵 No answer', 'no_answer', '#f3f4f6', '#374151'], ['📅 Call back', 'call_back', '#dbeafe', '#1e40af'], ['🙅 Not interested', 'not_interested', '#f3f4f6', '#4b5563'], ['⚠ Wrong number', 'wrong_number', '#fee2e2', '#991b1b']] as ['' | string, 'connected' | 'voicemail' | 'no_answer' | 'wrong_number' | 'call_back' | 'not_interested', string, string][]).map(([label, d, bg, fg]) => (
+                              {([['✓ Talked to them', 'connected', 'var(--k-dcfce7)', 'var(--k-166534)'], ['📼 Left a voicemail', 'voicemail', 'var(--k-fef3c7)', 'var(--k-92400e)'], ['📵 No answer', 'no_answer', '#f3f4f6', '#374151'], ['📅 Call back', 'call_back', 'var(--k-dbeafe)', 'var(--k-1e40af)'], ['🙅 Not interested', 'not_interested', '#f3f4f6', '#4b5563'], ['⚠ Wrong number', 'wrong_number', 'var(--k-fee2e2)', 'var(--k-991b1b)']] as ['' | string, 'connected' | 'voicemail' | 'no_answer' | 'wrong_number' | 'call_back' | 'not_interested', string, string][]).map(([label, d, bg, fg]) => (
                                 <button key={d} disabled={callActionInFlight} onClick={() => dispositionCall(current, d)}
                                   style={{ minHeight: 62, borderRadius: 14, border: 'none', background: bg, color: fg, fontSize: 15.5, fontWeight: 800, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: '10px 8px' }}>{label}</button>
                               ))}
@@ -7955,9 +7955,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             const totalBrokerNet = filtered.reduce((s, c) => s + (c.brokerage_net ?? 0), 0);
             const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
             const statusColor: Record<string, { bg: string; color: string }> = {
-              paid:     { bg: '#d1fae5', color: 'var(--k-065f46)' },
-              pending:  { bg: '#fef3c7', color: 'var(--k-92400e)' },
-              disputed: { bg: '#fee2e2', color: 'var(--k-991b1b)' },
+              paid:     { bg: 'var(--k-d1fae5)', color: 'var(--k-065f46)' },
+              pending:  { bg: 'var(--k-fef3c7)', color: 'var(--k-92400e)' },
+              disputed: { bg: 'var(--k-fee2e2)', color: 'var(--k-991b1b)' },
             };
 
             // ── 1099 view ─────────────────────────────────────────────────────────
@@ -8184,7 +8184,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   /* ── Mobile commission cards — the 8-column table is unreadable on a phone ── */
                   <div className="crm-mobile-cards">
                     {filtered.map(c => {
-                      const sc = statusColor[c.status] ?? { bg: '#f3f4f6', color: 'var(--k-374151)' };
+                      const sc = statusColor[c.status] ?? { bg: 'var(--k-f3f4f6)', color: 'var(--k-374151)' };
                       const openCommission = () => { if (c.deal_id) { const d = deals.find(x => x.id === c.deal_id); if (d) { setPage('deals'); openDeal(d); setDealTab('commission'); } } };
                       return (
                         <div key={c.id} className="crm-mobile-card" onClick={openCommission} style={{ cursor: c.deal_id ? 'pointer' : 'default' }}>
@@ -8262,7 +8262,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: 'var(--k-059669)', textAlign: 'right' }}>{fmt(c.agent_net)}</td>
                               <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: 'var(--k-374151)', textAlign: 'right' }}>{fmt(c.brokerage_net)}</td>
                               <td style={{ padding: '11px 14px', textAlign: 'right' }}>
-                                <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600, ...(statusColor[c.status] ?? { bg: '#f3f4f6', color: 'var(--k-374151)' }), background: statusColor[c.status]?.bg }}>
+                                <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600, ...(statusColor[c.status] ?? { bg: 'var(--k-f3f4f6)', color: 'var(--k-374151)' }), background: statusColor[c.status]?.bg }}>
                                   {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
                                 </span>
                               </td>
@@ -8331,7 +8331,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <input className="crm-input" placeholder="Description (optional)" value={newProjectDesc} onChange={e => setNewProjectDesc(e.target.value)} style={{ width: '100%', marginBottom: 14 }} />
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
                           <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>Color</span>
-                          {['#c9922c','#3b82f6','#16a34a','#8b5cf6','#ef4444','#6b7280'].map(col => (
+                          {['#c9922c','#3b82f6','var(--k-16a34a)','#8b5cf6','#ef4444','#6b7280'].map(col => (
                             <button key={col} onClick={() => setNewProjectColor(col)} style={{ width: 24, height: 24, borderRadius: '50%', background: col, border: newProjectColor === col ? '3px solid #111' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
                           ))}
                         </div>
@@ -8352,7 +8352,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <input className="crm-input" placeholder="Description" value={editingProject.description} onChange={e => setEditingProject({ ...editingProject, description: e.target.value })} style={{ width: '100%', marginBottom: 14 }} />
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
                           <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>Color</span>
-                          {['#c9922c','#3b82f6','#16a34a','#8b5cf6','#ef4444','#6b7280'].map(col => (
+                          {['#c9922c','#3b82f6','var(--k-16a34a)','#8b5cf6','#ef4444','#6b7280'].map(col => (
                             <button key={col} onClick={() => setEditingProject({ ...editingProject, color: col })} style={{ width: 24, height: 24, borderRadius: '50%', background: col, border: editingProject.color === col ? '3px solid #111' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
                           ))}
                         </div>
@@ -8376,9 +8376,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       // Honest scheduling: a send_date only means "will send" when the campaign
                       // is active — a dated draft won't go out until it's activated, so say so.
                       let schedule: string, scheduleColor: string;
-                      if (camp.last_sent_at) { schedule = `Sent ${fmtD(camp.last_sent_at)}`; scheduleColor = '#16a34a'; }
-                      else if (camp.send_date && camp.status === 'active') { schedule = `Sends ${fmtD(camp.send_date + 'T00:00:00')}`; scheduleColor = '#16a34a'; }
-                      else if (camp.send_date) { schedule = `Scheduled ${fmtD(camp.send_date + 'T00:00:00')} · not active`; scheduleColor = '#b45309'; }
+                      if (camp.last_sent_at) { schedule = `Sent ${fmtD(camp.last_sent_at)}`; scheduleColor = 'var(--k-16a34a)'; }
+                      else if (camp.send_date && camp.status === 'active') { schedule = `Sends ${fmtD(camp.send_date + 'T00:00:00')}`; scheduleColor = 'var(--k-16a34a)'; }
+                      else if (camp.send_date) { schedule = `Scheduled ${fmtD(camp.send_date + 'T00:00:00')} · not active`; scheduleColor = 'var(--k-b45309)'; }
                       else { schedule = 'Not scheduled'; scheduleColor = '#9ca3af'; }
                       const sender = camp.sender_agent_id ? profiles.find(p => p.id === camp.sender_agent_id) : null;
                       const sent = camp.send_count ?? 0;
@@ -8402,7 +8402,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? 'var(--k-dcfce7)' : camp.status === 'completed' ? 'var(--k-dbeafe)' : camp.status === 'paused' ? 'var(--k-fef3c7)' : 'var(--k-f3f4f6)', color: camp.status === 'active' ? 'var(--k-166534)' : camp.status === 'completed' ? 'var(--k-1e40af)' : camp.status === 'paused' ? 'var(--k-92400e)' : 'var(--k-6b7280)' }}>{camp.status}</span>
                           </div>
                           <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <span style={{ color: scheduleColor, fontWeight: (scheduleColor === '#b45309') ? 600 : 400 }}>{schedule}</span>
+                            <span style={{ color: scheduleColor, fontWeight: (scheduleColor === 'var(--k-b45309)') ? 600 : 400 }}>{schedule}</span>
                             <span>· {camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)}</span>
                             {sender && (
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title={`Signs as ${sender.first_name} ${sender.last_name}`}>
@@ -9007,7 +9007,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                               <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
                                 {filtered.slice(0, 1000).map(c => (
-                                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: selectedEnrollIds.includes(c.id) ? '#fef3e2' : 'transparent', transition: 'background .1s' }}>
+                                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: selectedEnrollIds.includes(c.id) ? 'var(--k-fef3e2)' : 'transparent', transition: 'background .1s' }}>
                                     <input type="checkbox" checked={selectedEnrollIds.includes(c.id)} onChange={() => setSelectedEnrollIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} style={{ accentColor: '#c9922c', flexShrink: 0 }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -9198,7 +9198,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--k-6b7280)' }}>{trackedCount - openedCount}</div>
                                 </div>
                                 {failedCount > 0 && (
-                                  <div style={{ background: '#fff5f5', border: '1px solid var(--k-fecaca)', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                                  <div style={{ background: 'var(--k-fff5f5)', border: '1px solid var(--k-fecaca)', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
                                     <div style={{ fontSize: 11, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Failed</div>
                                     <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--k-dc2626)' }}>{failedCount}</div>
                                   </div>
@@ -9228,7 +9228,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 const shown = !!opensShown[s.id];
                                 return (
                                   <div key={s.id}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: isOpened ? 'var(--k-f0fdf4)' : isFailed ? '#fff5f5' : 'var(--k-fff)', borderRadius: shown ? '10px 10px 0 0' : 10, borderLeft: `3px solid ${isOpened ? '#22c55e' : isFailed ? '#ef4444' : 'var(--k-e5e7eb)'}` }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: isOpened ? 'var(--k-f0fdf4)' : isFailed ? 'var(--k-fff5f5)' : 'var(--k-fff)', borderRadius: shown ? '10px 10px 0 0' : 10, borderLeft: `3px solid ${isOpened ? '#22c55e' : isFailed ? '#ef4444' : 'var(--k-e5e7eb)'}` }}>
                                     {/* Avatar */}
                                     <div style={{ width: 36, height: 36, borderRadius: '50%', background: isOpened ? 'var(--k-dcfce7)' : 'var(--k-f3f4f6)', color: isOpened ? 'var(--k-16a34a)' : 'var(--k-6b7280)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
                                       {initial}
@@ -9723,7 +9723,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       emailEditorRef.current?.focus();
                                       setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body }));
                                     }}
-                                    style={{ background: '#fef3e2', border: '1px solid var(--k-fde68a)', borderRadius: 4, padding: '2px 7px', fontSize: 11, color: 'var(--k-92400e)', cursor: 'pointer', fontFamily: 'monospace', height: 26, display: 'flex', alignItems: 'center' }}>
+                                    style={{ background: 'var(--k-fef3e2)', border: '1px solid var(--k-fde68a)', borderRadius: 4, padding: '2px 7px', fontSize: 11, color: 'var(--k-92400e)', cursor: 'pointer', fontFamily: 'monospace', height: 26, display: 'flex', alignItems: 'center' }}>
                                     {f.replace(/[{}]/g, '')}
                                   </button>
                                 ))}
@@ -9963,9 +9963,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 10, marginBottom: 16 }}>
                               {card('Sent', emails.length, '#111')}
-                              {card('Opened', opened, '#15803d')}
+                              {card('Opened', opened, 'var(--k-15803d)')}
                               {card('Not opened', emails.length - opened, '#6b7280')}
-                              {failed > 0 && card('Failed', failed, '#dc2626')}
+                              {failed > 0 && card('Failed', failed, 'var(--k-dc2626)')}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 8px 2px' }}>
                               <span style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 }}>Order</span>
@@ -9982,7 +9982,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 const sub = client?.business_name && (client.first_name || client.last_name) ? client.business_name : null;
                                 const isOpened = !!x.opened_at, isFailed = x.status === 'failed';
                                 return (
-                                  <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: isOpened ? 'var(--k-f0fdf4)' : isFailed ? '#fff5f5' : 'var(--k-fff)', borderRadius: 10, borderLeft: `3px solid ${isOpened ? '#16a34a' : isFailed ? '#ef4444' : 'var(--k-e5e7eb)'}` }}>
+                                  <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: isOpened ? 'var(--k-f0fdf4)' : isFailed ? 'var(--k-fff5f5)' : 'var(--k-fff)', borderRadius: 10, borderLeft: `3px solid ${isOpened ? '#16a34a' : isFailed ? '#ef4444' : 'var(--k-e5e7eb)'}` }}>
                                     <div style={{ width: 36, height: 36, borderRadius: '50%', background: isOpened ? 'var(--k-dcfce7)' : 'var(--k-f3f4f6)', color: isOpened ? 'var(--k-16a34a)' : 'var(--k-6b7280)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{(name[0] ?? '?').toUpperCase()}</div>
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
@@ -10067,7 +10067,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                               <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
                                 {filtered.slice(0, 1000).map(c => (
-                                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: selectedPlanEnrollIds.includes(c.id) ? '#fef3e2' : 'transparent', transition: 'background .1s' }}>
+                                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: selectedPlanEnrollIds.includes(c.id) ? 'var(--k-fef3e2)' : 'transparent', transition: 'background .1s' }}>
                                     <input type="checkbox" checked={selectedPlanEnrollIds.includes(c.id)} onChange={e => setSelectedPlanEnrollIds(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} style={{ accentColor: '#c9922c', flexShrink: 0 }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -11937,7 +11937,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         padding: '10px 4px 8px', borderRadius: 8, fontSize: 12, fontWeight: 600,
                         cursor: 'pointer', border: '2px solid', textAlign: 'center', lineHeight: 1.3,
                         borderColor: nc.type === t ? '#c9922c' : 'var(--k-e5e7eb)',
-                        background: nc.type === t ? '#fef3e2' : 'var(--k-f9fafb)',
+                        background: nc.type === t ? 'var(--k-fef3e2)' : 'var(--k-f9fafb)',
                         color: nc.type === t ? 'var(--k-92400e)' : 'var(--k-6b7280)',
                         transition: 'all .15s', fontFamily: "'DM Sans',sans-serif",
                       }}>
@@ -12021,7 +12021,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           {ASSET_TYPES.map(at => {
                             const checked = nc.asset_types.includes(at);
                             return (
-                              <label key={at} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: checked ? '#fef3e2' : 'transparent', transition: 'background .1s' }}>
+                              <label key={at} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: checked ? 'var(--k-fef3e2)' : 'transparent', transition: 'background .1s' }}>
                                 <input type="checkbox" checked={checked} onChange={() => {
                                   const next = checked ? nc.asset_types.filter(x => x !== at) : [...nc.asset_types, at];
                                   setNc({ ...nc, asset_types: next });
@@ -12059,7 +12059,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {[90, 120, 180, 360].map(d => (
                         <button key={d} type="button"
                           onClick={() => setNc(f => ({ ...f, lxp_follow_up_days: f.lxp_follow_up_days === d ? null : d }))}
-                          style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', fontFamily: "'DM Sans',sans-serif", transition: 'all .12s', borderColor: nc.lxp_follow_up_days === d ? '#c9922c' : 'var(--k-e5e7eb)', background: nc.lxp_follow_up_days === d ? '#fef3e2' : 'var(--k-f9fafb)', color: nc.lxp_follow_up_days === d ? 'var(--k-92400e)' : 'var(--k-6b7280)' }}>
+                          style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', fontFamily: "'DM Sans',sans-serif", transition: 'all .12s', borderColor: nc.lxp_follow_up_days === d ? '#c9922c' : 'var(--k-e5e7eb)', background: nc.lxp_follow_up_days === d ? 'var(--k-fef3e2)' : 'var(--k-f9fafb)', color: nc.lxp_follow_up_days === d ? 'var(--k-92400e)' : 'var(--k-6b7280)' }}>
                           {d}d out
                         </button>
                       ))}
@@ -12113,7 +12113,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <input type="checkbox" checked={checked} onChange={() => {
                                   const next = checked ? nc.asset_types.filter(x => x !== at) : [...nc.asset_types, at];
                                   setNc({ ...nc, asset_types: next });
-                                }} style={{ accentColor: '#0369a1', width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }} />
+                                }} style={{ accentColor: 'var(--k-0369a1)', width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }} />
                                 <span style={{ fontSize: 13, fontWeight: checked ? 600 : 400, color: checked ? 'var(--k-075985)' : 'var(--k-374151)' }}>{at}</span>
                               </label>
                             );
@@ -12329,8 +12329,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 if (lxpDays !== null && lxpDays < 90) {
                   const isExpired = lxpDays < 0;
-                  const bg = isExpired ? '#fee2e2' : lxpDays < 30 ? '#fff7ed' : '#fefce8';
-                  const color = isExpired ? '#dc2626' : lxpDays < 30 ? '#c2410c' : '#a16207';
+                  const bg = isExpired ? 'var(--k-fee2e2)' : lxpDays < 30 ? 'var(--k-fff7ed)' : 'var(--k-fefce8)';
+                  const color = isExpired ? 'var(--k-dc2626)' : lxpDays < 30 ? 'var(--k-c2410c)' : 'var(--k-a16207)';
                   return (
                     <div style={{ background: bg, padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color, borderBottom: `1px solid ${color}22` }}>
                       <span>🗓 {isExpired ? `Lease expired ${Math.abs(lxpDays)}d ago` : `Lease expires in ${lxpDays} day${lxpDays === 1 ? '' : 's'}`}</span>
@@ -12340,8 +12340,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 }
                 if (activeDeal) {
                   const stageMeta: Record<string, [string, string]> = {
-                    'Prospect': ['#eff6ff', '#1e4d8c'], 'Active': ['#dcfce7', '#15803d'],
-                    'LOI': ['#f3e8ff', '#7e22ce'], 'In Contract': ['#fefce8', '#92400e'],
+                    'Prospect': ['var(--k-eff6ff)', '#1e4d8c'], 'Active': ['var(--k-dcfce7)', 'var(--k-15803d)'],
+                    'LOI': ['#f3e8ff', '#7e22ce'], 'In Contract': ['var(--k-fefce8)', 'var(--k-92400e)'],
                   };
                   const [bg, color] = stageMeta[activeDeal.stage] ?? ['#f3f4f6', '#374151'];
                   return (
@@ -12442,8 +12442,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {(c.type === 'Tenant' || c.type === 'Landlord/Investor' || c.lease_expiration_date) && (c.lease_expiration_date ? (() => {
                       const lxpDate = new Date(c.lease_expiration_date);
                       const daysLeft = Math.ceil((lxpDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                      const lxpBg = daysLeft < 0 ? '#fee2e2' : daysLeft < 90 ? '#fed7aa' : daysLeft < 180 ? '#fef9c3' : '#dcfce7';
-                      const lxpColor = daysLeft < 0 ? '#dc2626' : daysLeft < 90 ? '#c2410c' : daysLeft < 180 ? '#a16207' : '#16a34a';
+                      const lxpBg = daysLeft < 0 ? 'var(--k-fee2e2)' : daysLeft < 90 ? 'var(--k-fed7aa)' : daysLeft < 180 ? 'var(--k-fef9c3)' : 'var(--k-dcfce7)';
+                      const lxpColor = daysLeft < 0 ? 'var(--k-dc2626)' : daysLeft < 90 ? 'var(--k-c2410c)' : daysLeft < 180 ? 'var(--k-a16207)' : 'var(--k-16a34a)';
                       const lxpLabel = daysLeft < 0 ? `Expired ${Math.abs(daysLeft)}d ago` : daysLeft === 0 ? 'Expires today' : `${daysLeft}d left`;
                       return (
                         <div style={{ background: lxpBg, borderRadius: 8, padding: '12px 14px', gridColumn: '1/-1', border: `1px solid ${lxpColor}22` }}>
@@ -12474,7 +12474,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       const daysUntil = Math.ceil((nextBday.getTime() - now.setHours(0,0,0,0)) / (1000*60*60*24));
                       const isSoon = daysUntil <= 30;
                       return (
-                        <div style={{ background: isSoon ? '#fef3e2' : 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px', border: isSoon ? '1px solid var(--k-fde68a)' : undefined }}>
+                        <div style={{ background: isSoon ? 'var(--k-fef3e2)' : 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px', border: isSoon ? '1px solid var(--k-fde68a)' : undefined }}>
                           <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>🎂 Birthday</div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-374151)' }}>{bday.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</span>
@@ -12499,7 +12499,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {(c.asset_types ?? []).map(at => (
-                        <span key={at} style={{ display: 'inline-block', background: (c.type === 'Agent' || c.type === 'Broker') ? 'var(--k-e0f2fe)' : '#fef3e2', border: `1px solid ${(c.type === 'Agent' || c.type === 'Broker') ? 'var(--k-bae6fd)' : 'var(--k-fde68a)'}`, color: (c.type === 'Agent' || c.type === 'Broker') ? '#075985' : 'var(--k-92400e)', borderRadius: 20, padding: '3px 12px', fontSize: 13, fontWeight: 600 }}>{at}</span>
+                        <span key={at} style={{ display: 'inline-block', background: (c.type === 'Agent' || c.type === 'Broker') ? 'var(--k-e0f2fe)' : 'var(--k-fef3e2)', border: `1px solid ${(c.type === 'Agent' || c.type === 'Broker') ? 'var(--k-bae6fd)' : 'var(--k-fde68a)'}`, color: (c.type === 'Agent' || c.type === 'Broker') ? '#075985' : 'var(--k-92400e)', borderRadius: 20, padding: '3px 12px', fontSize: 13, fontWeight: 600 }}>{at}</span>
                       ))}
                     </div>
                   </div>
@@ -12520,7 +12520,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         const off = e.active === false || ['paused', 'completed', 'draft'].includes(e.campaign_status ?? '');
                         const label = e.active === false ? 'Unsubscribed' : (e.campaign_status && e.campaign_status !== 'active') ? e.campaign_status : 'Active';
                         return (
-                          <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: off ? 'var(--k-f9fafb)' : '#f0f7ff', border: `1px solid ${off ? 'var(--k-e5e7eb)' : '#cfe3fb'}`, borderRadius: 8, padding: '9px 12px' }}>
+                          <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: off ? 'var(--k-f9fafb)' : 'var(--k-f0f7ff)', border: `1px solid ${off ? 'var(--k-e5e7eb)' : '#cfe3fb'}`, borderRadius: 8, padding: '9px 12px' }}>
                             <span style={{ fontSize: 16, flexShrink: 0 }}>{e.campaign_type === 'sms' ? '💬' : '📣'}</span>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.campaign_name}</div>
@@ -12684,12 +12684,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     const due = new Date(dateStr + 'T00:00:00');
                     const isOverdue = due < todayD;
                     const isToday   = due.getTime() === todayD.getTime();
-                    const bg    = isOverdue ? '#fee2e2' : isToday ? '#fef3c7' : '#f0fdf4';
-                    const color = isOverdue ? '#dc2626' : isToday ? '#92400e' : '#15803d';
+                    const bg    = isOverdue ? 'var(--k-fee2e2)' : isToday ? 'var(--k-fef3c7)' : 'var(--k-f0fdf4)';
+                    const color = isOverdue ? 'var(--k-dc2626)' : isToday ? 'var(--k-92400e)' : 'var(--k-15803d)';
                     const label = isOverdue ? `Overdue · ${due.toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : isToday ? 'Due today' : due.toLocaleDateString('en-US',{month:'short',day:'numeric'});
                     return <span style={{ fontSize: 11, fontWeight: 700, color, background: bg, padding: '1px 7px', borderRadius: 10 }}>{label}</span>;
                   }
-                  const PRIORITY_DOT: Record<string,string> = { urgent:'#dc2626', high:'#c2410c', normal:'#3b82f6', low:'#94a3b8' };
+                  const PRIORITY_DOT: Record<string,string> = { urgent:'var(--k-dc2626)', high:'var(--k-c2410c)', normal:'#3b82f6', low:'#94a3b8' };
                   return (
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -12728,8 +12728,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {newPending.length > 0 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
                           {newPending.map(t => {
-                            const STATUS_COLORS: Record<string,{bg:string;color:string}> = { open:{bg:'#dbeafe',color:'var(--k-1d4ed8)'}, in_progress:{bg:'#fef3c7',color:'var(--k-b45309)'} };
-                            const sc = STATUS_COLORS[t.status] ?? {bg:'#f1f5f9',color:'var(--k-475569)'};
+                            const STATUS_COLORS: Record<string,{bg:string;color:string}> = { open:{bg:'var(--k-dbeafe)',color:'var(--k-1d4ed8)'}, in_progress:{bg:'var(--k-fef3c7)',color:'var(--k-b45309)'} };
+                            const sc = STATUS_COLORS[t.status] ?? {bg:'var(--k-f1f5f9)',color:'var(--k-475569)'};
                             return (
                               <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '10px 12px' }}>
                                 <div style={{ width: 18, height: 18, flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -12792,7 +12792,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                       {(['call', 'email', 'meeting', 'note'] as CRMActivity['type'][]).map(t => (
                         <button key={t} type="button" onClick={() => setNewActivity(a => ({ ...a, type: t }))}
-                          style={{ flex: 1, padding: '6px 4px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '2px solid', fontFamily: "'DM Sans',sans-serif", transition: 'all .12s', borderColor: newActivity.type === t ? '#c9922c' : 'var(--k-e5e7eb)', background: newActivity.type === t ? '#fef3e2' : 'var(--k-fff)', color: newActivity.type === t ? 'var(--k-92400e)' : 'var(--k-6b7280)', textAlign: 'center' }}>
+                          style={{ flex: 1, padding: '6px 4px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '2px solid', fontFamily: "'DM Sans',sans-serif", transition: 'all .12s', borderColor: newActivity.type === t ? '#c9922c' : 'var(--k-e5e7eb)', background: newActivity.type === t ? 'var(--k-fef3e2)' : 'var(--k-fff)', color: newActivity.type === t ? 'var(--k-92400e)' : 'var(--k-6b7280)', textAlign: 'center' }}>
                           <div style={{ fontSize: 14, marginBottom: 2 }}>{activityIcon(t)}</div>
                           {t.charAt(0).toUpperCase() + t.slice(1)}
                         </button>
@@ -12955,11 +12955,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           } else {
                             // Campaign send entry
                             const s = item.send;
-                            const statusColor = s.status === 'sent' ? { bg: '#dcfce7', color: 'var(--k-166534)' } : s.status === 'failed' ? { bg: '#fee2e2', color: 'var(--k-991b1b)' } : { bg: '#f3f4f6', color: 'var(--k-6b7280)' };
+                            const statusColor = s.status === 'sent' ? { bg: 'var(--k-dcfce7)', color: 'var(--k-166534)' } : s.status === 'failed' ? { bg: 'var(--k-fee2e2)', color: 'var(--k-991b1b)' } : { bg: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)' };
                             return (
                               <div key={s.id} style={{ display: 'flex', gap: 10, paddingBottom: 12 }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#fef3e2', border: '2px solid var(--k-fde68a)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>📧</div>
+                                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--k-fef3e2)', border: '2px solid var(--k-fde68a)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>📧</div>
                                   {!isLast && <div style={{ width: 2, flex: 1, background: 'var(--k-f0f0f0)', marginTop: 4, minHeight: 12 }} />}
                                 </div>
                                 <div style={{ flex: 1, paddingTop: 3, minWidth: 0 }}>
@@ -13508,7 +13508,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         padding: '10px 4px 8px', borderRadius: 8, fontSize: 12, fontWeight: 600,
                         cursor: 'pointer', border: '2px solid', textAlign: 'center', lineHeight: 1.3,
                         borderColor: ec.type === t ? '#c9922c' : 'var(--k-e5e7eb)',
-                        background: ec.type === t ? '#fef3e2' : 'var(--k-f9fafb)',
+                        background: ec.type === t ? 'var(--k-fef3e2)' : 'var(--k-f9fafb)',
                         color: ec.type === t ? 'var(--k-92400e)' : 'var(--k-6b7280)',
                         transition: 'all .15s', fontFamily: "'DM Sans',sans-serif",
                       }}>
@@ -13557,7 +13557,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>
                         Email{ec.extra_emails.length > 0 ? 's' : ''}
                         {ec.extra_emails.length > 0 && (
-                          <span style={{ marginLeft: 6, background: '#fef3e2', color: 'var(--k-92400e)', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 600 }}>
+                          <span style={{ marginLeft: 6, background: 'var(--k-fef3e2)', color: 'var(--k-92400e)', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 600 }}>
                             {1 + ec.extra_emails.length} addresses
                           </span>
                         )}
@@ -13652,7 +13652,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           {ASSET_TYPES.map(at => {
                             const checked = ec.asset_types.includes(at);
                             return (
-                              <label key={at} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: checked ? '#fef3e2' : 'transparent', transition: 'background .1s' }}>
+                              <label key={at} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: checked ? 'var(--k-fef3e2)' : 'transparent', transition: 'background .1s' }}>
                                 <input type="checkbox" checked={checked} onChange={() => {
                                   const next = checked ? ec.asset_types.filter(x => x !== at) : [...ec.asset_types, at];
                                   setEc({ ...ec, asset_types: next });
@@ -13688,7 +13688,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {[90, 120, 180, 360].map(d => (
                         <button key={d} type="button"
                           onClick={() => setEc(f => ({ ...f, lxp_follow_up_days: f.lxp_follow_up_days === d ? null : d }))}
-                          style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', fontFamily: "'DM Sans',sans-serif", transition: 'all .12s', borderColor: ec.lxp_follow_up_days === d ? '#c9922c' : 'var(--k-e5e7eb)', background: ec.lxp_follow_up_days === d ? '#fef3e2' : 'var(--k-f9fafb)', color: ec.lxp_follow_up_days === d ? 'var(--k-92400e)' : 'var(--k-6b7280)' }}>
+                          style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', fontFamily: "'DM Sans',sans-serif", transition: 'all .12s', borderColor: ec.lxp_follow_up_days === d ? '#c9922c' : 'var(--k-e5e7eb)', background: ec.lxp_follow_up_days === d ? 'var(--k-fef3e2)' : 'var(--k-f9fafb)', color: ec.lxp_follow_up_days === d ? 'var(--k-92400e)' : 'var(--k-6b7280)' }}>
                           {d}d out
                         </button>
                       ))}
@@ -13747,7 +13747,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <input type="checkbox" checked={checked} onChange={() => {
                                   const next = checked ? ec.asset_types.filter(x => x !== at) : [...ec.asset_types, at];
                                   setEc({ ...ec, asset_types: next });
-                                }} style={{ accentColor: '#0369a1', width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }} />
+                                }} style={{ accentColor: 'var(--k-0369a1)', width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }} />
                                 <span style={{ fontSize: 13, fontWeight: checked ? 600 : 400, color: checked ? '#075985' : 'var(--k-374151)' }}>{at}</span>
                               </label>
                             );
@@ -14160,7 +14160,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             onChange={e => setClosedEnrollPlanIds(prev =>
                               e.target.checked ? [...prev, plan.id] : prev.filter(id => id !== plan.id)
                             )}
-                            style={{ marginTop: 2, accentColor: '#16a34a', width: 15, height: 15, flexShrink: 0 }}
+                            style={{ marginTop: 2, accentColor: 'var(--k-16a34a)', width: 15, height: 15, flexShrink: 0 }}
                           />
                           <div>
                             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>
@@ -14189,7 +14189,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         onChange={e => setClosedEnrollCampaignIds(prev =>
                           e.target.checked ? [...prev, camp.id] : prev.filter(id => id !== camp.id)
                         )}
-                        style={{ marginTop: 2, accentColor: '#16a34a', width: 15, height: 15, flexShrink: 0 }}
+                        style={{ marginTop: 2, accentColor: 'var(--k-16a34a)', width: 15, height: 15, flexShrink: 0 }}
                       />
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{camp.name}</div>
@@ -14218,7 +14218,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <button
                 onClick={handleClosedEnroll}
                 disabled={closedEnrolling || (closedEnrollPlanIds.length === 0 && closedEnrollCampaignIds.length === 0)}
-                style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: (closedEnrollPlanIds.length + closedEnrollCampaignIds.length > 0) ? '#16a34a' : 'var(--k-d1d5db)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: (closedEnrolling || (closedEnrollPlanIds.length === 0 && closedEnrollCampaignIds.length === 0)) ? 'not-allowed' : 'pointer' }}>
+                style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: (closedEnrollPlanIds.length + closedEnrollCampaignIds.length > 0) ? 'var(--k-16a34a)' : 'var(--k-d1d5db)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: (closedEnrolling || (closedEnrollPlanIds.length === 0 && closedEnrollCampaignIds.length === 0)) ? 'not-allowed' : 'pointer' }}>
                 {closedEnrolling ? 'Enrolling…' : `Enroll${(closedEnrollPlanIds.length + closedEnrollCampaignIds.length) > 0 ? ` (${closedEnrollPlanIds.length + closedEnrollCampaignIds.length} selected)` : ''}`}
               </button>
             </div>
@@ -14263,7 +14263,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         value={reason}
                         checked={lostReason === reason}
                         onChange={() => setLostReason(reason)}
-                        style={{ accentColor: '#dc2626', width: 14, height: 14, flexShrink: 0 }}
+                        style={{ accentColor: 'var(--k-dc2626)', width: 14, height: 14, flexShrink: 0 }}
                       />
                       <span style={{ fontSize: 14, fontWeight: lostReason === reason ? 600 : 400, color: lostReason === reason ? 'var(--k-dc2626)' : 'var(--k-374151)' }}>{reason}</span>
                     </label>
@@ -14285,7 +14285,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button
                   onClick={handleLostSave}
                   disabled={lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())}
-                  style={{ padding: '8px 22px', borderRadius: 7, border: 'none', background: (lostReason && (lostReason !== 'Other' || lostReasonOther.trim())) ? '#dc2626' : 'var(--k-d1d5db)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: (lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())) ? 'not-allowed' : 'pointer' }}>
+                  style={{ padding: '8px 22px', borderRadius: 7, border: 'none', background: (lostReason && (lostReason !== 'Other' || lostReasonOther.trim())) ? 'var(--k-dc2626)' : 'var(--k-d1d5db)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: (lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())) ? 'not-allowed' : 'pointer' }}>
                   {lostSaving ? 'Saving…' : 'Save Reason'}
                 </button>
               </div>
@@ -14315,7 +14315,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                     {(['follow_up', 'call', 'email'] as const).map(t => (
                       <button key={t} type="button" onClick={() => setTaskForm(f => ({ ...f, type: t }))}
-                        style={{ padding: '10px 8px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: '2px solid', textAlign: 'center', transition: 'all .12s', fontFamily: "'DM Sans',sans-serif", borderColor: taskForm.type === t ? '#c9922c' : 'var(--k-e5e7eb)', background: taskForm.type === t ? '#fef3e2' : 'var(--k-f9fafb)', color: taskForm.type === t ? 'var(--k-92400e)' : 'var(--k-6b7280)' }}>
+                        style={{ padding: '10px 8px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: '2px solid', textAlign: 'center', transition: 'all .12s', fontFamily: "'DM Sans',sans-serif", borderColor: taskForm.type === t ? '#c9922c' : 'var(--k-e5e7eb)', background: taskForm.type === t ? 'var(--k-fef3e2)' : 'var(--k-f9fafb)', color: taskForm.type === t ? 'var(--k-92400e)' : 'var(--k-6b7280)' }}>
                         <div style={{ fontSize: 18, marginBottom: 4 }}>{t === 'follow_up' ? '📋' : t === 'call' ? '📞' : '✉️'}</div>
                         {t === 'follow_up' ? 'Follow Up' : t === 'call' ? 'Call' : 'Email'}
                       </button>

@@ -205,7 +205,7 @@ function ConnectGa({ detail, label, viewing, token, reason, actionUrl }: {
   const apiDisabled = reason === 'api_disabled' && !!actionUrl;
 
   return (
-    <div style={{ ...card, borderLeft: `4px solid ${GOLD}`, background: '#fffdf7' }}>
+    <div style={{ ...card, borderLeft: `4px solid ${GOLD}`, background: 'var(--k-fffdf7)' }}>
       <div style={panelTitle}>Google Analytics — {covers}</div>
       <div style={{ fontSize: 13.5, color: 'var(--k-374151)', lineHeight: 1.7 }}>
         Session and landing-page data — the traffic that <em>didn&apos;t</em> become a lead, which is
@@ -541,7 +541,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 22, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase', color: MUTE, fontWeight: 600 }}>Source recorded</span>
           {data.health.sites.map(s => {
-            const tone = s.pct === null ? FAINT : s.pct >= 80 ? '#16a34a' : s.pct >= 40 ? GOLD : GOLD_DEEP;
+            const tone = s.pct === null ? FAINT : s.pct >= 80 ? 'var(--k-16a34a)' : s.pct >= 40 ? GOLD : GOLD_DEEP;
             return (
               <span key={s.site} style={{ fontSize: 12.5, color: 'var(--k-374151)' }}>
                 <strong style={{ color: tone }}>{s.pct === null ? '—' : `${s.pct}%`}</strong>
