@@ -26,6 +26,8 @@ import { runCallbackSla } from '@/lib/call-sla';
  * lead (crm_lead_sla_alerts). Secured by CRON_SECRET.
  */
 
+export const maxDuration = 60;
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const CRM_URL = process.env.NEXT_PUBLIC_CRM_URL ?? 'https://crm.vultstack.com';
@@ -38,6 +40,8 @@ const ESCALATE_MIN = 120;
 const LOOKBACK_HOURS = 72;
 /** How far back the aging backstop looks for leads nobody ever touched. */
 const AGED_MAX_DAYS = 120;
+/** New aging tasks per run — each lead costs ~8 queries; the 15-minute tick finishes any backlog over a few runs. */
+const AGED_PER_RUN = 5;
 /**
  * Newsletter / report-download captures are not sales leads, and neither are contacts the Gmail importer
  * made from an email thread ("Property: Re: Signed Lease and Checks") — none of them gets an aging task.
@@ -128,6 +132,7 @@ async function agedLeadBackstop(db: AnyDb): Promise<{ checked: number; created: 
   const hasTask = new Set((taskRows ?? []).map(t => t.client_id as string));
   let created = 0;
   for (const lead of leads.filter(l => !hasTask.has(l.id))) {
+    if (created >= AGED_PER_RUN) break;
     const name = `${lead.first_name ?? ''} ${lead.last_name ?? ''}`.trim() || lead.email || 'New lead';
     const { data: isTest } = await db.rpc('lead_is_test', { p_name: name, p_email: lead.email ?? '' });
     if (isTest === true) continue;
