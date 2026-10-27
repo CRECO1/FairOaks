@@ -12,8 +12,13 @@ export const dynamic = 'force-dynamic';
 // routes; the actual signing happens on the public /api/sign/[token] route.
 
 export async function GET(req: NextRequest) {
+  // Step timings, returned as a Server-Timing header on the list response: this endpoint stalled for 10–24 s on the E-Sign
+  // page while the same work takes ~1 s from a laptop, so the response now says where its time went.
+  const t0 = Date.now(); const marks: Record<string, number> = {};
+  const mark = (k: string, since: number) => { marks[k] = Date.now() - since; };
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  mark('auth', t0);
   const dealId = req.nextUrl.searchParams.get('deal_id');
   const listingId = req.nextUrl.searchParams.get('listing_id');
   const submissionId = req.nextUrl.searchParams.get('submission_id');
@@ -75,11 +80,13 @@ export async function GET(req: NextRequest) {
     } });
   }
 
+  const tList = Date.now();
   let q = supabase.from('crm_envelopes')
     .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason, in_person, last_email_id, email_status, email_opened_at, reminded_at, reminder_count, expires_at)')
     .order('created_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   q = excludeHiddenDeals(q, await hiddenDealIds(ctx)); // private deals' envelopes stay private
+  mark('hidden', tList);
   if (dealId) q = q.eq('deal_id', dealId);
   if (listingId) q = q.eq('listing_id', listingId);
   if (submissionId) q = q.eq('submission_id', submissionId);
@@ -88,8 +95,11 @@ export async function GET(req: NextRequest) {
   // archived requests stay reachable (to review, restore, or purge).
   if (req.nextUrl.searchParams.get('scope') === 'all') q = q.limit(200);
   else q = q.is('archived_at', null);
+  const tQuery = Date.now();
   const { data, error } = await q;
+  mark('query', tQuery);
   if (error) { console.error('[api/envelopes] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
+  const tMeta = Date.now();
   // Who sent each request. Resolved in one query rather than per row, and returned
   // on every envelope — an admin looking at the whole workspace needs to know which
   // agent a document came from, not just that it exists.
@@ -124,23 +134,31 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const envelopes = await Promise.all((data ?? []).map(async (e) => {
-    let executed_url: string | null = null;
-    let executed_clean_url: string | null = null;
-    if (e.executed_clean_path) {
-      const { data: sg } = await supabase.storage.from('transaction-forms').createSignedUrl(e.executed_clean_path, 3600);
-      executed_clean_url = sg?.signedUrl ?? null;
-    }
-    if (e.executed_path) {
-      const { data: sg } = await supabase.storage.from('transaction-forms').createSignedUrl(e.executed_path, 3600);
-      executed_url = sg?.signedUrl ?? null;
-    }
+  mark('senders+resend', tMeta);
+  // Signed links to every executed PDF in ONE storage call (was one call per file, ~40 in parallel — a single slow call held
+  // the whole list, and the E-Sign page sat on its loading bars). A batch failure leaves the links null, same as before.
+  const tSign = Date.now();
+  const paths = [...new Set((data ?? []).flatMap(e => [e.executed_clean_path, e.executed_path]).filter((x): x is string => !!x))];
+  const urlByPath = new Map<string, string>();
+  if (paths.length) {
+    try {
+      const { data: signed } = await supabase.storage.from('transaction-forms').createSignedUrls(paths, 3600);
+      for (const sg of signed ?? []) if (sg.path && sg.signedUrl) urlByPath.set(sg.path, sg.signedUrl);
+    } catch (err) { console.error('[api/envelopes] signed urls', err); }
+  }
+  mark('sign', tSign);
+  const envelopes = (data ?? []).map((e) => {
+    const executed_clean_url: string | null = e.executed_clean_path ? urlByPath.get(e.executed_clean_path) ?? null : null;
+    const executed_url: string | null = e.executed_path ? urlByPath.get(e.executed_path) ?? null : null;
     for (const sg of (e.crm_envelope_signers ?? []) as Array<{ last_email_id?: string | null; email_status?: string | null; delivery?: string | null }>) {
       sg.delivery = sg.email_status ?? (sg.last_email_id ? deliveryById.get(sg.last_email_id) ?? null : null);
     }
     return { ...e, executed_url, executed_clean_url, sent_by: e.created_by ? senderById.get(e.created_by) ?? 'Agent' : null };
-  }));
-  return NextResponse.json({ envelopes });
+  });
+  mark('total', t0);
+  const res = NextResponse.json({ envelopes });
+  res.headers.set('Server-Timing', Object.entries(marks).map(([k, v]) => `${k};dur=${v}`).join(', '));
+  return res;
 }
 
 export async function POST(req: NextRequest) {
