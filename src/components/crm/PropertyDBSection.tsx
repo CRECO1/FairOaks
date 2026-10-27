@@ -3,6 +3,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRememberedSelection, useRememberedState } from '@/lib/view-memory';
 import dynamic from 'next/dynamic';
+import {
+  EMPTY_FILTERS, SIZE_BANDS, loadFilters, saveFilters, matchesFilters, activeFilterCount, panelFilterCount,
+  summarizeProperties, brokerPhone, brokerEmail, type PropFilters,
+} from '@/lib/property-filters';
 
 const PropertyMap = dynamic(() => import('./PropertyMap'), {
   ssr: false,
@@ -237,14 +241,12 @@ function PropertyThumb({ p, height }: { p: Property; height: number }) {
 export default function PropertyDBSection({ businessUnit, authToken, onToast, onCount, isMobile = false }: Props) {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState('');
-  const [assetFilter, setAssetFilter]   = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [filters, setFilters] = useState<PropFilters>(() => (typeof window === 'undefined' ? EMPTY_FILTERS : loadFilters()));
+  const patch = useCallback((p: Partial<PropFilters>) => setFilters(f => ({ ...f, ...p })), []);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [active, setActive]     = useState<Property | null>(null);
   const [view, setView]         = useRememberedState<'rows' | 'cards' | 'map'>('propertydb-view', 'rows', ['rows', 'cards', 'map']);
   const [sort, setSort]         = useState<{ key: string; dir: 1 | -1 }>({ key: '', dir: 1 });
-  const [sourceFilter, setSourceFilter]   = useState('');
-  const [listingFilter, setListingFilter] = useState('');
   const [page, setPage]         = useState(1);
   const [showAdd, setShowAdd]   = useState(false);
   const PAGE_SIZE = 50;
@@ -286,36 +288,80 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
     if (p) setActive(p);
   });
 
-  const assetTypes = useMemo(
-    () => Array.from(new Set(properties.map(p => p.asset_type).filter(Boolean))).sort() as string[],
-    [properties],
-  );
+  // Filters are remembered on this device, so the page opens the way it was left.
+  useEffect(() => { saveFilters(filters); }, [filters]);
+
+  // ── Shortlist (★) — the agent's own starred properties ─────────────────────────────────────────────
+  // Saved on the server per agent (crm_property_shortlist) so it follows them between desktop and phone.
+  // Until that table exists the API says so and the list is kept on this device instead.
+  const LOCAL_STARS = 'crm:propdb:shortlist:v1';
+  const [shortlist, setShortlist] = useState<Set<string>>(() => new Set());
+  const [shortlistMode, setShortlistMode] = useState<'loading' | 'server' | 'local'>('loading');
+  useEffect(() => {
+    if (!authToken) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/crm/property-shortlist', { headers: headersRef.current });
+        const j = await r.json();
+        if (cancelled) return;
+        if (r.ok && !j.setup_needed) { setShortlist(new Set<string>(j.ids ?? [])); setShortlistMode('server'); return; }
+      } catch { /* fall through to this device's list */ }
+      if (cancelled) return;
+      try { setShortlist(new Set<string>(JSON.parse(localStorage.getItem(LOCAL_STARS) || '[]'))); } catch { /* none yet */ }
+      setShortlistMode('local');
+    })();
+    return () => { cancelled = true; };
+  }, [authToken]);
+  useEffect(() => {
+    if (shortlistMode !== 'local') return;
+    try { localStorage.setItem(LOCAL_STARS, JSON.stringify([...shortlist])); } catch { /* storage blocked */ }
+  }, [shortlist, shortlistMode]);
+  const setStars = useCallback(async (ids: string[], on: boolean) => {
+    const before = shortlist;
+    setShortlist(prev => { const n = new Set(prev); ids.forEach(i => (on ? n.add(i) : n.delete(i))); return n; });
+    if (shortlistMode !== 'server') return;
+    try {
+      const r = await fetch('/api/crm/property-shortlist', { method: 'POST', headers: { ...headersRef.current, 'Content-Type': 'application/json' }, body: JSON.stringify({ property_ids: ids, on }) });
+      if (!r.ok) throw new Error();
+    } catch {
+      setShortlist(before);
+      onToastRef.current('Could not update your shortlist — try again.');
+    }
+  }, [shortlist, shortlistMode]);
+  const toggleStar = useCallback((id: string) => { void setStars([id], !shortlist.has(id)); }, [setStars, shortlist]);
+
+  // Chips: types by how many properties each has, with a count that already honours the OTHER filters.
+  const assetTypes = useMemo(() => {
+    const n = new Map<string, number>();
+    properties.forEach(p => { if (p.asset_type) n.set(p.asset_type, (n.get(p.asset_type) ?? 0) + 1); });
+    return [...n.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  }, [properties]);
   const statuses = useMemo(
     () => Array.from(new Set(properties.map(p => p.vacancy_status).filter(Boolean))).sort() as string[],
     [properties],
   );
+  const ctx = useMemo(() => ({ shortlist, now: Date.now() }), [shortlist, properties]); // eslint-disable-line react-hooks/exhaustive-deps
+  const typeCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    let all = 0;
+    for (const p of properties) {
+      if (!matchesFilters(p, filters, ctx, 'type')) continue;
+      all++;
+      if (p.asset_type) m.set(p.asset_type, (m.get(p.asset_type) ?? 0) + 1);
+    }
+    return { all, m };
+  }, [properties, filters, ctx]);
+  const filtered = useMemo(() => properties.filter(p => matchesFilters(p, filters, ctx)), [properties, filters, ctx]);
+  const filterCount = activeFilterCount(filters) + (filters.search.trim() ? 1 : 0);
+  const clearAll = () => setFilters(EMPTY_FILTERS);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return properties.filter(p => {
-      if (assetFilter && p.asset_type !== assetFilter) return false;
-      if (statusFilter && p.vacancy_status !== statusFilter) return false;
-      if (sourceFilter) {
-        const s = (p.source || '').toLowerCase();
-        if (sourceFilter === 'loopnet' && !s.includes('loopnet')) return false;
-        if (sourceFilter === 'crexi' && !s.includes('crexi')) return false;
-        if (sourceFilter === 'broker' && (s.includes('loopnet') || s.includes('crexi'))) return false;
-      }
-      if (listingFilter) {
-        const lt = (p.listing_type || '').toLowerCase();
-        if (listingFilter === 'lease' && !(lt.includes('lease') || lt.includes('both'))) return false;
-        if (listingFilter === 'sale'  && !(lt.includes('sale')  || lt.includes('both'))) return false;
-      }
-      if (!q) return true;
-      return [p.name, p.address, p.city, p.submarket, p.listing_company, p.listing_agent_name, p.owner_name, p.parcel_apn]
-        .filter(Boolean).join(' ').toLowerCase().includes(q);
-    });
-  }, [properties, search, assetFilter, statusFilter, sourceFilter, listingFilter]);
+  const chipStyle = (on: boolean, dim = false): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap',
+    padding: '0 14px', minHeight: isMobile ? 44 : 36, borderRadius: 999,
+    border: `1px solid ${on ? '#c9922c' : 'var(--k-e5e7eb)'}`, background: on ? '#c9922c' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-374151)',
+    fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", opacity: dim && !on ? 0.45 : 1,
+  });
 
   const rateNum = (p: Property): number => {
     if (p.sale_price != null) return p.sale_price;
@@ -351,7 +397,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
   const pageClamped = Math.min(page, totalPages);
   const paged = useMemo(() => sorted.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE), [sorted, pageClamped]);
   // Any filter/search/sort change resets to page 1.
-  useEffect(() => { setPage(1); }, [search, assetFilter, statusFilter, sourceFilter, listingFilter, sort]);
+  useEffect(() => { setPage(1); }, [filters, sort]);
 
   const sortTh = (key: string, label: string, align: 'left' | 'right' = 'left') => (
     <th onClick={() => setSort(s => (s.key === key ? { key, dir: (s.dir === 1 ? -1 : 1) as 1 | -1 } : { key, dir: 1 }))}
@@ -367,52 +413,109 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
 
   return (
     <div>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 10 }}>
-        <input
-          placeholder="🔍  Search address, city, submarket, broker…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ ...inputStyle, flex: '1 1 320px', minWidth: 220 }}
-        />
-        <select value={assetFilter} onChange={e => setAssetFilter(e.target.value)} style={{ ...inputStyle, ...(isMobile ? { flex: '1 1 0', minWidth: 0 } : {}) }}>
-          <option value="">All Types</option>
-          {assetTypes.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...inputStyle, ...(isMobile ? { flex: '1 1 0', minWidth: 0 } : {}) }}>
-          <option value="">All Statuses</option>
-          {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={listingFilter} onChange={e => setListingFilter(e.target.value)} style={{ ...inputStyle, ...(isMobile ? { flex: '1 1 0', minWidth: 0 } : {}) }}>
-          <option value="">Lease &amp; Sale</option>
-          <option value="lease">For Lease</option>
-          <option value="sale">For Sale</option>
-        </select>
-        <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} style={{ ...inputStyle, ...(isMobile ? { flex: '1 1 0', minWidth: 0 } : {}) }} title="Where the listing came from">
-          <option value="">All Sources</option>
-          <option value="broker">Broker / Calls</option>
-          <option value="loopnet">LoopNet</option>
-          <option value="crexi">Crexi</option>
-        </select>
-        <div style={{ display: 'flex', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, overflow: 'hidden', ...(isMobile ? { width: '100%' } : {}) }}>
-          {(['rows', 'cards', 'map'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)}
-              style={{ padding: isMobile ? '11px 10px' : '9px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: view === v ? '#c9922c' : 'var(--k-fff)', color: view === v ? '#fff' : 'var(--k-6b7280)', ...(isMobile ? { flex: 1, minHeight: 44 } : {}) }}>
-              {v === 'rows' ? '☰ List' : v === 'cards' ? '▦ Cards' : '📍 Map'}
-            </button>
-          ))}
+      {/* Toolbar — search + view on top, then one-tap chips. Everything else lives behind "Filters". */}
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: isMobile ? 10 : 12 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ position: 'relative', flex: '1 1 300px', minWidth: 0 }}>
+            <input
+              type="search"
+              placeholder="Search address, city, zip, broker, owner…"
+              aria-label="Search the Property DB"
+              value={filters.search}
+              onChange={e => patch({ search: e.target.value })}
+              style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', paddingRight: 40, ...(isMobile ? { minHeight: 44, fontSize: 16 } : {}) }}
+            />
+            {filters.search && (
+              <button onClick={() => patch({ search: '' })} aria-label="Clear search"
+                style={{ position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)', width: 40, height: 40, border: 'none', background: 'transparent', color: 'var(--k-9ca3af)', fontSize: 18, cursor: 'pointer' }}>×</button>
+            )}
+          </div>
+          <div style={{ display: 'flex', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, overflow: 'hidden', ...(isMobile ? { flex: '1 1 auto' } : {}) }}>
+            {(['rows', 'cards', 'map'] as const).map(v => (
+              <button key={v} onClick={() => setView(v)} aria-pressed={view === v}
+                style={{ padding: isMobile ? '0 12px' : '0 14px', minHeight: isMobile ? 44 : 38, flex: isMobile ? 1 : undefined, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: view === v ? '#c9922c' : 'var(--k-fff)', color: view === v ? '#fff' : 'var(--k-6b7280)' }}>
+                {v === 'rows' ? '☰ List' : v === 'cards' ? '▦ Cards' : '📍 Map'}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowAdd(true)}
+            title="Add a property to the DB — upload a flyer to auto-fill"
+            style={{ padding: '0 16px', minHeight: isMobile ? 44 : 38, border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", background: '#c9922c', color: '#fff', whiteSpace: 'nowrap', ...(isMobile ? { flex: '1 1 auto' } : {}) }}
+          >
+            ＋ Add Property
+          </button>
         </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          title="Add a property to the DB — upload a flyer to auto-fill"
-          style={{ padding: isMobile ? '11px 16px' : '9px 16px', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", background: '#c9922c', color: '#fff', whiteSpace: 'nowrap', ...(isMobile ? { width: '100%', minHeight: 44 } : {}) }}
-        >
-          ＋ Add Property
-        </button>
+
+        <div role="group" aria-label="Quick filters"
+          style={{ display: 'flex', gap: 8, alignItems: 'center', ...(isMobile ? { overflowX: 'auto', flexWrap: 'nowrap', margin: '0 -10px', padding: '2px 10px 4px', scrollbarWidth: 'none' as const } : { flexWrap: 'wrap' }) }}>
+          <button onClick={() => setFiltersOpen(o => !o)} aria-expanded={filtersOpen} style={{ ...chipStyle(panelFilterCount(filters) > 0), borderStyle: 'dashed' }}>
+            ⚙ Filters{panelFilterCount(filters) > 0 ? <span style={{ background: '#fff', color: '#a06a12', borderRadius: 999, padding: '0 7px', fontSize: 11.5, fontWeight: 800 }}>{panelFilterCount(filters)}</span> : null}
+          </button>
+          <button onClick={() => patch({ shortlist: !filters.shortlist })} aria-pressed={filters.shortlist} style={chipStyle(filters.shortlist)} title="Properties you starred">
+            {filters.shortlist ? '★' : '☆'} Shortlist <span style={{ fontSize: 11.5, fontWeight: 700, opacity: filters.shortlist ? .9 : .6 }}>{shortlist.size}</span>
+          </button>
+          <button onClick={() => patch({ newWeek: !filters.newWeek })} aria-pressed={filters.newWeek} style={chipStyle(filters.newWeek)} title="Added in the last 7 days">🆕 New this week</button>
+          <span aria-hidden style={{ width: 1, alignSelf: 'stretch', background: 'var(--k-e5e7eb)', flexShrink: 0, margin: '4px 2px' }} />
+          <button onClick={() => patch({ type: '' })} aria-pressed={!filters.type} style={chipStyle(!filters.type)}>All types <span style={{ fontSize: 11.5, fontWeight: 700, opacity: !filters.type ? .9 : .6 }}>{typeCounts.all.toLocaleString()}</span></button>
+          {assetTypes.map(t => {
+            const on = filters.type === t, n = typeCounts.m.get(t) ?? 0;
+            return (
+              <button key={t} onClick={() => patch({ type: on ? '' : t })} aria-pressed={on} style={chipStyle(on, n === 0)}>
+                {t} <span style={{ fontSize: 11.5, fontWeight: 700, opacity: on ? .9 : .6 }}>{n.toLocaleString()}</span>
+              </button>
+            );
+          })}
+          <span aria-hidden style={{ width: 1, alignSelf: 'stretch', background: 'var(--k-e5e7eb)', flexShrink: 0, margin: '4px 2px' }} />
+          <button onClick={() => patch({ listing: filters.listing === 'lease' ? '' : 'lease' })} aria-pressed={filters.listing === 'lease'} style={chipStyle(filters.listing === 'lease')}>For Lease</button>
+          <button onClick={() => patch({ listing: filters.listing === 'sale' ? '' : 'sale' })} aria-pressed={filters.listing === 'sale'} style={chipStyle(filters.listing === 'sale')}>For Sale</button>
+        </div>
+
+        {filtersOpen && (
+          <FiltersPanel filters={filters} patch={patch} statuses={statuses} resultCount={filtered.length}
+            isMobile={isMobile} onClose={() => setFiltersOpen(false)} onClear={clearAll} />
+        )}
       </div>
 
-      <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginBottom: 14, fontWeight: 600 }}>
-        {loading ? 'Loading…' : `${filtered.length}${filtered.length !== properties.length ? ` of ${properties.length}` : ''} propert${filtered.length === 1 ? 'y' : 'ies'} in the Property DB`}
+      {/* Result line: count, what's filtering, sort, and shortlist actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: 'var(--k-6b7280)', fontWeight: 600 }} aria-live="polite">
+          {loading ? 'Loading…' : `${filtered.length.toLocaleString()}${filtered.length !== properties.length ? ` of ${properties.length.toLocaleString()}` : ''} propert${filtered.length === 1 ? 'y' : 'ies'}`}
+        </div>
+        {filterCount > 0 && !loading && (
+          <button onClick={clearAll} style={{ minHeight: isMobile ? 44 : 30, padding: '0 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 999, background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            Clear {filterCount} filter{filterCount === 1 ? '' : 's'} ✕
+          </button>
+        )}
+        <span style={{ flex: 1 }} />
+        {filters.shortlist && filtered.length > 0 && (
+          <>
+            <button onClick={async () => { const list = filtered.slice(0, 50); await copyToClipboard(summarizeProperties(list)); onToast(`Copied ${list.length} propert${list.length === 1 ? 'y' : 'ies'} — paste into an email or text`); }}
+              style={{ minHeight: isMobile ? 44 : 34, padding: '0 14px', border: 'none', borderRadius: 8, background: '#1a1a1a', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+              📋 Copy list
+            </button>
+            <button onClick={() => { if (window.confirm(`Remove all ${shortlist.size} properties from your shortlist?`)) void setStars([...shortlist], false); }}
+              style={{ minHeight: isMobile ? 44 : 34, padding: '0 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+              Clear shortlist
+            </button>
+          </>
+        )}
+        {!isMobile && !loading && filtered.length > 0 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--k-9ca3af)', fontWeight: 600 }}>
+            Sort
+            <select value={sort.key} onChange={e => setSort({ key: e.target.value, dir: e.target.value === 'updated' || e.target.value === 'size' ? -1 : 1 })}
+              style={{ ...inputStyle, padding: '6px 10px', fontSize: 13 }}>
+              <option value="">Default order</option>
+              <option value="updated">Recently updated</option>
+              <option value="name">Property A–Z</option>
+              <option value="submarket">Submarket</option>
+              <option value="type">Type</option>
+              <option value="size">Size</option>
+              <option value="rate">Rate / Price</option>
+              <option value="status">Status</option>
+            </select>
+          </label>
+        )}
       </div>
 
       {/* The Property DB is ~2,400 rows joined with contact and owner records, so
@@ -439,7 +542,16 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
       {!loading && filtered.length === 0 && (
         <div style={{ textAlign: 'center', color: 'var(--k-9ca3af)', padding: '60px 20px' }}>
           <div style={{ fontSize: 40, marginBottom: 10 }}>🏢</div>
-          No properties match. Broker-DB listings arrive automatically from your Gmail “Property DB” label.
+          {properties.length === 0
+            ? <>The Property DB is empty. Broker-DB listings arrive automatically from your Gmail “Property DB” label.</>
+            : filters.shortlist && !filters.search && activeFilterCount(filters) === 1
+              ? <>Nothing on your shortlist yet. Tap the ☆ on any property to save it here.</>
+              : <>No properties match{filterCount > 0 ? ' these filters' : ''}.</>}
+          {properties.length > 0 && filterCount > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <button onClick={clearAll} style={{ minHeight: 44, padding: '0 20px', border: 'none', borderRadius: 10, background: '#c9922c', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Clear all filters</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -480,7 +592,8 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               const loc = [p.address, cityLine(p)].filter(Boolean).join(' · ');
               const avail = p.available_sf && p.available_sf !== p.size_sf ? p.available_sf : null;
               return (
-                <button key={p.id} onClick={() => setActive(p)}
+                <div key={p.id} style={{ position: 'relative' }}>
+                <button onClick={() => setActive(p)}
                   style={{ textAlign: 'left', width: '100%', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderLeft: `4px solid ${as.color}`, borderRadius: 12, padding: '14px 15px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                   <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}>
                     <div style={{ width: 54, height: 54, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
@@ -490,7 +603,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                       <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-1a1a1a)', lineHeight: 1.25 }}>{p.name || p.address || '—'}</div>
                       {loc && <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>{loc}</div>}
                     </div>
-                    {price && <div style={{ fontSize: 15, fontWeight: 700, color: '#b07d1f', whiteSpace: 'nowrap', flexShrink: 0 }}>{price}</div>}
+                    {price && <div style={{ fontSize: 15, fontWeight: 700, color: '#b07d1f', whiteSpace: 'nowrap', flexShrink: 0, marginRight: 38 }}>{price}</div>}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, alignItems: 'center' }}>
                     {p.asset_type && <span style={{ fontSize: 11.5, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 9px', borderRadius: 20 }}>{p.asset_type}</span>}
@@ -508,6 +621,10 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                     </div>
                   )}
                 </button>
+                <div style={{ position: 'absolute', top: 4, right: 4 }}>
+                  <StarButton on={shortlist.has(p.id)} onToggle={() => toggleStar(p.id)} size={44} />
+                </div>
+                </div>
               );
             })}
           </div>
@@ -563,6 +680,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                           <div style={{ ...ell, color: 'var(--k-9ca3af)', fontSize: 12.5, marginTop: 2 }} title={loc}>{loc || '—'}</div>
                           {ownerLabel(p) && <div style={{ ...ell, color: 'var(--k-6b7280)', fontSize: 11.5, marginTop: 2 }} title={`Owner: ${ownerLabel(p)}`}>🏛 {ownerLabel(p)}</div>}
                         </div>
+                        <StarButton on={shortlist.has(p.id)} onToggle={() => toggleStar(p.id)} size={32} />
                       </div>
                     </td>
                     <td style={{ padding: '12px 12px', verticalAlign: 'top', color: 'var(--k-374151)', fontSize: 13 }}>
@@ -609,11 +727,11 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
           const as = assetStyle(p.asset_type);
           const price = p.listing_type === 'Sale' || p.sale_price ? fmt$(p.sale_price) : fmtRate(p.asking_rate);
           return (
+            <div key={p.id} style={{ position: 'relative' }}>
             <button
-              key={p.id}
               onClick={() => setActive(p)}
               style={{
-                textAlign: 'left', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12,
+                display: 'block', width: '100%', height: '100%', textAlign: 'left', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12,
                 padding: 0, cursor: 'pointer', overflow: 'hidden', fontFamily: "'DM Sans',sans-serif",
                 boxShadow: '0 1px 2px rgba(0,0,0,.04)', transition: 'box-shadow .15s, transform .15s',
               }}
@@ -660,6 +778,10 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                 )}
               </div>
             </button>
+            <div style={{ position: 'absolute', top: 8, right: 8 }}>
+              <StarButton on={shortlist.has(p.id)} onToggle={() => toggleStar(p.id)} size={isMobile ? 44 : 36} floating />
+            </div>
+            </div>
           );
         })}
       </div>
@@ -687,7 +809,8 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         </div>
       )}
 
-      {active && <DetailModal p={active} allProperties={properties} onOpenProperty={setActive} onClose={() => setActive(null)} isMobile={isMobile} />}
+      {active && <DetailModal p={active} allProperties={properties} onOpenProperty={setActive} onClose={() => setActive(null)} isMobile={isMobile}
+        starred={shortlist.has(active.id)} onToggleStar={() => toggleStar(active.id)} onToast={onToast} />}
       {showAdd && (
         <AddPropertyModal
           businessUnit={businessUnit}
@@ -699,6 +822,106 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         />
       )}
     </div>
+  );
+}
+
+// ── Small shared pieces for the redesigned page ───────────────────────────────
+
+/** Copy text to the clipboard, with a fallback for browsers that refuse the async API. */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* fall back below */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch { return false; }
+}
+
+/** ★ / ☆ shortlist toggle. 44px on a phone; never triggers the row/card underneath it. */
+function StarButton({ on, onToggle, size = 32, floating = false }: { on: boolean; onToggle: () => void; size?: number; floating?: boolean }) {
+  return (
+    <button type="button" onClick={e => { e.stopPropagation(); onToggle(); }} aria-pressed={on}
+      aria-label={on ? 'Remove from shortlist' : 'Add to shortlist'} title={on ? 'On your shortlist — click to remove' : 'Add to your shortlist'}
+      style={{
+        width: size, height: size, flexShrink: 0, border: floating ? '1px solid rgba(0,0,0,.06)' : 'none', borderRadius: floating ? '50%' : 8,
+        background: on ? 'var(--k-fdf0d5)' : floating ? 'rgba(255,255,255,.92)' : 'transparent',
+        color: on ? '#c9922c' : floating ? '#6b7280' : '#c4c9d0', fontSize: size >= 40 ? 22 : 18, lineHeight: 1, cursor: 'pointer',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+      }}>
+      {on ? '★' : '☆'}
+    </button>
+  );
+}
+
+const SOURCE_CHOICES: [PropFilters['source'], string][] = [['broker', 'Broker / Calls'], ['loopnet', 'LoopNet'], ['crexi', 'Crexi']];
+
+/** The less-used filters. A popover on desktop, a bottom sheet on a phone. */
+function FiltersPanel({ filters, patch, statuses, resultCount, isMobile, onClose, onClear }: {
+  filters: PropFilters; patch: (p: Partial<PropFilters>) => void; statuses: string[]; resultCount: number;
+  isMobile: boolean; onClose: () => void; onClear: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const chip = (label: string, on: boolean, onClick: () => void) => (
+    <button key={label} onClick={onClick} aria-pressed={on}
+      style={{ padding: '0 14px', minHeight: isMobile ? 44 : 34, borderRadius: 999, border: `1px solid ${on ? '#c9922c' : 'var(--k-e5e7eb)'}`, background: on ? '#c9922c' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-374151)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+      {label}
+    </button>
+  );
+  const section = (title: string, kids: React.ReactNode) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>{title}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{kids}</div>
+    </div>
+  );
+  const body = (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 21, fontWeight: 600, color: 'var(--k-1a1a1a)' }}>Filters</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClear} style={{ minHeight: isMobile ? 44 : 32, padding: '0 12px', border: 'none', background: 'transparent', color: '#a06a12', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Clear all</button>
+          <button onClick={onClose} aria-label="Close filters" style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, border: 'none', borderRadius: 8, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 18, cursor: 'pointer' }}>×</button>
+        </div>
+      </div>
+      {statuses.length > 0 && section('Status', statuses.map(s => chip(s, filters.status === s, () => patch({ status: filters.status === s ? '' : s }))))}
+      {section('Size (available space)', SIZE_BANDS.map(b => chip(b.label, filters.size === b.key, () => patch({ size: filters.size === b.key ? '' : b.key }))))}
+      {section('Where it came from', SOURCE_CHOICES.map(([k, label]) => chip(label, filters.source === k, () => patch({ source: filters.source === k ? '' : k }))))}
+      {section('Only show ones with', [
+        chip('Broker contact', filters.hasBroker, () => patch({ hasBroker: !filters.hasBroker })),
+        chip('A photo', filters.hasPhoto, () => patch({ hasPhoto: !filters.hasPhoto })),
+      ])}
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 1200, display: 'flex', alignItems: 'flex-end' }}>
+        <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Filters"
+          style={{ background: 'var(--k-fff)', width: '100%', maxHeight: '88vh', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '18px 18px calc(18px + env(safe-area-inset-bottom))', fontFamily: "'DM Sans',sans-serif" }}>
+          {body}
+          <button onClick={onClose} style={{ width: '100%', minHeight: 48, border: 'none', borderRadius: 10, background: '#c9922c', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            Show {resultCount.toLocaleString()} propert{resultCount === 1 ? 'y' : 'ies'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 39 }} />
+      <div role="dialog" aria-label="Filters"
+        style={{ position: 'absolute', right: 12, top: 'calc(100% + 6px)', width: 400, maxWidth: 'calc(100% - 24px)', zIndex: 40, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, padding: 18, boxShadow: '0 18px 50px rgba(0,0,0,.18)', fontFamily: "'DM Sans',sans-serif" }}>
+        {body}
+        <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', textAlign: 'right' }}>{resultCount.toLocaleString()} match{resultCount === 1 ? '' : 'es'}</div>
+      </div>
+    </>
   );
 }
 
@@ -834,7 +1057,7 @@ function BrokerCardModal({ contact, listings, onClose, onOpenListing, isMobile }
   );
 }
 
-function DetailModal({ p, onClose, isMobile = false, allProperties = [], onOpenProperty }: { p: Property; onClose: () => void; isMobile?: boolean; allProperties?: Property[]; onOpenProperty?: (p: Property) => void }) {
+function DetailModal({ p, onClose, isMobile = false, allProperties = [], onOpenProperty, starred = false, onToggleStar, onToast }: { p: Property; onClose: () => void; isMobile?: boolean; allProperties?: Property[]; onOpenProperty?: (p: Property) => void; starred?: boolean; onToggleStar?: () => void; onToast?: (msg: string) => void }) {
   const [brokerContact, setBrokerContact] = useState<CrmContact | null>(null);
   const as = assetStyle(p.asset_type);
   const st = statusPill(p.vacancy_status);
@@ -844,6 +1067,15 @@ function DetailModal({ p, onClose, isMobile = false, allProperties = [], onOpenP
     ['Brochure', p.brochure_url], ['Flyer', p.flyer_url], ['Listing', p.listing_url],
     ['Floor plan', p.floorplan_url], ['Virtual tour', p.virtual_tour_url],
   ];
+  const photoList = Array.isArray(p.photos) ? (p.photos as unknown[]).filter((x): x is string => typeof x === 'string' && !!x).slice(0, 8) : [];
+  const phone = brokerPhone(p);
+  const email = brokerEmail(p);
+  const mailHref = email ? `mailto:${email}?subject=${encodeURIComponent(`Inquiry: ${p.name || p.address || 'your listing'}`)}` : '';
+  const actBtn: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: isMobile ? 44 : 36, padding: '0 14px', borderRadius: 8,
+    border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    textDecoration: 'none', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap',
+  };
   return (
     <div
       onClick={onClose}
@@ -872,6 +1104,31 @@ function DetailModal({ p, onClose, isMobile = false, allProperties = [], onOpenP
             <button onClick={onClose} aria-label="Close" style={{ background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 8, width: isMobile ? 44 : 34, height: isMobile ? 44 : 34, cursor: 'pointer', fontSize: 18, color: 'var(--k-6b7280)', flexShrink: 0 }}>✕</button>
           </div>
 
+          {/* Photos first — a quick look at the place before the numbers */}
+          {photoList.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '12px 0 2px', paddingBottom: 6, scrollSnapType: 'x proximity' }}>
+              {photoList.map((src, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={src + i} src={src} alt={`${p.name || p.address || 'Property'} photo ${i + 1}`} loading="lazy"
+                  onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                  style={{ height: isMobile ? 150 : 190, width: 'auto', maxWidth: '86%', borderRadius: 10, flexShrink: 0, objectFit: 'cover', background: 'var(--k-f3f4f6)', scrollSnapAlign: 'start' }} />
+              ))}
+            </div>
+          )}
+
+          {/* Quick actions — what you actually do with a listing */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0 4px', padding: '6px 0', background: 'var(--k-fff)', ...(isMobile ? {} : { position: 'sticky', top: 0, zIndex: 3 }) }}>
+            {onToggleStar && (
+              <button onClick={onToggleStar} aria-pressed={starred}
+                style={{ ...actBtn, ...(starred ? { background: '#fdf0d5', borderColor: '#f0e2c4', color: '#a06a12' } : {}) }}>
+                {starred ? '★ On shortlist' : '☆ Shortlist'}
+              </button>
+            )}
+            {phone && <a href={`tel:${phone}`} style={actBtn}>📞 Call broker</a>}
+            {mailHref && <a href={mailHref} style={actBtn}>✉ Email broker</a>}
+            <button onClick={async () => { const ok = await copyToClipboard(summarizeProperties([p])); onToast?.(ok ? 'Copied — paste into an email or text' : 'Could not copy'); }} style={actBtn}>📋 Copy details</button>
+          </div>
+
           {/* Badges */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0 20px' }}>
             {p.asset_type && <span style={{ fontSize: 13, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 11px', borderRadius: 20 }}>{p.asset_type}{p.property_subtype ? ` · ${p.property_subtype}` : ''}</span>}
@@ -887,6 +1144,7 @@ function DetailModal({ p, onClose, isMobile = false, allProperties = [], onOpenP
             <StatTile label="Price / SF" value={p.price_per_sf ? `$${p.price_per_sf}` : null} />
             <StatTile label="Cap Rate" value={p.cap_rate ? `${p.cap_rate}%` : null} />
             <StatTile label="Year Built" value={p.year_built ? String(p.year_built) : null} />
+            <StatTile label="County Appraisal" value={cadValue(p.notes)} />
           </div>
 
           {/* Listing broker + owner — real linked contacts (call / email / click to open card) */}
