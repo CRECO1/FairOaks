@@ -331,6 +331,20 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     return () => { live = false; };
   }, [listings.length, businessUnit, authToken]); // eslint-disable-line
 
+  // Cover photo for each card (the listing's first photo — the same one its flyer opens with). Best effort:
+  // a card with no photo, or if this fails, simply has no picture.
+  const [covers, setCovers] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!listings.length) return;
+    let live = true;
+    const ids = listings.map(l => l.id).join(',');
+    fetch(`/api/crm/listing-covers?ids=${ids}`, { headers: authHeaders })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (live && j?.covers) setCovers(j.covers as Record<string, string>); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [listings.length, authToken]); // eslint-disable-line
+
   // Reopen the property you had open before a refresh, on the same tab (lib/view-memory).
   useRememberedSelection(`${businessUnit}:listing`, active?.id, !loading && listings.length > 0, id => {
     const l = listings.find(x => x.id === id);
@@ -1230,6 +1244,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
                 {/* Color bar */}
                 <div style={{ height: 4, background: tc.color, opacity: 0.7 }} />
+                {covers[l.id] && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={covers[l.id]} alt={`${l.name} photo`} loading="lazy"
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    style={{ display: 'block', width: '100%', height: 150, objectFit: 'cover', background: 'var(--k-f3f4f6)' }} />
+                )}
 
                 <div style={{ padding: '16px 18px' }}>
                   {/* Header row */}
