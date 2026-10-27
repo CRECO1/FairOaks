@@ -10776,17 +10776,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         )}
                       </div>
                     </div>
-                    {isAdmin && (
-                      <div style={{ gridColumn: '1/-1' }}><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Deal Owner</label>
-                        {isSuperAdmin ? (
-                          <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.agent_id} onChange={e => updateDeal(activeDeal.id, { agent_id: e.target.value })}>
-                            {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
-                          </select>
-                        ) : (
-                          <div className="crm-input" style={{ marginTop: 4, opacity: 0.8 }} title="Only the account owner can reassign a deal">{agentName(activeDeal.agent_id)}</div>
-                        )}
-                      </div>
-                    )}
                   </div>
 
                   {/* ── Meetings — log meetings + tag attendee contacts (silent) ── */}
@@ -10890,6 +10879,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
                       );
                     })()}
+                    {/* Who owns the deal — the account owner's to change (the database refuses anyone else). */}
+                    {isSuperAdmin && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                        <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Deal Owner</label>
+                        <select className="crm-input" style={{ maxWidth: 220 }} value={activeDeal.agent_id} onChange={e => updateDeal(activeDeal.id, { agent_id: e.target.value })}>
+                          {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ marginTop: 16, fontSize: 13, color: 'var(--k-6b7280)' }}>Created: {activeDeal.created_at?.slice(0, 10)} · Last Touch: {activeDeal.last_touch?.slice(0, 10)}</div>
