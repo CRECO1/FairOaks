@@ -2045,6 +2045,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, campaigns.length]);
 
+  // The Team page's data used to load only from its sidebar button, so landing on it by a refresh or a link showed an
+  // empty Activity Report ("No activity logged") that was really just never loaded. Load it whenever the page is
+  // on screen — and again once the profiles are in, since the report names agents from them.
+  useEffect(() => {
+    if (page !== 'agents' || !profile || !(profile.role === 'admin' || profile.role === 'super_admin')) return;
+    loadProfiles();
+    loadActivityReport(activityReportDays);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, profile?.id, profile?.role, profiles.length]);
   useEffect(() => { setContactRenderLimit(CONTACT_WINDOW); },
     [contactTypeFilter, contactSourceFilter, contactTagFilter, contactSpecFilter, contactOwnerFilter, contactSort, needsTouchOnly, noInfoOnly, page]);
   useEffect(() => { setFollowUpLimit(100); }, [followUpDays, followUpTypeFilter]);
