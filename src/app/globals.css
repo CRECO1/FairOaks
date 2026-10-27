@@ -625,6 +625,25 @@
   .es-touch input[type=checkbox] { width: 20px; height: 20px; }
 }
 
+/* E-Sign page on phones (<768px, by width — the rules above only fire on touch hardware): the header's buttons sit
+   side by side under a full-width title + stats line instead of one dropping onto its own row, the four tabs scroll
+   sideways in one strip instead of wrapping to two rows, and long document titles wrap to two lines instead of being
+   cut off with an ellipsis. */
+@media (max-width: 767px) {
+  .es-head-title { flex: 1 1 100% !important; }
+  .es-head-actions { width: 100%; }
+  .es-head-actions button { flex: 1 1 0; }
+  .es-tabs { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .es-tabs::-webkit-scrollbar { display: none; }
+  .es-tabs button { white-space: nowrap; flex-shrink: 0; }
+  .es-title {
+    white-space: normal !important; text-overflow: clip !important; overflow: hidden !important;
+    display: -webkit-box !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere;
+  }
+  /* Draft rows: Preview and Prepare & send share a line; the quiet Remove link follows on its own. */
+  .es-quiet { margin-left: auto !important; }
+}
+
 /* Mobile bottom sheets: on phones (<768px, matching the CRM's own isMobile),
    any inline-styled modal whose backdrop is marked .crm-sheet and whose panel is
    .crm-sheet-panel becomes a bottom sheet — anchored to the bottom edge,

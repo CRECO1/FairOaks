@@ -66,6 +66,20 @@ interface Props {
 // hand-made and simply never moved along.
 const ACTIVE_STAGES = ['Active', 'LOI', 'In Contract'];
 
+// File names make poor titles: "7830-Louis-Pasteur-Lease-Agreement-with--signed (2)", "Contract (filled) (5)", "LOI.docx".
+// Display-only (the original stays in the hover title and in the record): drop the extension and the "(filled)" / "(n)" copy
+// suffixes, and turn a hyphen- or underscore-joined name back into words.
+const prettyTitle = (raw?: string | null) => {
+  let t = (raw ?? '').trim();
+  if (!t) return 'Document';
+  t = t.replace(/\.(pdf|docx?|xlsx?)$/i, '');
+  for (let i = 0; i < 4; i++) t = t.replace(/\s*\((?:filled|\d+)\)\s*$/i, '');
+  if (!/\s/.test(t) && /[-_]/.test(t)) t = t.replace(/[-_]+/g, ' ');
+  t = t.replace(/\s+/g, ' ').trim();
+  return t || (raw ?? '').trim();
+};
+const isTestTitle = (raw?: string | null) => /^\s*test\b/i.test(raw ?? '');
+
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`; };
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap' };
@@ -87,6 +101,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   // A refresh lands back on the same tab and reopens the same request.
   const [tab, setTab] = useRememberedState<'out' | 'drafts' | 'signed' | 'closed'>('esign:tab', 'out', ['out', 'drafts', 'signed', 'closed'] as const);
   const [q, setQ] = useState('');
+  const [tidy, setTidy] = useState(true);   // Cancelled tab: hide test requests and repeat copies of the same document
   const [acts, setActs] = useState<Record<string, ActEvent[]>>({}); // cached per envelope
   const [stats, setStats] = useState<Stats | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -430,14 +445,16 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
         onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
 
       {/* ── Header: title, one-line pulse, the two ways to start ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 10, marginBottom: 16 }}>
-        <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+      <div className="es-head" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 10, marginBottom: 16 }}>
+        <div className="es-head-title" style={{ flex: '1 1 240px', minWidth: 0 }}>
           <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, margin: 0, color: 'var(--k-111)' }}>Signatures</h2>
           <div title={stats && stats.tracked < stats.sent ? `Email opens are tracked for ${stats.tracked} of ${stats.sent} invites — only mail sent since delivery tracking was switched on reports back.` : undefined}
             style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>{metrics.length ? metrics.join('  ·  ') : ' '}</div>
         </div>
-        <button onClick={() => { setPickDeal(true); setDealPick(null); setDealDocs(null); }} disabled={uploading} style={mini}>From a deal</button>
-        <button onClick={() => fileRef.current?.click()} disabled={uploading} style={primaryBtn}>{uploading ? 'Importing…' : '+ Upload PDF'}</button>
+        <div className="es-head-actions" style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => { setPickDeal(true); setDealPick(null); setDealDocs(null); }} disabled={uploading} style={mini}>From a deal</button>
+          <button onClick={() => fileRef.current?.click()} disabled={uploading} style={primaryBtn}>{uploading ? 'Importing…' : '+ Upload PDF'}</button>
+        </div>
       </div>
 
       {/* ── Needs attention ── */}
@@ -453,7 +470,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
             {attention.map(a => (
               <div key={a.env.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: a.tone === 'bad' ? 'var(--k-fef6f6)' : 'var(--k-fffaf0)', border: `1px solid ${a.tone === 'bad' ? 'var(--k-f8d7d7)' : 'var(--k-f6e3b8)'}`, borderRadius: 10, padding: '9px 13px' }}>
                 <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.env.title || 'Document'}</div>
+                  <div className="es-title" title={a.env.title || undefined} style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prettyTitle(a.env.title)}</div>
                   <div style={{ fontSize: 12.5, color: a.tone === 'bad' ? 'var(--k-b91c1c)' : 'var(--k-92400e)' }}>{a.text}</div>
                 </div>
                 {a.action === 'renew' && <button disabled={busy === a.env.id} onClick={() => renewEnv(a.env)} style={{ ...mini, color: 'var(--k-b91c1c)', borderColor: 'var(--k-fecaca)' }}>{busy === a.env.id ? '…' : 'Renew link'}</button>}
@@ -467,7 +484,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
 
       {/* ── Tabs + search ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', rowGap: 8, borderBottom: '1px solid #eef0f2', marginBottom: 14 }}>
-        <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', flex: '1 1 auto' }} role="tablist">
+        <div className="es-tabs" style={{ display: 'flex', gap: 2, flexWrap: 'wrap', flex: '1 1 auto' }} role="tablist">
           {tabs.map(t => (
             <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}
               style={{ background: 'none', border: 'none', borderBottom: `2px solid ${tab === t.key ? '#c9922c' : 'transparent'}`, padding: '9px 12px', fontSize: 13.5, fontWeight: tab === t.key ? 800 : 600, color: tab === t.key ? 'var(--k-111)' : 'var(--k-6b7280)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", marginBottom: -1, whiteSpace: 'nowrap' }}>
@@ -551,20 +568,21 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
             : draftRows.map(({ doc: d, dupes }) => (
               <div key={d.id} style={{ ...rowStyle, cursor: 'default' }}>
                 <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title || 'Document'}</div>
+                  <div className="es-title" title={d.title || undefined} style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prettyTitle(d.title)}</div>
                   <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1 }}>
                     Imported{d.updated_at ? ` · ${ago(d.updated_at)}` : ''}{dupes > 0 && ` · newest of ${dupes + 1} copies`}
                   </div>
                 </div>
-                <button onClick={() => removeDoc(d)} title="Remove this document" style={{ ...mini, color: 'var(--k-b91c1c)', borderColor: '#f3e4e4' }}>Remove</button>
                 {d.url && onPreview && <button onClick={() => onPreview({ url: d.url!, name: `${d.title || 'Document'}.pdf` })} style={mini}>Preview</button>}
                 {onCompose && <button onClick={() => onCompose({ doc: d })} style={primaryBtn}>Prepare &amp; send</button>}
+                {/* Last and quiet: the one destructive action sits away from Preview / Prepare & send so it can't be tapped by mistake. */}
+                <button className="es-quiet" onClick={() => removeDoc(d)} title="Remove this document" aria-label={`Remove ${prettyTitle(d.title)}`} style={{ ...mini, background: 'none', border: 'none', color: 'var(--k-9ca3af)', fontWeight: 600, marginLeft: 10 }}>Remove</button>
               </div>
             )))}
 
           {tab !== 'drafts' && (() => {
-            const rows = tab === 'out' ? outRows : tab === 'signed' ? signedRows : closedRows;
-            if (rows.length === 0) return needle
+            const rows0 = tab === 'out' ? outRows : tab === 'signed' ? signedRows : closedRows;
+            if (rows0.length === 0) return needle
               ? <Empty title="No matches" body="Nothing here matches your search." />
               : tab === 'out' ? <Empty title="Nothing is waiting on a signature" body="Start a request with Upload PDF or From a deal." />
               : tab === 'signed' ? <Empty title="No signed documents yet" body="Completed requests collect here." />
@@ -575,7 +593,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
               const when = (e: Envelope) => {
                 return e.completed_at || (e.crm_envelope_signers || []).map(x => x.signed_at).filter(Boolean).sort().pop() || e.created_at || '';
               };
-              const sorted = [...rows].sort((x, y) => when(y).localeCompare(when(x)));
+              const sorted = [...rows0].sort((x, y) => when(y).localeCompare(when(x)));
               const months: Array<{ label: string; items: Envelope[] }> = [];
               for (const e of sorted) {
                 const t = when(e);
@@ -598,7 +616,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                           style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', cursor: 'pointer', borderTop: i ? '1px solid #f4f5f7' : 'none' }}>
                           <span style={{ color: 'var(--k-16a34a)', fontWeight: 800, flexShrink: 0 }}>✓</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div title={env.title || 'Document'} style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.title || 'Document'}</div>
+                            <div className="es-title" title={env.title || 'Document'} style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prettyTitle(env.title)}</div>
                             <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[dealName, names].filter(Boolean).join(' · ')}</div>
                           </div>
                           <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap', flexShrink: 0 }}>{t ? new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
@@ -613,15 +631,40 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                 </div>
               ));
             }
-            return rows.map(env => {
+            // Cancelled & archived piles up test requests and the same paper cancelled over and over while it was being
+            // corrected. Tidy view: drop tests, and show only the newest of identical copies (same title + same signers).
+            // Nothing is deleted — "Show all" brings every row back.
+            let rows = rows0;
+            const copies = new Map<string, number>();
+            let hidden = 0;
+            if (tab === 'closed' && tidy) {
+              const seen = new Set<string>();
+              const kept: Envelope[] = [];
+              for (const e of [...rows0].reverse()) {   // newest first, so the newest copy is the one that stays
+                if (isTestTitle(e.title)) { hidden++; continue; }
+                const key = `${prettyTitle(e.title).toLowerCase()}|${(e.crm_envelope_signers || []).map(x => (x.email || x.name || '').toLowerCase()).sort().join(',')}`;
+                if (seen.has(key)) { hidden++; copies.set(key, (copies.get(key) ?? 0) + 1); continue; }
+                seen.add(key); kept.push(e);
+              }
+              rows = kept.reverse();
+            }
+            const keyOf = (e: Envelope) => `${prettyTitle(e.title).toLowerCase()}|${(e.crm_envelope_signers || []).map(x => (x.email || x.name || '').toLowerCase()).sort().join(',')}`;
+            const tidyBar = tab === 'closed' && (hidden > 0 || !tidy) ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--k-6b7280)', margin: '0 2px 2px' }}>
+                <span>{tidy ? `${hidden} test or repeat cop${hidden === 1 ? 'y' : 'ies'} hidden` : 'Showing everything, including tests and repeat copies'}</span>
+                <button onClick={() => setTidy(v => !v)} style={{ background: 'none', border: 'none', padding: 0, fontSize: 12.5, fontWeight: 700, color: 'var(--k-a06a12)', cursor: 'pointer', textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>{tidy ? 'Show all' : 'Tidy up'}</button>
+              </div>
+            ) : null;
+            return <>{tidyBar}{rows.map(env => {
               const sg = env.crm_envelope_signers || [];
               const st = statusLine(env);
               const dealName = env.crm_deals?.property || env.crm_deals?.client;
+              const more = tab === 'closed' && tidy ? (copies.get(keyOf(env)) ?? 0) : 0;
               return (
                 <button key={env.id} onClick={() => setOpenId(env.id)} style={rowStyle}>
                   <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-                    <div title={env.title || 'Document'} style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.title || 'Document'}</div>
-                    <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1 }}>{[dealName, env.sent_by, env.created_at ? `sent ${ago(env.created_at)}` : null].filter(Boolean).join(' · ')}</div>
+                    <div className="es-title" title={env.title || 'Document'} style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prettyTitle(env.title)}</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1 }}>{[dealName, env.sent_by, env.created_at ? `sent ${ago(env.created_at)}` : null, more > 0 ? `+${more} earlier cop${more === 1 ? 'y' : 'ies'}` : null].filter(Boolean).join(' · ')}</div>
                   </div>
                   {signerChips(env)}
                   <div style={{ flex: '0 1 230px', minWidth: 130, textAlign: 'right' }}>
@@ -631,7 +674,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                   <span aria-hidden style={{ color: '#c4c8cf', fontSize: 18 }}>›</span>
                 </button>
               );
-            });
+            })}</>;
           })()}
         </div>
       )}
