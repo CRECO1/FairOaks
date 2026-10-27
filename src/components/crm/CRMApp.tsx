@@ -4826,6 +4826,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           .crm-app-shell button:not([class])[style*="padding: 0px;"]::after{content:"";position:absolute;inset:-10px -8px;}
           .crm-app-shell a:not([class]){padding-block:9px;}
           .crm-app-shell input[type=checkbox],.crm-app-shell input[type=radio]{width:22px!important;height:22px!important;}
+          /* Buttons/dropdowns that set their OWN small inline min-height (the Calling Log filter chips and date picker: 32px) */
+          .crm-app-shell :is(button,select)[style*="min-height: 2"],.crm-app-shell :is(button,select)[style*="min-height: 3"]{min-height:40px!important;}
         }
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
