@@ -60,8 +60,8 @@ export async function POST(req: NextRequest) {
     property: b.property || '',
     value: b.value != null && b.value !== '' ? Number(b.value) : 0,
     stage: b.stage || 'Prospect',
-    // Only admins may create a deal owned by someone else.
-    agent_id: isAdminRole(ctx.role) ? (b.agent_id || ctx.userId) : ctx.userId,
+    // Only the account owner (super_admin) may create a deal owned by someone else.
+    agent_id: ctx.role === 'super_admin' ? (b.agent_id || ctx.userId) : ctx.userId,
     listing_id: b.listing_id || null,
     business_unit: unit,
     last_touch: chicagoToday(),

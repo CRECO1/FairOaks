@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, forbidden, notFound, dbError } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, isSuperAdminRole, unauthorized, forbidden, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { notifyAssignment, senderName } from '@/lib/notify';
 
 /**
  * PATCH /api/crm/clients/:id/owner  { agent_id }
  *
- * Reassign a contact (usually a brand-new lead) to another agent. Admin only, same as the bulk Reassign.
+ * Reassign a contact (usually a brand-new lead) to another agent. Account owner (super_admin) only.
  * The owner is who the lead-SLA clock, the call-back task and the "who's on the site" alerts follow, so the
  * lead's own work moves with it:
  *   - the owner's open call / follow-up tasks on this contact, and
@@ -19,7 +19,7 @@ import { notifyAssignment, senderName } from '@/lib/notify';
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
-  if (!isAdminRole(ctx.role)) return forbidden('Only an admin can reassign a lead');
+  if (!isSuperAdminRole(ctx.role)) return forbidden('Only the account owner can reassign a lead');
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return notFound();
   const body = await req.json().catch(() => null) as { agent_id?: string } | null;

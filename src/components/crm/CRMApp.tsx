@@ -3585,7 +3585,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function updateDeal(id: string, fields: Partial<Deal>) {
-    await supabase.from('crm_deals').update({ ...fields, last_touch: today() }).eq('id', id);
+    const { error } = await supabase.from('crm_deals').update({ ...fields, last_touch: today() }).eq('id', id);
+    if (error) { showToast("Couldn't save that change: " + (error.message || 'permission denied')); loadDeals(profile!); return; }
     setDeals(prev => prev.map(d => d.id === id ? { ...d, ...fields, last_touch: today() } : d));
     if (activeDeal?.id === id) setActiveDeal(prev => prev ? { ...prev, ...fields } : prev);
   }
@@ -6334,10 +6335,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       style={{ background: '#c9922c', color: 'var(--k-111)', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                       📣 Enroll in Campaign
                     </button>
-                    <button onClick={() => { setBulkReassignTarget(''); setShowBulkReassign(true); }}
+                    {isSuperAdmin && <button onClick={() => { setBulkReassignTarget(''); setShowBulkReassign(true); }}
                       style={{ background: 'var(--k-eff6ff)', color: 'var(--k-1d4ed8)', border: '1px solid var(--k-bfdbfe)', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                       👤 Reassign
-                    </button>
+                    </button>}
                     <button onClick={() => { setShowBulkTag(v => !v); setBulkTagValue(''); }}
                       style={{ background: 'var(--k-f0fdf4)', color: 'var(--k-166534)', border: '1px solid var(--k-bbf7d0)', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                       🏷 Tag
@@ -10741,13 +10742,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </label>
                       </div>
                     )}
-                    {isAdmin && (
-                      <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Assigned Agent</label>
-                        <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.agent_id} onChange={e => updateDeal(activeDeal.id, { agent_id: e.target.value })}>
-                          {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
-                        </select>
-                      </div>
-                    )}
                     <div style={{ gridColumn: '1/-1' }}>
                       <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Notes</label>
                       <div style={{ marginTop: 4 }}>
@@ -10782,6 +10776,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         )}
                       </div>
                     </div>
+                    {isAdmin && (
+                      <div style={{ gridColumn: '1/-1' }}><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Deal Owner</label>
+                        {isSuperAdmin ? (
+                          <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.agent_id} onChange={e => updateDeal(activeDeal.id, { agent_id: e.target.value })}>
+                            {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                          </select>
+                        ) : (
+                          <div className="crm-input" style={{ marginTop: 4, opacity: 0.8 }} title="Only the account owner can reassign a deal">{agentName(activeDeal.agent_id)}</div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* ── Meetings — log meetings + tag attendee contacts (silent) ── */}
@@ -13464,7 +13469,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {/* Meta */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingTop: 4, borderTop: '1px solid var(--k-f0f0f0)', fontSize: 12, color: 'var(--k-9ca3af)', flexWrap: 'wrap' }}>
                   <span>📅 Added {c.created_at?.slice(0, 10)}</span>
-                  {isAdmin ? (
+                  {isSuperAdmin ? (
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       👤 Owner:
                       <select
@@ -14016,7 +14021,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       )}
 
       {/* ── Bulk Reassign Modal ── */}
-      {showBulkReassign && isAdmin && (
+      {showBulkReassign && isSuperAdmin && (
         <div className="overlay" onClick={() => setShowBulkReassign(false)}>
           <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 24px', background: '#111', color: '#fff', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

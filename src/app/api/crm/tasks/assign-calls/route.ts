@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
   }
   // New leads: assigning the call also makes them the contact's owner (the lead-SLA clock and the alerts follow the owner).
   let owned = 0;
-  if (body.set_owner && admin && valid.size) {
+  if (body.set_owner && ctx.role === 'super_admin' && valid.size) {   // owners are the account owner's to assign
     const { data, error } = await db.from('crm_clients').update({ agent_id: assignee }).in('id', [...valid]).eq('business_unit', unit).select('id');
     if (!error) owned = data?.length ?? 0;
   }
