@@ -1052,6 +1052,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [needsTouchOnly, setNeedsTouchOnly] = useState(false);
   // New leads are held for the broker until he assigns or releases them (supabase/lead-hold.sql) — he can filter to them.
   const [heldOnly, setHeldOnly] = useState(false);
+  // Contacts with no email and no phone of any kind (set from the Dashboard card or the Contacts tile).
+  const [noInfoOnly, setNoInfoOnly] = useState(false);
   const needsTouchIds = useMemo(() => {
     const now = Date.now(), DAY = 24 * 60 * 60 * 1000;
     const touched = new Map<string, number | null>();
@@ -2033,7 +2035,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [page, campaigns.length]);
 
   useEffect(() => { setContactRenderLimit(CONTACT_WINDOW); },
-    [contactTypeFilter, contactSourceFilter, contactTagFilter, contactSpecFilter, contactOwnerFilter, contactSort, needsTouchOnly, page]);
+    [contactTypeFilter, contactSourceFilter, contactTagFilter, contactSpecFilter, contactOwnerFilter, contactSort, needsTouchOnly, noInfoOnly, page]);
   useEffect(() => { setFollowUpLimit(100); }, [followUpDays, followUpTypeFilter]);
 
   // Load campaign enrollments for the Campaigns column whenever the contacts page is shown.
@@ -5088,7 +5090,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>People</div>
-          <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); }}><Ico n="users" />Contacts <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? 'var(--k-111)' : 'rgba(255,255,255,.4)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span></button>
+          <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); setNoInfoOnly(false); loadClients(); loadSmartLists(); }}><Ico n="users" />Contacts <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? 'var(--k-111)' : 'rgba(255,255,255,.4)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span></button>
           {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); }}><Ico n="briefcase" />Broker / Agents</button>}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
@@ -5227,7 +5229,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               { id: 'dashboard', label: 'Home', ico: 'home', go: () => setPage('dashboard') },
               { id: 'tasks', label: 'Tasks', ico: 'check', badge: overdueCt, go: () => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); } },
               { id: 'deals', label: 'Deals', ico: 'deals', go: () => { setPage('deals'); setFilter(''); } },
-              { id: 'contacts', label: 'Contacts', ico: 'users', go: () => { setPage('contacts'); loadClients(); loadSmartLists(); } },
+              { id: 'contacts', label: 'Contacts', ico: 'users', go: () => { setPage('contacts'); setNoInfoOnly(false); loadClients(); loadSmartLists(); } },
               { id: 'calendar', label: 'Calendar', ico: 'calendar', go: () => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); } },
               { id: 'campaigns', label: 'Marketing', ico: 'megaphone', on: ['campaigns', 'action-plans', 'social'].includes(page), go: () => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); } },
               { id: 'properties', label: 'Properties', ico: 'building', go: () => setPage('properties') },
@@ -5689,7 +5691,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const monthBuckets = Array.from({ length: 7 }, (_, i) => { const m = new Date(); m.setDate(1); m.setMonth(m.getMonth() + i); return { y: m.getFullYear(), mo: m.getMonth(), label: m.toLocaleDateString('en-US', { month: 'short' }), n: 0, soon: i < 3 }; });
                 for (const x of leaseNext) { const ld = new Date(String(x.c.lease_expiration_date).slice(0, 10) + 'T00:00:00'); const bk = monthBuckets.find(m2 => m2.y === ld.getFullYear() && m2.mo === ld.getMonth()); if (bk) bk.n += 1; }
                 const maxMonth = Math.max(1, ...monthBuckets.map(m2 => m2.n));
-                const noContactInfo = clients.filter(c => !c.email && !c.phone && !c.cell_phone).length;
+                const noInfoRows = clients.filter(c => !c.email && !c.phone && !c.cell_phone);
+                const noContactInfo = noInfoRows.length;
+                const noInfoOwners = noInfoRows.filter(c => (c.tags ?? []).includes('Property Owner')).length;
                 const kpis = (
                   <div className="dk-kpis">
                     <button className="dk-kpi" onClick={() => setPage('deals')}>
@@ -5716,10 +5720,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <span className="v">{lease90.length}</span>
                       <span className="s">{lease90.length ? `Next: ${lease90[0].c.business_name || `${lease90[0].c.first_name} ${lease90[0].c.last_name}`.trim()}, ${new Date(String(lease90[0].c.lease_expiration_date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'None in the next 90 days'}</span>
                     </div>
-                    <button className="dk-kpi" onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); }}>
+                    <button className="dk-kpi" onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); setNoInfoOnly(noContactInfo > 0); }}>
                       <span className="l">Contacts</span>
                       <span className="v">{clients.length.toLocaleString()}</span>
-                      <span className="s">{noContactInfo > 0 ? `${noContactInfo.toLocaleString()} still need an email or phone` : 'All have contact details'}</span>
+                      <span className="s">{noContactInfo > 0 ? `${noContactInfo.toLocaleString()} have no email or phone${noInfoOwners > 0 ? ` (${noInfoOwners.toLocaleString()} are county owners)` : ''} — tap to see` : 'All have contact details'}</span>
                     </button>
                   </div>
                 );
@@ -6250,6 +6254,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {isSuperAdmin && clients.some(c => c.lead_hold) && (
                         <div className={`ctc-stat click${heldOnly ? ' dark' : ''}`} onClick={() => setHeldOnly(v => !v)} title="New leads only you can see. Assign one (or press Release on its card) and the team can see it."><div className="k">🔒 Held Leads</div><div className="v">{clients.filter(c => c.lead_hold).length}</div><div className="d">only you can see these</div></div>
                       )}
+                      {(() => {
+                        const noInfo = clients.filter(c => !c.email && !c.phone && !c.cell_phone);
+                        if (!noInfo.length) return null;
+                        const owners = noInfo.filter(c => (c.tags ?? []).includes('Property Owner')).length;
+                        return (
+                          <div className={`ctc-stat click${noInfoOnly ? ' dark' : ''}`} onClick={() => setNoInfoOnly(v => !v)} title="Contacts with no email and no phone number — click to show only these">
+                            <div className="k">📵 No Email / Phone</div><div className="v">{noInfo.length.toLocaleString()}</div>
+                            <div className="d">{owners > 0 ? `${owners.toLocaleString()} are county owners` : 'nothing to reach them on'}</div>
+                          </div>
+                        );
+                      })()}
                       <div className="ctc-stat"><div className="k">Active Deals</div><div className="v">{activeDealCount}</div><div className="d">in the pipeline</div></div>
                       <div className="ctc-stat"><div className="k">In Campaigns</div><div className="v">{inCampaigns}</div><div className="d">currently enrolled</div></div>
                     </div>
@@ -6359,8 +6374,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <input placeholder="Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
                       className={`cf-tag-input${contactTagFilter ? ' active' : ''}`} style={{ width: isMobile ? '100%' : 140 }} />
                     {/* Clear */}
-                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter || needsTouchOnly || heldOnly) && (
-                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); setNeedsTouchOnly(false); setHeldOnly(false); }}
+                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter || needsTouchOnly || heldOnly || noInfoOnly) && (
+                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); setNeedsTouchOnly(false); setHeldOnly(false); setNoInfoOnly(false); }}
                         style={{ fontSize: 13, color: 'var(--k-6b7280)', background: 'none', border: '1px solid var(--k-e2e8f0)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                         Clear
                       </button>
@@ -6399,6 +6414,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   if (contactOwnerFilter && c.agent_id !== contactOwnerFilter) return false;
                   if (needsTouchOnly && !needsTouchIds.has(c.id)) return false;
                   if (heldOnly && !c.lead_hold) return false;
+                  if (noInfoOnly && (c.email || c.phone || c.cell_phone)) return false;
                   return true;
                 }).sort((a, b) => {
                   if (contactSort === 'recent') {
