@@ -15,7 +15,7 @@ export interface ContactRow {
   id: string;
   first_name?: string | null; last_name?: string | null; business_name?: string | null;
   email?: string | null; phone?: string | null; cell_phone?: string | null;
-  type: string; agent_id?: string | null;
+  type: string; agent_id?: string | null; business_unit?: string | null;
   tags?: string[] | null; lead_source?: string | null; asset_types?: string[] | null;
   last_touched_at?: string | null; created_at: string;
   is_shared?: boolean; lead_hold?: boolean | null;
@@ -23,7 +23,7 @@ export interface ContactRow {
 export type ContactSort = 'recent' | 'never' | 'az' | 'za' | 'added' | 'type' | 'owner';
 interface DealLite { id: string; stage: string }
 interface Enroll { campaign_name?: string; active?: boolean }
-interface Person { id: string; first_name?: string | null; last_name?: string | null }
+interface Person { id: string; first_name?: string | null; last_name?: string | null; business_unit?: string | null }
 
 export interface ContactsViewProps {
   clients: ContactRow[];
@@ -49,6 +49,8 @@ export interface ContactsViewProps {
   onAddTask: (c: ContactRow) => void;
   onOpenDeal: (dealId: string) => void;
   onChangeType: (c: ContactRow, t: string) => void;
+  /** Account owner only: the Owner column becomes a dropdown that reassigns the contact (and moves its open tasks / Prospect deal). */
+  canChangeOwner?: boolean; onChangeOwner?: (c: ContactRow, agentId: string) => void;
   timeAgo: (d?: string | null) => { label: string; color: string; bg: string };
   phoneDisp: (v?: string | null) => string;
   typeColors: Record<string, string>;
@@ -180,7 +182,7 @@ export default function ContactsView(p: ContactsViewProps) {
   const toggleOne = (id: string, on: boolean) => { const next = new Set(p.selected); if (on) next.add(id); else next.delete(id); p.setSelected(next); };
   const allSelected = filtered.length > 0 && p.selected.size >= filtered.length && filtered.every(c => p.selected.has(c.id));
 
-  const cols = `${isAdmin ? '28px ' : ''}minmax(190px,2fr) 108px minmax(140px,1.5fr) 124px ${isAdmin ? '78px ' : ''}84px 78px 100px`;
+  const cols = `${isAdmin ? '28px ' : ''}minmax(190px,2fr) 108px minmax(140px,1.5fr) 124px ${isAdmin ? (p.canChangeOwner ? '124px ' : '78px ') : ''}84px 78px 100px`;
   const sortHeader = (label: string, a: ContactSort, b?: ContactSort) => {
     const on = p.sort === a || p.sort === b;
     return (
@@ -202,6 +204,20 @@ export default function ContactsView(p: ContactsViewProps) {
         <button onClick={() => p.onAddTask(c)} title={pending > 0 ? `${pending} open task${pending === 1 ? '' : 's'} — add another` : 'Add a task'} aria-label="Add a task"
           style={{ ...actionBtn, ...(pending > 0 ? { background: 'var(--k-fdf6e8)', borderColor: '#f0e2c4', color: '#a06a12', fontWeight: 700 } : {}) }}>{pending > 0 ? pending : '✓'}</button>
       </div>
+    );
+  };
+
+  const ownerSelect = (c: ContactRow, compact: boolean) => {
+    const agents = p.profiles.filter(a => !a.business_unit || !c.business_unit || a.business_unit === c.business_unit);
+    const known = agents.some(a => a.id === c.agent_id);
+    return (
+      <select aria-label={`Owner of ${displayName(c)}`} value={c.agent_id ?? ''} title="Assign this contact to an agent — its open call tasks and Prospect deal move with it"
+        onClick={e => e.stopPropagation()} onChange={e => p.onChangeOwner?.(c, e.target.value)}
+        style={{ width: '100%', maxWidth: compact ? 130 : undefined, boxSizing: 'border-box', minHeight: compact ? 30 : 44, padding: '0 6px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: compact ? 13 : 15, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
+        {!c.agent_id && <option value="">Unassigned</option>}
+        {c.agent_id && !known && <option value={c.agent_id}>{ownerFirst.get(c.agent_id) || 'Former agent'}</option>}
+        {agents.map(a => <option key={a.id} value={a.id}>{`${a.first_name ?? ''} ${a.last_name ?? ''}`.trim()}</option>)}
+      </select>
     );
   };
 
@@ -361,13 +377,18 @@ export default function ContactsView(p: ContactsViewProps) {
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>{typePill(c)}{badges(c)}</div>
                   {rowActions(c)}
                 </div>
+                {p.canChangeOwner && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12.5, color: 'var(--k-9ca3af)', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
+                    Owner {ownerSelect(c, false)}
+                  </label>
+                )}
               </div>
             );
           })}
         </div>
       ) : (
         <div style={{ border: '1px solid #eef0f2', borderRadius: 12, background: 'var(--k-fff)', overflowX: 'auto' }}>
-          <div style={{ minWidth: 960 }}>
+          <div style={{ minWidth: p.canChangeOwner ? 1040 : 960 }}>
             <div role="row" style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, alignItems: 'center', padding: '10px 16px', fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', borderBottom: '1px solid #eef0f2', position: 'sticky', top: 0, background: 'var(--k-fff)', zIndex: 2, borderRadius: '12px 12px 0 0' }}>
               {isAdmin && <input type="checkbox" aria-label="Select all" checked={allSelected} ref={el => { if (el) el.indeterminate = p.selected.size > 0 && !allSelected; }} onChange={e => p.setSelected(e.target.checked ? new Set(filtered.map(c => c.id)) : new Set())} style={{ width: 15, height: 15, accentColor: '#c9922c', cursor: 'pointer' }} />}
               <div>{sortHeader('Contact', 'az', 'za')}</div>
@@ -404,7 +425,9 @@ export default function ContactsView(p: ContactsViewProps) {
                   <div>{typePill(c)}</div>
                   <div style={{ minWidth: 0 }} onClick={e => e.stopPropagation()}>{c.email ? <a href={`mailto:${c.email}`} title={c.email} style={{ fontSize: 13, color: 'var(--k-374151)', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</a> : <span style={{ color: '#d1d5db' }}>—</span>}</div>
                   <div onClick={e => e.stopPropagation()}>{phone ? <a href={`tel:${phone}`} style={{ fontSize: 13, color: 'var(--k-374151)', textDecoration: 'none', whiteSpace: 'nowrap' }}>{p.phoneDisp(phone)}</a> : <span style={{ color: '#d1d5db' }}>—</span>}</div>
-                  {isAdmin && <div style={{ fontSize: 13, color: 'var(--k-6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ownerFirst.get(c.agent_id ?? '') || <span style={{ color: '#d1d5db' }}>—</span>}</div>}
+                  {isAdmin && (p.canChangeOwner
+                    ? <div onClick={e => e.stopPropagation()}>{ownerSelect(c, true)}</div>
+                    : <div style={{ fontSize: 13, color: 'var(--k-6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ownerFirst.get(c.agent_id ?? '') || <span style={{ color: '#d1d5db' }}>—</span>}</div>)}
                   <div><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 9px', background: ta.bg, color: ta.color, whiteSpace: 'nowrap' }}>{ta.label}</span></div>
                   <div>{badges(c)}</div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>{rowActions(c)}</div>

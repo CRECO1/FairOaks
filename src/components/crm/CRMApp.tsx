@@ -6487,6 +6487,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     onOpen={c => setActiveClient(c as unknown as Client)}
                     onAddTask={c => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
                     onOpenDeal={id => { const d = deals.find(x => x.id === id); if (d) openDeal(d); }}
+                    canChangeOwner={isSuperAdmin} onChangeOwner={(c, id) => reassignContactOwner(c as unknown as Client, id)}
                     onChangeType={async (c, t) => { const nt = t as Client['type']; await supabase.from('crm_clients').update({ type: nt }).eq('id', c.id); setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: nt } : x)); }}
                     timeAgo={timeAgo} phoneDisp={phoneDisp}
                     typeColors={CLIENT_TYPE_COLORS} avatarColors={CONTACT_AVATAR_COLORS}
