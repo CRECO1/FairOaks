@@ -96,7 +96,7 @@ export async function geocodeMissing(limit = 25): Promise<{ geocoded: number; fa
     const centre = centres.get((row.city || '').trim().toLowerCase()) ?? null;
     let g = cq ? await census(cq) : null;
     if (g && !plausible(g, centre)) g = null;
-    if (!g) {
+    if (!g && fallback) {
       await sleep(1100);
       g = await nominatim(fallback);
       if (g && !plausible(g, centre)) g = null;

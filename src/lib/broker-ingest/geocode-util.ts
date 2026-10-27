@@ -30,14 +30,27 @@ export function hasHouseNumber(addr: string): boolean {
   return /^\d+[a-z]?\s+\S/i.test(addr.trim());
 }
 
-/** The queries to try, best first. */
-export function buildQueries(row: AddrRow): { census: string | null; fallback: string } {
+/**
+ * Is this a street (or highway) rather than just a place name? "Comfort, TX" / "Austin" is a town, and a
+ * geocoder would pin the middle of it — a misleading dot, so those are skipped.
+ */
+export function looksLikeStreet(addr: string): boolean {
+  const a = addr.trim();
+  if (!a) return false;
+  if (hasHouseNumber(a)) return true;
+  // a street word ("Higdon Rd", "Cinema Drive") or a route number ("TX 46", "IH 35", "Loop 1604")
+  return /\b(rd|road|st|street|dr|drive|ln|lane|blvd|boulevard|ave|avenue|hwy|highway|loop|pkwy|parkway|fwy|freeway|expy|expressway|way|trl|trail|ct|court|pass|cir|circle|pl|place|run|path|pike)\b/i.test(a)
+    || /\b(ih|fm|rm|us|sh|tx|cr|loop|hwy|highway|interstate)\s*-?\d{1,4}\b/i.test(a);
+}
+
+/** The queries to try, best first. `fallback` is null when there is no street to look up. */
+export function buildQueries(row: AddrRow): { census: string | null; fallback: string | null } {
   const addr = cleanAddress(row.address);
   const city = (row.city || '').trim();
   const state = (row.state || 'TX').trim();
   const tail = [city, state, row.zip].filter(Boolean).join(', ');
   const full = [addr, tail].filter(Boolean).join(', ');
-  return { census: hasHouseNumber(addr) ? full : null, fallback: full };
+  return { census: hasHouseNumber(addr) ? full : null, fallback: looksLikeStreet(addr) ? full : null };
 }
 
 /** Great-circle distance in km. */
