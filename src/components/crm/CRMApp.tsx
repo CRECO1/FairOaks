@@ -3606,8 +3606,37 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function deleteDeal(id: string) {
-    if (!confirm('Delete this deal? This cannot be undone.')) return;
-    await supabase.from('crm_deals').delete().eq('id', id);
+    // Say exactly what goes with the deal. Its emails, documents, forms and meetings are
+    // deleted WITH it (cascade); signature requests are kept but lose their deal link.
+    const target = deals.find(d => d.id === id);
+    const label = target ? [target.client, target.property].filter(Boolean).join(' — ') : '';
+    const countOf = async (table: string) => {
+      const { count } = await supabase.from(table).select('id', { count: 'exact', head: true }).eq('deal_id', id);
+      return count ?? 0;
+    };
+    const [emails, docA, docB, forms, meetings, envelopes] = await Promise.all(
+      ['crm_deal_emails', 'crm_deal_docs', 'crm_docs', 'crm_deal_forms', 'crm_deal_meetings', 'crm_envelopes'].map(countOf),
+    );
+    const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    const goes = [
+      emails && plural(emails, 'email'),
+      docA + docB && plural(docA + docB, 'document'),
+      forms && plural(forms, 'form'),
+      meetings && plural(meetings, 'meeting'),
+    ].filter(Boolean);
+    const msg =
+      `Delete ${label ? `“${label}”` : 'this deal'}?\n\n` +
+      (goes.length ? `This also deletes its ${goes.join(', ')}.` : 'Nothing else is attached to it.') +
+      (envelopes ? `\n${plural(envelopes, 'signature request')} will be kept but unlinked from the deal.` : '') +
+      '\n\nThis cannot be undone.';
+    if (!confirm(msg)) return;
+    // .select() so a delete that matched nothing (not allowed to see/remove it) is
+    // caught — otherwise the card vanished and said "deleted" while the deal stayed.
+    const { data: removed, error } = await supabase.from('crm_deals').delete().eq('id', id).select('id');
+    if (error || !removed || removed.length === 0) {
+      showToast('Could not delete the deal — nothing was changed.');
+      return;
+    }
     setDeals(prev => prev.filter(d => d.id !== id));
     setActiveDeal(null);
     if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId');
