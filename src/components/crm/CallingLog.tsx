@@ -386,6 +386,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
     } finally { setBusy(null); }
   };
 
+  const mob = typeof window !== 'undefined' && window.innerWidth < 768;
   const light = (ok: boolean) => <span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 9, background: ok ? '#22c55e' : '#ef4444', marginRight: 6, verticalAlign: 'middle' }} />;
 
   return (
@@ -393,18 +394,19 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap', rowGap: 8 }}>
         <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: 'var(--k-111)', whiteSpace: 'nowrap' }}>📞 Calling Log</h2>
         <span style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>{loading ? '' : `${list.length} ${filter === 'follow_up' ? 'waiting on a call back' : filter === 'all' ? `calls · last ${days} days` : 'calls'}`}</span>
-        <span style={{ flex: '1 1 auto', minWidth: 0 }} />
-        {isAdmin && conn?.talkroute && <button onClick={syncNow} disabled={busy === 'sync'} style={{ ...mini, color: 'var(--k-9ca3af)' }}>{busy === 'sync' ? '⏳ Syncing…' : '⟳ Sync Talkroute'}</button>}
-        <button onClick={() => setShowLog(v => !v)} style={mini}>＋ Log a call</button>
-        <button onClick={() => setShowBlocked(v => !v)} style={{ ...mini, background: showBlocked ? '#111' : 'var(--k-fff)', color: showBlocked ? '#fff' : 'var(--k-374151)' }}>🚫 Blocked numbers</button>
-        {isAdmin && <button onClick={() => setShowSetup(v => !v)} style={{ ...mini, background: showSetup ? '#111' : 'var(--k-fff)', color: showSetup ? '#fff' : 'var(--k-374151)' }}>⚙ Setup &amp; voice bot</button>}
+        <div style={mob ? { display: 'flex', gap: 8, width: '100%', overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 2, scrollbarWidth: 'none' as const } : { display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 'auto' }}>
+        {isAdmin && conn?.talkroute && <button onClick={syncNow} disabled={busy === 'sync'} style={{ ...mini, flexShrink: 0, whiteSpace: 'nowrap', color: 'var(--k-9ca3af)' }}>{busy === 'sync' ? '⏳ Syncing…' : '⟳ Sync Talkroute'}</button>}
+        <button onClick={() => setShowLog(v => !v)} style={{ ...mini, flexShrink: 0, whiteSpace: 'nowrap' }}>＋ Log a call</button>
+        <button onClick={() => setShowBlocked(v => !v)} style={{ ...mini, flexShrink: 0, whiteSpace: 'nowrap', background: showBlocked ? '#111' : 'var(--k-fff)', color: showBlocked ? '#fff' : 'var(--k-374151)' }}>🚫 Blocked numbers</button>
+        {isAdmin && <button onClick={() => setShowSetup(v => !v)} style={{ ...mini, flexShrink: 0, whiteSpace: 'nowrap', background: showSetup ? '#111' : 'var(--k-fff)', color: showSetup ? '#fff' : 'var(--k-374151)' }}>⚙ Setup &amp; voice bot</button>}
+        </div>
       </div>
-      <p style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 0, marginBottom: 14 }}>
+      {!mob && <p style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 0, marginBottom: 14 }}>
         Calls and voicemails from Talkroute, plus every call the AI receptionist answers on the bot line — with what the caller wanted and who still needs a call back.
-      </p>
+      </p>}
 
       {stats && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 10, marginBottom: 18 }}>
+        <div style={mob ? { display: 'flex', gap: 8, overflowX: 'auto', margin: '0 -2px 14px', padding: '2px 2px 6px', scrollbarWidth: 'none' as const } : { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 10, marginBottom: 18 }}>
           {[
             { label: 'Needs call back', value: stats.follow_up, sub: stats.overdue ? `${stats.overdue} overdue now` : 'open follow-ups', tone: stats.follow_up ? 'var(--k-b91c1c)' : 'var(--k-15803d)', pick: 'follow_up' as const },
             { label: 'Needs a note', value: stats.wrapup ?? 0, sub: 'answered calls, 30 days', tone: stats.wrapup ? 'var(--k-a06a12)' : 'var(--k-15803d)', pick: 'wrapup' as const },
@@ -415,7 +417,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             { label: 'Voicemails', value: stats.voicemail, sub: 'last 7 days', pick: 'voicemail' as const },
             { label: 'Texts to answer', value: threads.filter(t => t.unanswered).length, sub: `${threads.length} thread${threads.length === 1 ? '' : 's'}`, tone: threads.some(t => t.unanswered) ? 'var(--k-b91c1c)' : undefined, pick: 'texts' as const },
           ].map(c => (
-            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ minWidth: 0, background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : 'var(--k-eef0f3)'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ minWidth: 0, ...(mob ? { flex: '0 0 124px' } : {}), background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : 'var(--k-eef0f3)'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
               <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--k-9ca3af)', fontWeight: 700 }}>{c.label}</div>
               <div style={{ fontSize: 21, fontWeight: 700, marginTop: 3, color: c.tone || 'var(--k-111827)' }}>{c.value}</div>
               <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{c.sub}</div>

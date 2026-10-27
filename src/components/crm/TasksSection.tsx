@@ -911,7 +911,7 @@ export default function TasksSection({
       </div>
 
       {/* Stats strip — tap a card to filter the list to that bucket */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: isMobile ? 6 : 10, marginBottom: isMobile ? 12 : 20 }}>
         {([
           { key: 'overdue', label: 'Overdue',   val: overdueCt, color: '#ef4444' },
           { key: 'today',   label: 'Due Today', val: todayCt,   color: '#c9922c' },
@@ -921,11 +921,11 @@ export default function TasksSection({
           const active = quickFilter === s.key;
           return (
             <button key={s.label} onClick={() => setQuickFilter(active ? '' : s.key)}
-              style={{ textAlign: 'left', background: 'var(--k-fff)', borderRadius: 10, padding: '12px 16px', border: `1px solid ${active ? s.color : 'var(--k-e5e7eb)'}`, borderLeft: `4px solid ${s.color}`, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: active ? `0 2px 12px ${s.color}22` : 'none', transition: 'all .12s' }}>
-              <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: active ? s.color : 'var(--k-9ca3af)', marginBottom: 3, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+              style={{ textAlign: 'left', background: 'var(--k-fff)', borderRadius: 10, padding: isMobile ? '8px 8px 8px 9px' : '12px 16px', border: `1px solid ${active ? s.color : 'var(--k-e5e7eb)'}`, borderLeft: `${isMobile ? 3 : 4}px solid ${s.color}`, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: active ? `0 2px 12px ${s.color}22` : 'none', transition: 'all .12s' }}>
+              <div style={{ fontSize: isMobile ? 9 : 10, letterSpacing: isMobile ? 0.4 : 1.5, textTransform: 'uppercase', color: active ? s.color : 'var(--k-9ca3af)', marginBottom: 3, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
                 {s.label}{active && <span>✓</span>}
               </div>
-              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1 }}>{s.val}</div>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 22 : 28, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1 }}>{s.val}</div>
             </button>
           );
         })}
