@@ -805,7 +805,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
           <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginBottom: 10 }}>
             {filtered.filter(p => p.latitude != null && p.longitude != null).length} of {filtered.length} shown — properties without a geocoded address aren’t on the map yet. Click a pin for details.
           </div>
-          <PropertyMap properties={sorted} onSelect={(p) => setActive(p as Property)} />
+          <PropertyMap properties={sorted} starred={shortlist} onSelect={(p) => setActive(p as Property)} />
         </div>
       )}
 
