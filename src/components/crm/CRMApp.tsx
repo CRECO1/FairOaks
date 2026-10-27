@@ -19,6 +19,7 @@ import { chicagoFormat } from '@/lib/chicago-time';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
+import DeletedItems from '@/components/crm/DeletedItems';
 import CampaignEngagedPanel from '@/components/crm/CampaignEngagedPanel';
 import CampaignPreflight from '@/components/crm/CampaignPreflight';
 import CallTapPrompt from '@/components/crm/CallTapPrompt';
@@ -753,6 +754,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [copilotActivityOpen, setCopilotActivityOpen] = useState(false);
+  const [deletedItemsOpen, setDeletedItemsOpen] = useState(false);
   // Which document row is being renamed, and the draft name in the box.
   // Editing a contact's notes without leaving their card — this is where you are
   // when you want to record who was in the room, so it is where @-tagging has to work.
@@ -5099,6 +5101,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}><Ico n="pen" />E-Sign</button>
           <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}><Ico n="phone" />Calling Log</button>
           <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
+          {isSuperAdmin && <button className="crm-nav" onClick={() => setDeletedItemsOpen(true)}><Ico n="trash" />Recently Deleted</button>}
           {/* Owner-only. The server also 403s non-super_admin, so hiding this
               is convenience, not the access control. */}
           {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => setPage('lead-attribution')}><Ico n="chart" />Lead Attribution</button>}
@@ -5273,6 +5276,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </a>
                 )}
                 <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
+                {isSuperAdmin && <button className="crm-nav" onClick={() => { setDeletedItemsOpen(true); setMobileMenuOpen(false); }}><Ico n="trash" />Recently Deleted</button>}
                 {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => { setPage('lead-attribution'); setMobileMenuOpen(false); }}><Ico n="chart" />Lead Attribution</button>}
                 {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => { setPage('plaza-site'); setMobileMenuOpen(false); }}><Ico n="tree" />Plaza Site{plazaPending > 0 && <span style={{ marginLeft: 8, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>{plazaPending}</span>}</button>}
               </div>
@@ -14630,6 +14634,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         />
       )}
       {copilotActivityOpen && <CopilotActivity token={session?.access_token} isMobile={isMobile} isBroker={isSuperAdmin} onClose={() => setCopilotActivityOpen(false)} />}
+      {deletedItemsOpen && isSuperAdmin && <DeletedItems token={session?.access_token} isMobile={isMobile}
+        onRestored={kind => { if (profile) { if (kind === 'deal') loadDeals(profile); else loadClients(profile, 0, true); } }}
+        onClose={() => setDeletedItemsOpen(false)} />}
 
       {emailDocId && <EmailDocDialog submissionId={emailDocId} token={session?.access_token} onClose={() => setEmailDocId(null)} onSent={() => { if (activeDeal) loadDealEmails(activeDeal.id); }} />}
       {/* Deal → Docs: inline send / manage a signature request (reuses the E-Sign views) */}

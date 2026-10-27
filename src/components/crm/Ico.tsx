@@ -7,7 +7,7 @@ import React from 'react';
  */
 export type IcoName =
   | 'home' | 'check' | 'deals' | 'users' | 'briefcase' | 'calendar' | 'megaphone' | 'receipt' | 'building'
-  | 'file' | 'pen' | 'phone' | 'eye' | 'tree' | 'chart' | 'search' | 'bell' | 'mail' | 'sun' | 'moon' | 'sparkle' | 'image';
+  | 'file' | 'pen' | 'phone' | 'eye' | 'tree' | 'chart' | 'search' | 'bell' | 'mail' | 'sun' | 'moon' | 'sparkle' | 'image' | 'trash';
 
 const PATHS: Record<IcoName, React.ReactNode> = {
   home: <><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></>,
@@ -23,6 +23,7 @@ const PATHS: Record<IcoName, React.ReactNode> = {
   pen: <><path d="M4 20l4-1 11-11-3-3L5 16z" /></>,
   phone: <><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" /></>,
   eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>,
+  trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></>,
   tree: <><path d="M12 21v-6" /><path d="M12 15c-4 0-6-2.5-6-5.5 0-2 1.2-3.4 2.6-4C9 3.4 10.4 2 12 2s3 1.4 3.4 3.5c1.4.6 2.6 2 2.6 4 0 3-2 5.5-6 5.5z" /></>,
   chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></>,

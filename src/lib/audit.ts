@@ -42,7 +42,11 @@ export type AuditAction =
   // detected and signed out, or a screenshot / copy shortcut was used in the CRM.
   | 'automation_blocked'
   | 'screenshot_attempt'
-  | 'copy_attempt';
+  | 'copy_attempt'
+  // Deal / contact deletes are logged by a database trigger (crm_log_delete) with a full copy of
+  // the row; restoring one from "Recently deleted" is logged here.
+  | 'deal_restored'
+  | 'contact_restored';
 
 interface AuditParams {
   actorId: string;
