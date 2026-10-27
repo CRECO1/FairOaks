@@ -4751,10 +4751,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         /* Phone / tablet navigation: a swipeable strip under the header (replaces the old bottom tab bar). */
         .crm-app-shell .crm-topnav{display:flex;gap:2px;overflow-x:auto;overflow-y:hidden;flex-shrink:0;background:#111;border-bottom:1px solid rgba(201,146,44,.25);padding:0 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;}
         .crm-app-shell .crm-topnav::-webkit-scrollbar{display:none;}
-        .crm-topnav-item{position:relative;flex:none;display:inline-flex;align-items:center;gap:7px;padding:0 13px;min-height:44px;background:none;border:none;border-bottom:2px solid transparent;color:rgba(255,255,255,.62);font:600 13.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:color .15s,border-color .15s;}
+        .crm-topnav-item{position:relative;flex:none;display:inline-flex;align-items:center;gap:9px;padding:0 17px;min-height:52px;background:none;border:none;border-bottom:3px solid transparent;color:rgba(255,255,255,.62);font:600 15.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:color .15s,border-color .15s;}
         .crm-topnav-item:hover{color:#fff;}
         .crm-topnav-item.on{color:#c9922c;border-bottom-color:#c9922c;}
-        .crm-topnav-badge{min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;}
+        .crm-topnav-badge{min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;}
         @media(prefers-reduced-motion:reduce){.overlay,.modal,.crm-sheet,.crm-sheet-panel,.crm-toast,.sk{animation:none!important;}.crm-app-shell *{transition-duration:.01ms!important;}}
         @media(min-width:1181px){.dk-side{position:sticky;top:0;}}
         .dk-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start;}
@@ -5148,7 +5148,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   return (
                     <button key={t.id} ref={el => { if (el && active) el.dataset.active = '1'; else if (el) delete el.dataset.active; }}
                       className={`crm-topnav-item${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} onClick={t.go}>
-                      <Ico n={t.ico} size={17} />
+                      <Ico n={t.ico} size={20} />
                       <span>{t.label}</span>
                       {!!t.badge && t.badge > 0 && <span className="crm-topnav-badge">{t.badge > 9 ? '9+' : t.badge}</span>}
                     </button>
