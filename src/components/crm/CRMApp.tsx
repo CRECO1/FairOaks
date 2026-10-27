@@ -7930,9 +7930,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     ) : (
                       <>
                         <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                          {[{ n: agDeals.length, l: 'Total' }, { n: active, l: 'Active' }, { n: closed, l: 'Closed' }].map(s => (
-                            <div key={s.l} style={{ flex: 1, textAlign: 'center', background: 'var(--k-f9fafb)', borderRadius: 6, padding: '8px 4px' }}>
-                              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: 'var(--k-111)' }}>{s.n}</div>
+                          {[{ n: agDeals.length, l: 'Deals' }, { n: active, l: 'Active' }, { n: closed, l: 'Closed' }, { n: clients.filter(c => c.agent_id === a.id).length, l: 'Contacts' }].map(s => (
+                            <div key={s.l} title={s.l === 'Contacts' ? 'Contacts this person owns' : s.l === 'Deals' ? 'All deals they own' : undefined} style={{ flex: 1, textAlign: 'center', background: 'var(--k-f9fafb)', borderRadius: 6, padding: '8px 4px' }}>
+                              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: 'var(--k-111)' }}>{s.n.toLocaleString()}</div>
                               <div style={{ fontSize: 11, color: 'var(--k-6b7280)' }}>{s.l}</div>
                             </div>
                           ))}
