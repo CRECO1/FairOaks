@@ -165,7 +165,7 @@ export default function ContactsView(p: ContactsViewProps) {
   const toggleOne = (id: string, on: boolean) => { const next = new Set(p.selected); if (on) next.add(id); else next.delete(id); p.setSelected(next); };
   const allSelected = filtered.length > 0 && p.selected.size >= filtered.length && filtered.every(c => p.selected.has(c.id));
 
-  const cols = `${isAdmin ? '34px ' : ''}minmax(230px,2.4fr) 128px minmax(170px,1.7fr) 142px ${isAdmin ? '92px ' : ''}98px 130px 104px`;
+  const cols = `${isAdmin ? '28px ' : ''}minmax(190px,2fr) 108px minmax(140px,1.5fr) 124px ${isAdmin ? '78px ' : ''}84px 78px 100px`;
   const sortHeader = (label: string, a: ContactSort, b?: ContactSort) => {
     const on = p.sort === a || p.sort === b;
     return (
@@ -346,8 +346,8 @@ export default function ContactsView(p: ContactsViewProps) {
         </div>
       ) : (
         <div style={{ border: '1px solid #eef0f2', borderRadius: 12, background: 'var(--k-fff)', overflowX: 'auto' }}>
-          <div style={{ minWidth: 1040 }}>
-            <div role="row" style={{ display: 'grid', gridTemplateColumns: cols, gap: 12, alignItems: 'center', padding: '10px 16px', fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', borderBottom: '1px solid #eef0f2', position: 'sticky', top: 0, background: 'var(--k-fff)', zIndex: 2, borderRadius: '12px 12px 0 0' }}>
+          <div style={{ minWidth: 960 }}>
+            <div role="row" style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, alignItems: 'center', padding: '10px 16px', fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', borderBottom: '1px solid #eef0f2', position: 'sticky', top: 0, background: 'var(--k-fff)', zIndex: 2, borderRadius: '12px 12px 0 0' }}>
               {isAdmin && <input type="checkbox" aria-label="Select all" checked={allSelected} ref={el => { if (el) el.indeterminate = p.selected.size > 0 && !allSelected; }} onChange={e => p.setSelected(e.target.checked ? new Set(filtered.map(c => c.id)) : new Set())} style={{ width: 15, height: 15, accentColor: '#c9922c', cursor: 'pointer' }} />}
               <div>{sortHeader('Contact', 'az', 'za')}</div>
               <div>{sortHeader('Type', 'type')}</div>
@@ -366,7 +366,7 @@ export default function ContactsView(p: ContactsViewProps) {
               const sub = [nameOf(c) ? c.business_name : '', ...tags].filter(Boolean).join(' · ');
               return (
                 <div key={c.id} role="row" onClick={() => p.onOpen(c)}
-                  style={{ display: 'grid', gridTemplateColumns: cols, gap: 12, alignItems: 'center', padding: '9px 16px', borderTop: '1px solid var(--k-f4f5f7)', cursor: 'pointer', background: sel ? 'var(--k-fef9f0)' : 'var(--k-fff)' }}
+                  style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, alignItems: 'center', padding: '9px 16px', borderTop: '1px solid var(--k-f4f5f7)', cursor: 'pointer', background: sel ? 'var(--k-fef9f0)' : 'var(--k-fff)' }}
                   onMouseEnter={e => { if (!sel) e.currentTarget.style.background = 'var(--k-fbf8f1)'; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'var(--k-fff)'; }}>
                   {isAdmin && <input type="checkbox" checked={sel} onClick={e => e.stopPropagation()} onChange={e => toggleOne(c.id, e.target.checked)} aria-label={`Select ${displayName(c)}`} style={{ width: 15, height: 15, accentColor: '#c9922c', cursor: 'pointer' }} />}
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
