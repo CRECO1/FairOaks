@@ -4705,7 +4705,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     // contains variants and nobody should have to remember which casing won.
     if (dealTagFilter && !(d.tags ?? []).some(t => t.toLowerCase().includes(dealTagFilter.toLowerCase()))) return false;
     if (search && !d.client.toLowerCase().includes(search.toLowerCase()) && !d.property?.toLowerCase().includes(search.toLowerCase())) return false;
-    if (dealOwnerFilter && d.agent_id !== dealOwnerFilter && !(d.assigned_agent_ids ?? []).includes(dealOwnerFilter)) return false;
+    // Owner only, so the number on the chip is exactly what the board then shows.
+    if (dealOwnerFilter && d.agent_id !== dealOwnerFilter) return false;
     return true;
   });
 
