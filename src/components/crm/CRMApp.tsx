@@ -4816,6 +4816,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell :where(p){max-width:none;}
         .crm-app-shell :focus-visible{--tw-ring-offset-width:0px;--tw-ring-color:rgba(201,146,44,.6);}
         @media(max-width:767px){.crm-app-shell :where(input:not([type=checkbox]):not([type=radio]),select,textarea){min-height:44px;}}
+        /* Phones: plain inline-styled buttons (toolbar chips, row actions, "view all" links) measured 21-37px tall, checkboxes 14px,
+           contact-row email links 23px. Buttons grow to a thumb-sized 40px; text-link buttons (padding:0) and links keep their look
+           but get a bigger tap area (invisible ::after / padding); checkboxes and radios grow to 22px. Class-styled buttons
+           (.crm-btn etc.) have their own phone sizes. Checked live at 390px: no horizontal overflow on tasks/contacts/deals/dashboard. */
+        @media(max-width:767px){
+          .crm-app-shell button:not([class]):not([style*="padding: 0px;"]){min-height:40px;}
+          .crm-app-shell button:not([class])[style*="padding: 0px;"]{position:relative;}
+          .crm-app-shell button:not([class])[style*="padding: 0px;"]::after{content:"";position:absolute;inset:-10px -8px;}
+          .crm-app-shell a:not([class]){padding-block:9px;}
+          .crm-app-shell input[type=checkbox],.crm-app-shell input[type=radio]{width:22px!important;height:22px!important;}
+        }
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
         /* Print is enabled. The 1099-NEC report and the document preview each scope
