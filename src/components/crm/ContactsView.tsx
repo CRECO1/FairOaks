@@ -216,7 +216,7 @@ export default function ContactsView(p: ContactsViewProps) {
         style={{ width: '100%', maxWidth: compact ? 130 : undefined, boxSizing: 'border-box', minHeight: compact ? 30 : 44, padding: '0 6px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: compact ? 13 : 15, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
         {!c.agent_id && <option value="">Unassigned</option>}
         {c.agent_id && !known && <option value={c.agent_id}>{ownerFirst.get(c.agent_id) || 'Former agent'}</option>}
-        {agents.map(a => <option key={a.id} value={a.id}>{`${a.first_name ?? ''} ${a.last_name ?? ''}`.trim()}</option>)}
+        {agents.map(a => <option key={a.id} value={a.id}>{`${a.first_name ?? ''} ${(a.last_name ?? '').slice(0, 1) ? `${(a.last_name ?? '').slice(0, 1)}.` : ''}`.trim()}</option>)}
       </select>
     );
   };
