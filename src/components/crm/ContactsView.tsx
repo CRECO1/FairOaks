@@ -354,7 +354,7 @@ export default function ContactsView(p: ContactsViewProps) {
       ) : isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {isAdmin && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--k-6b7280)', minHeight: 40 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--k-6b7280)', minHeight: 44 }}>
               <input type="checkbox" checked={allSelected} onChange={e => p.setSelected(e.target.checked ? new Set(filtered.map(c => c.id)) : new Set())} style={{ width: 20, height: 20, accentColor: '#c9922c' }} /> Select all {filtered.length.toLocaleString()}
             </label>
           )}

@@ -4950,7 +4950,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           .crm-app-shell a:not([class]){padding-block:9px;}
           .crm-app-shell input[type=checkbox],.crm-app-shell input[type=radio]{width:22px!important;height:22px!important;}
           /* Buttons/dropdowns that set their OWN small inline min-height (the Calling Log filter chips and date picker: 32px) */
-          .crm-app-shell :is(button,select)[style*="min-height: 2"],.crm-app-shell :is(button,select)[style*="min-height: 3"]{min-height:44px!important;}
+          .crm-app-shell :is(button,select,input)[style*="min-height: 2"],.crm-app-shell :is(button,select,input)[style*="min-height: 3"],.crm-app-shell :is(button,select,input)[style*="min-height: 4"]{min-height:44px!important;}
           .crm-app-shell :is(button,a)[style*="min-height: 2"],.crm-app-shell :is(button,a)[style*="min-height: 3"],.crm-app-shell :is(button,a)[style*="min-height: 4"]{min-width:44px!important;}
         }
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -5289,6 +5289,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Add</button>}
               {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Deal</button>}
               {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' }); }} style={{ padding: '6px 12px', fontSize: 13 }}>+ New</button>}
+              {!assistantOpen && (
+                <button onClick={() => setAssistantOpen(true)} aria-label="Open CRECO Copilot" title="CRECO Copilot"
+                  style={{ background: 'rgba(201,146,44,.16)', border: '1px solid rgba(201,146,44,.5)', borderRadius: 8, color: '#c9922c', cursor: 'pointer', fontSize: 19, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✦</button>
+              )}
               <button onClick={() => { setShowSearch(true); setSearchQuery(''); }} aria-label="Search"
                 style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🔍</button>
             </div>
@@ -5703,12 +5707,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 );
                 const taskRow = (t: CRMTask, badge: React.ReactNode) => (
-                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--c-surface-2)', border: '1px solid var(--c-line-2)', borderRadius: 8 }}>
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 6 : 10, padding: isMobile ? '10px 12px' : '9px 12px', background: 'var(--c-surface-2)', border: '1px solid var(--c-line-2)', borderRadius: 8 }}>
                     <span style={{ display: 'flex', flexShrink: 0, color: 'var(--c-muted)' }}>{tIcon(t)}</span>
-                    <button onClick={() => openTask(t)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: isMobile ? '6px 0' : 0, fontFamily: "'DM Sans',sans-serif" }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                    <button onClick={() => openTask(t)} style={{ flex: isMobile ? '1 1 calc(100% - 34px)' : 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: isMobile ? '6px 0' : 0, fontFamily: "'DM Sans',sans-serif" }}>
+                      <div style={{ fontSize: isMobile ? 14 : 13, fontWeight: 600, color: 'var(--c-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap', overflowWrap: 'anywhere' }}>{t.title}</div>
                       {cname(t.client_id) && <div style={{ fontSize: 11, color: 'var(--c-muted)' }}>{cname(t.client_id)}</div>}
                     </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, ...(isMobile ? { width: '100%', justifyContent: 'flex-end' } : {}) }}>
                     {badge}
                     <div style={{ position: 'relative', flexShrink: 0 }}>
                       <button onClick={() => setSnoozeFor(id => (id === t.id ? null : t.id))} aria-expanded={snoozeFor === t.id} title="Move to a later day"
@@ -5737,6 +5742,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       )}
                     </div>
                     <button onClick={() => completeTask(t.id)} title="Mark done" style={{ background: 'var(--c-ok-soft)', border: '1px solid var(--c-ok-line)', borderRadius: 6, padding: isMobile ? '9px 14px' : '3px 10px', minHeight: isMobile ? 40 : undefined, fontSize: isMobile ? 13 : 12, color: 'var(--c-ok-ink)', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>Done ✓</button>
+                    </div>
                   </div>
                 );
                 const dealRow = (d: Deal, sub: string, bg: string, bd: string) => (
@@ -14627,7 +14633,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {previewFile && <DocPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
 
       {/* CRECO Copilot — AI CRM assistant */}
-      {!assistantOpen && (
+      {!assistantOpen && !isTabletOrMobile && (
         <button onClick={() => setAssistantOpen(true)} title="CRECO Copilot" aria-label="Open CRECO Copilot"
           className="crm-fab" style={{ position: 'fixed', bottom: 'calc(22px + env(safe-area-inset-bottom))', right: 'calc(18px + env(safe-area-inset-right))', zIndex: 1150, width: isMobile ? 50 : 56, height: isMobile ? 50 : 56, borderRadius: '50%', background: '#1a1a1a', color: '#c9922c', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ico n="sparkle" size={isMobile ? 22 : 24} style={{ fill: 'currentColor', fillOpacity: .18 }} /></button>
       )}

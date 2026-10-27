@@ -786,7 +786,7 @@ export default function TasksSection({
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = isSelected ? '0 0 0 2px #fdf6e8' : '0 1px 3px rgba(0,0,0,.04)'; }}>
                       {/* Select + title */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                        <label onClick={e => e.stopPropagation()} title="Select" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, margin: '-9px 0 -9px -10px', flexShrink: 0, cursor: 'pointer' }}>
+                        <label onClick={e => e.stopPropagation()} title="Select" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, margin: '-13px 0 -13px -14px', flexShrink: 0, cursor: 'pointer' }}>
                           <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(t.id)} aria-label="Select task"
                             style={{ flexShrink: 0, width: 14, height: 14, cursor: 'pointer', accentColor: '#c9922c' }} />
                         </label>
