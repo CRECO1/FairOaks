@@ -4714,6 +4714,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell[data-crm-theme="dark"] .overlay,.crm-app-shell[data-crm-theme="dark"] .crm-sheet{background:rgba(0,0,0,.68)!important;}
         /* Inputs that set no background of their own fall back to the browser's dark-field grey in dark mode (zero specificity: anything that sets a colour still wins). */
         :where(.crm-app-shell[data-crm-theme="dark"]) :where(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea){background-color:var(--c-surface-2);color:var(--c-text);}
+        .crm-fab{transition:transform .15s,box-shadow .15s;}
+        .crm-fab:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 8px 22px rgba(201,146,44,.35)!important;}
         .crm-btn:hover{filter:brightness(1.07);}
         .crm-btn:active{transform:translateY(1px);filter:brightness(.97);}
         .crm-btn-gold:hover{box-shadow:0 4px 14px rgba(201,146,44,.35);}
@@ -14503,7 +14505,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* CRECO Copilot — AI CRM assistant */}
       {!assistantOpen && (
         <button onClick={() => setAssistantOpen(true)} title="CRECO Copilot" aria-label="Open CRECO Copilot"
-          style={{ position: 'fixed', bottom: 'calc(22px + env(safe-area-inset-bottom))', right: 'calc(18px + env(safe-area-inset-right))', zIndex: 1150, width: 56, height: 56, borderRadius: '50%', background: '#1a1a1a', color: '#fff', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</button>
+          className="crm-fab" style={{ position: 'fixed', bottom: isMobile ? 'calc(74px + env(safe-area-inset-bottom))' : 'calc(22px + env(safe-area-inset-bottom))', right: 'calc(18px + env(safe-area-inset-right))', zIndex: 1150, width: isMobile ? 50 : 56, height: isMobile ? 50 : 56, borderRadius: '50%', background: '#1a1a1a', color: '#c9922c', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ico n="sparkle" size={isMobile ? 22 : 24} style={{ fill: 'currentColor', fillOpacity: .18 }} /></button>
       )}
       {/* After you tap a phone number anywhere in the CRM and come back: "How did the call go?" */}
       <CallTapPrompt
