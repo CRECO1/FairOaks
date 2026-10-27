@@ -356,6 +356,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
   const filterCount = activeFilterCount(filters) + (filters.search.trim() ? 1 : 0);
   const clearAll = () => setFilters(EMPTY_FILTERS);
 
+  const chipRow: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'center', ...(isMobile ? { overflowX: 'auto', flexWrap: 'nowrap', margin: '0 -10px', padding: '2px 10px 4px', scrollbarWidth: 'none' as const } : { flexWrap: 'wrap' }) };
   const chipStyle = (on: boolean, dim = false): React.CSSProperties => ({
     display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap',
     padding: '0 14px', minHeight: isMobile ? 44 : 36, borderRadius: 999,
@@ -447,8 +448,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
           </button>
         </div>
 
-        <div role="group" aria-label="Quick filters"
-          style={{ display: 'flex', gap: 8, alignItems: 'center', ...(isMobile ? { overflowX: 'auto', flexWrap: 'nowrap', margin: '0 -10px', padding: '2px 10px 4px', scrollbarWidth: 'none' as const } : { flexWrap: 'wrap' }) }}>
+        <div role="group" aria-label="Quick filters" style={chipRow}>
           <button onClick={() => setFiltersOpen(o => !o)} aria-expanded={filtersOpen} style={{ ...chipStyle(panelFilterCount(filters) > 0), borderStyle: 'dashed' }}>
             ⚙ Filters{panelFilterCount(filters) > 0 ? <span style={{ background: '#fff', color: '#a06a12', borderRadius: 999, padding: '0 7px', fontSize: 11.5, fontWeight: 800 }}>{panelFilterCount(filters)}</span> : null}
           </button>
@@ -456,7 +456,10 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
             {filters.shortlist ? '★' : '☆'} Shortlist <span style={{ fontSize: 11.5, fontWeight: 700, opacity: filters.shortlist ? .9 : .6 }}>{shortlist.size}</span>
           </button>
           <button onClick={() => patch({ newWeek: !filters.newWeek })} aria-pressed={filters.newWeek} style={chipStyle(filters.newWeek)} title="Added in the last 7 days">🆕 New this week</button>
-          <span aria-hidden style={{ width: 1, alignSelf: 'stretch', background: 'var(--k-e5e7eb)', flexShrink: 0, margin: '4px 2px' }} />
+          <button onClick={() => patch({ listing: filters.listing === 'lease' ? '' : 'lease' })} aria-pressed={filters.listing === 'lease'} style={chipStyle(filters.listing === 'lease')}>For Lease</button>
+          <button onClick={() => patch({ listing: filters.listing === 'sale' ? '' : 'sale' })} aria-pressed={filters.listing === 'sale'} style={chipStyle(filters.listing === 'sale')}>For Sale</button>
+        </div>
+        <div role="group" aria-label="Property type" style={chipRow}>
           <button onClick={() => patch({ type: '' })} aria-pressed={!filters.type} style={chipStyle(!filters.type)}>All types <span style={{ fontSize: 11.5, fontWeight: 700, opacity: !filters.type ? .9 : .6 }}>{typeCounts.all.toLocaleString()}</span></button>
           {assetTypes.map(t => {
             const on = filters.type === t, n = typeCounts.m.get(t) ?? 0;
@@ -466,9 +469,6 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               </button>
             );
           })}
-          <span aria-hidden style={{ width: 1, alignSelf: 'stretch', background: 'var(--k-e5e7eb)', flexShrink: 0, margin: '4px 2px' }} />
-          <button onClick={() => patch({ listing: filters.listing === 'lease' ? '' : 'lease' })} aria-pressed={filters.listing === 'lease'} style={chipStyle(filters.listing === 'lease')}>For Lease</button>
-          <button onClick={() => patch({ listing: filters.listing === 'sale' ? '' : 'sale' })} aria-pressed={filters.listing === 'sale'} style={chipStyle(filters.listing === 'sale')}>For Sale</button>
         </div>
 
         {filtersOpen && (
@@ -595,7 +595,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                 <div key={p.id} style={{ position: 'relative' }}>
                 <button onClick={() => setActive(p)}
                   style={{ textAlign: 'left', width: '100%', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderLeft: `4px solid ${as.color}`, borderRadius: 12, padding: '14px 15px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
-                  <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start', paddingRight: 38 }}>
                     <div style={{ width: 54, height: 54, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
                       <PropertyThumb p={p} height={54} />
                     </div>
@@ -603,7 +603,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                       <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-1a1a1a)', lineHeight: 1.25 }}>{p.name || p.address || '—'}</div>
                       {loc && <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>{loc}</div>}
                     </div>
-                    {price && <div style={{ fontSize: 15, fontWeight: 700, color: '#b07d1f', whiteSpace: 'nowrap', flexShrink: 0, marginRight: 38 }}>{price}</div>}
+                    {price && <div style={{ fontSize: 15, fontWeight: 700, color: '#b07d1f', whiteSpace: 'nowrap', flexShrink: 0 }}>{price}</div>}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, alignItems: 'center' }}>
                     {p.asset_type && <span style={{ fontSize: 11.5, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 9px', borderRadius: 20 }}>{p.asset_type}</span>}
@@ -890,7 +890,7 @@ function FiltersPanel({ filters, patch, statuses, resultCount, isMobile, onClose
           <button onClick={onClose} aria-label="Close filters" style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, border: 'none', borderRadius: 8, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 18, cursor: 'pointer' }}>×</button>
         </div>
       </div>
-      {statuses.length > 0 && section('Status', statuses.map(s => chip(s, filters.status === s, () => patch({ status: filters.status === s ? '' : s }))))}
+      {statuses.length > 0 && section('Status', statuses.map(s => chip(s.charAt(0).toUpperCase() + s.slice(1), filters.status === s, () => patch({ status: filters.status === s ? '' : s }))))}
       {section('Size (available space)', SIZE_BANDS.map(b => chip(b.label, filters.size === b.key, () => patch({ size: filters.size === b.key ? '' : b.key }))))}
       {section('Where it came from', SOURCE_CHOICES.map(([k, label]) => chip(label, filters.source === k, () => patch({ source: filters.source === k ? '' : k }))))}
       {section('Only show ones with', [
@@ -917,7 +917,7 @@ function FiltersPanel({ filters, patch, statuses, resultCount, isMobile, onClose
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 39 }} />
       <div role="dialog" aria-label="Filters"
-        style={{ position: 'absolute', right: 12, top: 'calc(100% + 6px)', width: 400, maxWidth: 'calc(100% - 24px)', zIndex: 40, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, padding: 18, boxShadow: '0 18px 50px rgba(0,0,0,.18)', fontFamily: "'DM Sans',sans-serif" }}>
+        style={{ position: 'absolute', left: 12, top: 'calc(100% + 6px)', width: 400, maxWidth: 'calc(100% - 24px)', zIndex: 40, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, padding: 18, boxShadow: '0 18px 50px rgba(0,0,0,.18)', fontFamily: "'DM Sans',sans-serif" }}>
         {body}
         <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', textAlign: 'right' }}>{resultCount.toLocaleString()} match{resultCount === 1 ? '' : 'es'}</div>
       </div>
