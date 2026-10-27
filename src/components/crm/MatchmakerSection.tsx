@@ -51,9 +51,16 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     setLoading(true);
     const PAGE = 1000;   // PostgREST's hard ceiling per response, whatever .range() asks
     const allProps: Prop[] = [];
-    const buyersQ = supabase.from('crm_clients')
-      .select('id,first_name,last_name,business_name,type,agent_id,phone,email,asset_types,req_size_min,req_size_max,req_price_min,req_price_max,req_submarkets')
-      .eq('business_unit', businessUnit).in('type', ['Buyer', 'Tenant', 'Landlord/Investor']).order('first_name');
+    // Pages of 1000, in a stable order (id). One un-paged query silently stopped at 1,000 of the ~2,400
+    // buyers / tenants / investors, sorted by first name — so most tenants (business names sort last) never appeared.
+    const allBuyers: Buyer[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await supabase.from('crm_clients')
+        .select('id,first_name,last_name,business_name,type,agent_id,phone,email,asset_types,req_size_min,req_size_max,req_price_min,req_price_max,req_submarkets')
+        .eq('business_unit', businessUnit).in('type', ['Buyer', 'Tenant', 'Landlord/Investor']).order('id').range(from, from + PAGE - 1);
+      allBuyers.push(...((data ?? []) as Buyer[]));
+      if (!data || data.length < PAGE) break;
+    }
     for (let from = 0; ; from += PAGE) {
       const { data } = await supabase.from('crm_prospective_properties')
         .select('id,name,address,city,submarket,asset_type,size_sf,sale_price,asking_rate,transaction_status,listing_url,listing_agent_name,listing_agent_phone,listing_type')
@@ -61,8 +68,8 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
       allProps.push(...((data ?? []) as Prop[]));
       if (!data || data.length < PAGE) break;
     }
-    const b = await buyersQ;
-    setBuyers((b.data ?? []) as Buyer[]);
+    const label = (b: Buyer) => ([b.first_name, b.last_name].filter(Boolean).join(' ') || b.business_name || '').toLowerCase();
+    setBuyers(allBuyers.sort((x, y) => label(x).localeCompare(label(y))));
     setProps(allProps);
     setLoading(false);
   }, [supabase, businessUnit]);
