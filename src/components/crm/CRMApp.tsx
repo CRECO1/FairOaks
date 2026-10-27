@@ -61,6 +61,7 @@ import { fetchAll } from '@/lib/campaign-engagement';
 import { segmentOf, SEGMENTS, SEGMENT_LABEL, type Segment } from '@/lib/contact-segment';
 import { specForForm, type LoiSpec } from '@/lib/loi-spec';
 import { deriveSide } from '@/lib/representation-side';
+import Skeleton from '@/components/crm/Skeleton';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().
@@ -4698,6 +4699,37 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell[data-crm-theme="dark"]{--k-000:#f2ede2;--k-00376b:#84bef5;--k-0369a1:#8ab4f8;--k-059669:#76c595;--k-065f46:#76c595;--k-075985:#8accef;--k-0a66c2:#8abdf0;--k-0e7490:#8ed7eb;--k-0f766e:#91e8e2;--k-111:#f2ede2;--k-111827:#a7b5d3;--k-14532d:#9adfb6;--k-15803d:#76c595;--k-166534:#76c595;--k-16a34a:#76c595;--k-1877f2:#8ab6ef;--k-1a1a1a:#f2ede2;--k-1a1a2e:#adadcc;--k-1a7f37:#97e2ad;--k-1d4ed8:#8ab4f8;--k-1e293b:#f2ede2;--k-1e40af:#8ab4f8;--k-1f2937:#f2ede2;--k-2563eb:#8ab4f8;--k-334155:#d8d2c4;--k-3730a3:#8ab4f8;--k-374151:#d8d2c4;--k-3b82f6:#89b0f0;--k-4338ca:#8ab4f8;--k-475569:#d8d2c4;--k-4b5563:#d8d2c4;--k-4b7a4b:#afcaaf;--k-4b7d5b:#afcbb8;--k-4c0519:#ee8ba7;--k-5b3d91:#b6a6d4;--k-64748b:#a39c8c;--k-6b21a8:#c097e3;--k-6b7280:#a39c8c;--k-6d28d9:#b79cf0;--k-78350f:#e9b191;--k-78716c:#c0bcba;--k-7a5410:#e8c991;--k-7c3aed:#b79cf0;--k-7c5a12:#e7cc93;--k-7e22ce:#c094e5;--k-86efac:#285a3a;--k-8a6a1e:#e1cb98;--k-8a6d3b:#d3c3a6;--k-8b5cf6:#a98aef;--k-8e8e8e:#bdbdbd;--k-92400e:#e3b45a;--k-94a3b8:#7d7667;--k-991b1b:#ef8a76;--k-99f6e4:#256558;--k-9a3412:#e9a690;--k-9a6e18:#e6ca94;--k-9ca3af:#7d7667;--k-9f1239:#ea90a9;--k-a06a12:#e3b45a;--k-a16207:#e3b45a;--k-a855f7:#b79cf0;--k-a8741a:#e3b45a;--k-b00020:#f58499;--k-b07d1f:#e4c895;--k-b0873a:#d9c5a0;--k-b08a4a:#d4c3a6;--k-b0b0b0:#7d7667;--k-b45309:#e3b45a;--k-b91c1c:#ef8a76;--k-bae6fd:#2a4468;--k-bbf7d0:#285a3a;--k-be123c:#eb8ea5;--k-be185d:#e891b5;--k-bfdbfe:#2a4468;--k-c2410c:#e3b45a;--k-c7d2fe:#2a4468;--k-c9ead4:#34563f;--k-cbd5c0:#454c3d;--k-cbd5e1:#3a352b;--k-ccc:#3a352b;--k-cdeed8:#32583f;--k-cfe3fb:#254265;--k-cfe6cf:#395139;--k-cffafe:#12373a;--k-d1d5db:#3a352b;--k-d1fae5:#18281f;--k-d6f0dd:#33563d;--k-d97706:#f2c087;--k-d9d4c4:#4d493d;--k-dbeafe:#172336;--k-dc2626:#ef8a76;--k-dcfce7:#18281f;--k-ddd:#2b2720;--k-ddd6fe:#2d2169;--k-ded2f2:#40305a;--k-e0cfa0:#584e32;--k-e0d4b8:#544b36;--k-e0e0e0:#2b2720;--k-e0e7ff:#172336;--k-e0f2fe:#172336;--k-e1306c:#e793af;--k-e2e5e9:#40444a;--k-e2e6ea:#23262a;--k-e2e8f0:#2b2720;--k-e5e7eb:#2b2720;--k-e5e9ef:#3c434e;--k-e6d3a2:#5a4418;--k-e8dcc8:#5a4418;--k-e8e6df:#4b483f;--k-e8e8e8:#2b2720;--k-e8eaed:#2b2720;--k-e8edf2:#2b2720;--k-e9d5ff:#431f6b;--k-e9ecef:#3f454b;--k-ecdfc4:#584c31;--k-eceae4:#4b483e;--k-ececf0:#404049;--k-eceef1:#3f444b;--k-eceff3:#3c444d;--k-ecfdf5:#18281f;--k-ede9fe:#241b36;--k-eee:#2b2720;--k-eef0f2:#40454a;--k-eef0f3:#3e444b;--k-eef1f4:#22262b;--k-eef2f7:#1f252e;--k-eef2ff:#172336;--k-ef4444:#ec8d8d;--k-efefef:#2b2720;--k-eff6ff:#172336;--k-f0d9a8:#604f2a;--k-f0e2c4:#5a4418;--k-f0e6cf:#594d31;--k-f0ebe0:#524a38;--k-f0ece3:#5a4418;--k-f0f0f0:#25211b;--k-f0f1f3:#414349;--k-f0f7ff:#11253b;--k-f0f9ff:#112a3b;--k-f0fdf4:#18281f;--k-f0fdfa:#16362f;--k-f1d9a0:#615029;--k-f1f2f4:#404349;--k-f1f5f9:#25211b;--k-f2f2f2:#0e0d0b;--k-f3e4c4:#5e4e2c;--k-f3e4e4:#533636;--k-f3e8ff:#25113b;--k-f3e9d0:#332c1a;--k-f3f4f6:#25211b;--k-f3f5f7:#22262a;--k-f4f5f7:#3f434b;--k-f4f9f4:#202c20;--k-f5f3ff:#241b36;--k-f5f5f5:#1d1a16;--k-f6e3b8:#625028;--k-f6f2e9:#2f2a1d;--k-f7f4ec:#2f2a1e;--k-f7f7f5:#292924;--k-f7fdf9:#1a3322;--k-f8d7d7:#5f2a2a;--k-f8fafc:#1d1a16;--k-f8fbff:#11233b;--k-f8fff9:#113b17;--k-f9f5ef:#2e2412;--k-f9fafb:#1d1a16;--k-faf5ff:#241b36;--k-faf7ef:#2e2412;--k-faf7ff:#21113b;--k-fafaf7:#2b2b21;--k-fafafa:#1d1a16;--k-fafbfd:#1d1a16;--k-fbf3df:#372d16;--k-fbf6e9:#352d18;--k-fbf8f1:#322b1b;--k-fbfbfa:#292924;--k-fbfbfc:#232329;--k-fca5a5:#5a2c22;--k-fcd34d:#5a4418;--k-fce7f3:#371629;--k-fcfbf8:#2f2a1e;--k-fcfcfb:#292923;--k-fde68a:#5a4418;--k-fdf0d5:#392d13;--k-fdf3dd:#392d14;--k-fdf4e3:#382c14;--k-fdf6e3:#382f14;--k-fdf6e8:#2e2412;--k-fdf6e9:#2e2412;--k-fecaca:#5a2c22;--k-fecdd3:#692029;--k-fed7aa:#5a4418;--k-fee2e2:#33201b;--k-fef2f2:#33201b;--k-fef3c7:#2e2412;--k-fef3e2:#3a2a13;--k-fef6f6:#371515;--k-fef9c3:#2e2412;--k-fef9ec:#392f13;--k-fef9ee:#392d14;--k-fef9f0:#2e2412;--k-fefce8:#2e2412;--k-ff0000:#f58484;--k-ffedd5:#3b2911;--k-fff:#171512;--k-fff1f2:#33201b;--k-fff5f5:#3b1111;--k-fff7e6:#3b2e11;--k-fff7ed:#2e2412;--k-fff8e6:#3b3011;--k-fffaf0:#2e2412;--k-fffbeb:#2e2412;--k-fffbf2:#2e2412;--k-fffdf3:#3b3411;--k-fffdf5:#3b3311;--k-fffdf6:#2e2412;--k-fffdf7:#3b3111;--k-fffdf8:#3b2f11;color-scheme:dark;}
         /* Cormorant draws old-style numerals by default (a "1" looks like a small "I"); the CRM is full of figures. */
         .crm-app-shell{font-variant-numeric:lining-nums;}
+        /* ── Step 3 polish: motion, focus, skeletons ── */
+        .sk-wrap{display:flex;flex-direction:column;gap:14px;padding:18px 4px;}
+        .sk-row{display:flex;align-items:center;gap:12px;}
+        .sk{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,var(--c-line) 25%,var(--c-line-2) 50%,var(--c-line) 75%);background-size:200% 100%;animation:skShimmer 1.3s ease-in-out infinite;}
+        .sk-dot{width:34px;height:34px;border-radius:50%;flex:none;}
+        @keyframes skShimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+        @keyframes popIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+        @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+        .overlay,.crm-sheet{animation:fadeIn .16s ease-out;}
+        .modal,.crm-sheet-panel{animation:popIn .2s cubic-bezier(.2,.8,.2,1);}
+        .crm-toast{animation:toastIn .2s ease-out;}
+        .crm-app-shell[data-crm-theme="dark"] .modal,.crm-app-shell[data-crm-theme="dark"] .crm-sheet-panel{border:1px solid var(--c-line-2);box-shadow:0 24px 70px rgba(0,0,0,.6);}
+        .crm-app-shell[data-crm-theme="dark"] .overlay,.crm-app-shell[data-crm-theme="dark"] .crm-sheet{background:rgba(0,0,0,.68)!important;}
+        .crm-btn:hover{filter:brightness(1.07);}
+        .crm-btn:active{transform:translateY(1px);filter:brightness(.97);}
+        .crm-btn-gold:hover{box-shadow:0 4px 14px rgba(201,146,44,.35);}
+        .crm-btn-ghost:hover{border-color:#c9922c;color:var(--c-ink);}
+        .crm-btn:disabled{opacity:.55;cursor:not-allowed;filter:none;transform:none;box-shadow:none;}
+        .crm-input{transition:border-color .15s,box-shadow .15s;}
+        .crm-input:focus,.crm-app-shell :where(input:not([type=checkbox]):not([type=radio]),select,textarea):focus{border-color:#c9922c;box-shadow:0 0 0 3px rgba(201,146,44,.16);outline:none;}
+        .crm-app-shell ::placeholder{color:var(--c-faint);opacity:1;}
+        .crm-app-shell ::selection{background:rgba(201,146,44,.32);}
+        .crm-nav{transition:background .15s,color .15s;}
+        td,.dk-kpi,.dk-card,.crm-mobile-card{transition:background .12s,border-color .15s,box-shadow .15s;}
+        .dk-card:hover,.crm-mobile-card:hover{border-color:var(--c-line-2);}
+        .crm-app-shell button:focus-visible,.crm-app-shell a:focus-visible,.crm-app-shell [tabindex]:focus-visible{outline:2px solid #c9922c;outline-offset:2px;border-radius:6px;}
+        .crm-app-shell *{scrollbar-width:thin;scrollbar-color:var(--c-line-2) transparent;}
+        .crm-app-shell *::-webkit-scrollbar{width:10px;height:10px;}
+        .crm-app-shell *::-webkit-scrollbar-thumb{background:var(--c-line-2);border-radius:99px;border:2px solid transparent;background-clip:padding-box;}
+        .crm-app-shell *::-webkit-scrollbar-track{background:transparent;}
+        @media(prefers-reduced-motion:reduce){.overlay,.modal,.crm-sheet,.crm-sheet-panel,.crm-toast,.sk{animation:none!important;}.crm-app-shell *{transition-duration:.01ms!important;}}
         @media(min-width:1181px){.dk-side{position:sticky;top:0;}}
         .dk-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start;}
         .dk-main,.dk-side{min-width:0;}
@@ -4828,6 +4860,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         @media(max-width:1080px){.ctc-grid{grid-template-columns:repeat(2,1fr);}.ctc-stats{grid-template-columns:repeat(3,1fr);}}
         @media(max-width:767px){
           /* Modals → bottom sheet */
+          .modal,.crm-sheet-panel{animation:slideUp .26s cubic-bezier(.2,.8,.2,1);}
           .overlay{padding:0!important;align-items:flex-end!important;overflow:hidden!important;}
           .modal{width:100%!important;max-width:100%!important;border-radius:20px 20px 0 0!important;max-height:92vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;padding-bottom:env(safe-area-inset-bottom);}
           /* max-height:none wins over the desktop calc(90vh - N) caps some bodies set
@@ -7837,7 +7870,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 </div>
                 {activityReportLoading ? (
-                  <div style={{ textAlign: 'center', padding: 30, color: 'var(--k-9ca3af)' }}>Loading…</div>
+                  <Skeleton rows={4} />
                 ) : activityReport.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 30, color: 'var(--k-9ca3af)', background: 'var(--k-f9fafb)', borderRadius: 10, border: '1px dashed var(--k-e5e7eb)' }}>No activity logged in the last {activityReportDays} days.</div>
                 ) : (
@@ -8365,7 +8398,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   )}
 
                   {campaignLoading ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: 'var(--k-9ca3af)' }}>Loading…</div>
+                    <Skeleton rows={4} />
                   ) : (() => {
                     const q = campaignSearch.trim().toLowerCase();
                     const visibleCampaigns = campaigns.filter(c => (campaignFilter === 'all' || c.status === campaignFilter) && (!campaignAgentFilter || c.created_by === campaignAgentFilter) && (!q || c.name.toLowerCase().includes(q) || (c.description ?? '').toLowerCase().includes(q)));
@@ -9092,7 +9125,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               )}
                             </div>
                             {campaignEnrollmentsLoading ? (
-                              <div style={{ textAlign: 'center', padding: 30, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>
+                              <Skeleton rows={4} />
                             ) : visibleEnrollments.length === 0 ? (
                               <div style={{ textAlign: 'center', padding: 30, color: 'var(--k-9ca3af)', fontSize: 14 }}>No clients enrolled yet</div>
                             ) : (
@@ -9817,7 +9850,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   )}
 
                   {actionPlanLoading ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: 'var(--k-9ca3af)' }}>Loading…</div>
+                    <Skeleton rows={4} />
                   ) : actionPlans.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: 60, background: 'var(--k-f9fafb)', borderRadius: 12, border: '2px dashed var(--k-e5e7eb)' }}>
                       <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
@@ -9946,7 +9979,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {actionPlanTab === 'history' && (
                     <div>
                       {planSendsLoading && planSends.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: 48, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>
+                        <Skeleton rows={4} />
                       ) : planSends.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: 48, color: 'var(--k-9ca3af)', fontSize: 14 }}>No emails sent by this plan yet.</div>
                       ) : (() => {
@@ -10563,11 +10596,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         {isMobile && (() => {
           const overdueCt = overdueMine(tasks, profile?.id);
           const tabs = [
-            { id: 'dashboard' as typeof page, icon: '🏠', label: 'Home' },
-            { id: 'contacts'  as typeof page, icon: '👥', label: 'Contacts' },
-            { id: 'deals'     as typeof page, icon: '📋', label: 'Deals' },
-            { id: 'tasks'     as typeof page, icon: '✅', label: 'Tasks', badge: overdueCt },
-            { id: 'social'    as typeof page, icon: '📱', label: 'Social' },
+            { id: 'dashboard' as typeof page, icon: 'home' as IcoName, label: 'Home' },
+            { id: 'contacts'  as typeof page, icon: 'users' as IcoName, label: 'Contacts' },
+            { id: 'deals'     as typeof page, icon: 'deals' as IcoName, label: 'Deals' },
+            { id: 'tasks'     as typeof page, icon: 'check' as IcoName, label: 'Tasks', badge: overdueCt },
+            { id: 'social'    as typeof page, icon: 'image' as IcoName, label: 'Social' },
           ];
           return (
             <nav style={{ background: '#111', display: 'flex', borderTop: '1px solid rgba(255,255,255,.1)', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -10583,7 +10616,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     }}
                     style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '9px 2px 7px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif', position: 'relative", color: active ? '#c9922c' : 'rgba(255,255,255,.5)', transition: 'color .15s' }}>
                     <div style={{ position: 'relative' }}>
-                      <span style={{ fontSize: 22, lineHeight: 1, display: 'block' }}>{tab.icon}</span>
+                      <Ico n={tab.icon} size={23} style={{ display: 'block', strokeWidth: active ? 2 : 1.7 }} />
                       {(tab as any).badge > 0 && (
                         <span style={{ position: 'absolute', top: -4, right: -6, width: 14, height: 14, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #111' }}>
                           {(tab as any).badge > 9 ? '9+' : (tab as any).badge}
@@ -11680,7 +11713,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {dealTab === 'commission' && (
                 <div>
                   {commissionLoading ? (
-                    <div style={{ textAlign: 'center', padding: '32px 20px', color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>
+                    <Skeleton rows={4} />
                   ) : (
                     <div>
                       {/* Live preview banner */}
@@ -12917,7 +12950,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
                     if (activityLoading) return (
-                      <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--k-9ca3af)', fontSize: 13 }}>Loading…</div>
+                      <Skeleton rows={4} />
                     );
                     if (allItems.length === 0) return (
                       <div style={{ textAlign: 'center', padding: '16px 0', color: '#d1d5db', fontSize: 13 }}>No activity logged yet</div>
@@ -14680,7 +14713,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* Toast */}
       {toast && (
-        <div style={{ position: 'fixed', ...(isMobile
+        <div className="crm-toast" style={{ position: 'fixed', ...(isMobile
           // clear the bottom tab bar (~60px) + the home indicator
           ? { bottom: 'calc(72px + env(safe-area-inset-bottom))', left: 14, right: 14, maxWidth: 'none' }
           : { bottom: 26, right: 26, maxWidth: 300 }),

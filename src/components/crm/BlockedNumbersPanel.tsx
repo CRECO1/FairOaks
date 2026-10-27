@@ -1,6 +1,7 @@
 'use client';
 import React, { useCallback, useEffect, useState } from 'react';
 import { prettyPhone } from '@/lib/phone';
+import Skeleton from '@/components/crm/Skeleton';
 
 interface Row { id: string; phone_e164: string; business_unit: string; reason: string | null; source: 'auto' | 'manual'; hits: number; last_blocked_at: string | null; created_at: string }
 interface Props { authToken?: string; businessUnit: string; isAdmin?: boolean; showToast?: (msg: string) => void; onChanged?: () => void }
@@ -68,7 +69,7 @@ export default function BlockedNumbersPanel({ authToken, businessUnit, isAdmin, 
         </select>}
         <button onClick={add} disabled={busy === 'add' || !number.trim()} style={{ ...btn, background: '#111', color: '#fff', border: 'none' }}>{busy === 'add' ? 'Blocking…' : 'Block number'}</button>
       </div>
-      {rows === null ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>Loading…</div>
+      {rows === null ? <Skeleton rows={4} />
         : rows.length === 0 ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>Nothing blocked yet.</div>
         : (
           <div style={{ overflowX: 'auto' }}>

@@ -2,6 +2,7 @@
 // Plaza Site → Directory: the businesses shown on fairoaksranchplaza.com/directory and the home page.
 // Each business gets a private link to confirm its own details + logo. Nothing a tenant submits is public until you Approve.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Skeleton from '@/components/crm/Skeleton';
 
 interface Invite { id: string; token: string; contact_name: string | null; contact_email: string | null; status: 'invited' | 'submitted' | 'approved' | 'declined'; submitted: Record<string, string> | null; submitted_at: string | null }
 interface Listing {
@@ -121,7 +122,7 @@ export default function PlazaListings({ authToken, showToast, isMobile }: Props)
         </div>
       )}
 
-      {rows === null && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
+      {rows === null && <Skeleton rows={4} />}
       <div style={{ display: 'grid', gap: 10 }}>
         {shown.map(l => {
           const st = l.invite ? STATUS[l.invite.status] : null;

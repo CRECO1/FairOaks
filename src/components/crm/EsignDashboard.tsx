@@ -4,6 +4,7 @@
 // already out for signature — who each is waiting on and for how long.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRememberedState, useRememberedSelection } from '@/lib/view-memory';
+import Skeleton from '@/components/crm/Skeleton';
 
 interface Stats {
   sent: number; tracked: number;
@@ -520,7 +521,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                   </div>
                 </>
               )
-            ) : dealDocs === null ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '10px 0' }}>Loading…</div>
+            ) : dealDocs === null ? <Skeleton rows={4} />
               : dealDocs.length === 0 ? (
                 <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '10px 0' }}>
                   No PDFs in this deal&apos;s folder. Only PDFs can be sent for signature — a Word file or a photo has to be saved as a PDF first.
@@ -543,7 +544,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
 
 
       {/* ── List for the active tab ── */}
-      {loading ? <div style={{ color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div> : (
+      {loading ? <Skeleton rows={4} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {tab === 'drafts' && (draftRows.length === 0
             ? <Empty title="No drafts" body="Upload a PDF or pull one from a deal to start a request." />
@@ -710,7 +711,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
               </div>
 
               <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', margin: '22px 0 8px' }}>Activity</div>
-              {!evs ? <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Loading…</div>
+              {!evs ? <Skeleton rows={4} />
                 : evs.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>No activity recorded yet.</div>
                 : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>

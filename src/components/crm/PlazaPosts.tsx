@@ -6,6 +6,7 @@ import PlazaVendors from '@/components/crm/PlazaVendors';
 import PlazaListings from '@/components/crm/PlazaListings';
 import PlazaJobs from '@/components/crm/PlazaJobs';
 import PlazaSeo from '@/components/crm/PlazaSeo';
+import Skeleton from '@/components/crm/Skeleton';
 
 interface Post {
   id: string; slug: string; kind: 'news' | 'event' | 'notice' | 'promo'; title: string; summary: string; body: string;
@@ -136,7 +137,7 @@ export default function PlazaPosts({ authToken, showToast, isMobile }: Props) {
         </div>
       )}
 
-      {posts === null && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
+      {posts === null && <Skeleton rows={4} />}
       {posts && posts.length === 0 && !editing && (
         <div style={{ padding: 24, border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)' }}>No posts yet. Click “＋ New post” to add the first one.</div>
       )}

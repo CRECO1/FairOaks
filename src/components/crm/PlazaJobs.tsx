@@ -1,6 +1,7 @@
 'use client';
 // Plaza Site → Hiring: the "Hire Local" job board at fairoaksranchplaza.com/jobs and the "Now hiring" strip on its home page.
 import React, { useCallback, useEffect, useState } from 'react';
+import Skeleton from '@/components/crm/Skeleton';
 
 interface Job {
   id: string; company: string; title: string; summary: string; location: string | null; employment_type: string | null;
@@ -103,7 +104,7 @@ export default function PlazaJobs({ authToken, showToast, isMobile }: Props) {
         </div>
       )}
 
-      {rows === null && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
+      {rows === null && <Skeleton rows={4} />}
       {rows && rows.length === 0 && !editing && <div style={{ padding: 24, border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)' }}>No openings yet.</div>}
       {(() => {
         const pend = (rows ?? []).filter(j => j.source === 'community' && !j.published).length;

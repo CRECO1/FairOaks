@@ -5,6 +5,7 @@
 // of meetings that contact was part of.
 import React, { useCallback, useEffect, useState } from 'react';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
+import Skeleton from '@/components/crm/Skeleton';
 
 interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; type?: string }
 interface Attendee { id: string; name: string }
@@ -218,7 +219,7 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
       )}
 
       {/* ── Meeting list ── */}
-      {loading ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>Loading…</div>
+      {loading ? <Skeleton rows={4} />
         : meetings.length === 0 ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '6px 0' }}>{readOnly ? 'Not tagged in any deal notes yet.' : 'No notes yet — add one and tag who\u2019s involved.'}</div>
         : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

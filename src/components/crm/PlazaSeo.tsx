@@ -1,6 +1,7 @@
 'use client';
 // Plaza Site > SEO & AI: which AI assistants and search engines are reading fairoaksranchplaza.com, plus the off-site to-do list.
 import React, { useEffect, useState } from 'react';
+import Skeleton from '@/components/crm/Skeleton';
 
 interface Data { bots: { bot: string; ai: boolean; d7: number; d30: number; last: string }[]; topPaths: { path: string; hits: number }[]; recent: { bot: string; path: string; created_at: string }[]; total30: number }
 const box: React.CSSProperties = { background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: '14px 16px', marginBottom: 14 };
@@ -35,7 +36,7 @@ export default function PlazaSeo({ authToken }: { authToken?: string }) {
         Counts crawler visits to fairoaksranchplaza.com (by user-agent only). People who click through from ChatGPT, Perplexity or Claude show up in <b>Lead Attribution</b> under the AI channel.
       </div>
       {err && <div style={{ ...box, color: 'var(--k-b91c1c)' }}>{err}</div>}
-      {!d && !err && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
+      {!d && !err && <Skeleton rows={4} />}
       {d && (<>
         <div style={box}><div style={{ fontWeight: 800, marginBottom: 6 }}>AI assistants &amp; AI crawlers</div>{table(ai, 'None yet. They usually find a new site within days to weeks. Submitting to Bing and getting links speeds it up.')}</div>
         <div style={box}><div style={{ fontWeight: 800, marginBottom: 6 }}>Search engines</div>{table(se, 'None yet.')}</div>

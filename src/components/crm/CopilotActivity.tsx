@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Skeleton from '@/components/crm/Skeleton';
 
 // Activity feed. A broker (admin/super_admin) sees the whole team and can filter
 // to one agent; an agent sees only their own rows — the server enforces both, this
@@ -67,7 +68,7 @@ export default function CopilotActivity({ token, isMobile = false, isBroker = fa
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '8px 8px calc(8px + env(safe-area-inset-bottom))' : 8 }}>
-          {loading && <div style={{ padding: 40, textAlign: 'center', color: 'var(--k-9ca3af)' }}>Loading…</div>}
+          {loading && <Skeleton rows={4} />}
           {error && <div style={{ padding: 40, textAlign: 'center', color: 'var(--k-dc2626)' }}>{error}</div>}
           {!loading && !error && rows.length === 0 && (
             <div style={{ padding: 50, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1.6 }}>

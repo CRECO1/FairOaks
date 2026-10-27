@@ -7,7 +7,7 @@ import React from 'react';
  */
 export type IcoName =
   | 'home' | 'check' | 'deals' | 'users' | 'briefcase' | 'calendar' | 'megaphone' | 'receipt' | 'building'
-  | 'file' | 'pen' | 'phone' | 'eye' | 'tree' | 'chart' | 'search' | 'bell' | 'mail' | 'sun' | 'moon' | 'sparkle';
+  | 'file' | 'pen' | 'phone' | 'eye' | 'tree' | 'chart' | 'search' | 'bell' | 'mail' | 'sun' | 'moon' | 'sparkle' | 'image';
 
 const PATHS: Record<IcoName, React.ReactNode> = {
   home: <><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></>,
@@ -30,6 +30,7 @@ const PATHS: Record<IcoName, React.ReactNode> = {
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></>,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
   moon: <><path d="M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5z" /></>,
+  image: <><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="9" cy="10" r="1.8" /><path d="M4 18l5-5 4 4 3-3 4 4" /></>,
   sparkle: <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></>,
 };
 

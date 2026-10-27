@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Skeleton from '@/components/crm/Skeleton';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -316,7 +317,7 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
         {/* ── TAB: Daily Log ── */}
         {tab === 'log' && (
           <div style={{ overflowX: 'auto' }}>
-            {loading && <div style={{ padding: 20, color: 'var(--k-94a3b8)', fontSize: 13, textAlign: 'center' }}>Loading…</div>}
+            {loading && <Skeleton rows={4} />}
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
               <thead>
                 <tr style={{ background: 'var(--k-f8fafc)' }}>

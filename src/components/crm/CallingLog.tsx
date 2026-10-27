@@ -11,6 +11,7 @@ import CallbackTimeMenu from '@/components/crm/CallbackTimeMenu';
 import BlockedNumbersPanel from '@/components/crm/BlockedNumbersPanel';
 import { formatCentral } from '@/lib/callback-time';
 import { useRememberedState } from '@/lib/view-memory';
+import Skeleton from '@/components/crm/Skeleton';
 
 export interface CallRow {
   id: string; source: string; kind: string; direction: string; result: string | null;
@@ -566,7 +567,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                     {openNow && (
                       <div style={{ marginTop: 10, borderTop: '1px solid #f1f2f4', paddingTop: 10 }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 13, maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
-                          {!msgs && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
+                          {!msgs && <Skeleton rows={4} />}
                           {(msgs ?? []).map(m => (
                             <div key={m.id} style={{ display: 'flex', justifyContent: m.direction === 'outbound' ? 'flex-end' : 'flex-start' }}>
                               <div style={{ maxWidth: '78%', background: m.direction === 'outbound' ? 'var(--k-fdf6e9)' : 'var(--k-f3f4f6)', color: 'var(--k-111)', borderRadius: 10, padding: '6px 10px' }}>
@@ -598,7 +599,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             Add the Talkroute API key to pull your call history and voicemails here, and a Twilio number for the AI receptionist. {isAdmin ? 'Open “Setup & voice bot” above for the exact steps.' : 'Ask an admin to finish the setup.'}
           </div>
         </div>
-      ) : loading ? <div style={{ color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>
+      ) : loading ? <Skeleton rows={4} />
         : list.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--k-9ca3af)' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>

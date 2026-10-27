@@ -8,6 +8,7 @@ import { isBrokerFilled } from '@/lib/esign-fields';
 import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPreviewModal';
 import { defaultEsignMessage } from '@/lib/esign-message';
 import EsignSavedMessages from '@/components/crm/EsignSavedMessages';
+import Skeleton from '@/components/crm/Skeleton';
 
 export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
 export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; imported?: boolean; crm_forms?: { name?: string; form_code?: string } | null }
@@ -464,7 +465,7 @@ export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloa
           ＋ Add a document to sign — upload a PDF
         </button>
       )}
-      {loading ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>Loading…</div>
+      {loading ? <Skeleton rows={4} />
         : ordered.length === 0 ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>No documents on this deal yet.{onAddDocument ? ' Upload a PDF above, or fill' : ' Fill'} a form on the deal and it shows here, ready to send for signature.</div>
         : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

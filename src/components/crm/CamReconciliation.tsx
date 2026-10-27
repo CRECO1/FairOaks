@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Skeleton from '@/components/crm/Skeleton';
 
 // Annual expense reconciliation for a property. The figures that can be derived
 // (each tenant, their suite, their square footage) come from the rent roll; the
@@ -103,7 +104,7 @@ export default function CamReconciliation({ listingId, listingName, address, aut
   const card: React.CSSProperties = { background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, marginBottom: 14 };
   const head: React.CSSProperties = { fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 };
 
-  if (loading) return <div style={{ padding: 30, color: 'var(--k-9ca3af)', fontSize: 13 }}>Loading…</div>;
+  if (loading) return <Skeleton rows={4} />;
 
   const total = (m?: Money) => CATS.reduce((s, [k]) => s + (Number(m?.[k]) || 0), 0);
 

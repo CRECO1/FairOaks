@@ -2,6 +2,7 @@
 // Plaza Site → Local businesses: the vendor/resource directory on fairoaksranchplaza.com/local.
 // Tick "Locally owned & operated" only for businesses an owner has confirmed — it drives the public badge.
 import React, { useCallback, useEffect, useState } from 'react';
+import Skeleton from '@/components/crm/Skeleton';
 
 interface Vendor {
   id: string; name: string; category: string; description: string; phone: string | null; website: string | null;
@@ -94,7 +95,7 @@ export default function PlazaVendors({ authToken, showToast, isMobile }: Props) 
         </div>
       )}
 
-      {rows === null && <div style={{ color: 'var(--k-9ca3af)' }}>Loading…</div>}
+      {rows === null && <Skeleton rows={4} />}
       {rows && rows.length === 0 && !editing && <div style={{ padding: 24, border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)' }}>No businesses yet.</div>}
       <div style={{ display: 'grid', gap: 10 }}>
         {(rows ?? []).map(v => (

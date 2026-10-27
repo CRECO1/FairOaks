@@ -17,6 +17,7 @@ import PropertyPerformance from '@/components/crm/PropertyPerformance';
 import { useDragScroll } from '@/lib/use-drag-scroll';
 import CamReconciliation from '@/components/crm/CamReconciliation';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
+import Skeleton from '@/components/crm/Skeleton';
 
 // Forms whose form_code opens the dynamic term-list builder instead of the
 // coordinate-overlay editor.
@@ -1776,7 +1777,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     const allPhotoCat = files.filter(f => f.category === 'photo');
                     const photos = allPhotoCat.filter(isImage);
                     const notImages = allPhotoCat.filter(f => !isImage(f));
-                    if (filesLoading) return <div style={{ textAlign: 'center', padding: 40, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>;
+                    if (filesLoading) return <Skeleton rows={4} />;
                     const act: React.CSSProperties = { border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, padding: '3px 7px', cursor: 'pointer', lineHeight: 1.4, fontFamily: "'DM Sans',sans-serif" };
                     return (
                       <div>

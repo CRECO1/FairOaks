@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Skeleton from '@/components/crm/Skeleton';
 
 interface LeaseClient {
   id: string; first_name: string | null; last_name: string | null; business_name: string | null;
@@ -77,7 +78,7 @@ export default function LeaseExpirationsSection({ authToken, onToast, onCreated 
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--k-9ca3af)' }}>Loading…</div>
+        <Skeleton rows={4} />
       ) : shown.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--k-9ca3af)' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🔑</div>
