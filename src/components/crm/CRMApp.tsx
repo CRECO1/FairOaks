@@ -20,6 +20,7 @@ import DealDocUpload from '@/components/crm/DealDocUpload';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
 import DeletedItems from '@/components/crm/DeletedItems';
+import ContactsView from '@/components/crm/ContactsView';
 import CampaignEngagedPanel from '@/components/crm/CampaignEngagedPanel';
 import CampaignPreflight from '@/components/crm/CampaignPreflight';
 import CallTapPrompt from '@/components/crm/CallTapPrompt';
@@ -1095,7 +1096,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     for (const t of allTasks) if (t.client_id) m.set(t.client_id, (m.get(t.client_id) ?? 0) + 1);
     return m;
   }, [allTasks]);
-  const [contactSort, setContactSort] = useState<'recent' | 'never' | 'az' | 'added'>('recent');
+  const [contactSort, setContactSort] = useState<'recent' | 'never' | 'az' | 'za' | 'added' | 'type' | 'owner'>('recent');
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactCampaignOnly, setContactCampaignOnly] = useState(false);
+  const [contactDealOnly, setContactDealOnly] = useState(false);
   const [emailEditorMode, setEmailEditorMode] = useState<'rich' | 'html'>('rich');
   const [showSaveList, setShowSaveList] = useState(false);
   const [newListName, setNewListName] = useState('');
@@ -6337,57 +6341,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* ── Prospects ── */}
           {page === 'contacts' && (
             <div>
-              {/* ── Command-center stats + type segments ── */}
-              {clients.length > 0 && (() => {
-                const now = Date.now();
-                const DAY = 24 * 60 * 60 * 1000;
-                const newThisWeek = clients.filter(c => c.created_at && (now - new Date(c.created_at).getTime()) < 7 * DAY).length;
-                const activeDealCount = deals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage)).length;
-                const inCampaigns = clients.filter(c => (enrollmentsByClient[c.id]?.length ?? 0) > 0).length;
-                const segs: { label: string; type: string }[] = [
-                  { label: 'All', type: '' }, { label: 'Buyers', type: 'Buyer' }, { label: 'Sellers', type: 'Seller' },
-                  { label: 'Tenants', type: 'Tenant' }, { label: 'Landlords', type: 'Landlord/Investor' },
-                  { label: 'Agents', type: 'Agent' }, { label: 'Brokers', type: 'Broker' },
-                ];
-                return (
-                  <>
-                    <div className="ctc-stats">
-                      <div className="ctc-stat dark"><div className="k">Total</div><div className="v">{clients.length.toLocaleString()}</div><div className="d">across all types</div></div>
-                      <div className="ctc-stat click" onClick={() => setContactSort('added')} title="Sort by newest added"><div className="k">New This Week</div><div className="v">{newThisWeek}</div><div className="d">added in last 7 days</div></div>
-                      <div className={`ctc-stat click${needsTouchOnly ? ' dark' : ''}`} onClick={() => setNeedsTouchOnly(v => !v)} title="Open deals quiet for 2+ weeks, overdue tasks, and new leads nobody has contacted — click to show only these"><div className="k">Needs a Touch</div><div className="v">{needsTouchIds.size}</div><div className="d">{needsTouchOnly ? 'showing only these · click to clear' : 'quiet deals, overdue tasks, new leads'}</div></div>
-                      {isSuperAdmin && clients.some(c => c.lead_hold) && (
-                        <div className={`ctc-stat click${heldOnly ? ' dark' : ''}`} onClick={() => setHeldOnly(v => !v)} title="New leads only you can see. Assign one (or press Release on its card) and the team can see it."><div className="k">🔒 Held Leads</div><div className="v">{clients.filter(c => c.lead_hold).length}</div><div className="d">only you can see these</div></div>
-                      )}
-                      {(() => {
-                        const noInfo = clients.filter(c => !c.email && !c.phone && !c.cell_phone);
-                        if (!noInfo.length) return null;
-                        const owners = noInfo.filter(c => (c.tags ?? []).includes('Property Owner')).length;
-                        return (
-                          <div className={`ctc-stat click${noInfoOnly ? ' dark' : ''}`} onClick={() => setNoInfoOnly(v => !v)} title="Contacts with no email and no phone number — click to show only these">
-                            <div className="k">📵 No Email / Phone</div><div className="v">{noInfo.length.toLocaleString()}</div>
-                            <div className="d">{owners > 0 ? `${owners.toLocaleString()} are county owners` : 'nothing to reach them on'}</div>
-                          </div>
-                        );
-                      })()}
-                      <div className="ctc-stat"><div className="k">Active Deals</div><div className="v">{activeDealCount}</div><div className="d">in the pipeline</div></div>
-                      <div className="ctc-stat"><div className="k">In Campaigns</div><div className="v">{inCampaigns}</div><div className="d">currently enrolled</div></div>
-                    </div>
-                    <div className="ctc-seg">
-                      {segs.map(s => {
-                        const count = s.type ? clients.filter(c => c.type === s.type).length : clients.length;
-                        const on = (contactTypeFilter || '') === s.type;
-                        return <div key={s.label} className={`ctc-chip${on ? ' on' : ''}`} onClick={() => setContactTypeFilter(s.type)}>{s.label} <span className="n">{count.toLocaleString()}</span></div>;
-                      })}
-                    </div>
-                  </>
-                );
-              })()}
-              {/* Smart Filter Bar */}
-              {clients.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  {/* Saved Smart Lists — one dropdown. As a chip per list, 20 lists filled a
-                      phone screen before the first contact. */}
-                  {smartLists.length > 0 && (() => {
+              {clients.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--k-fff)', borderRadius: 10, border: '1px solid var(--k-e0e0e0)' }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>👥</div>
+                  <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, color: 'var(--k-111)', marginBottom: 8 }}>No clients yet</div>
+                  <div style={{ fontSize: 14, color: 'var(--k-6b7280)', marginBottom: 20 }}>Add buyers, sellers, tenants, landlords, and outside brokers/agents — all in one place.</div>
+                  <button className="crm-btn crm-btn-gold" onClick={() => setShowAddClient(true)}>+ Add First Client</button>
+                </div>
+              ) : (() => {
+                // Saved lists, "save as list" and the bulk-action bar stay as they were; the new view lays them out.
+                const savedListsUI = (<>{smartLists.length > 0 && (() => {
                     // Count members with the SAME predicate applySmartList uses (type +
                     // lead_source exact, tag = case-insensitive substring). clients holds
                     // every contact, so the count is accurate, not just the loaded page.
@@ -6410,7 +6373,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     });
                     const clearList = () => { setContactTypeFilter(''); setContactTagFilter(''); setContactSourceFilter(''); };
                     return (
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                         <select aria-label="Saved lists" value={activeList?.id ?? ''}
                           onChange={e => { const sl = smartLists.find(s => s.id === e.target.value); if (sl) applySmartList(sl); else clearList(); }}
                           className={`cf-select${activeList ? ' active' : ''}`}
@@ -6440,51 +6403,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         )}
                       </div>
                     );
-                  })()}
-                  {/* Filter row */}
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {/* Type filter */}
-                    <select value={contactTypeFilter} onChange={e => setContactTypeFilter(e.target.value)} className={`cf-select${contactTypeFilter ? ' active' : ''}`}>
-                      <option value="">All Types</option>
-                      {['Buyer','Seller','Tenant','Landlord/Investor','Agent','Broker'].map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    {/* Lead source filter */}
-                    <select value={contactSourceFilter} onChange={e => setContactSourceFilter(e.target.value)} className={`cf-select${contactSourceFilter ? ' active' : ''}`}>
-                      <option value="">All Sources</option>
-                      {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    {/* Specialization filter */}
-                    <select value={contactSpecFilter} onChange={e => setContactSpecFilter(e.target.value)} className={`cf-select${contactSpecFilter ? ' active' : ''}`}>
-                      <option value="">All Asset Types</option>
-                      {ASSET_TYPES.map(at => <option key={at} value={at}>{at}</option>)}
-                    </select>
-                    {/* Owner / agent filter — admin only */}
-                    {isAdmin && profiles.length > 0 && (
-                      <select value={contactOwnerFilter} onChange={e => setContactOwnerFilter(e.target.value)} className={`cf-select${contactOwnerFilter ? ' active' : ''}`}>
-                        <option value="">All Owners</option>
-                        {profiles.map(p => (
-                          <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
-                        ))}
-                      </select>
-                    )}
-                    {/* Sort order */}
-                    <select value={contactSort} onChange={e => setContactSort(e.target.value as typeof contactSort)} className="cf-select">
-                      <option value="recent">Most Recent</option>
-                      <option value="never">Never Contacted</option>
-                      <option value="az">A → Z</option>
-                      <option value="added">Newest Added</option>
-                    </select>
-                    {/* Tag filter */}
-                    <input placeholder="Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
-                      className={`cf-tag-input${contactTagFilter ? ' active' : ''}`} style={{ width: isMobile ? '100%' : 140 }} />
-                    {/* Clear */}
-                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter || needsTouchOnly || heldOnly || noInfoOnly) && (
-                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); setNeedsTouchOnly(false); setHeldOnly(false); setNoInfoOnly(false); }}
-                        style={{ fontSize: 13, color: 'var(--k-6b7280)', background: 'none', border: '1px solid var(--k-e2e8f0)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                        Clear
-                      </button>
-                    )}
-                    {/* Save as Smart List */}
+                  })()}</>);
+                const saveListUI = (<>{/* Save as Smart List */}
                     {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter) && !showSaveList && (
                       <button onClick={() => setShowSaveList(true)}
                         style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid #c9922c', fontSize: 13, background: 'var(--k-fffbf2)', color: 'var(--k-92400e)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}>
@@ -6498,53 +6418,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <button onClick={saveSmartList} style={{ padding: '5px 12px', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>Save</button>
                         <button className="crm-icon-btn" onClick={() => setShowSaveList(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'var(--k-9ca3af)', fontSize: 14, cursor: 'pointer' }}>✕</button>
                       </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {clients.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--k-fff)', borderRadius: 10, border: '1px solid var(--k-e0e0e0)' }}>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>👥</div>
-                  <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, color: 'var(--k-111)', marginBottom: 8 }}>No clients yet</div>
-                  <div style={{ fontSize: 14, color: 'var(--k-6b7280)', marginBottom: 20 }}>Add buyers, sellers, tenants, landlords, and outside brokers/agents — all in one place.</div>
-                  <button className="crm-btn crm-btn-gold" onClick={() => setShowAddClient(true)}>+ Add First Client</button>
-                </div>
-              ) : (() => {
-                const filteredContacts = clients.filter(c => {
-                  if (contactTypeFilter && c.type !== contactTypeFilter) return false;
-                  if (contactSourceFilter && c.lead_source !== contactSourceFilter) return false;
-                  if (contactTagFilter && !(c.tags ?? []).some(t => t.toLowerCase().includes(contactTagFilter.toLowerCase()))) return false;
-                  if (contactSpecFilter && !(c.asset_types ?? []).includes(contactSpecFilter)) return false;
-                  if (contactOwnerFilter && c.agent_id !== contactOwnerFilter) return false;
-                  if (needsTouchOnly && !needsTouchIds.has(c.id)) return false;
-                  if (heldOnly && !c.lead_hold) return false;
-                  if (noInfoOnly && (c.email || c.phone || c.cell_phone)) return false;
-                  return true;
-                }).sort((a, b) => {
-                  if (contactSort === 'recent') {
-                    // Most recent activity, where being added counts as activity. Sorting
-                    // never-touched contacts last put a fresh import of 103 contacts on
-                    // pages 4–5, behind every contact anyone had ever touched.
-                    const recency = (c: Client) => new Date(c.last_touched_at ?? c.created_at).getTime();
-                    return recency(b) - recency(a);
-                  }
-                  if (contactSort === 'never') {
-                    if (!a.last_touched_at && !b.last_touched_at) return 0;
-                    if (!a.last_touched_at) return -1;
-                    if (!b.last_touched_at) return 1;
-                    return new Date(a.last_touched_at).getTime() - new Date(b.last_touched_at).getTime();
-                  }
-                  if (contactSort === 'az') {
-                    const nameA = `${a.last_name}${a.first_name}`.toLowerCase();
-                    const nameB = `${b.last_name}${b.first_name}`.toLowerCase();
-                    return nameA.localeCompare(nameB);
-                  }
-                  // 'added' — newest added first
-                  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-                });
-                return (
-                <>
-                {/* Bulk action bar — admin only (works on all screen sizes now) */}
+                    )}</>);
+                const bulkUI = (<>{/* Bulk action bar — admin only (works on all screen sizes now) */}
                 {isAdmin && selectedClientIds.size > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 14px', background: 'var(--k-fef9f0)', border: '1px solid var(--k-f0d9a8)', borderRadius: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-92400e)' }}>
@@ -6589,97 +6464,37 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <button onClick={() => { setShowBulkTag(false); setBulkTagValue(''); }} className="crm-btn crm-btn-ghost">Cancel</button>
                     </div>
                   </div>
-                )}
-                {/* Select-all helper (desktop) */}
-                {isAdmin && filteredContacts.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 13, color: 'var(--k-6b7280)' }}>
-                    <input type="checkbox"
-                      checked={filteredContacts.length > 0 && selectedClientIds.size === filteredContacts.length}
-                      ref={el => { if (el) el.indeterminate = selectedClientIds.size > 0 && selectedClientIds.size < filteredContacts.length; }}
-                      onChange={e => { if (e.target.checked) setSelectedClientIds(new Set(filteredContacts.map(c => c.id))); else setSelectedClientIds(new Set()); }}
-                      style={{ cursor: 'pointer', width: 15, height: 15, accentColor: '#c9922c' }} />
-                    <span>Select all {filteredContacts.length.toLocaleString()}</span>
-                  </div>
-                )}
-                {/* ── Contact Card Grid ── */}
-                {filteredContacts.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 48, color: 'var(--k-9ca3af)', background: 'var(--k-fff)', borderRadius: 14, border: '1px solid var(--k-e8eaed)' }}>No contacts match these filters.</div>
-                ) : (
-                <div className="ctc-grid">
-                  {filteredContacts.slice(0, contactRenderLimit).map(c => {
-                    const clientDeals = dealsByClient.get(c.id) ?? [];
-                    const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
-                    // A contact can arrive with only a business or only an email — the card used to render
-                    // a blank name and an empty avatar for those. Fall back through business → email.
-                    const personName = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
-                    const cardName = personName || c.business_name || c.email || 'Unnamed contact';
-                    const rowInitials = personName ? ((c.first_name?.[0] ?? '') + (c.last_name?.[0] ?? '')) : (cardName[0] ?? '?').toUpperCase();
-                    const avatarPair = (CONTACT_AVATAR_COLORS[(cardName[0] ?? 'A').toUpperCase()] ?? '#c9922c,#a07020').split(',');
-                    const enrolls = enrollmentsByClient[c.id] ?? [];
-                    const pendingCount = pendingTasksByClient.get(c.id) ?? 0;
-                    const ta = timeAgo(c.last_touched_at);
-                    const typeStyle = Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || 'background:var(--k-f3f4f6);color:var(--k-374151)').split(';').filter(Boolean).map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties;
-                    const phone = (c.cell_phone || c.phone || '').trim() || null;
-                    const tags = c.tags ?? [];
-                    return (
-                      <div key={c.id} className={`ctc-card${selectedClientIds.has(c.id) ? ' sel' : ''}`} onClick={() => setActiveClient(c)}>
-                        {isAdmin && (
-                          <input type="checkbox" className="ctc-chk" checked={selectedClientIds.has(c.id)} onClick={e => e.stopPropagation()}
-                            onChange={e => { const next = new Set(selectedClientIds); e.target.checked ? next.add(c.id) : next.delete(c.id); setSelectedClientIds(next); }} />
-                        )}
-                        <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 10.5, fontWeight: 700, borderRadius: 10, padding: '2px 9px', background: ta.bg, color: ta.color, whiteSpace: 'nowrap' }}>{ta.label}</span>
-                        <div style={{ padding: '16px 16px 12px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                          <div style={{ width: 46, height: 46, borderRadius: '50%', background: `linear-gradient(135deg, ${avatarPair[0]}, ${avatarPair[1]})`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontWeight: 700, fontSize: 18, flexShrink: 0, letterSpacing: .5, marginLeft: isAdmin ? 16 : 0 }}>{rowInitials}</div>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span title={cardName} style={{ fontWeight: 700, color: 'var(--k-111)', fontSize: 16, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cardName}</span>
-                              {c.is_shared && <span title="Team contact — visible to all agents" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: .5, background: 'var(--k-ede9fe)', color: 'var(--k-6d28d9)', borderRadius: 6, padding: '1px 5px', flexShrink: 0, textTransform: 'uppercase' }}>Team</span>}
-                            </div>
-                            {c.business_name && personName && <div title={c.business_name} style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.business_name}</div>}
-                            <div style={{ position: 'relative', display: 'inline-block', marginTop: 7 }} title="Change contact type" onClick={e => e.stopPropagation()}>
-                              <span style={{ ...typeStyle, display: 'inline-block', padding: '2px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, pointerEvents: 'none' }}>{c.type}</span>
-                              <select value={c.type} onChange={async e => { const nt = e.target.value as Client['type']; await supabase.from('crm_clients').update({ type: nt }).eq('id', c.id); setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: nt } : x)); }}
-                                style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}>
-                                {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ padding: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 5 }} onClick={e => e.stopPropagation()}>
-                          {c.email && <a href={`mailto:${c.email}`} style={{ fontSize: 13, color: 'var(--k-4b5563)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}><span style={{ opacity: .5, width: 14, flexShrink: 0 }}>✉</span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</span></a>}
-                          {phone && <a href={`tel:${phone}`} style={{ fontSize: 13, color: 'var(--k-4b5563)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ opacity: .5, width: 14, flexShrink: 0 }}>☎</span>{phoneDisp(phone)}</a>}
-                          {!c.email && !phone && <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>No contact info yet</span>}
-                        </div>
-                        {(tags.length > 0 || clientDeals.length > 0 || enrolls.length > 0) && (
-                          <div style={{ padding: '0 16px 13px', display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-                            {activeDeals.slice(0, 2).map(d => <button key={d.id} onClick={() => openDeal(d)} style={{ fontSize: 11.5, color: 'var(--k-1e40af)', background: 'var(--k-eff6ff)', border: '1px solid var(--k-dbeafe)', borderRadius: 7, padding: '2px 8px', fontWeight: 600, cursor: 'pointer' }}>{d.property || d.type.split(' ')[0]}</button>)}
-                            {tags.slice(0, 3).map(t => { const gold = t.toLowerCase().includes('kendall') || t.toLowerCase().includes('hot'); return <span key={t} style={{ fontSize: 10.5, fontWeight: 600, background: gold ? 'var(--k-fdf4e3)' : 'var(--k-f3f4f6)', color: gold ? 'var(--k-92400e)' : 'var(--k-4b5563)', borderRadius: 6, padding: '2px 8px' }}>{t}</span>; })}
-                            {enrolls.slice(0, 1).map((en, i) => <span key={i} title={en.campaign_name} style={{ fontSize: 11, color: en.active !== false ? 'var(--k-1e40af)' : 'var(--k-9ca3af)', background: en.active !== false ? 'var(--k-f0f7ff)' : 'var(--k-f3f4f6)', border: `1px solid ${en.active !== false ? 'var(--k-cfe3fb)' : 'var(--k-e5e7eb)'}`, borderRadius: 7, padding: '2px 7px', fontWeight: 600, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📣 {en.campaign_name}</span>)}
-                            {enrolls.length > 1 && <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', fontWeight: 700 }}>+{enrolls.length - 1}</span>}
-                          </div>
-                        )}
-                        <div className="ctc-acts" onClick={e => e.stopPropagation()}>
-                          <button onClick={() => { if (c.email) window.location.href = `mailto:${c.email}`; }} title={c.email ? `Email ${c.email}` : 'No email on file'} style={{ opacity: c.email ? 1 : .4 }}>✉ Email</button>
-                          <button onClick={() => { if (phone) window.location.href = `tel:${phone}`; }} title={phone ? `Call ${phoneDisp(phone)}` : 'No phone on file'} style={{ opacity: phone ? 1 : .4 }}>☎ Call</button>
-                          <button className={pendingCount > 0 ? 'hot' : ''} onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }} title={pendingCount > 0 ? `${pendingCount} pending task${pendingCount !== 1 ? 's' : ''} — add another` : 'Add a task'}>✓ Task{pendingCount > 0 && <span className="nbadge">{pendingCount}</span>}</button>
-                          <button onClick={() => setActiveClient(c)} title="Open contact — notes, history & edit">✎ Open</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                )}
-                {filteredContacts.length > contactRenderLimit && (
-                  <div style={{ textAlign: 'center', margin: '16px 0 6px' }}>
-                    <button className="crm-btn crm-btn-ghost" onClick={() => setContactRenderLimit(n => n + CONTACT_WINDOW * 2)} style={{ fontSize: 13, padding: '8px 22px' }}>
-                      Show {Math.min(CONTACT_WINDOW * 2, filteredContacts.length - contactRenderLimit)} more · {(filteredContacts.length - contactRenderLimit).toLocaleString()} not shown
-                    </button>
-                    <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 6 }}>Search or filter to narrow {filteredContacts.length.toLocaleString()} contacts — everything is still searchable.</div>
-                  </div>
-                )}
-                </>
+                )}</>);
+                return (
+                  <ContactsView
+                    clients={clients}
+                    isMobile={isMobile} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin}
+                    search={contactSearch} setSearch={setContactSearch}
+                    type={contactTypeFilter} setType={setContactTypeFilter}
+                    source={contactSourceFilter} setSource={setContactSourceFilter}
+                    spec={contactSpecFilter} setSpec={setContactSpecFilter}
+                    owner={contactOwnerFilter} setOwner={setContactOwnerFilter}
+                    tag={contactTagFilter} setTag={setContactTagFilter}
+                    needsTouchOnly={needsTouchOnly} setNeedsTouchOnly={setNeedsTouchOnly} needsTouchIds={needsTouchIds}
+                    noInfoOnly={noInfoOnly} setNoInfoOnly={setNoInfoOnly}
+                    heldOnly={heldOnly} setHeldOnly={setHeldOnly}
+                    campaignOnly={contactCampaignOnly} setCampaignOnly={setContactCampaignOnly}
+                    dealOnly={contactDealOnly} setDealOnly={setContactDealOnly}
+                    sort={contactSort} setSort={setContactSort}
+                    dealsByClient={dealsByClient} enrollmentsByClient={enrollmentsByClient} pendingTasksByClient={pendingTasksByClient}
+                    profiles={profiles}
+                    selected={selectedClientIds} setSelected={setSelectedClientIds}
+                    onOpen={c => setActiveClient(c as unknown as Client)}
+                    onAddTask={c => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
+                    onOpenDeal={id => { const d = deals.find(x => x.id === id); if (d) openDeal(d); }}
+                    onChangeType={async (c, t) => { const nt = t as Client['type']; await supabase.from('crm_clients').update({ type: nt }).eq('id', c.id); setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: nt } : x)); }}
+                    timeAgo={timeAgo} phoneDisp={phoneDisp}
+                    typeColors={CLIENT_TYPE_COLORS} avatarColors={CONTACT_AVATAR_COLORS}
+                    types={CLIENT_TYPES} sources={LEAD_SOURCES} assetTypes={ASSET_TYPES}
+                    savedLists={savedListsUI} saveListControls={saveListUI} bulkBar={bulkUI}
+                  />
                 );
-              })() /* end filteredContacts IIFE */}
+              })()}
 
               {/* ── Load More contacts ��─ */}
               {clients.length > 0 && clients.length < contactsTotal && (
