@@ -21,7 +21,7 @@ const isStandalone = () => window.matchMedia('(display-mode: standalone)').match
  *
  * `tone="dark"` is for the sidebar/drawer (always dark); the default follows the CRM theme.
  */
-export default function PhoneAlerts({ token, tone = 'theme' }: { token?: string; tone?: 'theme' | 'dark' }) {
+export default function PhoneAlerts({ token, tone = 'theme', visitors = false }: { token?: string; tone?: 'theme' | 'dark'; visitors?: boolean }) {
   const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   const [st, setSt] = useState<St>('loading');
   const [cats, setCats] = useState<PushCategory[]>([]);
@@ -129,7 +129,7 @@ export default function PhoneAlerts({ token, tone = 'theme' }: { token?: string;
       {st === 'on' && (
         <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 9 }}>
-            {PUSH_CATEGORIES.map(c => (
+            {PUSH_CATEGORIES.filter(c => visitors || c.key !== 'visitors').map(c => (
               <label key={c.key} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer', color: ink, fontSize: 13 }}>
                 <input type="checkbox" checked={cats.includes(c.key)} onChange={() => toggleCat(c.key)} style={{ marginTop: 3, accentColor: '#c9922c' }} />
                 <span><b style={{ fontWeight: 600 }}>{c.label}</b><br /><span style={{ color: sub, fontSize: 12 }}>{c.hint}</span></span>

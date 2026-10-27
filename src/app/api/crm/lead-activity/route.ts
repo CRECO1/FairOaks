@@ -6,11 +6,12 @@
  * and behaviour event those visitor ids produced — before AND after they became a lead. Plus the first
  * touch, ad click ids and environment stored on the contact.
  *
- * Access: any agent who can see the contact (workspace + ownership rules via assertOwnsResource). This is
- * per-contact detail, unlike the owner-only aggregate reports.
+ * Access: the account owner only (super_admin) — Oct 2026: nobody else sees when a prospect is on the site.
+ * Within that, the contact must still be visible to the caller (workspace + ownership via assertOwnsResource).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, assertOwnsResource } from '@/lib/crm-auth';
+import { canSeeVisitorActivity } from '@/lib/visitor-privacy';
 import { adminClient } from '@/lib/supabase-admin';
 
 export const runtime = 'nodejs';
@@ -19,6 +20,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  if (!canSeeVisitorActivity(ctx.role)) return NextResponse.json({ error: 'Website activity is limited to the account owner.' }, { status: 403 });
   const clientId = req.nextUrl.searchParams.get('client_id');
   if (!clientId || !/^[0-9a-f-]{36}$/i.test(clientId)) return NextResponse.json({ error: 'client_id required' }, { status: 400 });
   if (!(await assertOwnsResource('crm_clients', clientId, ctx))) return NextResponse.json({ error: 'Contact not found' }, { status: 404 });

@@ -72,7 +72,7 @@ const supabase = createBrowserClient();
 type Role = 'agent' | 'admin' | 'super_admin';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; daily_call_goal?: number | null; }
 
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; lead_hold?: boolean | null; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null; }
+interface Client { id: string; agent_id: string; business_unit?: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; lead_hold?: boolean | null; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null; }
 interface CallListPerson {
   clientId: string; reason: string; heat: 'hot' | 'warm' | 'cold'; askFor: string; lastCalled: string | null; rank: number;
   view: 'opened' | 'emailed' | 'cold';
@@ -3230,6 +3230,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setActivityLoading(false);
   }
 
+  // Hand a contact (usually a brand-new lead) to another agent. The server moves the lead's open call/follow-up
+  // tasks and its Prospect deal with it, releases a held lead, and tells the new owner (api/crm/clients/[id]/owner).
+  async function reassignContactOwner(c: Client, newOwnerId: string) {
+    if (!newOwnerId || newOwnerId === c.agent_id) return;
+    const res = await fetch(`/api/crm/clients/${c.id}/owner`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ agent_id: newOwnerId }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(j.error || 'Could not reassign this lead'); return; }
+    const leadHold = typeof j.lead_hold === 'boolean' ? j.lead_hold : c.lead_hold;
+    setClients(prev => prev.map(x => (x.id === c.id ? { ...x, agent_id: newOwnerId, lead_hold: leadHold } : x)));
+    setActiveClient(prev => (prev && prev.id === c.id ? { ...prev, agent_id: newOwnerId, lead_hold: leadHold } : prev));
+    const moved = [j.tasks ? `${j.tasks} task${j.tasks === 1 ? '' : 's'}` : '', j.deals ? `${j.deals} deal${j.deals === 1 ? '' : 's'}` : ''].filter(Boolean).join(' + ');
+    showToast(`✓ Lead reassigned to ${j.owner_name || 'agent'}${moved ? ` — moved ${moved}` : ''}`);
+    if (profile) { loadDeals(profile); loadAllTasks(profile); }
+    loadClientTasks(c.id);
+    loadClientActivities(c.id);
+  }
+
   async function loadClientCampaignSends(clientId: string) {
     const { data } = await supabase
       .from('crm_campaign_sends')
@@ -5235,7 +5256,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
               )}
 
-              <div style={{ marginTop: 'auto', padding: '0 14px 12px' }}>{businessUnit === 'commercial' && <PhoneAlerts token={session?.access_token} tone="dark" />}</div>
+              <div style={{ marginTop: 'auto', padding: '0 14px 12px' }}>{businessUnit === 'commercial' && <PhoneAlerts token={session?.access_token} tone="dark" visitors={isSuperAdmin} />}</div>
 
               {/* Profile + sign out */}
               <div style={{ padding: '14px 14px', borderTop: '1px solid rgba(255,255,255,.07)' }}>
@@ -5440,7 +5461,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                         )}
                       </div>
-                      {businessUnit === 'commercial' && <div style={{ padding: '10px 12px', borderTop: '1px solid var(--k-f0f0f0)' }}><PhoneAlerts token={session?.access_token} /></div>}
+                      {businessUnit === 'commercial' && <div style={{ padding: '10px 12px', borderTop: '1px solid var(--k-f0f0f0)' }}><PhoneAlerts token={session?.access_token} visitors={isSuperAdmin} /></div>}
                       <div style={{ padding: '8px 16px', borderTop: '1px solid var(--k-f0f0f0)', background: 'var(--k-f9fafb)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>Keyboard shortcut: / (search)</span>
                         <button onClick={() => setShowNotifications(false)} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Close</button>
@@ -12321,7 +12342,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* New lead on hold — only the broker sees it until it is assigned or released */}
               {c.lead_hold && isSuperAdmin && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 28px', background: 'var(--k-fffbeb)', borderBottom: '1px solid var(--k-fde68a)', fontSize: 13, color: 'var(--k-92400e)' }}>
-                  <span style={{ flex: 1, minWidth: 200 }}>🔒 <strong>New lead on hold</strong> — only you can see it. Assign it to someone (change the Owner) and it opens up to them, or release it to the team as it is.</span>
+                  <span style={{ flex: 1, minWidth: 200 }}>🔒 <strong>New lead on hold</strong> — only you can see it. Assign it to someone and it opens up to them, or release it to the team as it is.</span>
+                  <select
+                    value=""
+                    onChange={e => reassignContactOwner(c, e.target.value)}
+                    aria-label="Assign this lead to"
+                    style={{ fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--k-fde68a)', background: 'var(--k-fff)', color: 'var(--k-92400e)', maxWidth: 170 }}
+                  >
+                    <option value="">Assign to…</option>
+                    {profiles.filter(p => p.id !== c.agent_id && (!p.business_unit || p.business_unit === c.business_unit)).map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                  </select>
                   <button className="crm-btn" style={{ fontSize: 12, padding: '5px 12px' }} onClick={async () => {
                     const { error } = await supabase.from('crm_clients').update({ lead_hold: false }).eq('id', c.id);
                     if (error) { showToast('Could not release: ' + error.message); return; }
@@ -12548,11 +12578,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
 
                 {/* Website activity — everything this person has done on our sites (first touch, visits,
-                    pages, phone/email taps, downloads, time + scroll), from the first-party tracker. */}
-                <div style={{ marginBottom: 22 }}>
-                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 8 }}>Website activity</div>
-                  <SiteActivity clientId={c.id} authToken={session?.access_token ?? null} compact />
-                </div>
+                    pages, phone/email taps, downloads, time + scroll), from the first-party tracker.
+                    Account owner only (visitor-privacy.ts); the API 403s anyone else. */}
+                {isSuperAdmin && (
+                  <div style={{ marginBottom: 22 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 8 }}>Website activity</div>
+                    <SiteActivity clientId={c.id} authToken={session?.access_token ?? null} compact />
+                  </div>
+                )}
 
                 {/* Documents — leases and forms tied to this person, whether they were
                     filed on the contact or on one of their deals. */}
@@ -13431,7 +13464,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {/* Meta */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingTop: 4, borderTop: '1px solid var(--k-f0f0f0)', fontSize: 12, color: 'var(--k-9ca3af)', flexWrap: 'wrap' }}>
                   <span>📅 Added {c.created_at?.slice(0, 10)}</span>
-                  <span>👤 Owner: {ownerName}</span>
+                  {isAdmin ? (
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      👤 Owner:
+                      <select
+                        value={c.agent_id ?? ''}
+                        onChange={e => reassignContactOwner(c, e.target.value)}
+                        title="Reassign this lead — its open call tasks and Prospect deal move with it"
+                        style={{ fontSize: 12, fontWeight: 600, padding: '3px 6px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', maxWidth: 170 }}
+                      >
+                        {!ownerProfile && <option value={c.agent_id ?? ''}>{ownerName}</option>}
+                        {profiles.filter(p => !p.business_unit || p.business_unit === c.business_unit).map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <span>👤 Owner: {ownerName}</span>
+                  )}
                   {c.lead_source && (
                     <span>📌 <span style={{ background: 'var(--k-eff6ff)', color: 'var(--k-1d4ed8)', padding: '1px 7px', borderRadius: 8, fontWeight: 600, fontSize: 11 }}>{c.lead_source}</span></span>
                   )}

@@ -2,6 +2,7 @@ import webpush from 'web-push';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { adminClient } from '@/lib/supabase-admin';
 import { PUSH_CATEGORIES, type PushCategory } from '@/lib/push-categories';
+import { canSeeVisitorActivity } from '@/lib/visitor-privacy';
 
 /**
  * Phone alerts (web push) for CRM agents — the bell, but it reaches you when the CRM is closed.
@@ -59,10 +60,16 @@ export async function sendPushToProfiles(
   const out = { sent: 0, devices: 0 };
   try {
     if (p.businessUnit && p.businessUnit !== PUSH_BUSINESS_UNIT) return out;
-    const ids = [...new Set(profileIds.filter((x): x is string => !!x))];
+    let ids = [...new Set(profileIds.filter((x): x is string => !!x))];
     if (!pushConfigured() || !ids.length) return out;
     setup();
     const db = opts.db ?? adminClient();
+    // Site-visit pings are for the account owner only, whoever the caller listed (see visitor-privacy.ts).
+    if (p.category === 'visitors') {
+      const { data: roles } = await db.from('crm_profiles').select('id, role').in('id', ids);
+      ids = (roles ?? []).filter(r => canSeeVisitorActivity(r.role as string)).map(r => r.id as string);
+      if (!ids.length) return out;
+    }
     let q = db.from('crm_push_subscriptions').select('id, endpoint, p256dh, auth').in('profile_id', ids);
     if (!opts.ignoreCategory) q = q.contains('categories', [p.category]);
     const { data: subs } = await q;

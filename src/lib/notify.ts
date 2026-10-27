@@ -11,7 +11,7 @@ import { sendPushToProfiles } from '@/lib/push';
  */
 export async function notifyAssignment(
   db: SupabaseClient,
-  opts: { recipientId: string | null | undefined; senderId: string; message: string; entityType: 'calls' | 'task'; entityId?: string | null },
+  opts: { recipientId: string | null | undefined; senderId: string; message: string; entityType: 'calls' | 'task' | 'contact'; entityId?: string | null },
 ): Promise<void> {
   try {
     if (!opts.recipientId || opts.recipientId === opts.senderId) return;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, hiddenDealIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { canSeeVisitorActivity, isVisitorNote } from '@/lib/visitor-privacy';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getCrmContext(req);
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const events: { id: string; type: string; label: string; detail?: string; date: string; agent?: string }[] = [];
 
   for (const a of (activity.data ?? [])) {
+    if (!canSeeVisitorActivity(ctx.role) && isVisitorNote(a.notes)) continue; // "🔔 Website: …" breadcrumbs are the owner's
     const agent = (a.agent as any);
     events.push({ id: a.id, type: a.type, label: a.type.charAt(0).toUpperCase()+a.type.slice(1), detail: a.notes, date: a.created_at, agent: agent ? `${agent.first_name} ${agent.last_name}` : undefined });
   }

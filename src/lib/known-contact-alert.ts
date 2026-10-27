@@ -24,6 +24,7 @@ import { sendMonitored } from '@/lib/integration-alert';
 import { sendPushToProfiles } from '@/lib/push';
 import { prettyPhone } from '@/lib/phone';
 import { isBusinessOpen } from '@/lib/talkroute';
+import { canSeeVisitorActivity } from '@/lib/visitor-privacy';
 
 export interface TrackedEvent { type: string; label?: string | null; path?: string | null; value?: number | null }
 
@@ -99,12 +100,13 @@ export async function alertKnownContact(
       return { sent: false, reason: 'after hours' };
     }
 
-    // Owner + backup(s); fall back to the account owner so an alert is never dropped for lack of an owner.
+    // Owner + backup(s), but only people allowed to see site visits (the account owner); a contact owned by
+    // anyone else falls to the account owner, so an alert is never dropped for lack of a permitted recipient.
     const { data: profiles } = await db.from('crm_profiles').select('id, email, first_name, role');
     const byId = new Map((profiles ?? []).map(p => [p.id as string, p]));
     const ids = [k.agent_id, ...((k.assigned_agent_ids ?? []) as string[])].filter(Boolean) as string[];
-    let recips = [...new Set(ids)].map(id => byId.get(id)).filter(Boolean) as { id: string; email: string; first_name: string | null; role: string }[];
-    if (!recips.length) recips = (profiles ?? []).filter(p => p.role === 'super_admin') as typeof recips;
+    let recips = [...new Set(ids)].map(id => byId.get(id)).filter(p => p && canSeeVisitorActivity(p.role as string)) as { id: string; email: string; first_name: string | null; role: string }[];
+    if (!recips.length) recips = (profiles ?? []).filter(p => canSeeVisitorActivity(p.role as string)) as typeof recips;
     const to = opts.testTo ? [opts.testTo] : [...new Set(recips.map(p => ALERT_INBOX[p.email.toLowerCase()] ?? p.email).filter(Boolean))].slice(0, 3);
     if (!to.length) return { sent: false, reason: 'no recipient' };
 
@@ -186,7 +188,7 @@ export async function sendKnownContactMorningSummary(
   const cById = new Map((clients ?? []).map(c => [c.id as string, c]));
   const { data: profiles } = await db.from('crm_profiles').select('id, email, first_name, role');
   const pById = new Map((profiles ?? []).map(p => [p.id as string, p]));
-  const supers = (profiles ?? []).filter(p => p.role === 'super_admin');
+  const supers = (profiles ?? []).filter(p => canSeeVisitorActivity(p.role as string));
 
   // Group the overnight activity per contact, then per recipient inbox.
   type Item = { kind: string; label: string; at: string };
@@ -200,7 +202,7 @@ export async function sendKnownContactMorningSummary(
   for (const [cid] of perClient) {
     const c = cById.get(cid); if (!c) continue;
     const ids = [c.agent_id, ...((c.assigned_agent_ids ?? []) as string[])].filter(Boolean) as string[];
-    let owners = [...new Set(ids)].map(id => pById.get(id)).filter(Boolean) as { email: string }[];
+    let owners = [...new Set(ids)].map(id => pById.get(id)).filter(p => p && canSeeVisitorActivity(p.role as string)) as { email: string }[];
     if (!owners.length) owners = supers as { email: string }[];
     for (const o of owners.slice(0, 3)) {
       const inbox = opts.testTo ?? (ALERT_INBOX[o.email.toLowerCase()] ?? o.email);
