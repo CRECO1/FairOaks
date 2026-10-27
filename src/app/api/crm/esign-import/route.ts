@@ -178,8 +178,12 @@ export async function PUT(req: NextRequest) {
 // The imported documents an agent still has in hand, newest first, each with the
 // envelope (if any) so the UI can show sent / signed rather than offering a resend.
 export async function GET(req: NextRequest) {
+  // Step timings → Server-Timing header (this list was the slowest call on the E-Sign page even when warm).
+  const t0 = Date.now(); const marks: Record<string, number> = {};
+  const mark = (k: string, since: number) => { marks[k] = Date.now() - since; };
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  mark('auth', t0);
   const supabase = adminClient();
   // Imports only — a PDF dropped on E-Sign, or a library form copied into one by
   // the "send a saved form" path above, both of which carry `form_id` null.
@@ -201,10 +205,11 @@ export async function GET(req: NextRequest) {
   const { data: rawData, error } = await q;
   if (error) { console.error('[esign-import] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
   // ...and so do imports filed on a Restricted property the caller isn't on.
-  const listingOk = new Map<string, boolean>();
-  for (const lid of new Set((rawData ?? []).map(s => s.listing_id).filter(Boolean) as string[])) {
-    listingOk.set(lid, !!(await assertCanAccessListing(lid, ctx)));
-  }
+  // Checked in parallel — one await per property, back to back, made this the slowest call on the page.
+  const tAccess = Date.now();
+  const listingIds = [...new Set((rawData ?? []).map(s => s.listing_id).filter(Boolean) as string[])];
+  const listingOk = new Map<string, boolean>(await Promise.all(listingIds.map(async lid => [lid, !!(await assertCanAccessListing(lid, ctx))] as const)));
+  mark('access', tAccess);
   const data = (rawData ?? []).filter(s => !s.listing_id || listingOk.get(s.listing_id));
 
   const ids = (data ?? []).map(s => s.id);
@@ -214,15 +219,22 @@ export async function GET(req: NextRequest) {
       .select('id, submission_id, status, created_at').in('submission_id', ids).order('created_at', { ascending: false });
     for (const e of envs ?? []) if (e.submission_id && !envBySub.has(e.submission_id)) envBySub.set(e.submission_id, { id: e.id, status: e.status, created_at: e.created_at });
   }
-  const documents = await Promise.all((data ?? []).map(async s => {
-    let url: string | null = null;
-    if (s.filled_path) {
-      const { data: sg } = await supabase.storage.from(BUCKET).createSignedUrl(s.filled_path, 3600);
-      url = sg?.signedUrl ?? null;
-    }
-    return { ...s, url, envelope: envBySub.get(s.id) ?? null };
-  }));
-  return NextResponse.json({ documents });
+  // One storage call for every preview link (was one per document, up to 50). A failure leaves the links null, as before.
+  const tSign = Date.now();
+  const paths = [...new Set((data ?? []).map(s => s.filled_path).filter((x): x is string => !!x))];
+  const urlByPath = new Map<string, string>();
+  if (paths.length) {
+    try {
+      const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 3600);
+      for (const sg of signed ?? []) if (sg.path && sg.signedUrl) urlByPath.set(sg.path, sg.signedUrl);
+    } catch (err) { console.error('[esign-import] signed urls', err); }
+  }
+  mark('sign', tSign);
+  const documents = (data ?? []).map(s => ({ ...s, url: s.filled_path ? urlByPath.get(s.filled_path) ?? null : null, envelope: envBySub.get(s.id) ?? null }));
+  mark('total', t0);
+  const res = NextResponse.json({ documents });
+  res.headers.set('Server-Timing', Object.entries(marks).map(([k, v]) => `${k};dur=${v}`).join(', '));
+  return res;
 }
 
 export async function DELETE(req: NextRequest) {
