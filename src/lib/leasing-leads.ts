@@ -60,8 +60,9 @@ export async function syncLeasingLeads(db: SupabaseClient, listingId: string, vi
     }
   }
 
-  // 3. Deals at the property.
-  const { data: deals } = await db.from('crm_deals').select('id, client_id, stage, created_at, last_touch').eq('listing_id', listingId);
+  // 3. Deals at the property. Private deals (the broker's alone) never feed this report: it writes shared Rent Roll rows
+  //    that every agent on the property can read, which would publish the deal's contact.
+  const { data: deals } = await db.from('crm_deals').select('id, client_id, stage, created_at, last_touch').eq('listing_id', listingId).eq('is_restricted', false);
   for (const d of deals ?? []) if (d.client_id) leads.push({ clientId: d.client_id, source: 'Deal', at: d.last_touch ?? d.created_at, label: `deal (${d.stage})`, dealId: d.id, stage: d.stage });
 
   if (!leads.length) return { added: 0, advanced: 0, planned };
