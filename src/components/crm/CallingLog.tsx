@@ -515,9 +515,11 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
 
       {/* ── Filters ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={mob ? { display: 'flex', gap: 8, width: '100%', overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 2, scrollbarWidth: 'none' as const } : { display: 'contents' }}>
         {([['all', 'All'], ['follow_up', '🔔 Needs call back'], ['wrapup', '📝 Needs a note'], ['bot', '🤖 Bot'], ['voicemail', '📼 Voicemail'], ['missed', 'Missed'], ['newcaller', `➕ Not in contacts${(filter === 'all' || filter === 'newcaller') && newCallers.length ? ` (${newCallers.length})` : ''}`], ['texts', '💬 Texts']] as const).map(([k, t]) => (
-          <button key={k} onClick={() => setFilter(k)} style={{ ...mini, minHeight: 32, padding: '6px 11px', background: filter === k ? '#111' : 'var(--k-fff)', color: filter === k ? '#fff' : 'var(--k-374151)', borderColor: filter === k ? '#111' : 'var(--k-e5e7eb)' }}>{t}</button>
+          <button key={k} onClick={() => setFilter(k)} style={{ ...mini, flexShrink: 0, whiteSpace: 'nowrap', minHeight: 32, padding: '6px 11px', background: filter === k ? '#111' : 'var(--k-fff)', color: filter === k ? '#fff' : 'var(--k-374151)', borderColor: filter === k ? '#111' : 'var(--k-e5e7eb)' }}>{t}</button>
         ))}
+        </div>
         <input value={qLive} onChange={e => setQLive(e.target.value)} placeholder="Search name, number, what they wanted…" style={{ ...input, flex: '1 1 200px', width: 'auto', minHeight: 32, padding: '6px 10px' }} />
         {(internalHidden > 0 || showInternal) && <button onClick={() => setShowInternal(v => !v)} title="Calls between our own lines, the team's phones and the phones Talkroute forwards to" style={{ ...mini, minHeight: 32, padding: '6px 11px', background: showInternal ? '#111' : 'var(--k-fff)', color: showInternal ? '#fff' : 'var(--k-6b7280)', borderColor: showInternal ? '#111' : 'var(--k-e5e7eb)' }}>👥 {showInternal ? 'Hiding none' : `Internal hidden (${internalHidden})`}</button>}
         <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ ...input, width: 'auto', minHeight: 32, padding: '6px 8px', fontSize: 12.5 }}>

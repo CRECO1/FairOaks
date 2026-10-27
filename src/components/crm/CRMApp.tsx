@@ -12520,6 +12520,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 return null;
               })()}
 
+              {/* Quick actions — call / text / email / task, always in reach under the name (the first thing wanted on a phone) */}
+              {(() => {
+                const ph = (c.cell_phone || c.phone || '').trim();
+                const base: React.CSSProperties = { flex: 1, minWidth: 0, minHeight: isMobile ? 48 : 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 14, fontWeight: 700, textDecoration: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: '0 8px', whiteSpace: 'nowrap' };
+                const off: React.CSSProperties = { opacity: 0.38, pointerEvents: 'none' };
+                return (
+                  <div style={{ display: 'flex', gap: 8, padding: isMobile ? '10px 14px' : '10px 28px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-f0f0f0)' }}>
+                    <a href={ph ? `tel:${ph}` : undefined} aria-label={ph ? `Call ${phoneDisp(ph)}` : 'No phone on file'} style={{ ...base, ...(ph ? { background: '#c9922c', borderColor: '#c9922c', color: '#fff' } : off) }}>📞 Call</a>
+                    {isMobile && <a href={ph ? `sms:${ph}` : undefined} aria-label="Text" style={{ ...base, ...(ph ? {} : off) }}>💬 Text</a>}
+                    <a href={c.email ? `mailto:${c.email}` : undefined} aria-label={c.email ? `Email ${c.email}` : 'No email on file'} style={{ ...base, ...(c.email ? {} : off) }}>✉ Email</a>
+                    <button onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }} aria-label="Add a task" style={base}>✓ Task</button>
+                  </div>
+                );
+              })()}
+
               <div className="modal-body" style={{ padding: isMobile ? '20px 18px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
                 {/* Contact Info */}
                 <div>
