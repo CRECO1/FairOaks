@@ -467,21 +467,6 @@ const STAGE_COLORS: Record<string, { bg: string; border: string; dot: string }> 
   'Lost':        { bg: 'var(--k-fef2f2)', border: 'var(--k-fecaca)', dot: '#ef4444' },
 };
 
-// How long an OPEN deal has been quiet. Shown on the card once it passes a week; amber past two — the same
-// two-week line the Dashboard uses for "stalled".
-function quietChip(deal: Deal): React.ReactNode {
-  if (!['Prospect', 'Active', 'LOI', 'In Contract'].includes(deal.stage) || !deal.last_touch) return null;
-  const days = Math.floor((Date.now() - new Date(deal.last_touch).getTime()) / 86400000);
-  if (!Number.isFinite(days) || days < 8) return null;
-  const hot = days >= 14;
-  return (
-    <span title={`No activity on this deal for ${days} days`}
-      style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 6, background: hot ? 'var(--k-fff7ed)' : 'var(--k-f1f5f9)', color: hot ? 'var(--k-b45309)' : 'var(--k-64748b)', whiteSpace: 'nowrap' }}>
-      ⏱ {days}d quiet
-    </span>
-  );
-}
-
 function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, setDraggedDealId, setDragOverStage, handleDrop, openDeal, isMobile, onAddDeal }: {
   deals: Deal[]; isAdmin: boolean; agentName: (id: string) => string;
   draggedDealId: string | null; dragOverStage: string | null;
@@ -519,7 +504,6 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                       {deal.earned_commission != null && deal.earned_commission > 0 && (
                         <span style={{ fontSize: 11, color: 'var(--k-16a34a)', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
                       )}
-                      {quietChip(deal)}
                       {isAdmin && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: 'auto' }}>👤 {agentName(deal.agent_id)}</span>}
                     </div>
                   </div>
@@ -619,7 +603,6 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                     {deal.earned_commission != null && deal.earned_commission > 0 && (
                       <span style={{ fontSize: 11, color: 'var(--k-16a34a)', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
                     )}
-                    {quietChip(deal)}
                   </div>
                   {(deal.tags ?? []).length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
