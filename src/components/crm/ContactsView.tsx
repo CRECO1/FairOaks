@@ -218,7 +218,7 @@ export default function ContactsView(p: ContactsViewProps) {
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: isMobile ? 10 : 12 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: '1 1 320px', minWidth: 0 }}>
-            <input type="search" aria-label="Search contacts" placeholder="Search name, company, email, phone or tag…" value={p.search} onChange={e => p.setSearch(e.target.value)}
+            <input type="search" aria-label="Search contacts" placeholder={isMobile ? 'Search contacts…' : 'Search name, company, email, phone or tag…'} value={p.search} onChange={e => p.setSearch(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', padding: '9px 40px 9px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: isMobile ? 16 : 14, minHeight: isMobile ? 44 : undefined, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)' }} />
             {p.search && <button onClick={() => p.setSearch('')} aria-label="Clear search" style={{ position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)', width: 40, height: 40, border: 'none', background: 'transparent', color: 'var(--k-9ca3af)', fontSize: 18, cursor: 'pointer' }}>×</button>}
           </div>
