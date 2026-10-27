@@ -10603,6 +10603,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   businessUnit={businessUnit}
                   onToast={showToast}
                   currentUserId={profile?.id}
+                  authToken={session?.access_token}
+                  isMobile={isMobile}
                 />
               )}
               {propertiesTab === 'floorplan' && (

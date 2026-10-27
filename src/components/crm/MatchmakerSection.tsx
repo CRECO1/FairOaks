@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
+import { usePropertyShortlist } from '@/lib/use-property-shortlist';
+import { summarizeProperties, type FilterableProperty } from '@/lib/property-filters';
+import StarButton from '@/components/crm/StarButton';
 
 const SHOW = 60;   // rendered at once; the heading always reports the true total
 const ASSET_TYPES = ['Retail', 'Office', 'Industrial', 'Flex', 'Land', 'Medical', 'Mixed-Use'];
@@ -18,14 +21,15 @@ interface Prop {
   id: string; name: string | null; address: string | null; city: string | null; submarket: string | null;
   asset_type: string | null; size_sf: number | null; sale_price: number | null; asking_rate: string | number | null;
   transaction_status: string | null; listing_url: string | null; listing_agent_name: string | null; listing_agent_phone: string | null;
+  listing_type: string | null;
 }
 
 const num = (v: string) => { const n = Number(v.replace(/[^0-9.]/g, '')); return v.trim() === '' ? null : (Number.isFinite(n) ? n : null); };
 const fmt$ = (n?: number | null) => (n && n > 0 ? '$' + Number(n).toLocaleString() : '');
 const fmtSf = (n?: number | null) => (n ? Number(n).toLocaleString() + ' SF' : '');
 
-export default function MatchmakerSection({ businessUnit, onToast, currentUserId }: {
-  businessUnit: string; onToast: (m: string) => void; currentUserId?: string;
+export default function MatchmakerSection({ businessUnit, onToast, currentUserId, authToken, isMobile = false }: {
+  businessUnit: string; onToast: (m: string) => void; currentUserId?: string; authToken?: string; isMobile?: boolean;
 }) {
   const supabase = useMemo(() => createBrowserClient(), []);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
@@ -35,6 +39,11 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   const [sel, setSel] = useState<Buyer | null>(null);
   const [busy, setBusy] = useState(false);
   const [called, setCalled] = useState<Set<string>>(new Set());
+  const { shortlist, toggleStar } = usePropertyShortlist(authToken, onToast);
+  // Lease or sale: most tenants want a rate, most buyers a price, and the two never mix.
+  const [listing, setListing] = useState<'' | 'lease' | 'sale'>('');
+  // Who the left-hand list shows. The list is mostly investor LLCs; tenants are what you usually match.
+  const [who, setWho] = useState<'' | 'Tenant' | 'Buyer' | 'Landlord/Investor' | 'criteria'>('');
   // editable requirements for the selected buyer
   const [req, setReq] = useState({ assetTypes: [] as string[], sizeMin: '', sizeMax: '', priceMin: '', priceMax: '', submarkets: [] as string[] });
 
@@ -47,7 +56,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
       .eq('business_unit', businessUnit).in('type', ['Buyer', 'Tenant', 'Landlord/Investor']).order('first_name');
     for (let from = 0; ; from += PAGE) {
       const { data } = await supabase.from('crm_prospective_properties')
-        .select('id,name,address,city,submarket,asset_type,size_sf,sale_price,asking_rate,transaction_status,listing_url,listing_agent_name,listing_agent_phone')
+        .select('id,name,address,city,submarket,asset_type,size_sf,sale_price,asking_rate,transaction_status,listing_url,listing_agent_name,listing_agent_phone,listing_type')
         .eq('business_unit', businessUnit).order('id').range(from, from + PAGE - 1);
       allProps.push(...((data ?? []) as Prop[]));
       if (!data || data.length < PAGE) break;
@@ -63,7 +72,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     () => Array.from(new Set(props.map(p => p.submarket).filter(Boolean) as string[])).sort().slice(0, 40),
     [props]);
 
-  const clearReq = () => setReq({ assetTypes: [], sizeMin: '', sizeMax: '', priceMin: '', priceMax: '', submarkets: [] });
+  const clearReq = () => { setReq({ assetTypes: [], sizeMin: '', sizeMax: '', priceMin: '', priceMax: '', submarkets: [] }); setListing(''); };
 
   function pick(b: Buyer) {
     setSel(b); setCalled(new Set());
@@ -94,13 +103,17 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     onToast('Criteria saved ✓');
   }
 
-  const hasCriteria = req.assetTypes.length > 0 || req.sizeMin || req.sizeMax || req.priceMin || req.priceMax || req.submarkets.length > 0;
+  const hasCriteria = req.assetTypes.length > 0 || req.sizeMin || req.sizeMax || req.priceMin || req.priceMax || req.submarkets.length > 0 || listing !== '';
 
   const matches = useMemo(() => {
     if (!hasCriteria) return [];
     const sMin = num(req.sizeMin), sMax = num(req.sizeMax), pMin = num(req.priceMin), pMax = num(req.priceMax);
     const rows = props.filter(p => {
       if (p.transaction_status && !['Available', 'available', ''].includes(p.transaction_status)) return false;
+      if (listing) {
+        const lt = (p.listing_type || '').toLowerCase();
+        if (lt && !(lt.includes(listing) || lt.includes('both'))) return false;
+      }
       if (req.assetTypes.length && p.asset_type && !req.assetTypes.includes(p.asset_type)) return false;
       if (sMin != null && p.size_sf != null && p.size_sf < sMin) return false;
       if (sMax != null && p.size_sf != null && p.size_sf > sMax) return false;
@@ -112,14 +125,27 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     // rank: properties with the most concrete data matched first, then by price
     const score = (p: Prop) => (p.asset_type ? 1 : 0) + (p.size_sf ? 1 : 0) + (p.sale_price ? 1 : 0);
     return rows.sort((a, b) => score(b) - score(a) || (a.sale_price ?? 9e15) - (b.sale_price ?? 9e15));
-  }, [props, req, hasCriteria]);
+  }, [props, req, hasCriteria, listing]);
 
   const buyerName = (b: Buyer) => [b.first_name, b.last_name].filter(Boolean).join(' ') || b.business_name || 'Contact';
 
-  const filteredBuyers = useMemo(() => {
+  const hasSaved = (b: Buyer) => !!(b.asset_types?.length || b.req_size_min || b.req_size_max || b.req_price_min || b.req_price_max || b.req_submarkets?.length);
+  const whoCounts = useMemo(() => ({
+    all: buyers.length,
+    Tenant: buyers.filter(b => b.type === 'Tenant').length,
+    Buyer: buyers.filter(b => b.type === 'Buyer').length,
+    'Landlord/Investor': buyers.filter(b => b.type === 'Landlord/Investor').length,
+    criteria: buyers.filter(hasSaved).length,
+  }), [buyers]);
+  const buyerMatches = useMemo(() => {
     const q = search.toLowerCase();
-    return buyers.filter(b => !q || `${b.first_name ?? ''} ${b.last_name ?? ''} ${b.business_name ?? ''}`.toLowerCase().includes(q)).slice(0, 200);
-  }, [buyers, search]);
+    return buyers
+      .filter(b => (!who || (who === 'criteria' ? hasSaved(b) : b.type === who))
+        && (!q || `${b.first_name ?? ''} ${b.last_name ?? ''} ${b.business_name ?? ''}`.toLowerCase().includes(q)))
+      // people with saved criteria first — they are the ones ready to match
+      .sort((a, b) => Number(hasSaved(b)) - Number(hasSaved(a)));
+  }, [buyers, search, who]);
+  const filteredBuyers = useMemo(() => buyerMatches.slice(0, 200), [buyerMatches]);
 
   async function addCall(p: Prop) {
     if (!sel) return;
@@ -152,11 +178,18 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
         <p style={{ fontSize: 14, color: 'var(--k-6b7280)' }}>Set a buyer/tenant’s criteria → see fitting properties from your database. {loading ? 'Loading…' : `${buyers.length} prospects · ${props.length} properties`}</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 300px) 1fr', gap: 18, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(240px, 300px) 1fr', gap: 18, alignItems: 'start' }}>
         {/* Buyer picker */}
         <div style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 12 }}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search buyers/tenants…" style={{ ...inp, marginBottom: 10 }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 520, overflowY: 'auto' }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search buyers/tenants…" style={{ ...inp, marginBottom: 10, ...(isMobile ? { minHeight: 44, fontSize: 16 } : {}) }} />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+            {([['', 'All', whoCounts.all], ['Tenant', 'Tenants', whoCounts.Tenant], ['Buyer', 'Buyers', whoCounts.Buyer], ['Landlord/Investor', 'Investors', whoCounts['Landlord/Investor']], ['criteria', 'Has criteria', whoCounts.criteria]] as const).map(([k, label, n]) => (
+              <button key={k} onClick={() => setWho(k as typeof who)} aria-pressed={who === k} style={{ ...chip(who === k), minHeight: isMobile ? 40 : undefined }}>
+                {label} <span style={{ opacity: .6, fontWeight: 700 }}>{n.toLocaleString()}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: isMobile ? 280 : 520, overflowY: 'auto' }}>
             {filteredBuyers.map(b => {
               const active = sel?.id === b.id;
               return (
@@ -167,7 +200,13 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                 </button>
               );
             })}
+            {!loading && buyerMatches.length === 0 && <div style={{ padding: 16, fontSize: 13, color: 'var(--k-9ca3af)', textAlign: 'center' }}>No one matches that.</div>}
           </div>
+          {buyerMatches.length > filteredBuyers.length && (
+            <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 8, textAlign: 'center' }}>
+              Showing the first {filteredBuyers.length} of {buyerMatches.length.toLocaleString()} — search or pick a type to narrow.
+            </div>
+          )}
         </div>
 
         {/* Requirements + matches */}
@@ -195,6 +234,11 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                 {sel && <button onClick={saveReq} disabled={busy} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save to ' + buyerName(sel).split(' ')[0]}</button>}
               </div>
             </div>
+            <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>Looking to</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+              <button onClick={() => setListing(l => (l === 'lease' ? '' : 'lease'))} aria-pressed={listing === 'lease'} style={chip(listing === 'lease')}>Lease</button>
+              <button onClick={() => setListing(l => (l === 'sale' ? '' : 'sale'))} aria-pressed={listing === 'sale'} style={chip(listing === 'sale')}>Buy</button>
+            </div>
             <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>Asset types</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
               {ASSET_TYPES.map(t => {
@@ -202,7 +246,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                 return <button key={t} onClick={() => setReq(r => ({ ...r, assetTypes: on ? r.assetTypes.filter(x => x !== t) : [...r.assetTypes, t] }))} style={chip(on)}>{t}</button>;
               })}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 14 }}>
               <div>
                 <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 6 }}>Size (SF)</div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -234,27 +278,52 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
           </div>
 
           {/* Matches */}
-          <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 }}>
-            {hasCriteria
-              ? `${matches.length.toLocaleString()} matching propert${matches.length === 1 ? 'y' : 'ies'}${matches.length > SHOW ? ` · showing the first ${SHOW}` : ''}`
-              : 'Set criteria above to search'}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>
+              {hasCriteria
+                ? `${matches.length.toLocaleString()} matching propert${matches.length === 1 ? 'y' : 'ies'}${matches.length > SHOW ? ` · showing the first ${SHOW}` : ''}`
+                : 'Set criteria above to search'}
+            </div>
+            {hasCriteria && matches.length > 0 && (
+              <button onClick={async () => {
+                const list = matches.slice(0, 25) as unknown as FilterableProperty[];
+                let ok = false;
+                try { await navigator.clipboard.writeText(summarizeProperties(list)); ok = true; } catch { /* blocked */ }
+                onToast(ok ? `Copied ${list.length} — paste into an email or text` : 'Could not copy');
+              }} style={{ minHeight: isMobile ? 44 : 32, padding: '0 14px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                📋 Copy top {Math.min(25, matches.length)}
+              </button>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {matches.slice(0, SHOW).map(p => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '11px 14px' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || p.address || 'Property'}</div>
-                  <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>{[p.asset_type, fmtSf(p.size_sf), fmt$(p.sale_price), p.submarket || p.city].filter(Boolean).join(' · ')}</div>
+            {matches.slice(0, SHOW).map(p => {
+              const rate = p.sale_price ? fmt$(p.sale_price) : (p.asking_rate != null && p.asking_rate !== '' ? (typeof p.asking_rate === 'number' ? `$${p.asking_rate}` : String(p.asking_rate)) : '');
+              const tel = p.listing_agent_phone ? p.listing_agent_phone.replace(/[^\d+]/g, '') : '';
+              return (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: isMobile ? 'wrap' : 'nowrap', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '11px 12px 11px 14px' }}>
+                  <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap' }}>{p.name || p.address || 'Property'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>{[p.asset_type, fmtSf(p.size_sf), rate, p.submarket || p.city].filter(Boolean).join(' · ')}</div>
+                    {(p.listing_agent_name || tel) && (
+                      <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 2 }}>
+                        {p.listing_agent_name}{p.listing_agent_name && tel ? ' · ' : ''}
+                        {tel && <a href={`tel:${tel}`} onClick={e => e.stopPropagation()} style={{ color: 'var(--k-a06a12)', fontWeight: 600, textDecoration: 'none' }}>📞 {p.listing_agent_phone}</a>}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    {p.listing_url && <a href={p.listing_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, color: 'var(--k-6b7280)', textDecoration: 'none', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: isMobile ? '12px 10px' : '5px 9px', flexShrink: 0 }}>View ↗</a>}
+                    {/* Queueing a showing call needs somebody to show it TO. */}
+                    {!sel
+                      ? null
+                      : called.has(p.id)
+                        ? <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-16a34a)', flexShrink: 0 }}>✓ Queued</span>
+                        : <button onClick={() => addCall(p)} style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: isMobile ? '12px 14px' : '6px 12px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>＋ Call</button>}
+                    <StarButton on={shortlist.has(p.id)} onToggle={() => toggleStar(p.id)} size={isMobile ? 44 : 34} />
+                  </div>
                 </div>
-                {p.listing_url && <a href={p.listing_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, color: 'var(--k-6b7280)', textDecoration: 'none', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>View ↗</a>}
-                {/* Queueing a showing call needs somebody to show it TO. */}
-                {!sel
-                  ? null
-                  : called.has(p.id)
-                    ? <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-16a34a)', flexShrink: 0 }}>✓ Queued</span>
-                    : <button onClick={() => addCall(p)} style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '6px 12px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>＋ Call</button>}
-              </div>
-            ))}
+              );
+            })}
             {hasCriteria && matches.length === 0 && (
               <div style={{ textAlign: 'center', padding: 30, color: 'var(--k-9ca3af)', fontSize: 13, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10 }}>No available properties fit these criteria yet.</div>
             )}

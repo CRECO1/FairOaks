@@ -7,6 +7,8 @@ import {
   EMPTY_FILTERS, SIZE_BANDS, loadFilters, saveFilters, matchesFilters, activeFilterCount, panelFilterCount,
   summarizeProperties, brokerPhone, brokerEmail, type PropFilters,
 } from '@/lib/property-filters';
+import { usePropertyShortlist } from '@/lib/use-property-shortlist';
+import StarButton from '@/components/crm/StarButton';
 
 const PropertyMap = dynamic(() => import('./PropertyMap'), {
   ssr: false,
@@ -291,45 +293,8 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
   // Filters are remembered on this device, so the page opens the way it was left.
   useEffect(() => { saveFilters(filters); }, [filters]);
 
-  // ── Shortlist (★) — the agent's own starred properties ─────────────────────────────────────────────
-  // Saved on the server per agent (crm_property_shortlist) so it follows them between desktop and phone.
-  // Until that table exists the API says so and the list is kept on this device instead.
-  const LOCAL_STARS = 'crm:propdb:shortlist:v1';
-  const [shortlist, setShortlist] = useState<Set<string>>(() => new Set());
-  const [shortlistMode, setShortlistMode] = useState<'loading' | 'server' | 'local'>('loading');
-  useEffect(() => {
-    if (!authToken) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await fetch('/api/crm/property-shortlist', { headers: headersRef.current });
-        const j = await r.json();
-        if (cancelled) return;
-        if (r.ok && !j.setup_needed) { setShortlist(new Set<string>(j.ids ?? [])); setShortlistMode('server'); return; }
-      } catch { /* fall through to this device's list */ }
-      if (cancelled) return;
-      try { setShortlist(new Set<string>(JSON.parse(localStorage.getItem(LOCAL_STARS) || '[]'))); } catch { /* none yet */ }
-      setShortlistMode('local');
-    })();
-    return () => { cancelled = true; };
-  }, [authToken]);
-  useEffect(() => {
-    if (shortlistMode !== 'local') return;
-    try { localStorage.setItem(LOCAL_STARS, JSON.stringify([...shortlist])); } catch { /* storage blocked */ }
-  }, [shortlist, shortlistMode]);
-  const setStars = useCallback(async (ids: string[], on: boolean) => {
-    const before = shortlist;
-    setShortlist(prev => { const n = new Set(prev); ids.forEach(i => (on ? n.add(i) : n.delete(i))); return n; });
-    if (shortlistMode !== 'server') return;
-    try {
-      const r = await fetch('/api/crm/property-shortlist', { method: 'POST', headers: { ...headersRef.current, 'Content-Type': 'application/json' }, body: JSON.stringify({ property_ids: ids, on }) });
-      if (!r.ok) throw new Error();
-    } catch {
-      setShortlist(before);
-      onToastRef.current('Could not update your shortlist — try again.');
-    }
-  }, [shortlist, shortlistMode]);
-  const toggleStar = useCallback((id: string) => { void setStars([id], !shortlist.has(id)); }, [setStars, shortlist]);
+  // ── Shortlist (★) — the agent's own starred properties (shared with the Matchmaker tab) ───────────
+  const { shortlist, setStars, toggleStar } = usePropertyShortlist(authToken, onToast);
 
   // Chips: types by how many properties each has, with a count that already honours the OTHER filters.
   const assetTypes = useMemo(() => {
@@ -838,22 +803,6 @@ async function copyToClipboard(text: string): Promise<boolean> {
     document.body.removeChild(ta);
     return ok;
   } catch { return false; }
-}
-
-/** ★ / ☆ shortlist toggle. 44px on a phone; never triggers the row/card underneath it. */
-function StarButton({ on, onToggle, size = 32, floating = false }: { on: boolean; onToggle: () => void; size?: number; floating?: boolean }) {
-  return (
-    <button type="button" onClick={e => { e.stopPropagation(); onToggle(); }} aria-pressed={on}
-      aria-label={on ? 'Remove from shortlist' : 'Add to shortlist'} title={on ? 'On your shortlist — click to remove' : 'Add to your shortlist'}
-      style={{
-        width: size, height: size, flexShrink: 0, border: floating ? '1px solid rgba(0,0,0,.06)' : 'none', borderRadius: floating ? '50%' : 8,
-        background: on ? 'var(--k-fdf0d5)' : floating ? 'rgba(255,255,255,.92)' : 'transparent',
-        color: on ? '#c9922c' : floating ? '#6b7280' : '#c4c9d0', fontSize: size >= 40 ? 22 : 18, lineHeight: 1, cursor: 'pointer',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-      }}>
-      {on ? '★' : '☆'}
-    </button>
-  );
 }
 
 const SOURCE_CHOICES: [PropFilters['source'], string][] = [['broker', 'Broker / Calls'], ['loopnet', 'LoopNet'], ['crexi', 'Crexi']];
