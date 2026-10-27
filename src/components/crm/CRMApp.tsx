@@ -12541,8 +12541,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 10 }}>
                     {c.type === 'Tenant' ? '🔑 Tenant Details' : c.type === 'Buyer' ? '🏡 Buyer Details' : c.type === 'Seller' ? '🪧 Seller Details' : c.type === 'Landlord/Investor' ? '🏢 Landlord Details' : c.type === 'Agent' || c.type === 'Broker' ? '🤝 Agent Details' : 'Contact Information'}
                   </div>
+                  {isMobile && (() => {
+                    const missing = [!c.email && 'Email', !c.phone && 'Phone', !c.cell_phone && 'Cell', (c.type === 'Agent' || c.type === 'Broker') && !c.brokerage && 'Brokerage', (c.type === 'Agent' || c.type === 'Broker') && !c.license && 'License #'].filter(Boolean) as string[];
+                    return missing.length ? <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span>Not on file: {missing.join(' · ')}</span><button onClick={() => openEditClient(c)} style={{ background: 'none', border: 'none', color: '#c9922c', fontSize: 12, fontWeight: 700, padding: '10px 4px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Add</button></div> : null;
+                  })()}
                   <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px', gridColumn: (c.extra_emails?.length > 0) ? '1/-1' : undefined }}>
+                    {(!isMobile || c.email) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px', gridColumn: (c.extra_emails?.length > 0) ? '1/-1' : undefined }}>
                       <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 6 }}>
                         Email{(c.extra_emails?.length ?? 0) > 0 ? 's' : ''}
                       </div>
@@ -12557,19 +12561,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           ) : null)}
                         </div>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
-                    </div>
-                    <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px' }}>
+                    </div>}
+                    {(!isMobile || c.phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px' }}>
                       <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Phone</div>
                       {c.phone ? (
                         <a href={`tel:${c.phone}`} style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)', textDecoration: 'none' }}>{phoneDisp(c.phone)}</a>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
-                    </div>
-                    <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px' }}>
+                    </div>}
+                    {(!isMobile || c.cell_phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px' }}>
                       <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Cell Phone</div>
                       {c.cell_phone ? (
                         <a href={`tel:${c.cell_phone}`} style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)', textDecoration: 'none' }}>{phoneDisp(c.cell_phone)}</a>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
-                    </div>
+                    </div>}
                     {(c.address || c.city || c.state || c.zip) && (
                       <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px', gridColumn: '1/-1' }}>
                         <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Address</div>
@@ -12579,13 +12583,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
                       </div>
                     )}
-                    {(c.brokerage || c.type === 'Agent' || c.type === 'Broker') && (
+                    {(c.brokerage || (!isMobile && (c.type === 'Agent' || c.type === 'Broker'))) && (
                       <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px' }}>
                         <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Brokerage</div>
                         <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)' }}>{c.brokerage || <span style={{ color: '#d1d5db' }}>Not provided</span>}</div>
                       </div>
                     )}
-                    {(c.license || c.type === 'Agent' || c.type === 'Broker') && (
+                    {(c.license || (!isMobile && (c.type === 'Agent' || c.type === 'Broker'))) && (
                       <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px' }}>
                         <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>License #</div>
                         <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)' }}>{c.license || <span style={{ color: '#d1d5db' }}>Not provided</span>}</div>
@@ -12646,7 +12650,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                         </div>
                       );
-                    })() : (
+                    })() : isMobile ? null : (
                       <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px', border: '1px dashed var(--k-e5e7eb)' }}>
                         <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>🎂 Birthday</div>
                         <span style={{ fontSize: 13, color: '#d1d5db' }}>Not set — <button onClick={() => openEditClient(c)} style={{ background: 'none', border: 'none', color: '#c9922c', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: 0, fontFamily: "'DM Sans',sans-serif" }}>Add date</button></span>
