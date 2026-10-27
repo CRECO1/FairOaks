@@ -977,6 +977,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Calendar state
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  // Calendar overlay: your own open tasks and your contacts' lease expirations, next to the Google events.
+  const [calShowTasks, setCalShowTasks] = useState(true);
+  const [calShowLeases, setCalShowLeases] = useState(true);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarFilter] = useState<'week' | 'month' | 'all'>('month');
   const [calendarScopeError, setCalendarScopeError] = useState(false);
@@ -6943,6 +6946,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   eventsByDate[key].push(ev);
                 });
 
+                // CRM items on their day: my open tasks due today or later (overdue ones live on the Dashboard) and
+                // lease expirations. Same date-key as the Google events so both land in the same cell.
+                type CrmDay = { id: string; kind: 'task' | 'lease'; title: string; clientId?: string };
+                const crmByDate: Record<string, CrmDay[]> = {};
+                const todayYmd = new Date().toLocaleDateString('en-CA');
+                const pushCrm = (ymd: string, item: CrmDay) => { const key = new Date(`${ymd.slice(0, 10)}T00:00:00`).toDateString(); (crmByDate[key] ??= []).push(item); };
+                if (calShowTasks) {
+                  allTasks.filter(t => t.due_date && t.due_date >= todayYmd && !isListCall(t as never))
+                    .forEach(t => pushCrm(t.due_date, { id: `t:${t.id}`, kind: 'task', title: t.title, clientId: t.client_id }));
+                }
+                if (calShowLeases) {
+                  clients.filter(c => c.lease_expiration_date).forEach(c =>
+                    pushCrm(String(c.lease_expiration_date), { id: `l:${c.id}`, kind: 'lease', title: `Lease ends — ${c.business_name || `${c.first_name} ${c.last_name}`.trim()}`, clientId: c.id }));
+                }
+                const openCrm = (it: CrmDay) => { const c = clients.find(x => x.id === it.clientId); if (c) { setPage('contacts'); setActiveClient(c); } else { setPage('tasks'); setTasksSubTab('tasks'); } };
+                const selectedCrm = calSelectedDate ? (crmByDate[calSelectedDate] ?? []) : [];
                 const selectedEvents = calSelectedDate ? (eventsByDate[calSelectedDate] ?? []) : [];
                 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -6961,6 +6980,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           style={{ padding: '5px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, cursor: 'pointer', background: 'var(--k-fff)', fontSize: 12, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}>Today</button>
                         <button onClick={() => loadCalendarEvents(90)}
                           style={{ padding: '5px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, cursor: 'pointer', background: 'var(--k-fff)', fontSize: 12, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif" }}>↻ Refresh</button>
+                        <div style={{ display: 'flex', gap: 6, width: isMobile ? '100%' : undefined }}>
+                          <button onClick={() => setCalShowTasks(v => !v)} aria-pressed={calShowTasks}
+                            style={{ padding: isMobile ? '9px 12px' : '5px 11px', borderRadius: 16, border: `1px solid ${calShowTasks ? '#c9922c' : 'var(--k-e5e7eb)'}`, background: calShowTasks ? 'var(--k-fdf6e8)' : 'var(--k-fff)', color: calShowTasks ? 'var(--k-a8741a)' : 'var(--k-6b7280)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✓ Tasks</button>
+                          <button onClick={() => setCalShowLeases(v => !v)} aria-pressed={calShowLeases}
+                            style={{ padding: isMobile ? '9px 12px' : '5px 11px', borderRadius: 16, border: `1px solid ${calShowLeases ? '#dc2626' : 'var(--k-e5e7eb)'}`, background: calShowLeases ? 'var(--k-fef2f2)' : 'var(--k-fff)', color: calShowLeases ? 'var(--k-b91c1c)' : 'var(--k-6b7280)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>🏢 Leases</button>
+                        </div>
                       </div>
 
                       {/* Day headers */}
@@ -6984,6 +7009,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           const isToday = dateKey === today.toDateString();
                           const isSelected = dateKey === calSelectedDate;
                           const dayEvents = eventsByDate[dateKey] ?? [];
+                          const dayCrm = crmByDate[dateKey] ?? [];
 
                           return (
                             <div key={dayNum} onClick={() => setCalSelectedDate(dateKey)}
@@ -6998,21 +7024,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               {isMobile ? (
                                 // Phone cells are ~50px wide: "1:00 Showing…" chips were unreadable
                                 // truncations. Show dots (tap the day for the list below).
-                                dayEvents.length > 0 && (
+                                dayEvents.length + dayCrm.length > 0 && (
                                   <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', paddingLeft: 3 }}>
-                                    {dayEvents.slice(0, 3).map(ev => <span key={ev.id} style={{ width: 7, height: 7, borderRadius: '50%', background: '#1a365d' }} />)}
-                                    {dayEvents.length > 3 && <span style={{ fontSize: 10, color: 'var(--k-6b7280)', fontWeight: 700 }}>+{dayEvents.length - 3}</span>}
+                                    {[...dayEvents.map(ev => ({ id: ev.id, c: '#1a365d' })), ...dayCrm.map(i => ({ id: i.id, c: i.kind === 'lease' ? '#dc2626' : '#c9922c' }))].slice(0, 3).map(d => <span key={d.id} style={{ width: 7, height: 7, borderRadius: '50%', background: d.c }} />)}
+                                    {dayEvents.length + dayCrm.length > 3 && <span style={{ fontSize: 10, color: 'var(--k-6b7280)', fontWeight: 700 }}>+{dayEvents.length + dayCrm.length - 3}</span>}
                                   </div>
                                 )
                               ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                {dayEvents.slice(0, isMobile ? 2 : 3).map(ev => (
+                                {dayEvents.slice(0, 3).map(ev => (
                                   <div key={ev.id} style={{ fontSize: 11, background: '#1a365d', color: '#fff', borderRadius: 3, padding: '1px 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {ev.allDay ? '● ' : `${new Date(ev.start!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} `}{ev.title}
                                   </div>
                                 ))}
-                                {dayEvents.length > (isMobile ? 2 : 3) && (
-                                  <div style={{ fontSize: 10, color: 'var(--k-9ca3af)', paddingLeft: 4 }}>+{dayEvents.length - (isMobile ? 2 : 3)} more</div>
+                                {dayCrm.slice(0, Math.max(0, 3 - dayEvents.length)).map(it => (
+                                  <div key={it.id} title={it.title} style={{ fontSize: 11, background: it.kind === 'lease' ? 'var(--k-fef2f2)' : 'var(--k-fdf6e8)', color: it.kind === 'lease' ? 'var(--k-b91c1c)' : 'var(--k-a8741a)', border: `1px solid ${it.kind === 'lease' ? '#fecaca' : '#f0e2c4'}`, borderRadius: 3, padding: '0 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {it.kind === 'lease' ? '🏢 ' : '✓ '}{it.title}
+                                  </div>
+                                ))}
+                                {dayEvents.length + dayCrm.length > 3 && (
+                                  <div style={{ fontSize: 10, color: 'var(--k-9ca3af)', paddingLeft: 4 }}>+{dayEvents.length + dayCrm.length - 3} more</div>
                                 )}
                               </div>
                               )}
@@ -7039,11 +7070,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           })() : 'Select a day'}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>
-                          {selectedEvents.length === 0 ? 'No events' : `${selectedEvents.length} event${selectedEvents.length !== 1 ? 's' : ''}`}
+                          {selectedEvents.length + selectedCrm.length === 0 ? 'No events' : [selectedEvents.length ? `${selectedEvents.length} event${selectedEvents.length !== 1 ? 's' : ''}` : '', selectedCrm.length ? `${selectedCrm.length} task${selectedCrm.length !== 1 ? 's' : ''} & leases` : ''].filter(Boolean).join(' · ')}
                         </div>
                       </div>
                       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {selectedEvents.length === 0 ? (
+                        {selectedEvents.length === 0 && selectedCrm.length === 0 ? (
                           <div style={{ textAlign: 'center', padding: '40px 0', color: '#d1d5db' }}>
                             <div style={{ fontSize: 32, marginBottom: 8 }}>🗓️</div>
                             <div style={{ fontSize: 13 }}>No events this day</div>
@@ -7081,6 +7112,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                           );
                         })}
+                        {selectedCrm.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: selectedEvents.length ? 6 : 0 }}>
+                            <div style={{ fontSize: 10.5, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>Tasks &amp; leases</div>
+                            {selectedCrm.map(it => (
+                              <button key={it.id} onClick={() => openCrm(it)}
+                                style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, background: it.kind === 'lease' ? 'var(--k-fef2f2)' : 'var(--k-fdf6e8)', border: `1px solid ${it.kind === 'lease' ? '#fecaca' : '#f0e2c4'}`, borderRadius: 9, padding: isMobile ? '11px 12px' : '9px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span>{it.kind === 'lease' ? '🏢' : '✓'}</span>
+                                <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: it.kind === 'lease' ? 'var(--k-b91c1c)' : 'var(--k-a8741a)', overflowWrap: 'anywhere' }}>{it.title}</span>
+                                <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', flexShrink: 0 }}>Open ›</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </>
