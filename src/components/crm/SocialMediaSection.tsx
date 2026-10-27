@@ -2827,7 +2827,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
   // ── Main render ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: isMobile ? '16px 12px' : '24px 32px', minHeight: '100vh', background: '#f8f8f8' }}>
+    <div style={{ padding: isMobile ? '16px 12px' : '24px 32px', minHeight: '100vh', background: 'var(--k-f8f8f8)' }}>
       {/* Page header */}
       <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>

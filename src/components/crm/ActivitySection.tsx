@@ -341,7 +341,7 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
                   const auto = autoStats[date] ?? { new_records: 0, tasks_done: 0, tasks_overdue: 0 };
                   const isToday  = date === todayStr;
                   const isEdit   = editing === date;
-                  const rowBg    = isToday ? 'var(--k-fffbeb)' : i % 2 === 0 ? '#fff' : '#fafafa';
+                  const rowBg    = isToday ? 'var(--k-fffbeb)' : i % 2 === 0 ? 'var(--k-fff)' : 'var(--k-fafafa)';
                   const isSaving = saving === date;
 
                   return (
