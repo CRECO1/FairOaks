@@ -1363,6 +1363,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (showSearch) setTimeout(() => searchRef.current?.focus(), 50);
   }, [showSearch]);
 
+  // Phone/tablet section strip: keep the current section scrolled into view when the page changes.
+  useEffect(() => {
+    document.querySelector('.crm-topnav-item[data-active="1"]')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  }, [page]);
+
   // Sync URL hash → page state on browser back/forward
   useEffect(() => {
     const handler = () => {
@@ -4743,6 +4748,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell *::-webkit-scrollbar{width:10px;height:10px;}
         .crm-app-shell *::-webkit-scrollbar-thumb{background:var(--c-line-2);border-radius:99px;border:2px solid transparent;background-clip:padding-box;}
         .crm-app-shell *::-webkit-scrollbar-track{background:transparent;}
+        /* Phone / tablet navigation: a swipeable strip under the header (replaces the old bottom tab bar). */
+        .crm-app-shell .crm-topnav{display:flex;gap:2px;overflow-x:auto;overflow-y:hidden;flex-shrink:0;background:#111;border-bottom:1px solid rgba(201,146,44,.25);padding:0 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;}
+        .crm-app-shell .crm-topnav::-webkit-scrollbar{display:none;}
+        .crm-topnav-item{position:relative;flex:none;display:inline-flex;align-items:center;gap:7px;padding:0 13px;min-height:44px;background:none;border:none;border-bottom:2px solid transparent;color:rgba(255,255,255,.62);font:600 13.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:color .15s,border-color .15s;}
+        .crm-topnav-item:hover{color:#fff;}
+        .crm-topnav-item.on{color:#c9922c;border-bottom-color:#c9922c;}
+        .crm-topnav-badge{min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;}
         @media(prefers-reduced-motion:reduce){.overlay,.modal,.crm-sheet,.crm-sheet-panel,.crm-toast,.sk{animation:none!important;}.crm-app-shell *{transition-duration:.01ms!important;}}
         @media(min-width:1181px){.dk-side{position:sticky;top:0;}}
         .dk-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start;}
@@ -5088,6 +5100,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
         {/* Mobile/tablet top header */}
         {isTabletOrMobile && (
+          <>
           <div style={{ background: '#111', color: '#fff', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid rgba(201,146,44,.25)' }}>
             {/* Hamburger → opens full menu sheet */}
             <button onClick={() => setMobileMenuOpen(true)} aria-label="Open menu"
@@ -5111,6 +5124,40 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🔍</button>
             </div>
           </div>
+          {/* Section strip: the phone/tablet navigation lives up here (like the TORCH app) — one swipeable row,
+              the current page highlighted and scrolled into view. The ☰ above still opens everything else. */}
+          {(() => {
+            const overdueCt = overdueMine(tasks, profile?.id);
+            type Tab = { id: typeof page; label: string; ico: IcoName; on?: boolean; badge?: number; go: () => void };
+            const tabs: Tab[] = [
+              { id: 'dashboard', label: 'Home', ico: 'home', go: () => setPage('dashboard') },
+              { id: 'tasks', label: 'Tasks', ico: 'check', badge: overdueCt, go: () => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); } },
+              { id: 'deals', label: 'Deals', ico: 'deals', go: () => { setPage('deals'); setFilter(''); } },
+              { id: 'contacts', label: 'Contacts', ico: 'users', go: () => { setPage('contacts'); loadClients(); loadSmartLists(); } },
+              { id: 'calendar', label: 'Calendar', ico: 'calendar', go: () => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); } },
+              { id: 'campaigns', label: 'Marketing', ico: 'megaphone', on: ['campaigns', 'action-plans', 'social'].includes(page), go: () => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); } },
+              { id: 'properties', label: 'Properties', ico: 'building', go: () => setPage('properties') },
+              { id: 'calls', label: 'Calls', ico: 'phone', go: () => { setPage('calls'); if (!clients.length) loadClients(); } },
+              { id: 'esign', label: 'E-Sign', ico: 'pen', go: () => setPage('esign') },
+              { id: 'transaction-docs', label: 'Docs', ico: 'file', go: () => setPage('transaction-docs') },
+            ];
+            return (
+              <nav className="crm-tabs-scroll crm-topnav" aria-label="Sections">
+                {tabs.map(t => {
+                  const active = t.on ?? page === t.id;
+                  return (
+                    <button key={t.id} ref={el => { if (el && active) el.dataset.active = '1'; else if (el) delete el.dataset.active; }}
+                      className={`crm-topnav-item${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} onClick={t.go}>
+                      <Ico n={t.ico} size={17} />
+                      <span>{t.label}</span>
+                      {!!t.badge && t.badge > 0 && <span className="crm-topnav-badge">{t.badge > 9 ? '9+' : t.badge}</span>}
+                    </button>
+                  );
+                })}
+              </nav>
+            );
+          })()}
+          </>
         )}
 
         {/* ── Mobile full-screen nav sheet ── */}
@@ -10609,56 +10656,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           )}
 
         </div>
-        {/* ── Mobile bottom tab bar (5 tabs + Menu) ── */}
-        {isMobile && (() => {
-          const overdueCt = overdueMine(tasks, profile?.id);
-          const tabs = [
-            { id: 'dashboard' as typeof page, icon: 'home' as IcoName, label: 'Home' },
-            { id: 'contacts'  as typeof page, icon: 'users' as IcoName, label: 'Contacts' },
-            { id: 'deals'     as typeof page, icon: 'deals' as IcoName, label: 'Deals' },
-            { id: 'tasks'     as typeof page, icon: 'check' as IcoName, label: 'Tasks', badge: overdueCt },
-            { id: 'social'    as typeof page, icon: 'image' as IcoName, label: 'Social' },
-          ];
-          return (
-            <nav style={{ background: '#111', display: 'flex', borderTop: '1px solid rgba(255,255,255,.1)', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
-              {tabs.map(tab => {
-                const active = page === tab.id;
-                return (
-                  <button key={tab.id}
-                    onClick={() => {
-                      setPage(tab.id);
-                      if (tab.id === 'contacts') { loadClients(); loadSmartLists(); }
-                      if (tab.id === 'tasks') { loadTasks(); loadProfiles(); }
-                      if (tab.id === 'deals') setFilter('');
-                    }}
-                    style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '9px 2px 7px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif', position: 'relative", color: active ? '#c9922c' : 'rgba(255,255,255,.5)', transition: 'color .15s' }}>
-                    <div style={{ position: 'relative' }}>
-                      <Ico n={tab.icon} size={23} style={{ display: 'block', strokeWidth: active ? 2 : 1.7 }} />
-                      {(tab as any).badge > 0 && (
-                        <span style={{ position: 'absolute', top: -4, right: -6, width: 14, height: 14, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #111' }}>
-                          {(tab as any).badge > 9 ? '9+' : (tab as any).badge}
-                        </span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: 11, marginTop: 3, fontWeight: active ? 700 : 400, letterSpacing: .2 }}>{tab.label}</span>
-                    {active && <span style={{ position: 'absolute', bottom: 0, left: '20%', right: '20%', height: 2, background: '#c9922c', borderRadius: '2px 2px 0 0' }} />}
-                  </button>
-                );
-              })}
-              {/* Menu button → opens drawer */}
-              <button
-                onClick={() => setMobileMenuOpen(true)}
-                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '9px 2px 7px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: mobileMenuOpen ? '#c9922c' : 'rgba(255,255,255,.5)', transition: 'color .15s' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', justifyContent: 'center', width: 22, height: 22 }}>
-                  <span style={{ display: 'block', width: 18, height: 2, background: 'currentColor', borderRadius: 2 }} />
-                  <span style={{ display: 'block', width: 18, height: 2, background: 'currentColor', borderRadius: 2 }} />
-                  <span style={{ display: 'block', width: 18, height: 2, background: 'currentColor', borderRadius: 2 }} />
-                </div>
-                <span style={{ fontSize: 11, marginTop: 3, fontWeight: 400, letterSpacing: .2 }}>Menu</span>
-              </button>
-            </nav>
-          );
-        })()}
       </div>
 
       {/* ── Deal Modal ── */}
@@ -14518,7 +14515,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* CRECO Copilot — AI CRM assistant */}
       {!assistantOpen && (
         <button onClick={() => setAssistantOpen(true)} title="CRECO Copilot" aria-label="Open CRECO Copilot"
-          className="crm-fab" style={{ position: 'fixed', bottom: isMobile ? 'calc(74px + env(safe-area-inset-bottom))' : 'calc(22px + env(safe-area-inset-bottom))', right: 'calc(18px + env(safe-area-inset-right))', zIndex: 1150, width: isMobile ? 50 : 56, height: isMobile ? 50 : 56, borderRadius: '50%', background: '#1a1a1a', color: '#c9922c', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ico n="sparkle" size={isMobile ? 22 : 24} style={{ fill: 'currentColor', fillOpacity: .18 }} /></button>
+          className="crm-fab" style={{ position: 'fixed', bottom: 'calc(22px + env(safe-area-inset-bottom))', right: 'calc(18px + env(safe-area-inset-right))', zIndex: 1150, width: isMobile ? 50 : 56, height: isMobile ? 50 : 56, borderRadius: '50%', background: '#1a1a1a', color: '#c9922c', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ico n="sparkle" size={isMobile ? 22 : 24} style={{ fill: 'currentColor', fillOpacity: .18 }} /></button>
       )}
       {/* After you tap a phone number anywhere in the CRM and come back: "How did the call go?" */}
       <CallTapPrompt
@@ -14731,8 +14728,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* Toast */}
       {toast && (
         <div className="crm-toast" style={{ position: 'fixed', ...(isMobile
-          // clear the bottom tab bar (~60px) + the home indicator
-          ? { bottom: 'calc(72px + env(safe-area-inset-bottom))', left: 14, right: 14, maxWidth: 'none' }
+          // phones: full-width along the bottom, clear of the home indicator (the nav lives at the top now)
+          ? { bottom: 'calc(20px + env(safe-area-inset-bottom))', left: 14, right: 14, maxWidth: 'none' }
           : { bottom: 26, right: 26, maxWidth: 300 }),
           background: '#111', color: '#fff', padding: '12px 20px', borderRadius: 8, fontSize: 14, zIndex: 9999, borderLeft: '4px solid #c9922c', boxShadow: '0 4px 20px rgba(0,0,0,.3)' }}>
           {toast}
