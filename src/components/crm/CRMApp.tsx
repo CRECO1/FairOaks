@@ -5641,7 +5641,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {snoozeFor === t.id && (
                         <>
                           <div onClick={() => setSnoozeFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />
-                          <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 50, minWidth: 190, background: 'var(--c-surface)', border: '1px solid var(--c-line-2)', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.18)', padding: 6, fontFamily: "'DM Sans',sans-serif" }}>
+                          <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 50, minWidth: 250, background: 'var(--c-surface)', border: '1px solid var(--c-line-2)', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.18)', padding: 6, fontFamily: "'DM Sans',sans-serif" }}>
                             {([
                               ['Tomorrow', 1],
                               ['In 3 days', 3],
@@ -5652,7 +5652,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <span>{label}</span><span style={{ color: 'var(--c-muted)', fontSize: 12 }}>{localDate(addDays(n)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                               </button>
                             ))}
-                            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: isMobile ? '8px 10px' : '6px 10px', fontSize: 13, color: 'var(--c-ink)', borderTop: '1px solid var(--c-line-2)', marginTop: 4 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: isMobile ? '8px 10px' : '6px 10px', fontSize: 13, color: 'var(--c-ink)', borderTop: '1px solid var(--c-line-2)', marginTop: 4, whiteSpace: 'nowrap' }}>
                               Pick a date
                               <input type="date" min={addDays(1)} onChange={e => { if (e.target.value) snoozeTask(t, e.target.value, localDate(e.target.value).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })); }}
                                 style={{ border: '1px solid var(--c-line-2)', borderRadius: 6, padding: '4px 6px', fontSize: 13, fontFamily: 'inherit', background: 'var(--c-surface)', color: 'var(--c-ink)' }} />
