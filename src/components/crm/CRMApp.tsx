@@ -857,6 +857,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callActivities, setCallActivities] = useState<CRMActivity[]>([]);
   const [callActivitiesClientId, setCallActivitiesClientId] = useState<string | null>(null);
   const [callActionInFlight, setCallActionInFlight] = useState(false);
+  // Dashboard task row whose "Later" (snooze) menu is open.
+  const [snoozeFor, setSnoozeFor] = useState<string | null>(null);
   // Undo for the two outcomes that are easy to fat-finger and hard to see again (Not interested / Wrong number).
   const [callUndo, setCallUndo] = useState<{ label: string; next?: string; run: () => Promise<void> } | null>(null);
   useEffect(() => {
@@ -2492,6 +2494,31 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       logActivity(task.client_id, 'note', `✅ Task completed: ${task.title}`);
       if (activeClient?.id === task.client_id) loadClientTasks(task.client_id);
     }
+  }
+
+  // Push a task to a later day from the Dashboard — the due date moves, nothing else changes. A task that is
+  // really a call-back (its date lives on the call log) moves that instead, like the Call Queue's snooze.
+  async function snoozeTask(task: CRMTask, ymd: string, label: string) {
+    setSnoozeFor(null);
+    const prev = task.due_date;
+    const cb = callbackMeta.get(task.id) ?? null;
+    setAllTasks(list => list.map(t => (t.id === task.id ? { ...t, due_date: ymd } : t)));
+    let ok = true;
+    if (cb) {
+      const at = new Date(`${ymd}T09:00:00`);
+      const r = await fetch(`/api/crm/calls?id=${cb.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) }, body: JSON.stringify({ follow_up_due: at.toISOString() }) });
+      ok = r.ok;
+      if (ok) loadCallbacks();
+    } else {
+      const { error } = await supabase.from('crm_tasks').update({ due_date: ymd }).eq('id', task.id);
+      ok = !error;
+    }
+    if (!ok) {
+      setAllTasks(list => list.map(t => (t.id === task.id ? { ...t, due_date: prev } : t)));
+      showToast('Could not move that task');
+      return;
+    }
+    showToast(`😴 Moved to ${label}`);
   }
 
   async function loadClientTasks(clientId: string) {
@@ -5608,6 +5635,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {cname(t.client_id) && <div style={{ fontSize: 11, color: 'var(--c-muted)' }}>{cname(t.client_id)}</div>}
                     </button>
                     {badge}
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <button onClick={() => setSnoozeFor(id => (id === t.id ? null : t.id))} aria-expanded={snoozeFor === t.id} title="Move to a later day"
+                        style={{ background: 'var(--c-surface)', border: '1px solid var(--c-line-2)', borderRadius: 6, padding: isMobile ? '9px 12px' : '3px 9px', minHeight: isMobile ? 40 : undefined, fontSize: isMobile ? 13 : 12, color: 'var(--c-muted)', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Later</button>
+                      {snoozeFor === t.id && (
+                        <>
+                          <div onClick={() => setSnoozeFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />
+                          <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 50, minWidth: 190, background: 'var(--c-surface)', border: '1px solid var(--c-line-2)', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.18)', padding: 6, fontFamily: "'DM Sans',sans-serif" }}>
+                            {([
+                              ['Tomorrow', 1],
+                              ['In 3 days', 3],
+                              ['Next Monday', (8 - new Date().getDay()) % 7 || 7],
+                            ] as const).map(([label, n]) => (
+                              <button key={label} role="menuitem" onClick={() => snoozeTask(t, addDays(n), `${label.toLowerCase().startsWith('in') || label === 'Tomorrow' ? label.toLowerCase() : label} (${localDate(addDays(n)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })})`)}
+                                style={{ display: 'flex', justifyContent: 'space-between', gap: 12, width: '100%', textAlign: 'left', background: 'none', border: 'none', borderRadius: 7, padding: isMobile ? '12px 10px' : '8px 10px', fontSize: 13, color: 'var(--c-ink)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                <span>{label}</span><span style={{ color: 'var(--c-muted)', fontSize: 12 }}>{localDate(addDays(n)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                              </button>
+                            ))}
+                            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: isMobile ? '8px 10px' : '6px 10px', fontSize: 13, color: 'var(--c-ink)', borderTop: '1px solid var(--c-line-2)', marginTop: 4 }}>
+                              Pick a date
+                              <input type="date" min={addDays(1)} onChange={e => { if (e.target.value) snoozeTask(t, e.target.value, localDate(e.target.value).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })); }}
+                                style={{ border: '1px solid var(--c-line-2)', borderRadius: 6, padding: '4px 6px', fontSize: 13, fontFamily: 'inherit', background: 'var(--c-surface)', color: 'var(--c-ink)' }} />
+                            </label>
+                          </div>
+                        </>
+                      )}
+                    </div>
                     <button onClick={() => completeTask(t.id)} title="Mark done" style={{ background: 'var(--c-ok-soft)', border: '1px solid var(--c-ok-line)', borderRadius: 6, padding: isMobile ? '9px 14px' : '3px 10px', minHeight: isMobile ? 40 : undefined, fontSize: isMobile ? 13 : 12, color: 'var(--c-ok-ink)', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>Done ✓</button>
                   </div>
                 );
