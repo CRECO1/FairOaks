@@ -467,6 +467,21 @@ const STAGE_COLORS: Record<string, { bg: string; border: string; dot: string }> 
   'Lost':        { bg: 'var(--k-fef2f2)', border: 'var(--k-fecaca)', dot: '#ef4444' },
 };
 
+// How long an OPEN deal has been quiet. Shown on the card once it passes a week; amber past two — the same
+// two-week line the Dashboard uses for "stalled".
+function quietChip(deal: Deal): React.ReactNode {
+  if (!['Prospect', 'Active', 'LOI', 'In Contract'].includes(deal.stage) || !deal.last_touch) return null;
+  const days = Math.floor((Date.now() - new Date(deal.last_touch).getTime()) / 86400000);
+  if (!Number.isFinite(days) || days < 8) return null;
+  const hot = days >= 14;
+  return (
+    <span title={`No activity on this deal for ${days} days`}
+      style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 6, background: hot ? 'var(--k-fff7ed)' : 'var(--k-f1f5f9)', color: hot ? 'var(--k-b45309)' : 'var(--k-64748b)', whiteSpace: 'nowrap' }}>
+      ⏱ {days}d quiet
+    </span>
+  );
+}
+
 function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, setDraggedDealId, setDragOverStage, handleDrop, openDeal, isMobile, onAddDeal }: {
   deals: Deal[]; isAdmin: boolean; agentName: (id: string) => string;
   draggedDealId: string | null; dragOverStage: string | null;
@@ -504,6 +519,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                       {deal.earned_commission != null && deal.earned_commission > 0 && (
                         <span style={{ fontSize: 11, color: 'var(--k-16a34a)', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
                       )}
+                      {quietChip(deal)}
                       {isAdmin && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: 'auto' }}>👤 {agentName(deal.agent_id)}</span>}
                     </div>
                   </div>
@@ -603,6 +619,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                     {deal.earned_commission != null && deal.earned_commission > 0 && (
                       <span style={{ fontSize: 11, color: 'var(--k-16a34a)', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
                     )}
+                    {quietChip(deal)}
                   </div>
                   {(deal.tags ?? []).length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
@@ -1046,6 +1063,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [contactTypeFilter, setContactTypeFilter] = useState('');
   const [contactTagFilter, setContactTagFilter] = useState('');
   const [dealTagFilter, setDealTagFilter] = useState('');
+  const [dealOwnerFilter, setDealOwnerFilter] = useState('');
   const [contactSourceFilter, setContactSourceFilter] = useState('');
   const [contactSpecFilter, setContactSpecFilter] = useState('');
   const [contactOwnerFilter, setContactOwnerFilter] = useState('');
@@ -4704,6 +4722,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     // contains variants and nobody should have to remember which casing won.
     if (dealTagFilter && !(d.tags ?? []).some(t => t.toLowerCase().includes(dealTagFilter.toLowerCase()))) return false;
     if (search && !d.client.toLowerCase().includes(search.toLowerCase()) && !d.property?.toLowerCase().includes(search.toLowerCase())) return false;
+    if (dealOwnerFilter && d.agent_id !== dealOwnerFilter && !(d.assigned_agent_ids ?? []).includes(dealOwnerFilter)) return false;
     return true;
   });
 
@@ -6292,6 +6311,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {t || 'All'}
                   </button>
                 ))}
+                {(() => {
+                  // Whose deals: appears once more than one person owns deals. "Mine" first.
+                  const n = new Map<string, number>();
+                  deals.forEach(d => { if (d.agent_id) n.set(d.agent_id, (n.get(d.agent_id) ?? 0) + 1); });
+                  if (n.size < 2) return null;
+                  const ids = [...n.keys()].sort((a, b) => (a === profile?.id ? -1 : b === profile?.id ? 1 : agentName(a).localeCompare(agentName(b))));
+                  return (
+                    <>
+                      <span aria-hidden style={{ width: 1, alignSelf: 'stretch', background: 'var(--k-e5e7eb)', margin: '2px 2px' }} />
+                      {ids.map(id => {
+                        const on = dealOwnerFilter === id;
+                        return (
+                          <button key={id} onClick={() => setDealOwnerFilter(on ? '' : id)} aria-pressed={on}
+                            style={{ padding: '5px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', background: on ? '#c9922c' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-6b7280)', borderColor: on ? '#c9922c' : 'var(--k-e5e7eb)', fontFamily: "'DM Sans',sans-serif" }}>
+                            {id === profile?.id ? 'My deals' : agentName(id).split(' ')[0]} <span style={{ opacity: .7, fontWeight: 700 }}>{n.get(id)}</span>
+                          </button>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
                 <input className="crm-input" list="crm-deal-tags" placeholder="🏷  Tag…" value={dealTagFilter} onChange={e => setDealTagFilter(e.target.value)}
                   style={{ width: isMobile ? '100%' : 150, ...(isMobile ? {} : { marginLeft: 'auto' }) }} />
                 <datalist id="crm-deal-tags">{allKnownTags.map(t => <option key={t} value={t} />)}</datalist>
