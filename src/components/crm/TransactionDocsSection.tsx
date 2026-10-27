@@ -184,9 +184,9 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
         {activeDeals.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '10px 0' }}>No active deals yet. Create one to start attaching documents.</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
             {activeDeals.map(d => (
-              <div key={d.id} style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}>
+              <div key={d.id} style={{ minWidth: 0, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}>
                 <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client || 'Deal'}</div>
                 <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[d.property, d.type].filter(Boolean).join(' · ')}</div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>

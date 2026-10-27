@@ -5525,7 +5525,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const cname = (id?: string) => { const c = clients.find(x => x.id === id); return c ? `${c.first_name} ${c.last_name}` : ''; };
                 const tIcon = (t: CRMTask) => <Ico n={t.type === 'call' ? 'phone' : t.type === 'email' ? 'mail' : 'bell'} size={15} />;
                 const openTask = (t: CRMTask) => { const c = clients.find(x => x.id === t.client_id); if (c) { setPage('contacts'); setActiveClient(c); } else { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); } };
-                const allTasksLink = <button onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>All tasks →</button>;
+                const allTasksLink = <button onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); }} style={{ background: 'none', border: 'none', padding: isMobile ? '10px 4px' : undefined, fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>All tasks →</button>;
                 const head = (color: string, label: string, right?: React.ReactNode) => (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 8 }}>
                     <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color, fontWeight: 700 }}>{label}</div>
@@ -5535,12 +5535,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const taskRow = (t: CRMTask, badge: React.ReactNode) => (
                   <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--c-surface-2)', border: '1px solid var(--c-line-2)', borderRadius: 8 }}>
                     <span style={{ display: 'flex', flexShrink: 0, color: 'var(--c-muted)' }}>{tIcon(t)}</span>
-                    <button onClick={() => openTask(t)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'DM Sans',sans-serif" }}>
+                    <button onClick={() => openTask(t)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: isMobile ? '6px 0' : 0, fontFamily: "'DM Sans',sans-serif" }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
                       {cname(t.client_id) && <div style={{ fontSize: 11, color: 'var(--c-muted)' }}>{cname(t.client_id)}</div>}
                     </button>
                     {badge}
-                    <button onClick={() => completeTask(t.id)} title="Mark done" style={{ background: 'var(--c-ok-soft)', border: '1px solid var(--c-ok-line)', borderRadius: 6, padding: '3px 10px', fontSize: 12, color: 'var(--c-ok-ink)', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>Done ✓</button>
+                    <button onClick={() => completeTask(t.id)} title="Mark done" style={{ background: 'var(--c-ok-soft)', border: '1px solid var(--c-ok-line)', borderRadius: 6, padding: isMobile ? '9px 14px' : '3px 10px', minHeight: isMobile ? 40 : undefined, fontSize: isMobile ? 13 : 12, color: 'var(--c-ok-ink)', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>Done ✓</button>
                   </div>
                 );
                 const dealRow = (d: Deal, sub: string, bg: string, bd: string) => (

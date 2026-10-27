@@ -664,7 +664,8 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                       {(c.summary || c.transcript) && !openNow && <div style={{ fontSize: 13, color: 'var(--k-374151)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary || c.transcript}</div>}
                       {!c.summary && !c.transcript && c.notes && !openNow && wrapFor !== c.id && <div style={{ fontSize: 13, color: 'var(--k-374151)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {c.notes}</div>}
                     </div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
+                    {/* maxWidth/shrink (not flexShrink:0): on a phone this group is wider than the screen if it can't wrap. */}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: '0 1 auto', maxWidth: '100%', minWidth: 0 }}>
                       {needsWrap(c) && wrapFor !== c.id && <button onClick={() => setWrapFor(c.id)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }} title="Ten seconds: what it was, a note, and who it was">📝 Wrap up</button>}
                       {num && <a href={`tel:${num}`} data-call-id={c.id} data-contact-id={c.contact?.id ?? ''} data-name={c.contact?.name || c.caller_name || ''} data-pending={pending ? '1' : '0'} style={{ ...mini, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call back">📞</a>}
                       {c.has_recording && <button onClick={() => play(c)} disabled={busy === c.id} style={mini} title="Play recording">{audio[c.id] ? '🔊' : '▶'}</button>}
