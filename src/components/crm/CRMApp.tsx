@@ -859,6 +859,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callActionInFlight, setCallActionInFlight] = useState(false);
   // Dashboard task row whose "Later" (snooze) menu is open.
   const [snoozeFor, setSnoozeFor] = useState<string | null>(null);
+  // "Push all overdue" menu + the Undo for the last bulk push.
+  const [pushAllOpen, setPushAllOpen] = useState(false);
+  const [pushUndo, setPushUndo] = useState<{ label: string; prev: { id: string; due: string; cbId?: string; cbPrev?: string | null }[] } | null>(null);
   // Undo for the two outcomes that are easy to fat-finger and hard to see again (Not interested / Wrong number).
   const [callUndo, setCallUndo] = useState<{ label: string; next?: string; run: () => Promise<void> } | null>(null);
   useEffect(() => {
@@ -2521,6 +2524,47 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       return;
     }
     showToast(`😴 Moved to ${label}`);
+  }
+
+  // Push SEVERAL tasks to one later day (the Dashboard's "Push all overdue"). One update for the ordinary tasks;
+  // call-backs move their own date. Remembers what they were so the Undo bar can put every one back.
+  async function snoozeMany(tasks: CRMTask[], ymd: string, label: string) {
+    setPushAllOpen(false);
+    if (!tasks.length) return;
+    const hdr = { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) };
+    const prev = tasks.map(t => { const cb = callbackMeta.get(t.id); return { id: t.id, due: t.due_date, cbId: cb?.id, cbPrev: cb?.follow_up_due ?? null }; });
+    const ids = new Set(tasks.map(t => t.id));
+    setAllTasks(list => list.map(t => (ids.has(t.id) ? { ...t, due_date: ymd } : t)));
+    let failed = 0;
+    const plain = prev.filter(p => !p.cbId);
+    if (plain.length) {
+      const { error } = await supabase.from('crm_tasks').update({ due_date: ymd }).in('id', plain.map(p => p.id));
+      if (error) failed += plain.length;
+    }
+    const cbs = prev.filter(p => p.cbId);
+    for (const p of cbs) {
+      const r = await fetch(`/api/crm/calls?id=${p.cbId}`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ follow_up_due: new Date(`${ymd}T09:00:00`).toISOString() }) });
+      if (!r.ok) failed++;
+    }
+    if (cbs.length) loadCallbacks();
+    if (failed) { await loadAllTasks(); showToast(`Moved ${tasks.length - failed} of ${tasks.length} — ${failed} could not be moved`); return; }
+    const undo = { label: `Moved ${tasks.length} task${tasks.length === 1 ? '' : 's'} to ${label}`, prev };
+    setPushUndo(undo);
+    setTimeout(() => setPushUndo(u => (u === undo ? null : u)), 15000);
+  }
+
+  async function undoPush() {
+    const u = pushUndo;
+    if (!u) return;
+    setPushUndo(null);
+    const hdr = { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) };
+    const byDate = new Map<string, string[]>();
+    for (const p of u.prev.filter(x => !x.cbId)) byDate.set(p.due, [...(byDate.get(p.due) ?? []), p.id]);
+    for (const [due, ids] of byDate) await supabase.from('crm_tasks').update({ due_date: due }).in('id', ids);
+    for (const p of u.prev.filter(x => x.cbId)) await fetch(`/api/crm/calls?id=${p.cbId}`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ follow_up_due: p.cbPrev }) });
+    await loadAllTasks();
+    loadCallbacks();
+    showToast('Put back where they were');
   }
 
   async function loadClientTasks(clientId: string) {
@@ -5804,7 +5848,40 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                     {overdue.length > 0 && (
                       <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-danger-line)', padding: '16px 20px', marginBottom: 14 }}>
-                        {head('var(--c-danger)', `Overdue — ${overdue.length}`, allTasksLink)}
+                        {head('var(--c-danger)', `Overdue — ${overdue.length}`, (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            {overdue.length > 1 && (
+                              <div style={{ position: 'relative' }}>
+                                <button onClick={() => setPushAllOpen(o => !o)} aria-expanded={pushAllOpen} title="Move every overdue task to a later day"
+                                  style={{ background: 'var(--c-surface)', border: '1px solid var(--c-line-2)', borderRadius: 6, padding: isMobile ? '9px 12px' : '3px 10px', minHeight: isMobile ? 40 : undefined, fontSize: 12, color: 'var(--c-muted)', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Push all ▾</button>
+                                {pushAllOpen && (
+                                  <>
+                                    <div onClick={() => setPushAllOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />
+                                    <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 50, minWidth: 250, background: 'var(--c-surface)', border: '1px solid var(--c-line-2)', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.18)', padding: 6, fontFamily: "'DM Sans',sans-serif" }}>
+                                      <div style={{ padding: '6px 10px 4px', fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--c-faint)', fontWeight: 700 }}>Move all {overdue.length} to…</div>
+                                      {([['Tomorrow', 1], ['In 3 days', 3], ['Next Monday', (8 - new Date().getDay()) % 7 || 7]] as const).map(([label, n]) => {
+                                        const when = localDate(addDays(n)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                                        return (
+                                          <button key={label} role="menuitem" onClick={() => snoozeMany(overdue, addDays(n), `${label === 'Next Monday' ? label : label.toLowerCase()} (${when})`)}
+                                            style={{ display: 'flex', justifyContent: 'space-between', gap: 12, width: '100%', textAlign: 'left', background: 'none', border: 'none', borderRadius: 7, padding: isMobile ? '12px 10px' : '8px 10px', fontSize: 13, color: 'var(--c-ink)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                            <span>{label}</span><span style={{ color: 'var(--c-muted)', fontSize: 12 }}>{when}</span>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                            {allTasksLink}
+                          </div>
+                        ))}
+                        {pushUndo && (
+                          <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap', background: 'var(--c-ok-soft)', border: '1px solid var(--c-ok-line)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13, color: 'var(--c-ok-ink)' }}>
+                            <span>😴 {pushUndo.label}</span>
+                            <button onClick={undoPush} style={{ background: 'none', border: 'none', color: 'var(--c-ok-ink)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', padding: isMobile ? '8px 4px' : 0, fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}>Undo</button>
+                          </div>
+                        )}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {overdue.slice(0, 6).map(t => { const dOd = Math.max(1, Math.floor((Date.now() - localDate(t.due_date).getTime()) / 864e5)); return taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: 'var(--c-danger-soft)', color: 'var(--c-danger)', fontWeight: 700, flexShrink: 0 }}>{dOd}d</span>); })}
                           {overdue.length > 6 && <div style={{ fontSize: 12, color: 'var(--c-faint)', textAlign: 'center' }}>+{overdue.length - 6} more overdue</div>}
