@@ -20,6 +20,7 @@
  *    never throws, so a task problem can never cost a lead or return an error
  *    to someone filling in a form.
  */
+import { sendPushToProfiles } from '@/lib/push';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -139,6 +140,18 @@ export async function createLeadFollowUpTask(db: SupabaseClient<any, any, any>, 
       return;
     }
     console.log(`[lead-followup] task created for ${who} (${input.clientId})`);
+    // Phone alert: the speed-to-lead SLA is 15 minutes, which is only possible if the owner hears about it.
+    // Not for the aging backstop (not new), and not for voicemails (the call alert already covers those).
+    if (!aged && channel !== 'voicemail') {
+      await sendPushToProfiles([owner.id], {
+        title: `New lead: ${who}`,
+        body: [input.phone || input.email, `${channel} · ${site}`, input.detail ? input.detail.replace(/\s+/g, ' ').slice(0, 100) : ''].filter(Boolean).join(' — '),
+        url: '/crm/commercial#tasks',
+        tag: `lead-${input.clientId}`,
+        category: 'leads',
+        businessUnit: input.businessUnit || 'commercial',
+      });
+    }
   } catch (e) {
     // Never let this break lead creation.
     console.error('[lead-followup] unexpected failure (lead itself is unaffected):', e);

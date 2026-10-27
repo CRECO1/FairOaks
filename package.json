@@ -36,6 +36,7 @@
     "resend": "^4.0.0",
     "stripe": "22.2.0",
     "tailwind-merge": "^2.5.4",
+    "web-push": "^3.6.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
@@ -44,6 +45,7 @@
     "@types/node": "^22.8.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.5.28",

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { rateLimitFailOpen } from '@/lib/ratelimit';
 import { isBrokerFilled } from '@/lib/esign-fields';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { sendPushToProfiles, superAdminIds } from '@/lib/push';
 import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, declinedEmail, signedProgressEmail, sendEsignEmail, finalizeEnvelope } from '@/lib/esign';
 
 // PUBLIC, token-gated — intentionally NOT in middleware.ts's matcher, so external
@@ -168,6 +169,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         await sendEsignEmail(env.business_unit, sender.email, subject, html);
       }
     }
+    await sendPushToProfiles([env.created_by], { title: 'Signature declined', body: `${signer.name} declined to sign ${env.title}${reason ? ` — “${reason.slice(0, 80)}”` : ''}`, url: '/crm/commercial#esign', businessUnit: env.business_unit, tag: `esign-${env.id}`, category: 'signatures' });
     return NextResponse.json({ status: 'declined' });
   }
 
@@ -252,6 +254,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         }
       } catch (e) { console.error('[api/sign] progress email', e); }
     }
+    await sendPushToProfiles([env.created_by], { title: `${signer.name} signed`, body: `${env.title} — ${all.filter(s => s.status === 'signed').length} of ${all.length} signed. Waiting on ${next.name}.`, url: '/crm/commercial#esign', businessUnit: env.business_unit, tag: `esign-${env.id}`, category: 'signatures' });
     return NextResponse.json({ status: 'signed', next: true, next_in_person: !!next.in_person });
   }
 
@@ -264,5 +267,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     await db.from('crm_envelopes').update({ status: 'in_progress', updated_at: nowIso }).eq('id', env.id);
     return NextResponse.json({ status: 'signed', finalizeError: true });
   }
+  // The sender and the broker (who is copied on everything that executes) hear about it right away.
+  await sendPushToProfiles([env.created_by, ...(await superAdminIds(db))], { title: 'Fully signed', body: `${env.title} — everyone has signed. The executed copy is filed.`, url: '/crm/commercial#esign', businessUnit: env.business_unit, tag: `esign-${env.id}`, category: 'signatures' });
   return NextResponse.json({ status: 'completed' });
 }

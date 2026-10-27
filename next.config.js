@@ -152,6 +152,8 @@ const nextConfig = {
       },
       // Private surfaces: never indexed, even when a URL is linked from elsewhere
       // (robots.txt only stops crawling, not indexing of a linked URL).
+      // The service worker must never be served stale, or a fix to it takes days to reach agents' phones.
+      { source: '/crm-sw.js', headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }] },
       { source: '/crm', headers: NOINDEX },
       { source: '/crm/:path*', headers: NOINDEX },
       { source: '/sign/:path*', headers: NOINDEX },

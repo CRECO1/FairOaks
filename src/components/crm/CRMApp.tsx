@@ -24,6 +24,7 @@ import CampaignPreflight from '@/components/crm/CampaignPreflight';
 import CallTapPrompt from '@/components/crm/CallTapPrompt';
 import MentionTextarea, { parseMentionContactIds, parseMentionIds } from '@/components/crm/MentionTextarea';
 import Ico, { type IcoName } from '@/components/crm/Ico';
+import PhoneAlerts from '@/components/crm/PhoneAlerts';
 
 // Heavy CRM sections are code-split so /crm no longer ships them all in one
 // bundle — each loads its own chunk the first time its tab or modal opens
@@ -3374,7 +3375,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         entity_type: entityType ?? null,
         entity_id: entityId ?? null,
       }));
-    if (rows.length) await supabase.from('crm_notifications').insert(rows);
+    if (rows.length) {
+      await supabase.from('crm_notifications').insert(rows);
+      // The row is the bell; this is the phone alert for it. (An agent can't read rows addressed to someone
+      // else, so the server finds the ones we just wrote from who they were for.)
+      fetch('/api/crm/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ recipients: rows.map(r => r.recipient_id) }),
+      }).catch(() => { /* alerts are best effort */ });
+    }
   }
 
   // A tag in a property / suite / rent-roll note → bell notification for that teammate (once per person per property).
@@ -5212,8 +5222,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
               )}
 
+              <div style={{ marginTop: 'auto', padding: '0 14px 12px' }}>{businessUnit === 'commercial' && <PhoneAlerts token={session?.access_token} tone="dark" />}</div>
+
               {/* Profile + sign out */}
-              <div style={{ marginTop: 'auto', padding: '14px 14px', borderTop: '1px solid rgba(255,255,255,.07)' }}>
+              <div style={{ padding: '14px 14px', borderTop: '1px solid rgba(255,255,255,.07)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', background: 'rgba(255,255,255,.05)', borderRadius: 8 }}>
                   <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'var(--k-111)', flexShrink: 0 }}>{initials}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -5415,6 +5427,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                         )}
                       </div>
+                      {businessUnit === 'commercial' && <div style={{ padding: '10px 12px', borderTop: '1px solid var(--k-f0f0f0)' }}><PhoneAlerts token={session?.access_token} /></div>}
                       <div style={{ padding: '8px 16px', borderTop: '1px solid var(--k-f0f0f0)', background: 'var(--k-f9fafb)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>Keyboard shortcut: / (search)</span>
                         <button onClick={() => setShowNotifications(false)} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Close</button>

@@ -21,6 +21,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { sendMonitored } from '@/lib/integration-alert';
+import { sendPushToProfiles } from '@/lib/push';
 import { prettyPhone } from '@/lib/phone';
 import { isBusinessOpen } from '@/lib/talkroute';
 
@@ -121,6 +122,14 @@ export async function alertKnownContact(
     const lines = fresh.map(t => (WHAT[t.kind] ?? (() => t.kind))(t.label));
     const strong = fresh.find(t => t.kind !== 'engaged_visit');
     const headline = strong ? lines[fresh.indexOf(strong)].replace(/^\S+\s/, '') : 'is browsing the site right now';
+    // Phone alert (opt-in category, off by default — taps and downloads can be chatty). crecotx.com CRM only.
+    if (!opts.testTo) {
+      await sendPushToProfiles(recips.map(r => r.id), {
+        title: `${name} ${strong ? headline.charAt(0).toLowerCase() + headline.slice(1) : headline}`,
+        body: `${lines.join(' · ')} — ${siteShort(opts.site)}`,
+        url: '/crm/commercial#contacts', tag: `visitor-${k.id}`, category: 'visitors', businessUnit: k.business_unit as string,
+      });
+    }
     const subject = `${opts.testTo ? '[TEST] ' : ''}🔔 ${name} ${strong ? headline.charAt(0).toLowerCase() + headline.slice(1) : headline} — ${siteShort(opts.site)}`;
     const phone = ((k.cell_phone || k.phone) as string | null) || '';
     const telDigits = phone.replace(/\D/g, '').slice(-10);

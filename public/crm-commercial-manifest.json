@@ -1,0 +1,17 @@
+{
+  "name": "CRECO CRM",
+  "short_name": "CRECO CRM",
+  "description": "CRECO Commercial Real Estate — Agent CRM",
+  "id": "/crm/commercial",
+  "start_url": "/crm/commercial",
+  "scope": "/crm",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
