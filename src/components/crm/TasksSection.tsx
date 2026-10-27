@@ -786,8 +786,10 @@ export default function TasksSection({
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = isSelected ? '0 0 0 2px #fdf6e8' : '0 1px 3px rgba(0,0,0,.04)'; }}>
                       {/* Select + title */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                        <input type="checkbox" checked={isSelected} onClick={e => e.stopPropagation()} onChange={() => toggleSelect(t.id)}
-                          title="Select" style={{ marginTop: 2, flexShrink: 0, width: 14, height: 14, cursor: 'pointer', accentColor: '#c9922c' }} />
+                        <label onClick={e => e.stopPropagation()} title="Select" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, margin: '-9px 0 -9px -10px', flexShrink: 0, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(t.id)} aria-label="Select task"
+                            style={{ flexShrink: 0, width: 14, height: 14, cursor: 'pointer', accentColor: '#c9922c' }} />
+                        </label>
                         <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: t.status === 'done' ? 'var(--k-9ca3af)' : 'var(--k-111)', textDecoration: t.status === 'done' ? 'line-through' : 'none', lineHeight: 1.4 }}>
                           {t.type && TYPE_META[t.type] && <span title={TYPE_META[t.type].label} style={{ marginRight: 6 }}>{TYPE_META[t.type].icon}</span>}
                           {t.title}

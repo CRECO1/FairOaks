@@ -4944,13 +4944,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
            but get a bigger tap area (invisible ::after / padding); checkboxes and radios grow to 22px. Class-styled buttons
            (.crm-btn etc.) have their own phone sizes. Checked live at 390px: no horizontal overflow on tasks/contacts/deals/dashboard. */
         @media(max-width:767px){
-          .crm-app-shell button:not([class]):not([style*="padding: 0px;"]){min-height:40px;}
+          .crm-app-shell button:not([class]):not([style*="padding: 0px;"]){min-height:44px;min-width:44px;}
           .crm-app-shell button:not([class])[style*="padding: 0px;"]{position:relative;}
           .crm-app-shell button:not([class])[style*="padding: 0px;"]::after{content:"";position:absolute;inset:-10px -8px;}
           .crm-app-shell a:not([class]){padding-block:9px;}
           .crm-app-shell input[type=checkbox],.crm-app-shell input[type=radio]{width:22px!important;height:22px!important;}
           /* Buttons/dropdowns that set their OWN small inline min-height (the Calling Log filter chips and date picker: 32px) */
-          .crm-app-shell :is(button,select)[style*="min-height: 2"],.crm-app-shell :is(button,select)[style*="min-height: 3"]{min-height:40px!important;}
+          .crm-app-shell :is(button,select)[style*="min-height: 2"],.crm-app-shell :is(button,select)[style*="min-height: 3"]{min-height:44px!important;}
+          .crm-app-shell :is(button,a)[style*="min-height: 2"],.crm-app-shell :is(button,a)[style*="min-height: 3"],.crm-app-shell :is(button,a)[style*="min-height: 4"]{min-width:44px!important;}
         }
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -5086,6 +5087,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           .crm-mobile-card{background:var(--k-fff);border:1px solid var(--k-e5e7eb);border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.05);}
           /* Nothing may push the page sideways — wide children scroll inside their own wrapper */
           .crm-page-scroll{overflow-x:hidden!important;}
+          /* Leave room under the last row for the floating assistant button, so nothing is stuck behind it */
+          .crm-page-scroll{padding-bottom:calc(88px + env(safe-area-inset-bottom))!important;}
+          /* Dashboard stat tiles: one swipeable strip (about 100px tall) instead of five stacked cards (over 1,000px) that pushed
+             the overdue tasks off the first screen. */
+          .dk-kpis{display:flex!important;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;margin:0 -16px 14px;padding:2px 16px 6px;scrollbar-width:none;}
+          .dk-kpis::-webkit-scrollbar{display:none;}
+          .dk-kpi{flex:0 0 156px;scroll-snap-align:start;padding:11px 13px;}
+          .dk-kpi .v{font-size:26px;}
+          .dk-kpi .s{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
           .crm-page-scroll img,.crm-page-scroll canvas,.crm-page-scroll iframe{max-width:100%;}
           /* 3-col stat grids → 2-col on small phones */
           .stats-3col{grid-template-columns:1fr 1fr!important;}

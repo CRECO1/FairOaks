@@ -365,7 +365,11 @@ export default function ContactsView(p: ContactsViewProps) {
               <div key={c.id} onClick={() => p.onOpen(c)} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') p.onOpen(c); }}
                 style={{ background: p.selected.has(c.id) ? 'var(--k-fef9f0)' : 'var(--k-fff)', border: `1px solid ${p.selected.has(c.id) ? '#f0d9a8' : '#eef0f2'}`, borderRadius: 12, padding: '12px 12px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  {isAdmin && <input type="checkbox" checked={p.selected.has(c.id)} onClick={e => e.stopPropagation()} onChange={e => toggleOne(c.id, e.target.checked)} aria-label={`Select ${displayName(c)}`} style={{ width: 22, height: 22, accentColor: '#c9922c', flexShrink: 0 }} />}
+                  {isAdmin && (
+                    <label onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, margin: '-8px -8px -8px -10px', flexShrink: 0, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={p.selected.has(c.id)} onChange={e => toggleOne(c.id, e.target.checked)} aria-label={`Select ${displayName(c)}`} style={{ width: 22, height: 22, accentColor: '#c9922c' }} />
+                    </label>
+                  )}
                   {avatar(c, 38)}
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(c)}</div>
