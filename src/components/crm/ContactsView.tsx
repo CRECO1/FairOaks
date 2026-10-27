@@ -139,6 +139,21 @@ export default function ContactsView(p: ContactsViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [p.clients, p.needsTouchIds, p.dealsByClient, p.enrollmentsByClient]);
 
+  // The filter options come from YOUR contacts (with counts), not a fixed list — a fixed list of
+  // residential lead sources hid the real ones (County Appraisal, the prospect lists, broker imports…).
+  const facets = useMemo(() => {
+    const tally = (vals: (string | null | undefined)[]) => {
+      const m = new Map<string, number>();
+      vals.forEach(v => { const k = (v ?? '').trim(); if (k) m.set(k, (m.get(k) ?? 0) + 1); });
+      return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    };
+    return {
+      sources: tally(p.clients.map(c => c.lead_source)),
+      assets: tally(p.clients.flatMap(c => c.asset_types ?? [])),
+      tags: tally(p.clients.flatMap(c => c.tags ?? [])).slice(0, 200),
+    };
+  }, [p.clients]);
+
   const panelCount = (p.source ? 1 : 0) + (p.spec ? 1 : 0) + (p.owner ? 1 : 0) + (p.tag ? 1 : 0);
   const activeCount = panelCount + (p.type ? 1 : 0) + (p.needsTouchOnly ? 1 : 0) + (p.noInfoOnly ? 1 : 0) + (p.heldOnly ? 1 : 0) + (p.campaignOnly ? 1 : 0) + (p.dealOnly ? 1 : 0) + (p.search.trim() ? 1 : 0);
   const clearAll = () => { p.setSearch(''); p.setType(''); p.setSource(''); p.setSpec(''); p.setOwner(''); p.setTag(''); p.setNeedsTouchOnly(false); p.setNoInfoOnly(false); p.setHeldOnly(false); p.setCampaignOnly(false); p.setDealOnly(false); };
@@ -258,17 +273,22 @@ export default function ContactsView(p: ContactsViewProps) {
                   <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 21, fontWeight: 600, color: 'var(--k-1a1a1a)' }}>More filters</div>
                   <button onClick={() => setPanelOpen(false)} aria-label="Close" style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, border: 'none', borderRadius: 8, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 18, cursor: 'pointer' }}>×</button>
                 </div>
-                {([
-                  ['Lead source', p.sources, p.source, p.setSource],
-                  ['Asset type', p.assetTypes, p.spec, p.setSpec],
-                ] as const).map(([title, opts, val, set]) => (
-                  <div key={title} style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>{title}</div>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>Lead source</div>
+                  <select aria-label="Lead source" value={p.source} onChange={e => p.setSource(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', minHeight: isMobile ? 44 : 38, border: `1px solid ${p.source ? '#c9922c' : 'var(--k-e5e7eb)'}`, borderRadius: 8, fontSize: isMobile ? 16 : 14, background: 'var(--k-fff)', color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>
+                    <option value="">Any source</option>
+                    {facets.sources.map(([name, count]) => <option key={name} value={name}>{name} ({count.toLocaleString()})</option>)}
+                  </select>
+                </div>
+                {facets.assets.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>Asset type</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {opts.map(o => <button key={o} onClick={() => set(val === o ? '' : o)} aria-pressed={val === o} style={chip(val === o)}>{o}</button>)}
+                      {facets.assets.map(([name, count]) => <button key={name} onClick={() => p.setSpec(p.spec === name ? '' : name)} aria-pressed={p.spec === name} style={chip(p.spec === name)}>{name} <span style={{ fontSize: 11.5, fontWeight: 700, opacity: p.spec === name ? 0.9 : 0.6 }}>{count.toLocaleString()}</span></button>)}
                     </div>
                   </div>
-                ))}
+                )}
                 {isAdmin && p.profiles.length > 0 && (
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>Owner</div>
@@ -279,8 +299,9 @@ export default function ContactsView(p: ContactsViewProps) {
                 )}
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>Tag</div>
-                  <input value={p.tag} onChange={e => p.setTag(e.target.value)} placeholder="Contains…" style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: isMobile ? 16 : 14, minHeight: isMobile ? 44 : undefined, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)' }} />
+                  <input list="contact-tag-options" value={p.tag} onChange={e => p.setTag(e.target.value)} placeholder="Type or pick a tag…" style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: isMobile ? 16 : 14, minHeight: isMobile ? 44 : undefined, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)' }} />
                 </div>
+                <datalist id="contact-tag-options">{facets.tags.map(([name, count]) => <option key={name} value={name}>{`${name} (${count})`}</option>)}</datalist>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                   <button onClick={() => { p.setSource(''); p.setSpec(''); p.setOwner(''); p.setTag(''); }} style={{ minHeight: isMobile ? 44 : 32, border: 'none', background: 'transparent', color: '#a06a12', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Clear these</button>
                   <button onClick={() => setPanelOpen(false)} style={{ minHeight: isMobile ? 48 : 36, padding: '0 22px', border: 'none', borderRadius: 10, background: '#c9922c', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Show {filtered.length.toLocaleString()}</button>
