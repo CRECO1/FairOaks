@@ -404,7 +404,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       </p>
 
       {stats && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 10, marginBottom: 18 }}>
           {[
             { label: 'Needs call back', value: stats.follow_up, sub: stats.overdue ? `${stats.overdue} overdue now` : 'open follow-ups', tone: stats.follow_up ? 'var(--k-b91c1c)' : 'var(--k-15803d)', pick: 'follow_up' as const },
             { label: 'Needs a note', value: stats.wrapup ?? 0, sub: 'answered calls, 30 days', tone: stats.wrapup ? 'var(--k-a06a12)' : 'var(--k-15803d)', pick: 'wrapup' as const },
@@ -415,7 +415,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             { label: 'Voicemails', value: stats.voicemail, sub: 'last 7 days', pick: 'voicemail' as const },
             { label: 'Texts to answer', value: threads.filter(t => t.unanswered).length, sub: `${threads.length} thread${threads.length === 1 ? '' : 's'}`, tone: threads.some(t => t.unanswered) ? 'var(--k-b91c1c)' : undefined, pick: 'texts' as const },
           ].map(c => (
-            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ flex: '1 1 120px', minWidth: 112, background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : 'var(--k-eef0f3)'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ minWidth: 0, background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : 'var(--k-eef0f3)'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
               <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--k-9ca3af)', fontWeight: 700 }}>{c.label}</div>
               <div style={{ fontSize: 21, fontWeight: 700, marginTop: 3, color: c.tone || 'var(--k-111827)' }}>{c.value}</div>
               <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{c.sub}</div>
