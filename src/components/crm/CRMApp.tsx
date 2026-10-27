@@ -7070,7 +7070,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           })() : 'Select a day'}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>
-                          {selectedEvents.length + selectedCrm.length === 0 ? 'No events' : [selectedEvents.length ? `${selectedEvents.length} event${selectedEvents.length !== 1 ? 's' : ''}` : '', selectedCrm.length ? `${selectedCrm.length} task${selectedCrm.length !== 1 ? 's' : ''} & leases` : ''].filter(Boolean).join(' · ')}
+                          {selectedEvents.length + selectedCrm.length === 0 ? 'No events' : [selectedEvents.length ? `${selectedEvents.length} event${selectedEvents.length !== 1 ? 's' : ''}` : '', selectedCrm.length ? `${selectedCrm.length} on your list` : ''].filter(Boolean).join(' · ')}
                         </div>
                       </div>
                       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
