@@ -10,6 +10,7 @@ import EmailComposer, { type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import DraftsSection from './DraftsSection';
 import SentSection from './SentSection';
+import CardDrafts from './CardDrafts';
 import { setDraftAuth, syncDrafts, onDraftsChanged, listDrafts, type EmailDraft } from '@/lib/email-drafts';
 import dynamic from 'next/dynamic';
 import DealMeetings from '@/components/crm/DealMeetings';
@@ -377,6 +378,9 @@ function forwardedHtml(e: DealEmail): string {
 }
 const forwardSubject = (subj?: string) => `Fwd: ${(subj ?? '').replace(/^\s*((re|fwd?):\s*)+/i, '')}`;
 // Gmail's bottom-of-thread buttons: Reply (just the person), and Reply all only when others are on the email.
+// A draft written in the Compose window counts as belonging to a card when it is addressed to that person.
+const draftIsTo = (d: EmailDraft, email?: string | null) => !!email && `${d.to},${d.moreTo}`.toLowerCase().includes(email.trim().toLowerCase());
+
 function ReplyButtons({ onReply, onReplyAll, onForward, isMobile }: { onReply: () => void; onReplyAll?: () => void; onForward?: () => void; isMobile: boolean }) {
   const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, height: isMobile ? 44 : 34, padding: '0 18px', background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 18, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
   return (
@@ -1109,38 +1113,59 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { off(); window.removeEventListener('focus', pull); };
   }, [session?.user.id]);
 
+  // Drafts open in place when their deal / contact card is already on screen, and via the Drafts page otherwise.
+  // A card that already has a composer open is closed first (one tick) so the old text is saved under the old
+  // key, and only then is the picked draft loaded.
+  const draftFill = (d: EmailDraft) => { setComposeSubject(d.subject); setComposeMoreTo(d.moreTo); setComposeCc(d.cc); setComposeBcc(d.bcc); setComposeIndividual(false); setComposeAttachments([]); };
+  const draftReplyRow = async (d: EmailDraft): Promise<DealEmail | null> => {
+    if (!d.context.replyToId) return null;
+    const { data } = await supabase.from('crm_deal_emails').select('*').eq('id', d.context.replyToId).maybeSingle();
+    return (data as DealEmail | null) ?? null;
+  };
+  async function openDraftInDeal(d: EmailDraft) {
+    const reply = await draftReplyRow(d);
+    setShowCompose(false);
+    setTimeout(() => {
+      setDealTab('emails');
+      setReplyToEmail(reply); clearComposeBody(); draftFill(d); setShowCompose(true);
+      placeReplyQuote(composeBodyRef, d.bodyHtml);
+      setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+    }, 120);
+  }
+  async function openDraftInContact(d: EmailDraft, c: Client) {
+    const reply = await draftReplyRow(d);
+    setShowContactCompose(false); setReplyingToThreadKey(null);
+    setTimeout(() => {
+      setReplyToContactEmail(reply); clearContactComposeBody(); draftFill(d);
+      const inlinePrefix = `reply:${c.id}:`;
+      if (d.key.startsWith(inlinePrefix)) {
+        // A reply started inside a thread comes back inside that same thread.
+        const threadKey = d.key.slice(inlinePrefix.length);
+        setExpandedContactThreads(prev => new Set(prev).add(threadKey));
+        setReplyingToThreadKey(threadKey);
+        setTimeout(() => document.getElementById('contact-email-thread')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+      } else {
+        setShowContactCompose(true);
+        setTimeout(() => document.getElementById('contact-email-thread')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+      }
+      placeReplyQuote(contactComposeBodyRef, d.bodyHtml);
+    }, 120);
+  }
+
   // Open a draft where it belongs and let the composer restore it (reply drafts reattach to their thread).
   async function resumeDraft(d: EmailDraft) {
     const ctx = d.context;
-    const fill = () => { setComposeSubject(d.subject); setComposeMoreTo(d.moreTo); setComposeCc(d.cc); setComposeBcc(d.bcc); setComposeIndividual(false); setComposeAttachments([]); };
-    const fetchReply = async (): Promise<DealEmail | null> => {
-      if (!ctx.replyToId) return null;
-      const { data } = await supabase.from('crm_deal_emails').select('*').eq('id', ctx.replyToId).maybeSingle();
-      return (data as DealEmail | null) ?? null;
-    };
     if (ctx.kind === 'deal' && ctx.id) {
       const deal = deals.find(x => x.id === ctx.id);
       if (!deal) { showToast('That deal isn’t available any more — you can still copy the text from the draft.'); return; }
-      const reply = await fetchReply();
       setPage('deals'); openDeal(deal);
-      // Opening a card resets its composer state in an effect — set ours just after that has run.
-      setTimeout(() => {
-        setDealTab('emails');
-        setReplyToEmail(reply); clearComposeBody(); fill(); setShowCompose(true);
-        placeReplyQuote(composeBodyRef, d.bodyHtml);
-        setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
-      }, 200);
+      // Opening a card resets its composer state in an effect — load ours just after that has run.
+      setTimeout(() => { void openDraftInDeal(d); }, 200);
     } else if (ctx.kind === 'contact' && ctx.id) {
       const client = clients.find(x => x.id === ctx.id);
       if (!client) { showToast('That contact isn’t available any more.'); return; }
-      const reply = await fetchReply();
       setPage('contacts'); setActiveClient(client);
-      // Opening a contact card closes its composer in an effect — open ours just after that has run.
-      setTimeout(() => {
-        setReplyingToThreadKey(null); setReplyToContactEmail(reply); clearContactComposeBody(); fill(); setShowContactCompose(true);
-        placeReplyQuote(contactComposeBodyRef, d.bodyHtml);
-        setTimeout(() => document.getElementById('contact-email-thread')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
-      }, 200);
+      setTimeout(() => { void openDraftInContact(d, client); }, 200);
     } else {
       openCompose({ resumeKey: d.key });
     }
@@ -11270,6 +11295,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Emails tab */}
               {dealTab === 'emails' && (
                 <div>
+                  {activeDeal && (
+                    <CardDrafts isMobile={isMobile} onOpen={d => { if (d.context.kind === 'dock') openCompose({ resumeKey: d.key }); else void openDraftInDeal(d); }}
+                      hideKeys={showCompose ? [`deal:${activeDeal.id}:${replyToEmail?.gmail_thread_id ?? 'new'}`] : []}
+                      match={d => (d.context.kind === 'deal' && d.context.id === activeDeal.id) || (d.context.kind === 'dock' && draftIsTo(d, activeDeal.client_email))} />
+                  )}
                   {/* Compose button. Once the deal has a thread, "Reply in thread" (reply-all to its latest message) is
                       the main action, so follow-ups stay in one chain instead of a new email each time (Zack, 2026-10-27). */}
                   {gmailConnected && activeDeal?.client_email && (
@@ -13301,6 +13331,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         ✉️ New Email
                       </button>
                     </div>
+
+                    <CardDrafts isMobile={isMobile} onOpen={d => { if (d.context.kind === 'dock') openCompose({ resumeKey: d.key }); else void openDraftInContact(d, c); }}
+                      hideKeys={[...(showContactCompose ? [`contact:${c.id}:${replyToContactEmail?.gmail_thread_id ?? 'new'}`] : []), ...(replyingToThreadKey ? [`reply:${c.id}:${replyingToThreadKey}`] : [])]}
+                      match={d => (d.context.kind === 'contact' && d.context.id === c.id) || (d.context.kind === 'dock' && draftIsTo(d, c.email))} />
 
                     {/* Compose panel */}
                     {showContactCompose && (
