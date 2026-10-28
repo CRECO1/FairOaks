@@ -97,6 +97,28 @@ async function backfillAttachments(db: ReturnType<typeof adminClient>, mailbox: 
   return done;
 }
 
+// Older rows have only a DATE. Give each its real time from Gmail (internalDate, a cheap metadata read) so same-day
+// emails order correctly in threads. If a row's own sender copy is gone, fall back to when it reached the CRM.
+async function backfillEmailTimes(db: ReturnType<typeof adminClient>, mailbox: string, token: string, all = false): Promise<number> {
+  const addr = mailbox.trim().toLowerCase().replace(/[%,()]/g, '');
+  if (!addr) return 0;
+  const { data } = await db.from('crm_deal_emails').select('id, gmail_message_id, from_email, created_at')
+    .not('gmail_message_id', 'is', null).is('email_at', null)
+    .or(`from_email.ilike.%${addr}%,to_email.ilike.%${addr}%,cc_emails.ilike.%${addr}%`)
+    .order('created_at', { ascending: false }).limit(all ? 200 : 40);
+  let done = 0;
+  for (const r of (data ?? []) as Array<{ id: string; gmail_message_id: string; from_email: string; created_at: string }>) {
+    const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${r.gmail_message_id}?format=minimal`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) {
+      const ms = Number((await res.json()).internalDate);
+      if (ms) { await db.from('crm_deal_emails').update({ email_at: new Date(ms).toISOString() }).eq('id', r.id); done++; }
+    } else if (r.from_email.toLowerCase().includes(addr)) {
+      await db.from('crm_deal_emails').update({ email_at: r.created_at }).eq('id', r.id);
+    }
+  }
+  return done;
+}
+
 const addrOf = (h: string) => (h.match(/<([^>]+)>/)?.[1] ?? h).trim().toLowerCase();
 const hdr = (msg: any, name: string): string => (msg?.payload?.headers ?? []).find((h: { name: string }) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 
@@ -126,7 +148,7 @@ export async function GET(req: NextRequest) {
   const { data: team } = await db.from('crm_profiles').select('email');
   const own = new Set<string>([...(team ?? []).map((p: { email: string | null }) => (p.email ?? '').toLowerCase()), ...conns.map(c => (c.gmail_email ?? '').toLowerCase())].filter(Boolean));
 
-  let filed = 0, scanned = 0, tokenFailures = 0, healed = 0, attachmentsChecked = 0;
+  let filed = 0, scanned = 0, tokenFailures = 0, healed = 0, attachmentsChecked = 0, timesSet = 0;
   const errors: string[] = [];
 
   for (const conn of conns as Conn[]) {
@@ -134,6 +156,7 @@ export async function GET(req: NextRequest) {
     if (!token) { tokenFailures++; errors.push(`token refresh failed for ${conn.gmail_email}`); continue; }
     const auth = { Authorization: `Bearer ${token}` };
     try { healed += await healBodies(db, conn.gmail_email ?? '', auth, req.nextUrl.searchParams.get('heal') === 'all'); } catch (e) { errors.push(`heal ${conn.gmail_email}: ${e instanceof Error ? e.message : String(e)}`); }
+    try { timesSet += await backfillEmailTimes(db, conn.gmail_email ?? '', token, req.nextUrl.searchParams.get('times') === 'all'); } catch (e) { errors.push(`times ${conn.gmail_email}: ${e instanceof Error ? e.message : String(e)}`); }
     try { attachmentsChecked += await backfillAttachments(db, conn.gmail_email ?? '', token, req.nextUrl.searchParams.get('attachments') === 'all'); } catch (e) { errors.push(`attachments ${conn.gmail_email}: ${e instanceof Error ? e.message : String(e)}`); }
     try {
       const list = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(`in:inbox ${LOOKBACK}`)}&maxResults=${MAX_MESSAGES}`, { headers: auth });
@@ -199,6 +222,7 @@ export async function GET(req: NextRequest) {
           subject,
           body: cleanBody(extractBody(msg.payload)).slice(0, 4000),
           email_date: chicagoToday(dateStr ? new Date(dateStr) : new Date()),
+          ...(Number(msg.internalDate) ? { email_at: new Date(Number(msg.internalDate)).toISOString() } : {}),
           gmail_thread_id: threadId,
           rfc_message_id: rfc,
         }).select('id').single();
@@ -232,5 +256,5 @@ export async function GET(req: NextRequest) {
   if (errors.length) console.error('[cron/gmail-replies]', errors.join(' | '));
   // A run where every inbox failed to authorise must show up as a failure in Vercel, not a quiet 200.
   const status = tokenFailures === conns.length ? 500 : 200;
-  return NextResponse.json({ ok: status === 200, connections: conns.length, scanned, filed, healed, attachmentsChecked, errors: errors.slice(0, 5) }, { status });
+  return NextResponse.json({ ok: status === 200, connections: conns.length, scanned, filed, healed, attachmentsChecked, timesSet, errors: errors.slice(0, 5) }, { status });
 }

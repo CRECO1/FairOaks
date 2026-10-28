@@ -290,6 +290,7 @@ export async function POST(req: NextRequest) {
           subject,
           body: cleanBody(body).slice(0, 4000),
           email_date: emailDate,
+          ...(Number(msgData.internalDate) ? { email_at: new Date(Number(msgData.internalDate)).toISOString() } : {}),
           gmail_thread_id: msgData.threadId ?? null,
           rfc_message_id: get('Message-ID') || null,
         }),

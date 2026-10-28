@@ -360,6 +360,7 @@ export async function POST(req: NextRequest) {
           subject: finalSubject,
           body: plainBody,
           email_date: emailDate,
+          email_at: new Date().toISOString(),
           gmail_message_id: sendData.id,
           tracking_id: opts.tid,
           tracked: true, // carries the pixel above (Gmail-synced rows get a default tracking_id but no pixel)
