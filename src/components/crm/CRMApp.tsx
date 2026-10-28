@@ -10928,7 +10928,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               clientLabel={id => { const c = clients.find(x => x.id === id); return c ? (`${c.first_name} ${c.last_name}`.trim() || c.email) : null; }}
               onOpenDeal={id => { const d = deals.find(x => x.id === id); if (d) { openDeal(d); setTimeout(() => setDealTab('emails'), 0); } }}
               onOpenContact={id => { const c = clients.find(x => x.id === id); if (c) setActiveClient(c); else showToast('That contact is not loaded in this workspace'); }}
-              onCompose={() => openCompose()} />
+              />
           )}
 
           {page === 'plaza-site' && (isAdmin ? (

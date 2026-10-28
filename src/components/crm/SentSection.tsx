@@ -29,6 +29,8 @@ const firstAddr = (raw: string | null | undefined) => {
   const m = first.match(/^"?(.*?)"?\s*<([^>]+)>$/);
   return m ? { name: m[1].trim(), email: m[2].trim() } : { name: '', email: first };
 };
+// Logged bodies are plain text but can still carry entities (&nbsp; from the editor).
+const snippet = (body: string) => body.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').slice(0, 120);
 const opens = (r: SentRow) => r.open_count ?? (r.opened_at ? 1 : 0);
 const initials = (s: string) => s.replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '✉';
 
@@ -40,7 +42,6 @@ type Props = {
   clientLabel: (id: string) => string | null;
   onOpenDeal: (id: string) => void;
   onOpenContact: (id: string) => void;
-  onCompose: () => void;
 };
 
 export default function SentSection(p: Props) {
@@ -123,7 +124,6 @@ export default function SentSection(p: Props) {
     <div style={{ maxWidth: 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>Email sent from the CRM, with who opened it and when.</div>
-        <button className="crm-btn crm-btn-gold" onClick={p.onCompose} style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, padding: p.isMobile ? '10px 16px' : '8px 16px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>✉ Compose</button>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }} title="Opens are approximate: some mail apps load images automatically, and some block them.">
@@ -156,7 +156,7 @@ export default function SentSection(p: Props) {
       </div>
 
       {sent === null ? <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Loading sent email…</div>
-      : shown.length === 0 ? (sent.length ? empty('Nothing matches', 'Try another filter or search.') : empty('No tracked email yet', 'Emails you send from a deal, a contact card or Compose show up here with their opens.'))
+      : shown.length === 0 ? (sent.length ? empty('Nothing matches', 'Try another filter or search.') : empty('No tracked email yet', 'Emails you send from a deal, a contact card or the Compose button show up here with their opens.'))
       : (
         <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
           {shown.map((r, i) => {
@@ -177,7 +177,7 @@ export default function SentSection(p: Props) {
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--k-374151)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <b style={{ fontWeight: 600 }}>{r.subject || '(no subject)'}</b>
-                    {r.body && <span style={{ color: 'var(--k-9ca3af)' }}> — {r.body.replace(/\s+/g, ' ').slice(0, 120)}</span>}
+                    {r.body && <span style={{ color: 'var(--k-9ca3af)' }}> — {snippet(r.body)}</span>}
                   </div>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 5, flexWrap: 'wrap' }}>
                     {r.opened_at ? (
