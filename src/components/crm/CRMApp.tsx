@@ -11966,7 +11966,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </select>
                 )}
                 <button type="button" onClick={() => setNdNewClient(s => ({ ...s, show: !s.show }))}
-                  style={{ marginTop: 8, background: 'none', border: 'none', color: '#c9922c', fontWeight: 600, cursor: 'pointer', fontSize: 13, padding: 0 }}>
+                  style={{ marginTop: 8, background: 'none', border: 'none', color: '#c9922c', fontWeight: 600, cursor: 'pointer', fontSize: 13, padding: isMobile ? '12px 0' : 0, minHeight: isMobile ? 44 : undefined }}>
                   {ndNewClient.show ? '– Cancel new client' : '＋ New client'}
                 </button>
                 {ndNewClient.show && (
