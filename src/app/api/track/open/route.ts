@@ -111,12 +111,17 @@ export async function GET(req: NextRequest) {
           // First real open: tell whoever sent it (bell) — "Hina opened BOV for 104 & 106 Main".
           if (!row.opened_at && (row.deal_id || row.client_id)) {
             const sender = String(row.from_email ?? '').match(/<([^>]+)>/)?.[1] ?? String(row.from_email ?? '');
-            const { data: prof } = await supabase.from('crm_profiles').select('id').ilike('email', sender.trim()).maybeSingle();
-            if (prof?.id) {
+            // Who sent it: the owner of the Gmail account it went out from (a broker's CRM login can differ from the address they
+            // send with — Zack logs in as info@… and sends as zack@…), falling back to a profile with that email.
+            const addr = sender.trim().toLowerCase().replace(/[,()%]/g, '');
+            const { data: conn } = await supabase.from('gmail_connections').select('user_id').or(`gmail_email.ilike.${addr},email.ilike.${addr}`).limit(1);
+            let recipientId: string | null = (conn?.[0]?.user_id as string | undefined) ?? null;
+            if (!recipientId) recipientId = ((await supabase.from('crm_profiles').select('id').ilike('email', addr).maybeSingle()).data?.id as string | undefined) ?? null;
+            if (recipientId) {
               const first = String(row.to_email ?? '').split(',')[0] ?? '';
               const who = (first.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] ?? first.split('@')[0]).trim() || 'Someone';
               await supabase.from('crm_notifications').insert([{
-                recipient_id: prof.id, sender_id: null, type: 'email_open',
+                recipient_id: recipientId, sender_id: null, type: 'email_open',
                 message: `👁 ${who} opened your email: ${String(row.subject ?? '').slice(0, 80)}`,
                 entity_type: row.deal_id ? 'deal' : 'contact', entity_id: (row.deal_id ?? row.client_id) as string,
               }]);
