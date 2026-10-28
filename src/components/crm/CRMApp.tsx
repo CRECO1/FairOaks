@@ -9,6 +9,8 @@ import { sanitizeHtml } from '@/lib/sanitize';
 import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import EmailsSection, { type EmailsTab } from './EmailsSection';
+import type { ContactMatch } from './GmailMailbox';
+import type { LiveMessage } from '@/lib/gmail-live';
 import { useInbox } from '@/lib/use-inbox';
 import CardDrafts from './CardDrafts';
 import { htmlToText } from '@/lib/html-text';
@@ -1158,6 +1160,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return raw === 'sent' || raw === 'sent-mail' ? 'sent' : raw === 'drafts' ? 'drafts' : 'inbox';
   });
   const inbox = useInbox([...gmailAccounts.map(a => a.email), profile?.email ?? '', session?.user?.email ?? ''].filter(Boolean));
+  // Gmail's own unread count (Primary) for the Emails badge — a cheap label read, refreshed every few minutes.
+  const [gmailUnread, setGmailUnread] = useState<number | null>(null);
+  useEffect(() => {
+    if (!gmailConnected) { setGmailUnread(null); return; }
+    let live = true;
+    const tick = () => { if (document.visibilityState !== 'visible') return; fetch('/api/gmail/mailbox?counts=1').then(r => r.json()).then(j => { if (live && j && j.connected) setGmailUnread(j.unreadPrimary ?? j.unreadInbox ?? 0); }).catch(() => {}); };
+    tick();
+    const t = setInterval(tick, 3 * 60_000);
+    window.addEventListener('focus', tick);
+    return () => { live = false; clearInterval(t); window.removeEventListener('focus', tick); };
+  }, [gmailConnected]);
+  const emailBadge = gmailUnread != null ? gmailUnread : inbox.unreadMine;
+  // Anyone we know by email address → their deal (preferred) or contact card, for the live Gmail view.
+  const contactIndex = useMemo(() => {
+    const m = new Map<string, ContactMatch>();
+    for (const c of clients) for (const em of [c.email, ...(c.extra_emails ?? [])]) if (em) m.set(em.toLowerCase(), { kind: 'contact', id: c.id, label: `${c.first_name} ${c.last_name}`.trim() || em });
+    for (const d of deals) if (d.client_email) m.set(d.client_email.toLowerCase(), { kind: 'deal', id: d.id, label: d.client });
+    return m;
+  }, [clients, deals]);
+  const contactFor = (email: string): ContactMatch => contactIndex.get(email.trim().toLowerCase()) ?? null;
   // Group email as separate copies (per-person open tracking) vs one shared message.
   const [composeIndividual, setComposeIndividual] = useState(false);
   const [composeSending, setComposeSending] = useState(false);
@@ -4391,6 +4413,33 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     });
   }
 
+  // Reply / Reply all / Forward on a message read live from Gmail: opens the Compose window addressed, quoted and
+  // threaded onto Gmail's own conversation (so it lands in the same thread in Gmail), filed on the deal/contact we know.
+  const liveAsEmail = (m: LiveMessage): DealEmail => {
+    const fromA = parseAddressList(m.from)[0];
+    const mine = !!fromA && selfAddrs().some(x => (x ?? '').toLowerCase() === fromA.email.toLowerCase());
+    return { id: m.id, deal_id: null, direction: mine ? 'sent' : 'received', from_email: m.from, to_email: m.to, cc_emails: m.cc || null, subject: m.subject, body: m.text, email_date: new Date(m.date).toISOString() } as unknown as DealEmail;
+  };
+  function liveReply(m: LiveMessage, threadId: string, all: boolean) {
+    const e = liveAsEmail(m);
+    const ra = replyAllRecipients(e, [], undefined, selfAddrs());
+    const target = e.direction === 'sent' ? (parseAddressList(m.to)[0]?.email ?? '') : (parseAddressList(m.from)[0]?.email ?? m.from);
+    const match = target ? contactFor(target) : null;
+    openCompose({
+      to: all ? ra.also : target, cc: all ? ra.cc : '', name: parseAddressList(e.direction === 'sent' ? m.to : m.from)[0]?.name,
+      subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`,
+      body: quotedReplyHtml(e), threadId, inReplyTo: `${m.refs} ${m.rfcId}`.trim() || null,
+      ...(match ? (match.kind === 'deal' ? { dealId: match.id } : { clientId: match.id }) : {}),
+    });
+  }
+  function liveForward(m: LiveMessage) {
+    const e = liveAsEmail(m);
+    openCompose({
+      subject: forwardSubject(m.subject), body: forwardedHtml(e),
+      crmFiles: m.attachments.map(a => ({ kind: 'gmail_att' as const, id: `${m.id}:${a.part}`, name: a.name, size: a.size, type: a.mime, sub: 'From the forwarded email' })),
+    });
+  }
+
   // ── Gmail compose & send ─────────────────────────────────────────────────────
   async function sendGmailEmail(deal: Deal) {
     if (!composeSubject.trim()) { showToast('Subject is required'); return; }
@@ -5589,7 +5638,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '2px 12px 0' }}>
           <button className={`crm-nav${page === 'emails' ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab('inbox'); }}>
             <Ico n="mail" />Emails
-            {inbox.unreadMine > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{inbox.unreadMine}</span>}
+            {emailBadge > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{emailBadge > 99 ? '99+' : emailBadge}</span>}
           </button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
@@ -5818,7 +5867,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   Contacts, Calendar, Marketing, Properties, Calls, E-Sign and Docs, so they are not repeated here). */}
               <div style={{ padding: '16px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>More</div>
-                <button className={`crm-nav${page === 'emails' ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab('inbox'); setMobileMenuOpen(false); }}><Ico n="mail" />Emails{inbox.unreadMine > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{inbox.unreadMine}</span>}</button>
+                <button className={`crm-nav${page === 'emails' ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab('inbox'); setMobileMenuOpen(false); }}><Ico n="mail" />Emails{emailBadge > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{emailBadge > 99 ? '99+' : emailBadge}</span>}</button>
                 {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}><Ico n="briefcase" />Broker / Agents</button>}
                 {isAdmin && (
                   <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
@@ -11147,7 +11196,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {page === 'emails' && (
             <EmailsSection isMobile={isMobile} tab={emailsTab} setTab={setEmailsTab}
-              unread={inbox.unreadMine} draftCount={draftCount} inbox={inbox}
+              unread={emailBadge} draftCount={draftCount} inbox={inbox}
+              contactFor={contactFor} onLiveReply={liveReply} onLiveForward={liveForward} onCompose={() => openCompose()}
               myAddresses={[...gmailAccounts.map(a => a.email), profile.email, session?.user?.email ?? ''].filter(Boolean)}
               nameFor={nameForEmail}
               dealLabel={id => deals.find(d => d.id === id)?.client ?? null}

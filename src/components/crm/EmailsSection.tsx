@@ -1,6 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import GmailMailbox, { type ContactMatch } from './GmailMailbox';
+import type { LiveMessage } from '@/lib/gmail-live';
 import InboxSection from './InboxSection';
 import DraftsSection from './DraftsSection';
 import SentSection from './SentSection';
@@ -28,12 +30,28 @@ type Props = {
   clientLabel: (id: string) => string | null;
   onOpenDeal: (id: string) => void;
   onOpenContact: (id: string) => void;
+  contactFor: (email: string) => ContactMatch;
+  onLiveReply: (m: LiveMessage, threadId: string, all: boolean, account: string | null) => void;
+  onLiveForward: (m: LiveMessage, threadId: string, account: string | null) => void;
+  onCompose: () => void;
   onInboxReply: (r: InboxRow, all: boolean) => void;
   canInboxReplyAll: (r: InboxRow) => boolean;
   onResumeDraft: (d: EmailDraft) => void;
 };
 
 export default function EmailsSection(p: Props) {
+  // Inbox and Sent can show your real Gmail ("All mail", the default) or only what the CRM filed / tracked.
+  const [source, setSourceState] = useState<'gmail' | 'crm'>('gmail');
+  useEffect(() => { try { if (localStorage.getItem('crm-emails-source') === 'crm') setSourceState('crm'); } catch { /* ignore */ } }, []);
+  const setSource = (v: 'gmail' | 'crm') => { setSourceState(v); try { localStorage.setItem('crm-emails-source', v); } catch { /* ignore */ } };
+  const toggle = (gmailLabel: string, crmLabel: string) => (
+    <div role="group" aria-label="Mail source" style={{ display: 'inline-flex', padding: 3, gap: 2, background: 'var(--k-f3f4f6)', borderRadius: 10, marginBottom: 14 }}>
+      {([['gmail', gmailLabel], ['crm', crmLabel]] as const).map(([v, l]) => (
+        <button key={v} type="button" onClick={() => setSource(v)} aria-pressed={source === v}
+          style={{ padding: p.isMobile ? '9px 14px' : '6px 14px', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", background: source === v ? 'var(--k-fff)' : 'transparent', color: source === v ? 'var(--k-111)' : 'var(--k-6b7280)', boxShadow: source === v ? '0 1px 2px rgba(0,0,0,.08)' : 'none' }}>{l}</button>
+      ))}
+    </div>
+  );
   const tabs: Array<[EmailsTab, string, number]> = [['inbox', 'Inbox', p.unread], ['drafts', 'Drafts', p.draftCount], ['sent', 'Sent', 0]];
   return (
     <div style={{ maxWidth: 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
@@ -51,11 +69,21 @@ export default function EmailsSection(p: Props) {
       </div>
 
       {p.tab === 'inbox' && (
-        <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />
+        <>
+          {toggle('All mail', 'CRM replies')}
+          {source === 'gmail'
+            ? <GmailMailbox box="inbox" isMobile={p.isMobile} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onForward={p.onLiveForward} onNewCompose={p.onCompose} />
+            : <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />}
+        </>
       )}
       {p.tab === 'drafts' && <DraftsSection isMobile={p.isMobile} onResume={p.onResumeDraft} />}
       {p.tab === 'sent' && (
-        <SentSection embedded isMobile={p.isMobile} myAddresses={p.myAddresses} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} />
+        <>
+          {toggle('All sent', 'Tracked opens')}
+          {source === 'gmail'
+            ? <GmailMailbox box="sent" isMobile={p.isMobile} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onForward={p.onLiveForward} onNewCompose={p.onCompose} />
+            : <SentSection embedded isMobile={p.isMobile} myAddresses={p.myAddresses} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} />}
+        </>
       )}
     </div>
   );

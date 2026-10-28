@@ -11,10 +11,14 @@ import { adminClient } from '@/lib/supabase-admin';
 import { assertOwnsResource, hiddenDealIds, type CrmContext } from '@/lib/crm-auth';
 import { canAccessLinked } from '@/lib/crm-linked-access';
 import { EMAIL_ATTACH_BUCKET, type StoredAttachment } from '@/lib/email-attachments';
+import { callerMailboxes } from '@/lib/gmail-mailbox';
+import { fetchAttachment } from '@/lib/gmail-live';
 
-export type CrmAttachKind = 'deal_doc' | 'form' | 'signed' | 'email_att';
-export const CRM_ATTACH_KINDS: CrmAttachKind[] = ['deal_doc', 'form', 'signed', 'email_att'];
+export type CrmAttachKind = 'deal_doc' | 'form' | 'signed' | 'email_att' | 'gmail_att';
+export const CRM_ATTACH_KINDS: CrmAttachKind[] = ['deal_doc', 'form', 'signed', 'email_att', 'gmail_att'];
 /** An 'email_att' id is `<crm_deal_emails.id>:<index into its attachments list>` (Forward carries an email's files). */
+/** A 'gmail_att' id is `<gmail message id>:<part id>` — a file on a message in the sender's OWN Gmail (Forward from the live mailbox). */
+export const GMAIL_ATT_ID = /^[0-9a-f]{8,32}:[\d.]{1,20}$/i;
 export const EMAIL_ATT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:\d{1,2}$/i;
 export interface CrmAttachRef { kind: CrmAttachKind; id: string }
 export interface CrmAttachItem extends CrmAttachRef { name: string; size: number | null; type: string; sub?: string }
@@ -116,6 +120,13 @@ export async function resolveCrmAttachments(refs: CrmAttachRef[], ctx: CrmContex
         || !(await canAccessLinked(ctx, s as { business_unit?: string | null; deal_id?: string | null; listing_id?: string | null }))) return { ok: false, status: 404, error: 'A form you picked is no longer available' };
       name = `${clean(String(s.title ?? ''), 'Form')}.pdf`;
       bytes = await fetchBytes(FORMS, s.filled_path as string);
+    } else if (ref.kind === 'gmail_att') {
+      // Only the caller's own mailbox can supply it.
+      const [messageId, partId] = ref.id.split(':');
+      let got: Awaited<ReturnType<typeof fetchAttachment>> = null;
+      for (const box of await callerMailboxes(ctx.userId)) { got = await fetchAttachment(box.accessToken, messageId, partId); if (got) break; }
+      if (!got) return { ok: false, status: 404, error: 'A file from that message is no longer available' };
+      name = got.name; mimeType = got.mime; bytes = got.bytes;
     } else if (ref.kind === 'email_att') {
       // A file from a logged email (Forward): authorized by the email's deal/contact, like opening it in the thread.
       const [emailId, idxStr] = ref.id.split(':');
