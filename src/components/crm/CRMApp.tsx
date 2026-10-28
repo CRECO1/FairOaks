@@ -333,6 +333,38 @@ function replyAllRecipients(last: DealEmail, thread: DealEmail[], primary: strin
   const also = pick([last.direction === 'received' ? last.from_email : '', last.to_email].filter(Boolean).join(', '));
   return { also, cc: pick(last.cc_emails) };
 }
+// "On Tue, Oct 27, 2026, Brian Blanco <b@x.com> wrote:" + the original, quoted underneath a reply — what Gmail does,
+// so whoever receives the reply sees the conversation it belongs to.
+function quotedReplyHtml(e: DealEmail): string {
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const when = (() => { const d = new Date(e.email_date); return isNaN(d.getTime()) ? e.email_date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); })();
+  const text = htmlToPlainText(e.body ?? '').trim();
+  const clipped = text.length > 1800 ? text.slice(0, 1800).trimEnd() + '…' : text;
+  const who = emailDisplayName(e.from_email);
+  return `<br><br><div class="gmail_quote"><div>On ${esc(when)}, ${esc(who)} &lt;${esc(e.from_email)}&gt; wrote:</div><blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">${esc(clipped).replace(/\n/g, '<br>')}</blockquote></div>`;
+}
+// The composer mounts a tick after a Reply is clicked; drop the quote in then — unless a saved draft already filled it.
+function placeReplyQuote(ref: React.RefObject<HTMLDivElement | null>, html: string) {
+  setTimeout(() => {
+    const el = ref.current;
+    if (!el || (el.innerText ?? '').trim()) { el?.focus(); return; }
+    el.innerHTML = html;
+    el.focus();
+    const sel = window.getSelection();
+    if (sel) { const r = document.createRange(); r.setStart(el, 0); r.collapse(true); sel.removeAllRanges(); sel.addRange(r); }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, 120);
+}
+// Gmail's bottom-of-thread buttons: Reply (just the person), and Reply all only when others are on the email.
+function ReplyButtons({ onReply, onReplyAll, isMobile }: { onReply: () => void; onReplyAll?: () => void; isMobile: boolean }) {
+  const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, height: isMobile ? 44 : 34, padding: '0 18px', background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 18, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <button type="button" onClick={onReply} style={btn}>↩ Reply</button>
+      {onReplyAll && <button type="button" onClick={onReplyAll} style={btn}>↩↩ Reply all</button>}
+    </div>
+  );
+}
 function emailInitials(addr: string): string {
   const n = emailDisplayName(addr).split(' ');
   return n.length >= 2 ? (n[0][0] + n[n.length - 1][0]).toUpperCase() : n[0].slice(0, 2).toUpperCase();
@@ -950,7 +982,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [composeBcc, setComposeBcc] = useState('');
   const [composeReq, setComposeReq] = useState<ComposeRequest>(null);
   // Group email as separate copies (per-person open tracking) vs one shared message.
-  const [composeIndividual, setComposeIndividual] = useState(true);
+  const [composeIndividual, setComposeIndividual] = useState(false);
   const [composeSending, setComposeSending] = useState(false);
   const [replyToEmail, setReplyToEmail] = useState<DealEmail | null>(null);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
@@ -11109,6 +11141,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* Compose panel */}
                   {showCompose && activeDeal && (
+                    <div id="deal-compose">
                     <EmailComposer isMobile={isMobile} title={replyToEmail ? 'Reply' : 'New email'} replyingTo={replyToEmail?.subject}
                       to={activeDeal.client_email} toName={activeDeal.client}
                       mergeName={(activeDeal.client ?? '').trim().split(/\s+/)[0]} mergeProperty={activeDeal.property}
@@ -11121,6 +11154,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
                       sending={composeSending} onSend={() => sendGmailEmail(activeDeal)}
                       onDiscard={() => { setShowCompose(false); setReplyToEmail(null); setComposeAttachments([]); clearComposeBody(); }} />
+                    </div>
                   )}
 
                   {gmailConnected && activeDeal?.client_email && (
@@ -11245,23 +11279,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   </div>
                                 );})}
 
-                                {/* Reply button at the bottom of expanded thread */}
-                                {gmailConnected && activeDeal?.client_email && (
-                                  <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 14px', background: 'var(--k-fff)' }}>
-                                    <button
-                                      onClick={() => {
-                                        const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
-                                        setReplyToEmail(lastEmail);
-                                        setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
-                                        { const ra = replyAllRecipients(lastEmail, threadEmails, activeDeal?.client_email, [session?.user?.email, profile?.email]); setComposeMoreTo(ra.also); setComposeCc(ra.cc); }
-                                        clearComposeBody();
-                                        setShowCompose(true);
-                                      }}
-                                      style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                                      ↩ Reply
-                                    </button>
-                                  </div>
-                                )}
+                                {/* Reply / Reply all at the bottom of the expanded thread (same Gmail thread, one shared email) */}
+                                {gmailConnected && activeDeal?.client_email && (() => {
+                                  const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
+                                  const ra = replyAllRecipients(lastEmail, threadEmails, activeDeal?.client_email, [session?.user?.email, profile?.email]);
+                                  const start = (all: boolean) => {
+                                    setReplyToEmail(lastEmail);
+                                    setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
+                                    setComposeMoreTo(all ? ra.also : ''); setComposeCc(all ? ra.cc : ''); setComposeBcc('');
+                                    setComposeIndividual(false);
+                                    clearComposeBody(); setComposeAttachments([]);
+                                    setShowCompose(true);
+                                    placeReplyQuote(composeBodyRef, quotedReplyHtml(lastEmail));
+                                    setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+                                  };
+                                  return (
+                                    <div style={{ padding: '10px 14px', background: 'var(--k-fff)' }}>
+                                      <ReplyButtons isMobile={isMobile} onReply={() => start(false)} onReplyAll={ra.also || ra.cc ? () => start(true) : undefined} />
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             )}
                           </div>
@@ -13215,23 +13252,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         onDiscard={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} />
                                     </div>
                                   ) : (
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>
-                                      <button
-                                        onClick={() => {
-                                          const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
-                                          const replyTo = lastEmail.direction === 'received' ? lastEmail : (threadEmails.find(e => e.direction === 'received') ?? lastEmail);
-                                          setReplyToContactEmail(replyTo);
-                                          setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
-                                          { const ra = replyAllRecipients(lastEmail, threadEmails, c.email, [session?.user?.email, profile?.email]); setComposeMoreTo(ra.also); setComposeCc(ra.cc); }
-                                          clearContactComposeBody();
-                                          setComposeAttachments([]);
-                                          setShowContactCompose(false);
-                                          setReplyingToThreadKey(threadKey);
-                                        }}
-                                        style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                                        ↩ Reply
-                                      </button>
-                                    </div>
+                                    (() => {
+                                      const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
+                                      const replyTo = lastEmail.direction === 'received' ? lastEmail : (threadEmails.find(e => e.direction === 'received') ?? lastEmail);
+                                      const ra = replyAllRecipients(lastEmail, threadEmails, c.email, [session?.user?.email, profile?.email]);
+                                      const start = (all: boolean) => {
+                                        setReplyToContactEmail(replyTo);
+                                        setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
+                                        setComposeMoreTo(all ? ra.also : ''); setComposeCc(all ? ra.cc : ''); setComposeBcc('');
+                                        setComposeIndividual(false);
+                                        clearContactComposeBody();
+                                        setComposeAttachments([]);
+                                        setShowContactCompose(false);
+                                        setReplyingToThreadKey(threadKey);
+                                        placeReplyQuote(contactComposeBodyRef, quotedReplyHtml(lastEmail));
+                                      };
+                                      return (
+                                        <div style={{ padding: '10px 12px', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>
+                                          <ReplyButtons isMobile={isMobile} onReply={() => start(false)} onReplyAll={ra.also || ra.cc ? () => start(true) : undefined} />
+                                        </div>
+                                      );
+                                    })()
                                   )}
                                 </div>
                               )}
