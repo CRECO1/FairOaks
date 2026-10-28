@@ -37,14 +37,27 @@ export function buildThreads(rows: MailRow[], myAddrs: string[], scope: 'mine' |
     const hay = (r.direction === 'sent' ? r.from_email : `${r.to_email},${r.cc_emails ?? ''}`).toLowerCase();
     return me.some(a => hay.includes(a));
   };
+  // One conversation = same Gmail thread, OR same deal/contact + same subject: an email sent from two mailboxes
+  // (or to several people as individual copies) lands in separate Gmail threads but is one conversation to us.
+  const parent = new Map<string, string>();
+  const find = (k: string): string => { let r = k; while (parent.get(r) !== r) r = parent.get(r)!; parent.set(k, r); return r; };
+  const union = (a: string, b: string) => { if (!parent.has(a)) parent.set(a, a); if (!parent.has(b)) parent.set(b, b); parent.set(find(a), find(b)); };
+  for (const r of rows) {
+    const ctx = r.client_id ?? r.deal_id;
+    const byThread = r.gmail_thread_id ? `g:${r.gmail_thread_id}` : `r:${r.id}`;
+    union(byThread, byThread);
+    if (ctx && norm(r.subject)) union(byThread, `s:${ctx}|${norm(r.subject)}`);
+  }
   const groups = new Map<string, MailRow[]>();
   for (const r of rows) {
-    const key = r.gmail_thread_id ? `g:${r.gmail_thread_id}` : `s:${r.client_id ?? r.deal_id ?? ''}|${norm(r.subject)}`;
+    const key = find(r.gmail_thread_id ? `g:${r.gmail_thread_id}` : `r:${r.id}`);
     const g = groups.get(key); if (g) g.push(r); else groups.set(key, [r]);
   }
   const needsReply: MailThread[] = [], waiting: MailThread[] = [];
   const now = Date.now();
-  groups.forEach((g, key) => {
+  groups.forEach(g => {
+    // Stable id for the "done" list: the smallest member id, which doesn't depend on row order.
+    const key = g.map(r => (r.gmail_thread_id ? `g:${r.gmail_thread_id}` : `r:${r.id}`)).sort()[0];
     const latest = g.reduce((a, b) => (stamp(b) > stamp(a) ? b : a));
     const mine = g.some(touchesMe);
     if (scope === 'mine' && !mine) return;
