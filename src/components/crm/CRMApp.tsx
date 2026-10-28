@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { Session } from '@supabase/supabase-js';
 import { businessMinutesBetween, fmtMins, stlTone, STL_COLORS, STL_LATE_MIN, waitingLabel, isOpenNow, pickedUpHint, bestHours, hourLabel, isConnectNote } from '@/lib/speed-to-lead';
@@ -377,10 +377,74 @@ function forwardedHtml(e: DealEmail): string {
   return `<br><br><div class="gmail_quote">---------- Forwarded message ---------<br>From: <b>${esc(from.name)}</b> &lt;${esc(from.email)}&gt;<br>Date: ${esc(when)}<br>Subject: ${esc(e.subject ?? '')}<br>To: ${esc(e.to_email ?? '')}${e.cc_emails ? `<br>Cc: ${esc(e.cc_emails)}` : ''}<br><br>${esc(clipped).replace(/\n/g, '<br>')}</div>`;
 }
 const forwardSubject = (subj?: string) => `Fwd: ${(subj ?? '').replace(/^\s*((re|fwd?):\s*)+/i, '')}`;
-// Gmail's bottom-of-thread buttons: Reply (just the person), and Reply all only when others are on the email.
+// Turns URLs and addresses in a plain-text email body into links (mailto links open the Compose window).
+function Linkified({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s<>"')]+|www\.[^\s<>"')]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+)/gi);
+  return <>{parts.map((part, i) => {
+    if (i % 2 === 0) return part;
+    const trail = /[.,;:!?]+$/.exec(part)?.[0] ?? '';
+    const core = trail ? part.slice(0, -trail.length) : part;
+    const href = /^https?:/i.test(core) ? core : core.includes('@') ? `mailto:${core}` : `https://${core}`;
+    return <Fragment key={i}><a href={href} target={href.startsWith('mailto:') ? undefined : '_blank'} rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} style={{ color: 'var(--k-1d4ed8)', textDecoration: 'underline', wordBreak: 'break-all' }}>{core}</a>{trail}</Fragment>;
+  })}</>;
+}
+
+// One message inside an expanded thread, like Gmail: the latest is open, older ones fold to a single line you can
+// tap open. Used by both the deal and the contact thread so they can't drift apart.
+function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply }: { e: DealEmail; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const bodyText = cleanEmailBody(e.body ?? '');
+  const bg = striped ? 'var(--k-fafafa)' : 'var(--k-fff)';
+  const border = last ? 'none' : '1px solid var(--k-f0f0f0)';
+  if (!open) {
+    return (
+      <div role="button" tabIndex={0} onClick={() => setOpen(true)} onKeyDown={ev => { if (ev.key === 'Enter') setOpen(true); }} title="Show this message"
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '12px 14px' : '9px 16px', minHeight: isMobile ? 48 : 40, cursor: 'pointer', background: bg, borderBottom: border }}>
+        <div style={{ width: 24, height: 24, borderRadius: '50%', background: emailAvatarColor(e.from_email), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{emailInitials(e.from_email)}</div>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0, maxWidth: isMobile ? 110 : 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emailDisplayName(e.from_email)}</span>
+        <span style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{bodyText.replace(/\s+/g, ' ').slice(0, 120)}</span>
+        <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }}>{e.email_date}</span>
+      </div>
+    );
+  }
+  return (
+    <div style={{ padding: '14px 16px', background: bg, borderBottom: border }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+        <div style={{ width: 32, height: 32, borderRadius: '50%', background: emailAvatarColor(e.from_email), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>
+          {emailInitials(e.from_email)}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <div onClick={() => setOpen(false)} title="Fold this message" style={{ cursor: 'pointer', minWidth: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{emailDisplayName(e.from_email)}</span>
+              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: 5, wordBreak: 'break-all' }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
+              {e.direction === 'sent' && !e.opened_at && e.tracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
+              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{e.email_date}</span>
+              {onReply && <span role="button" tabIndex={0} aria-label="Reply to this message" title="Reply to this message" onClick={onReply} onKeyDown={ev => { if (ev.key === 'Enter') onReply(); }}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)' }}>↩</span>}
+            </div>
+          </div>
+          <EmailRecipients to={e.to_email} cc={e.cc_emails} />
+        </div>
+      </div>
+      {bodyText.trim() && (
+        <div style={{ fontSize: 14, color: 'var(--k-374151)', lineHeight: 1.65, paddingLeft: 42, marginTop: 4 }}>
+          {bodyText.split('\n').map((line, i) => (
+            <p key={i} style={{ margin: 0, marginBottom: line.trim() ? 6 : 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}><Linkified text={line || ' '} /></p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // A draft written in the Compose window counts as belonging to a card when it is addressed to that person.
 const draftIsTo = (d: EmailDraft, email?: string | null) => !!email && `${d.to},${d.moreTo}`.toLowerCase().includes(email.trim().toLowerCase());
 
+// Gmail's bottom-of-thread buttons: Reply (just the person), and Reply all only when others are on the email.
 function ReplyButtons({ onReply, onReplyAll, onForward, isMobile }: { onReply: () => void; onReplyAll?: () => void; onForward?: () => void; isMobile: boolean }) {
   const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, height: isMobile ? 44 : 34, padding: '0 18px', background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 18, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
   return (
@@ -11466,42 +11530,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {/* Expanded thread emails */}
                             {isExpanded && (
                               <div style={{ borderTop: '1px solid var(--k-f0f0f0)' }}>
-                                {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map((e, idx, arr) => {
-                                  return (
-                                  <div key={e.id} style={{ padding: '14px 16px', background: idx % 2 === 0 ? 'var(--k-fafafa)' : 'var(--k-fff)', borderBottom: idx < arr.length - 1 ? '1px solid var(--k-f0f0f0)' : 'none' }}>
-                                    {/* Email header */}
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-                                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: emailAvatarColor(e.from_email), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>
-                                        {emailInitials(e.from_email)}
-                                      </div>
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                          <div>
-                                            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{emailDisplayName(e.from_email)}</span>
-                                            <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: 5 }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
-                                          </div>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                            {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
-                                            {e.direction === 'sent' && !e.opened_at && e.tracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
-                                            <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{e.email_date}</span>
-                                          </div>
-                                        </div>
-                                        <EmailRecipients to={e.to_email} cc={e.cc_emails} />
-                                      </div>
-                                    </div>
-                                    {(() => {
-                                      const bodyText = cleanEmailBody(e.body ?? '');
-                                      if (!bodyText.trim()) return null;
-                                      return (
-                                        <div style={{ fontSize: 14, color: 'var(--k-374151)', lineHeight: 1.65, paddingLeft: 42, marginTop: 4 }}>
-                                          {bodyText.split('\n').map((line, i) => (
-                                            <p key={i} style={{ margin: 0, marginBottom: line.trim() ? 6 : 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{line || ' '}</p>
-                                          ))}
-                                        </div>
-                                      );
-                                    })()}
-                                  </div>
-                                );})}
+                                {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map((e, idx, arr) => (
+                                  <ThreadMessage key={e.id} e={e} isMobile={isMobile} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
+                                    onReply={gmailConnected && activeDeal?.client_email ? () => {
+                                      setReplyToEmail(e);
+                                      setComposeSubject(e.subject?.startsWith('Re:') ? e.subject : `Re: ${e.subject}`);
+                                      setComposeMoreTo(''); setComposeCc(''); setComposeBcc(''); setComposeIndividual(false);
+                                      clearComposeBody(); setComposeAttachments([]);
+                                      setShowCompose(true);
+                                      placeReplyQuote(composeBodyRef, quotedReplyHtml(e));
+                                      setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+                                    } : undefined} />
+                                ))}
 
                                 {/* Reply / Reply all at the bottom of the expanded thread (same Gmail thread, one shared email) */}
                                 {gmailConnected && activeDeal?.client_email && (() => {
@@ -13431,38 +13471,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               {isExpanded && (
                                 <div style={{ borderTop: '1px solid var(--k-f0f0f0)' }}>
                                   {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map((e, idx, arr) => (
-                                    <div key={e.id} style={{ padding: '14px 16px', background: idx % 2 === 0 ? 'var(--k-fafafa)' : 'var(--k-fff)', borderBottom: idx < arr.length - 1 ? '1px solid var(--k-f0f0f0)' : 'none' }}>
-                                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: emailAvatarColor(e.from_email), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>
-                                          {emailInitials(e.from_email)}
-                                        </div>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                            <div>
-                                              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{emailDisplayName(e.from_email)}</span>
-                                              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: 5 }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
-                                            </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                              {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
-                                              {e.direction === 'sent' && !e.opened_at && e.tracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
-                                              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{e.email_date}</span>
-                                            </div>
-                                          </div>
-                                          <EmailRecipients to={e.to_email} cc={e.cc_emails} />
-                                        </div>
-                                      </div>
-                                      {(() => {
-                                        const bodyText = cleanEmailBody(e.body ?? '');
-                                        if (!bodyText.trim()) return null;
-                                        return (
-                                          <div style={{ fontSize: 14, color: 'var(--k-374151)', lineHeight: 1.65, paddingLeft: 42, marginTop: 4 }}>
-                                            {bodyText.split('\n').map((line, i) => (
-                                              <p key={i} style={{ margin: 0, marginBottom: line.trim() ? 6 : 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{line || ' '}</p>
-                                            ))}
-                                          </div>
-                                        );
-                                      })()}
-                                    </div>
+                                    <ThreadMessage key={e.id} e={e} isMobile={isMobile} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
+                                      onReply={() => {
+                                        setReplyToContactEmail(e);
+                                        setComposeSubject(e.subject?.startsWith('Re:') ? e.subject : `Re: ${e.subject}`);
+                                        setComposeMoreTo(''); setComposeCc(''); setComposeBcc(''); setComposeIndividual(false);
+                                        clearContactComposeBody(); setComposeAttachments([]);
+                                        setShowContactCompose(false);
+                                        setReplyingToThreadKey(threadKey);
+                                        placeReplyQuote(contactComposeBodyRef, quotedReplyHtml(e));
+                                      }} />
                                   ))}
                                   {/* Inline reply compose */}
                                   {replyingToThreadKey === threadKey ? (
