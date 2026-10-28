@@ -118,8 +118,18 @@ export async function GET(req: NextRequest) {
             let recipientId: string | null = (conn?.[0]?.user_id as string | undefined) ?? null;
             if (!recipientId) recipientId = ((await supabase.from('crm_profiles').select('id').ilike('email', addr).maybeSingle()).data?.id as string | undefined) ?? null;
             if (recipientId) {
-              const first = String(row.to_email ?? '').split(',')[0] ?? '';
-              const who = (first.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] ?? first.split('@')[0]).trim() || 'Someone';
+              // Name the person: the contact on the card, else the To header's display name, else the address.
+              let who = '';
+              if (row.client_id) {
+                const { data: c } = await supabase.from('crm_clients').select('first_name, last_name').eq('id', row.client_id).maybeSingle();
+                who = `${c?.first_name ?? ''} ${c?.last_name ?? ''}`.trim();
+              }
+              if (!who && row.deal_id) who = String(((await supabase.from('crm_deals').select('client').eq('id', row.deal_id).maybeSingle()).data?.client as string | undefined) ?? '').trim();
+              if (!who) {
+                const first = String(row.to_email ?? '').split(',')[0] ?? '';
+                who = (first.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] ?? first.split('@')[0]).trim();
+              }
+              who = who || 'Someone';
               await supabase.from('crm_notifications').insert([{
                 recipient_id: recipientId, sender_id: null, type: 'email_open',
                 message: `👁 ${who} opened your email: ${String(row.subject ?? '').slice(0, 80)}`,
