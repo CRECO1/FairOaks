@@ -10,6 +10,8 @@ import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import DraftsSection from './DraftsSection';
 import SentSection from './SentSection';
+import NeedsReplySection from './NeedsReplySection';
+import { countNeedsReply, onDoneChanged as onNeedsReplyDone } from '@/lib/needs-reply';
 import CardDrafts from './CardDrafts';
 import { setDraftAuth, syncDrafts, onDraftsChanged, listDrafts, type EmailDraft } from '@/lib/email-drafts';
 import dynamic from 'next/dynamic';
@@ -853,10 +855,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'drafts', 'sent'] as const;
+  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'needs-reply', 'drafts', 'sent'] as const;
   // The sidebar says "Marketing" but the page is called 'campaigns', so a
   // #marketing link silently left you wherever you already were.
-  const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties', 'calling-log': 'calls', calling: 'calls', phone: 'calls', 'sent-mail': 'sent' };
+  const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties', 'calling-log': 'calls', calling: 'calls', phone: 'calls', 'sent-mail': 'sent', inbox: 'needs-reply', replies: 'needs-reply' };
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -1075,6 +1077,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   useEffect(() => { setComposeFollowUp(loadFollowUp()); }, []);
   const [composeReq, setComposeReq] = useState<ComposeRequest>(null);
   const [draftCount, setDraftCount] = useState(0);
+  const [needsReplyCount, setNeedsReplyCount] = useState(0);
   // Group email as separate copies (per-person open tracking) vs one shared message.
   const [composeIndividual, setComposeIndividual] = useState(false);
   const [composeSending, setComposeSending] = useState(false);
@@ -1178,6 +1181,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     window.addEventListener('focus', pull);
     return () => { off(); window.removeEventListener('focus', pull); };
   }, [session?.user.id]);
+
+  // Needs-reply badge: conversations whose last word is theirs. Re-checked every 5 min (inbound files itself
+  // every 10), on focus, and whenever a thread is marked done.
+  const myMailAddrs = useMemo(
+    () => Array.from(new Set([...gmailAccounts.map(a => a.email), profile?.email ?? '', session?.user?.email ?? ''].map(a => a.toLowerCase()).filter(Boolean))),
+    [gmailAccounts, profile?.email, session?.user?.email],
+  );
+  const myMailKey = myMailAddrs.join(',');
+  useEffect(() => {
+    if (!session?.user.id || !myMailKey) return;
+    let live = true;
+    const run = () => { void countNeedsReply(myMailKey.split(',')).then(n => { if (live) setNeedsReplyCount(n); }).catch(() => {}); };
+    run();
+    const t = setInterval(run, 5 * 60_000);
+    const offDone = onNeedsReplyDone(run);
+    window.addEventListener('focus', run);
+    return () => { live = false; clearInterval(t); offDone(); window.removeEventListener('focus', run); };
+  }, [session?.user.id, myMailKey]);
 
   // Drafts open in place when their deal / contact card is already on screen, and via the Drafts page otherwise.
   // A card that already has a composer open is closed first (one tick) so the old text is saved under the old
@@ -5117,7 +5138,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', drafts: 'Drafts', sent: 'Sent',
+    'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', 'needs-reply': 'Needs reply', drafts: 'Drafts', sent: 'Sent',
     agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'Transaction Docs', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
   };
 
@@ -5435,6 +5456,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           </button>
         </div>
         <div style={{ padding: '2px 12px 0' }}>
+          <button className={`crm-nav${page === 'needs-reply' ? ' active' : ''}`} onClick={() => setPage('needs-reply')}>
+            <Ico n="mail" />Needs reply
+            {needsReplyCount > 0 && (
+              <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{needsReplyCount}</span>
+            )}
+          </button>
           <button className={`crm-nav${page === 'drafts' ? ' active' : ''}`} onClick={() => setPage('drafts')}>
             <Ico n="pen" />Drafts
             {draftCount > 0 && (
@@ -5665,6 +5692,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   Contacts, Calendar, Marketing, Properties, Calls, E-Sign and Docs, so they are not repeated here). */}
               <div style={{ padding: '16px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>More</div>
+                <button className={`crm-nav${page === 'needs-reply' ? ' active' : ''}`} onClick={() => { setPage('needs-reply'); setMobileMenuOpen(false); }}><Ico n="mail" />Needs reply{needsReplyCount > 0 && <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{needsReplyCount}</span>}</button>
                 <button className={`crm-nav${page === 'drafts' ? ' active' : ''}`} onClick={() => { setPage('drafts'); setMobileMenuOpen(false); }}><Ico n="pen" />Drafts{draftCount > 0 && <span style={{ marginLeft: 'auto', background: 'rgba(201,146,44,.9)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{draftCount}</span>}</button>
                 <button className={`crm-nav${page === 'sent' ? ' active' : ''}`} onClick={() => { setPage('sent'); setMobileMenuOpen(false); }}><Ico n="mail" />Sent</button>
                 {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}><Ico n="briefcase" />Broker / Agents</button>}
@@ -10987,10 +11015,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             />
           )}
 
+          {page === 'needs-reply' && (
+            <NeedsReplySection isMobile={isMobile}
+              myAddresses={myMailAddrs}
+              nameFor={nameForEmail}
+              dealLabel={id => deals.find(d => d.id === id)?.client ?? null}
+              clientLabel={id => { const c = clients.find(x => x.id === id); return c ? (`${c.first_name} ${c.last_name}`.trim() || c.email) : null; }}
+              onOpenDeal={id => { const d = deals.find(x => x.id === id); if (d) { openDeal(d); setTimeout(() => setDealTab('emails'), 0); } }}
+              onOpenContact={id => { const c = clients.find(x => x.id === id); if (c) setActiveClient(c); else showToast('That contact is not loaded in this workspace'); }}
+              />
+          )}
           {page === 'drafts' && <DraftsSection isMobile={isMobile} onResume={resumeDraft} />}
           {page === 'sent' && (
             <SentSection isMobile={isMobile}
-              myAddresses={[...gmailAccounts.map(a => a.email), profile.email, session?.user?.email ?? ''].filter(Boolean)}
+              myAddresses={myMailAddrs}
               nameFor={nameForEmail}
               dealLabel={id => deals.find(d => d.id === id)?.client ?? null}
               clientLabel={id => { const c = clients.find(x => x.id === id); return c ? (`${c.first_name} ${c.last_name}`.trim() || c.email) : null; }}
