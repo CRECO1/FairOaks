@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, forbidden, notFound } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { createClient } from '@supabase/supabase-js';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
@@ -153,7 +154,8 @@ export async function POST(req: NextRequest) {
     if (!ctx) return unauthorized();
     const caller = { id: ctx.userId };
 
-    const { userId, dealId, clientId, to: toRaw, cc: ccRaw, individual: individualRaw, subject, body, agentName, ccAgentIds, threadId: threadIdRaw, inReplyTo: inReplyToRaw, attachments } = await req.json();
+    const { userId, dealId, clientId: clientIdIn, to: toRaw, cc: ccRaw, bcc: bccRaw, toName, resolveClient, individual: individualRaw, subject, body, agentName, ccAgentIds, threadId: threadIdRaw, inReplyTo: inReplyToRaw, attachments } = await req.json();
+    let clientId: string | undefined = clientIdIn;
     // One group email: any number of To and Cc people on the same message, so everyone
     // sees the thread and can reply-all. Per-person open tracking isn't possible then —
     // the single pixel can't say which recipient loaded it.
@@ -162,14 +164,41 @@ export async function POST(req: NextRequest) {
       .map(x => x.replace(/[\r\n]/g, ' ').trim()).filter(Boolean);
     const toList = addrList(toRaw);
     const ccList = addrList(ccRaw).filter(a => !toList.some(t => t.toLowerCase() === a.toLowerCase()));
-    const badAddr = [...toList, ...ccList].find(a => !EMAIL_RE.test(a));
+    const bccList = addrList(bccRaw).filter(a => !toList.some(t => t.toLowerCase() === a.toLowerCase()) && !ccList.some(c => c.toLowerCase() === a.toLowerCase()));
+    const badAddr = [...toList, ...ccList, ...bccList].find(a => !EMAIL_RE.test(a));
     if (badAddr) return NextResponse.json({ error: `"${badAddr}" isn't a valid email address` }, { status: 400 });
-    if (toList.length + ccList.length > 20) return NextResponse.json({ error: 'Too many recipients (20 max)' }, { status: 400 });
+    if (toList.length + ccList.length + bccList.length > 20) return NextResponse.json({ error: 'Too many recipients (20 max)' }, { status: 400 });
     const to = toList.join(', ');
-    if (!userId || (!dealId && !clientId) || !to || !subject || !body) {
+    // resolveClient: "write to anyone" from the global Compose window — link the email to the matching CRM
+    // contact (or make one) so it is still logged, tracked and shows on that contact's card.
+    if (!userId || (!dealId && !clientId && resolveClient !== true) || !to || !subject || !body) {
       return NextResponse.json({ error: 'userId, (dealId or clientId), to, subject, body are required' }, { status: 400 });
     }
     if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
+
+    if (!dealId && !clientId && resolveClient === true) {
+      const db = adminClient();
+      const wanted = toList.map(a => a.toLowerCase());
+      const { data: found } = await db.from('crm_clients').select('id, email, business_unit').in('email', wanted).limit(20);
+      const visible = (found ?? []).filter(r => ctx.role === 'admin' || ctx.role === 'super_admin' || !ctx.businessUnit || r.business_unit === ctx.businessUnit);
+      const hit = wanted.map(w => visible.find(r => (r.email ?? '').toLowerCase() === w)).find(Boolean);
+      if (hit) {
+        clientId = hit.id as string;
+      } else {
+        const display = (typeof toName === 'string' && toName.trim()) || toList[0].split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase());
+        const parts = display.trim().split(/\s+/);
+        const { data: made, error: madeErr } = await db.from('crm_clients').insert([{
+          first_name: parts[0] ?? display, last_name: parts.slice(1).join(' '), email: toList[0].toLowerCase(), phone: '',
+          type: 'Other', notes: '', agent_id: userId, assigned_agent_ids: [], lead_source: 'Emailed from the CRM',
+          prospect_status: 'new', business_unit: ctx.businessUnit ?? 'commercial', tags: [], unsubscribe_token: crypto.randomUUID(),
+        }]).select('id').single();
+        if (madeErr || !made) {
+          console.error('[gmail/send] could not create a contact for', toList[0], madeErr?.message);
+          return NextResponse.json({ error: 'Could not file this email under a contact. Try sending it from a contact or deal card.' }, { status: 500 });
+        }
+        clientId = made.id as string;
+      }
+    }
 
     // dealId / clientId go into a service-role REST URL and onto the logged row: they must be real UUIDs,
     // and the deal / client must be in the caller's workspace (and the deal visible to them).
@@ -224,7 +253,7 @@ export async function POST(req: NextRequest) {
     {
       const incomingPlain = String(body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
       const sinceIso = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const scope = dealId ? `deal_id=eq.${encodeURIComponent(dealId)}` : `client_id=eq.${encodeURIComponent(clientId)}`;
+      const scope = dealId ? `deal_id=eq.${encodeURIComponent(dealId)}` : `client_id=eq.${encodeURIComponent(clientId as string)}`;
       const recentRes = await fetch(
         `${SUPABASE_URL}/rest/v1/crm_deal_emails?${scope}&direction=eq.sent&created_at=gte.${sinceIso}&select=to_email,subject,body`,
         { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
@@ -267,13 +296,14 @@ export async function POST(req: NextRequest) {
 
     // One Gmail send + one logged row. Each copy carries its OWN tracking id, so a copy
     // addressed to a single person makes an open attributable to that person.
-    const sendCopy = async (opts: { toHeader: string; ccHeader?: string; replyTo?: string; note?: string; tid: string }) => {
+    const sendCopy = async (opts: { toHeader: string; ccHeader?: string; bccHeader?: string; replyTo?: string; note?: string; tid: string }) => {
       const pixel = `<img src="https://www.fairoaksrealtygroup.com/api/track/open?id=${opts.tid}" width="1" height="1" style="display:none" />`;
       const html = `${opts.note ?? ''}${outBody}${pixel}`;
       const headerLines = [
         `From: ${fromLine}`,
         `To: ${opts.toHeader}`,
         ...(opts.ccHeader ? [`Cc: ${opts.ccHeader}`] : []),
+        ...(opts.bccHeader ? [`Bcc: ${opts.bccHeader}`] : []),
         ...(opts.replyTo ? [`Reply-To: ${opts.replyTo}`] : []),
         `Subject: ${encodeHeader(finalSubject)}`,
         'MIME-Version: 1.0',
@@ -318,7 +348,8 @@ export async function POST(req: NextRequest) {
     // Individual copies (per-person open tracking): everyone gets their own message, but
     // Reply-To lists the whole group + you, so Reply / Reply-all still reaches everybody.
     const everyone = [...toList, ...ccList];
-    const individual = individualRaw === true && everyone.length > 1;
+    // A Bcc can't ride along with separate per-person copies (each copy would expose who else got one), so Bcc means one shared message.
+    const individual = individualRaw === true && everyone.length > 1 && bccList.length === 0;
     let emailId: string | undefined;
     try {
       if (individual) {
@@ -329,7 +360,7 @@ export async function POST(req: NextRequest) {
           if (k === 0) emailId = id;
         }
       } else {
-        emailId = await sendCopy({ toHeader: to, ccHeader: ccList.length ? ccList.join(', ') : undefined, tid: trackingId });
+        emailId = await sendCopy({ toHeader: to, ccHeader: ccList.length ? ccList.join(', ') : undefined, bccHeader: bccList.length ? bccList.join(', ') : undefined, tid: trackingId });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Gmail send failed';
@@ -363,7 +394,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, emailId, copies: individual ? everyone.length : 1 });
+    return NextResponse.json({ success: true, emailId, clientId, copies: individual ? everyone.length : 1 });
   } catch (err) {
     console.error('Gmail send error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

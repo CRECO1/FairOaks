@@ -6,7 +6,8 @@ import { Session } from '@supabase/supabase-js';
 import { businessMinutesBetween, fmtMins, stlTone, STL_COLORS, STL_LATE_MIN, waitingLabel, isOpenNow, pickedUpHint, bestHours, hourLabel, isConnectNote } from '@/lib/speed-to-lead';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
-import EmailComposer from './EmailComposer';
+import EmailComposer, { type Suggestion } from './EmailComposer';
+import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import dynamic from 'next/dynamic';
 import DealMeetings from '@/components/crm/DealMeetings';
 import ContactComms from '@/components/crm/ContactComms';
@@ -946,6 +947,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Extra people on one group email (comma-separated). The client stays the first To.
   const [composeMoreTo, setComposeMoreTo] = useState('');
   const [composeCc, setComposeCc] = useState('');
+  const [composeBcc, setComposeBcc] = useState('');
+  const [composeReq, setComposeReq] = useState<ComposeRequest>(null);
   // Group email as separate copies (per-person open tracking) vs one shared message.
   const [composeIndividual, setComposeIndividual] = useState(true);
   const [composeSending, setComposeSending] = useState(false);
@@ -963,6 +966,48 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   function clearContactComposeBody() {
     if (contactComposeBodyRef.current) contactComposeBodyRef.current.innerHTML = '';
   }
+  // ── Gmail-style address book for the composer: teammates + every CRM contact, by name or email ──
+  const emailNames = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const pr of profiles) { const nm = `${pr.first_name} ${pr.last_name}`.trim(); if (pr.email && nm) m.set(pr.email.toLowerCase(), nm); }
+    for (const c of clients) {
+      const nm = `${c.first_name} ${c.last_name}`.trim() || c.business_name;
+      if (!nm) continue;
+      for (const em of [c.email, ...(c.extra_emails ?? [])]) if (em) m.set(em.toLowerCase(), nm);
+    }
+    return m;
+  }, [clients, profiles]);
+  const nameForEmail = useCallback((e: string) => emailNames.get(e.toLowerCase()), [emailNames]);
+  const suggestContacts = useCallback((q: string): Suggestion[] => {
+    const needle = q.toLowerCase().trim();
+    if (!needle) return [];
+    const hits: { s: Suggestion; rank: number }[] = [];
+    const consider = (name: string, email: string, extra: string, boost: number) => {
+      if (!email) return;
+      const n = name.toLowerCase(); const e = email.toLowerCase();
+      let rank = -1;
+      if (n.startsWith(needle) || e.startsWith(needle)) rank = 0;
+      else if (n.split(/\s+/).some(w => w.startsWith(needle))) rank = 1;
+      else if (n.includes(needle) || e.includes(needle) || extra.toLowerCase().includes(needle)) rank = 2;
+      if (rank >= 0) hits.push({ s: { name: name || email, email }, rank: rank + boost });
+    };
+    for (const pr of profiles) consider(`${pr.first_name} ${pr.last_name}`.trim(), pr.email, '', -0.5);
+    for (const c of clients) {
+      const nm = `${c.first_name} ${c.last_name}`.trim() || c.business_name;
+      consider(nm, c.email, c.business_name ?? '', 0);
+      for (const em of c.extra_emails ?? []) consider(nm, em, '', 0.2);
+      if (hits.length > 400) break;
+    }
+    hits.sort((a, b) => a.rank - b.rank || a.s.name.localeCompare(b.s.name));
+    const seen = new Set<string>();
+    return hits.filter(h => { const k = h.s.email.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8).map(h => h.s);
+  }, [clients, profiles]);
+  // Open the docked Compose window (optionally pre-addressed). Needs Gmail connected, same as the card composers.
+  function openCompose(opts?: { to?: string; name?: string; subject?: string }) {
+    if (!gmailConnected) { showToast('Connect your Google account first (bottom of the sidebar → Connect Google Account), then you can email from here.'); return; }
+    setComposeReq({ nonce: Date.now(), ...opts });
+  }
+
   function syncGmailSignature() {
     fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(sg => {
       if (sg.signature !== undefined) { setProfile(prev => prev ? { ...prev, email_signature: sg.signature } : prev); showToast('Signature synced from Gmail'); }
@@ -3937,7 +3982,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, ...threadingParams }),
+        body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, ...threadingParams }),
       });
       const json = await res.json();
       if (!res.ok) { showToast('Send failed: ' + (json.error ?? res.status)); }
@@ -3947,7 +3992,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         setReplyToContactEmail(null);
         setReplyingToThreadKey(null);
         clearContactComposeBody();
-        setComposeSubject(''); setComposeMoreTo(''); setComposeCc('');
+        setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
         setComposeAttachments([]);
         loadContactEmails(client.id);
         logActivity(client.id, 'email', `Sent email: ${composeSubject}`);
@@ -3988,7 +4033,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
+        body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
       });
       let j: any = {};
       try { j = await res.json(); } catch {}
@@ -3997,7 +4042,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       } else {
         showToast('✉️ Email sent via Gmail');
         setShowCompose(false);
-        setComposeSubject(''); setComposeMoreTo(''); setComposeCc('');
+        setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
         clearComposeBody();
         setReplyToEmail(null);
         setComposeAttachments([]);
@@ -5289,6 +5334,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button onClick={() => setAssistantOpen(true)} aria-label="Open CRECO Copilot" title="CRECO Copilot"
                   style={{ background: 'rgba(201,146,44,.16)', border: '1px solid rgba(201,146,44,.5)', borderRadius: 8, color: '#c9922c', cursor: 'pointer', fontSize: 19, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✦</button>
               )}
+              <button onClick={() => openCompose()} aria-label="Compose a new email" title="Compose"
+                style={{ background: '#c9922c', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, flexShrink: 0 }}>✉</button>
               <button onClick={() => { setShowSearch(true); setSearchQuery(''); }} aria-label="Search"
                 style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🔍</button>
             </div>
@@ -5427,6 +5474,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 600, flex: 1, color: 'var(--c-ink)' }}>
             {pageLabel[page]}
           </h2>
+          {/* Compose — like Gmail's big button: write to anyone, from any page */}
+          <button onClick={() => openCompose()} title="Compose a new email" aria-label="Compose a new email"
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', borderRadius: 22, border: 'none', background: '#c9922c', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 14, fontWeight: 700, boxShadow: '0 2px 8px rgba(201,146,44,.35)' }}>
+            <span style={{ fontSize: 16 }}>✉</span> Compose
+          </button>
           {/* Global search trigger */}
           <button onClick={() => { setShowSearch(true); setSearchQuery(''); }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c-line)', background: 'var(--c-surface-2)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: 'var(--c-faint)', fontSize: 14, transition: 'all .15s' }}
@@ -6488,6 +6540,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 )}</>);
                 return (
                   <ContactsView
+                    onEmail={(c) => { if (gmailConnected && c.email) openCompose({ to: c.email, name: `${c.first_name} ${c.last_name}`.trim() }); else if (c.email) window.location.href = `mailto:${c.email}`; }}
                     clients={clients}
                     isMobile={isMobile} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin}
                     search={contactSearch} setSearch={setContactSearch}
@@ -11044,7 +11097,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => {
                         if (!showCompose) {
                           clearComposeBody();
-                          setComposeSubject(''); setComposeMoreTo(''); setComposeCc('');
+                          setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
                         }
                         setShowCompose(v => !v);
                       }}
@@ -11059,6 +11112,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <EmailComposer isMobile={isMobile} title={replyToEmail ? 'Reply' : 'New email'} replyingTo={replyToEmail?.subject}
                       to={activeDeal.client_email} toName={activeDeal.client}
                       mergeName={(activeDeal.client ?? '').trim().split(/\s+/)[0]} mergeProperty={activeDeal.property}
+                      bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`deal:${activeDeal.id}:${replyToEmail?.gmail_thread_id ?? 'new'}`}
                       moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                       individual={composeIndividual} setIndividual={setComposeIndividual}
                       subject={composeSubject} setSubject={setComposeSubject}
@@ -12360,7 +12414,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         if (!gmailConnected || !c.email) return;
                         e.preventDefault();
                         if (!showContactCompose) {
-                          clearContactComposeBody(); setComposeSubject(''); setComposeMoreTo(''); setComposeCc('');
+                          clearContactComposeBody(); setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
                           setReplyToContactEmail(null); setComposeAttachments([]); setReplyingToThreadKey(null);
                           setShowContactCompose(true);
                         }
@@ -13005,7 +13059,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => {
                         if (!showContactCompose) {
                           clearContactComposeBody();
-                          setComposeSubject(''); setComposeMoreTo(''); setComposeCc('');
+                          setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
                           setReplyToContactEmail(null);
                           setComposeAttachments([]);
                           setReplyingToThreadKey(null);
@@ -13022,6 +13076,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <EmailComposer isMobile={isMobile} title={replyToContactEmail ? 'Reply' : 'New email'} replyingTo={replyToContactEmail?.subject}
                         to={c.email} toName={`${c.first_name} ${c.last_name}`.trim()}
                         mergeName={c.first_name}
+                        bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`contact:${c.id}:${replyToContactEmail?.gmail_thread_id ?? 'new'}`}
                         moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                         individual={composeIndividual} setIndividual={setComposeIndividual}
                         subject={composeSubject} setSubject={setComposeSubject}
@@ -13150,6 +13205,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       <EmailComposer isMobile={isMobile} title={`Reply to ${emailDisplayName(replyToContactEmail?.from_email ?? c.email)}`}
                                         to={c.email} toName={`${c.first_name} ${c.last_name}`.trim()}
                         mergeName={c.first_name}
+                                        bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`reply:${c.id}:${threadKey}`}
                                         moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                                         individual={composeIndividual} setIndividual={setComposeIndividual}
                                         subject={composeSubject} setSubject={setComposeSubject} subjectReadOnly
@@ -13808,6 +13864,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Docked Compose window (Gmail-style) ── */}
+      {profile && session && (
+        <ComposeDock request={composeReq} isMobile={isMobile} userId={session.user.id} accessToken={session.access_token}
+          agentName={`${profile.first_name} ${profile.last_name}`} signature={profile.email_signature}
+          suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} onSyncSignature={syncGmailSignature}
+          onSent={() => { void loadClients(undefined, 0, true); }} />
       )}
 
       {/* ── Global Search (⌘K) ── */}

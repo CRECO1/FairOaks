@@ -51,6 +51,7 @@ export interface ContactsViewProps {
   onChangeType: (c: ContactRow, t: string) => void;
   /** Account owner only: the Owner column becomes a dropdown that reassigns the contact (and moves its open tasks / Prospect deal). */
   canChangeOwner?: boolean; onChangeOwner?: (c: ContactRow, agentId: string) => void;
+  onEmail?: (c: ContactRow) => void;
   timeAgo: (d?: string | null) => { label: string; color: string; bg: string };
   phoneDisp: (v?: string | null) => string;
   typeColors: Record<string, string>;
@@ -200,7 +201,7 @@ export default function ContactsView(p: ContactsViewProps) {
     return (
       <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
         {phone ? <a href={`tel:${phone}`} title={`Call ${p.phoneDisp(phone)}`} aria-label="Call" style={actionBtn}>☎</a> : <span title="No phone on file" style={{ ...actionBtn, opacity: 0.35, cursor: 'default' }}>☎</span>}
-        {c.email ? <a href={`mailto:${c.email}`} title={`Email ${c.email}`} aria-label="Email" style={actionBtn}>✉</a> : <span title="No email on file" style={{ ...actionBtn, opacity: 0.35, cursor: 'default' }}>✉</span>}
+        {c.email ? <a href={`mailto:${c.email}`} title={`Email ${c.email}`} aria-label="Email" style={actionBtn} onClick={e => { if (p.onEmail) { e.preventDefault(); p.onEmail(c); } }}>✉</a> : <span title="No email on file" style={{ ...actionBtn, opacity: 0.35, cursor: 'default' }}>✉</span>}
         <button onClick={() => p.onAddTask(c)} title={pending > 0 ? `${pending} open task${pending === 1 ? '' : 's'} — add another` : 'Add a task'} aria-label="Add a task"
           style={{ ...actionBtn, ...(pending > 0 ? { background: 'var(--k-fdf6e8)', borderColor: '#f0e2c4', color: '#a06a12', fontWeight: 700 } : {}) }}>{pending > 0 ? pending : '✓'}</button>
       </div>
@@ -427,7 +428,7 @@ export default function ContactsView(p: ContactsViewProps) {
                     </div>
                   </div>
                   <div>{typePill(c)}</div>
-                  <div style={{ minWidth: 0 }} onClick={e => e.stopPropagation()}>{c.email ? <a href={`mailto:${c.email}`} title={c.email} style={{ fontSize: 13, color: 'var(--k-374151)', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</a> : <span style={{ color: '#d1d5db' }}>—</span>}</div>
+                  <div style={{ minWidth: 0 }} onClick={e => e.stopPropagation()}>{c.email ? <a href={`mailto:${c.email}`} title={c.email} onClick={e => { if (p.onEmail) { e.preventDefault(); p.onEmail(c); } }} style={{ fontSize: 13, color: 'var(--k-374151)', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</a> : <span style={{ color: '#d1d5db' }}>—</span>}</div>
                   <div onClick={e => e.stopPropagation()}>{phone ? <a href={`tel:${phone}`} style={{ fontSize: 13, color: 'var(--k-374151)', textDecoration: 'none', whiteSpace: 'nowrap' }}>{p.phoneDisp(phone)}</a> : <span style={{ color: '#d1d5db' }}>—</span>}</div>
                   {isAdmin && (p.canChangeOwner
                     ? <div onClick={e => e.stopPropagation()}>{ownerSelect(c, true)}</div>
