@@ -168,7 +168,7 @@ export default function GmailMailbox(p: Props) {
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--k-374151)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <b style={{ fontWeight: unread ? 800 : 600 }}>{t.subject}</b>
-                    <span style={{ color: 'var(--k-9ca3af)' }}> — {t.snippet.replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"')}</span>
+                    <span style={{ color: 'var(--k-9ca3af)' }}> — {t.snippet.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')}</span>
                   </div>
                   {match && <div style={{ marginTop: 4, fontSize: 12, color: 'var(--k-a06a12)', fontWeight: 600 }}>{match.kind === 'deal' ? 'Deal' : 'Contact'} · {match.label}</div>}
                 </div>
