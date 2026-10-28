@@ -776,7 +776,8 @@ export default function TasksSection({
                   const assignee = t.assignee ?? profileById[t.assigned_to ?? ''];
                   const pc = PRIORITY_CFG[t.priority];
                   const isSelected = selected.has(t.id);
-                  const contact = t.client ?? clients.find(c => c.id === t.client_id);
+                  const contact0 = t.client ?? clients.find(c => c.id === t.client_id);
+                  const contact = contact0 && (contact0.first_name || contact0.last_name) ? contact0 : undefined;
                   return (
                     <div key={t.id} draggable
                       onDragStart={e => { e.dataTransfer.setData('text/plain', t.id); e.dataTransfer.effectAllowed = 'move'; }}
