@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { confirmDialog } from '@/lib/confirm-dialog';
 import { listDrafts, deleteDraft, syncDrafts, onDraftsChanged, draftsServerReady, type EmailDraft } from '@/lib/email-drafts';
 
 // Gmail's "Drafts" folder: everything you started writing and didn't send, newest first. Click one to pick
@@ -80,7 +81,7 @@ export default function DraftsSection({ isMobile, onResume }: { isMobile: boolea
                   </div>
                 </div>
                 <button type="button" aria-label="Discard draft" title="Discard draft"
-                  onClick={e => { e.stopPropagation(); if (confirm('Discard this draft?')) deleteDraft(d.key); }}
+                  onClick={async e => { e.stopPropagation(); if (await confirmDialog('Discard this draft?', { confirmLabel: 'Discard', danger: true })) deleteDraft(d.key); }}
                   style={{ flexShrink: 0, width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--k-9ca3af)', cursor: 'pointer', fontSize: 17 }}>🗑</button>
               </div>
             );

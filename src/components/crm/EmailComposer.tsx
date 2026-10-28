@@ -4,6 +4,7 @@ import CrmAttachPicker from './CrmAttachPicker';
 import type { CrmAttachItem } from '@/lib/crm-attachments';
 import React, { useEffect, useRef, useState } from 'react';
 import { sanitizeHtml } from '@/lib/sanitize';
+import { confirmDialog } from '@/lib/confirm-dialog';
 import { getDraft, saveDraft, deleteDraft, type DraftContext } from '@/lib/email-drafts';
 
 // One composer for every "write an email" surface (deal Emails tab, contact card, inline thread
@@ -271,21 +272,21 @@ export default function EmailComposer(p: EmailComposerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const trySend = () => {
+  const trySend = async () => {
     if (p.sending || count !== null) return;
     const text = (p.bodyRef.current?.innerText ?? '').trim();
     if (!hasTo && !p.moreTo.trim()) { p.notify?.('Add at least one recipient'); return; }
     if (!p.subjectReadOnly && !p.subject.trim()) { p.notify?.('Add a subject first'); subjRef.current?.focus(); return; }
     if (!text && attachCount === 0) { p.notify?.('Write a message first'); p.bodyRef.current?.focus(); return; }
     if (/\battach(ed|ment|ments|ing)?\b/i.test(text) && attachCount === 0
-      && !confirm('You mentioned an attachment, but nothing is attached. Send anyway?')) return;
+      && !(await confirmDialog('You mentioned an attachment, but nothing is attached. Send anyway?', { confirmLabel: 'Send anyway' }))) return;
     saveNow();
     setCount(UNDO_SECONDS);
   };
 
-  const discard = () => {
+  const discard = async () => {
     const typed = (p.bodyRef.current?.innerText ?? '').trim().length > 0 || attachCount > 0 || (!p.subjectReadOnly && p.subject.trim().length > 0);
-    if (typed && !confirm('Discard this draft?')) return;
+    if (typed && !(await confirmDialog('Discard this draft?', { confirmLabel: 'Discard', danger: true }))) return;
     clearDraft();
     p.onDiscard();
   };
@@ -455,7 +456,7 @@ export default function EmailComposer(p: EmailComposerProps) {
                   {mine.map(t => (
                     <span key={t.name} style={{ display: 'inline-flex', alignItems: 'center', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 16 }}>
                       <button type="button" onClick={() => applyTpl(t)} style={{ padding: '0 6px 0 12px', height: p.isMobile ? 44 : 32, background: 'none', border: 'none', fontSize: 13, color: 'var(--k-92400e)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{t.name}</button>
-                      <button type="button" aria-label={`Delete template ${t.name}`} onClick={() => { if (!confirm(`Delete template “${t.name}”?`)) return; const next = mine.filter(m => m.name !== t.name); setMine(next); saveMine(next); }}
+                      <button type="button" aria-label={`Delete template ${t.name}`} onClick={async () => { if (!(await confirmDialog(`Delete template “${t.name}”?`, { confirmLabel: 'Delete', danger: true }))) return; const next = mine.filter(m => m.name !== t.name); setMine(next); saveMine(next); }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 15, padding: '0 10px 0 2px', minWidth: 0 }}>×</button>
                     </span>
                   ))}
