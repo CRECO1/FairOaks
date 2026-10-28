@@ -107,7 +107,7 @@ interface ActionPlan { id: string; created_by: string; name: string; description
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; representation_side?: string | null; is_restricted?: boolean; created_at: string; last_touch: string; emails?: DealEmail[]; }
-interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; gmail_message_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; bcc_emails?: string | null; attachments?: Array<{ name: string; size: number; mime: string; path: string | null }> | null; }
+interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; gmail_message_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; bcc_emails?: string | null; email_at?: string | null; created_at?: string; attachments?: Array<{ name: string; size: number; mime: string; path: string | null }> | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
@@ -347,6 +347,28 @@ function replyAllRecipients(last: DealEmail, thread: DealEmail[], primary: strin
   const also = pick([last.direction === 'received' ? last.from_email : '', last.to_email].filter(Boolean).join(', '));
   return { also, cc: pick(last.cc_emails) };
 }
+
+// email_date is a DATE, so same-day emails need a real time to be ordered: the message's own time when we have it
+// (email_at), else when it reached the CRM (created_at). Without this "the last message" of a thread was a coin flip,
+// so Reply / Reply all quoted — and addressed — the wrong one.
+const emailTs = (e: DealEmail) => e.email_at ?? e.created_at ?? '';
+const byEmailTime = (a: DealEmail, b: DealEmail) => a.email_date.localeCompare(b.email_date) || emailTs(a).localeCompare(emailTs(b));
+const newestEmail = (list: DealEmail[]) => list.reduce((mx, e) => (byEmailTime(e, mx) > 0 ? e : mx), list[0]);
+const sortedEmails = (list: DealEmail[]) => [...list].sort(byEmailTime);
+
+// A plain Reply to ONE message goes to its sender: the primary contact is always on the To line, so only a
+// different sender (someone who was Cc'd on the thread) needs adding.
+function singleReplyTo(e: DealEmail, primary: string | undefined, selfEmails: Array<string | undefined | null>): string {
+  if (e.direction !== 'received') return '';
+  const skip = new Set([(primary ?? '').toLowerCase(), ...selfEmails.map(x => (x ?? '').toLowerCase())].filter(Boolean));
+  return parseAddressList(e.from_email).filter(r => !skip.has(r.email.toLowerCase())).map(r => r.email).join(', ');
+}
+// Forward carries the message's stored attachments (they were copied into the CRM when it was logged).
+const forwardFiles = (e: DealEmail): CrmAttachItem[] => {
+  const out: CrmAttachItem[] = [];
+  (e.attachments ?? []).forEach((a, i) => { if (a.path) out.push({ kind: 'email_att', id: `${e.id}:${i}`, name: a.name, size: a.size, type: a.mime, sub: 'From the forwarded email' }); });
+  return out;
+};
 // "On Tue, Oct 27, 2026, Brian Blanco <b@x.com> wrote:" + the original, quoted underneath a reply — what Gmail does,
 // so whoever receives the reply sees the conversation it belongs to.
 function quotedReplyHtml(e: DealEmail): string {
@@ -455,7 +477,7 @@ function MessageAttachments({ emailId, isMobile, none }: { emailId: string; isMo
 
 // One message inside an expanded thread, like Gmail: the latest is open, older ones fold to a single line you can
 // tap open. Used by both the deal and the contact thread so they can't drift apart.
-function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply }: { e: DealEmail; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void }) {
+function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onReplyAll }: { e: DealEmail; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void; onReplyAll?: () => void }) {
   const [open, setOpen] = useState(defaultOpen);
   const bodyText = cleanEmailBody(e.body ?? '');
   const bg = striped ? 'var(--k-fafafa)' : 'var(--k-fff)';
@@ -490,6 +512,8 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply }: { e
               <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{e.email_date}</span>
               {onReply && <span role="button" tabIndex={0} aria-label="Reply to this message" title="Reply to this message" onClick={onReply} onKeyDown={ev => { if (ev.key === 'Enter') onReply(); }}
                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)' }}>↩</span>}
+              {onReplyAll && <span role="button" tabIndex={0} aria-label="Reply all to this message" title="Reply all to this message" onClick={onReplyAll} onKeyDown={ev => { if (ev.key === 'Enter') onReplyAll(); }}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)' }}>↩↩</span>}
             </div>
           </div>
           <EmailRecipients to={e.to_email} cc={e.cc_emails} bcc={e.bcc_emails} />
@@ -1181,7 +1205,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return hits.filter(h => { const k = h.s.email.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8).map(h => h.s);
   }, [clients, profiles]);
   // Open the docked Compose window (optionally pre-addressed). Needs Gmail connected, same as the card composers.
-  function openCompose(opts?: { to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string; view?: 'drafts' }) {
+  function openCompose(opts?: { to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string; view?: 'drafts'; crmFiles?: CrmAttachItem[] }) {
     if (!gmailConnected && !gmailChecked) { showToast('Still connecting to Gmail — try again in a second.'); return; }
     if (!gmailConnected) { showToast('Connect your Google account first (bottom of the sidebar → Connect Google Account), then you can email from here.'); return; }
     setComposeReq({ nonce: Date.now(), ...opts });
@@ -4308,6 +4332,35 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       console.error(err);
     }
     setComposeSending(false);
+  }
+
+  // Reply / Reply all on one message, deal card. Reply goes to the sender (the contact is always on the To line);
+  // Reply all adds everyone else who was on that message. Threads onto that message and quotes it.
+  const selfAddrs = () => [session?.user?.email, profile?.email];
+  const hasReplyAll = (e: DealEmail, thread: DealEmail[], primary: string | undefined) => { const r = replyAllRecipients(e, thread, primary, selfAddrs()); return !!(r.also || r.cc); };
+  function startDealReply(e: DealEmail, thread: DealEmail[], all: boolean) {
+    const primary = activeDeal?.client_email;
+    const ra = replyAllRecipients(e, thread, primary, selfAddrs());
+    setReplyToEmail(e);
+    setComposeSubject(e.subject?.startsWith('Re:') ? e.subject : `Re: ${e.subject}`);
+    setComposeMoreTo(all ? ra.also : singleReplyTo(e, primary, selfAddrs())); setComposeCc(all ? ra.cc : ''); setComposeBcc('');
+    setComposeIndividual(false);
+    clearComposeBody(); resetComposeFiles();
+    setShowCompose(true);
+    placeReplyQuote(composeBodyRef, quotedReplyHtml(e));
+    setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+  }
+  // Same, contact card (the reply box opens inline under its thread).
+  function startContactReply(e: DealEmail, thread: DealEmail[], all: boolean, threadKey: string, c: Client) {
+    const ra = replyAllRecipients(e, thread, c.email, selfAddrs());
+    setReplyToContactEmail(e);
+    setComposeSubject(e.subject?.startsWith('Re:') ? e.subject : `Re: ${e.subject}`);
+    setComposeMoreTo(all ? ra.also : singleReplyTo(e, c.email, selfAddrs())); setComposeCc(all ? ra.cc : ''); setComposeBcc('');
+    setComposeIndividual(false);
+    clearContactComposeBody(); resetComposeFiles();
+    setShowContactCompose(false);
+    setReplyingToThreadKey(threadKey);
+    placeReplyQuote(contactComposeBodyRef, quotedReplyHtml(e));
   }
 
   // ── Gmail compose & send ─────────────────────────────────────────────────────
@@ -11448,20 +11501,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {gmailConnected && activeDeal?.client_email && (
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 10 }}>
                       {!showCompose && dealEmails.length > 0 && (() => {
-                        const latest = [...dealEmails].sort((a, b) => b.email_date.localeCompare(a.email_date))[0];
+                        const latest = newestEmail(dealEmails);
                         const thread = dealEmails.filter(e => (e.gmail_thread_id ?? `solo_${e.id}`) === (latest.gmail_thread_id ?? `solo_${latest.id}`));
-                        const ra = replyAllRecipients(latest, thread, activeDeal?.client_email, [session?.user?.email, profile?.email]);
                         return (
-                          <button className="crm-btn crm-btn-sm" title="Reply all in the latest email thread" onClick={() => {
-                            setReplyToEmail(latest);
-                            setComposeSubject(latest.subject?.startsWith('Re:') ? latest.subject : `Re: ${latest.subject}`);
-                            setComposeMoreTo(ra.also); setComposeCc(ra.cc); setComposeBcc('');
-                            setComposeIndividual(false);
-                            clearComposeBody(); resetComposeFiles();
-                            setShowCompose(true);
-                            placeReplyQuote(composeBodyRef, quotedReplyHtml(latest));
-                            setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
-                          }}
+                          <button className="crm-btn crm-btn-sm" title="Reply all in the latest email thread" onClick={() => startDealReply(latest, thread, true)}
                             style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                             ↩ Reply in thread
                           </button>
@@ -11557,13 +11600,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       }
                       // Sort groups by most recent email (descending)
                       const groups = Array.from(threadMap.entries()).sort((a, b) => {
-                        const latestA = a[1].reduce((mx, e) => e.email_date > mx ? e.email_date : mx, '');
-                        const latestB = b[1].reduce((mx, e) => e.email_date > mx ? e.email_date : mx, '');
+                        const na = newestEmail(a[1]); const latestA = na.email_date + emailTs(na);
+                        const nb = newestEmail(b[1]); const latestB = nb.email_date + emailTs(nb);
                         return latestB.localeCompare(latestA);
                       });
                       return groups.map(([threadKey, threadEmails]) => {
                         const isExpanded = expandedThreads.has(threadKey);
-                        const latest = threadEmails.reduce((mx, e) => e.email_date > mx.email_date ? e : mx, threadEmails[0]);
+                        const latest = newestEmail(threadEmails);
                         const snippet = cleanEmailBody(latest.body).slice(0, 120).replace(/\s+/g, ' ');
                         // Open status summary for collapsed header
                         const sentEmails = threadEmails.filter(e => e.direction === 'sent');
@@ -11609,36 +11652,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {/* Expanded thread emails */}
                             {isExpanded && (
                               <div style={{ borderTop: '1px solid var(--k-f0f0f0)' }}>
-                                {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map((e, idx, arr) => (
+                                {sortedEmails(threadEmails).map((e, idx, arr) => (
                                   <ThreadMessage key={e.id} e={e} isMobile={isMobile} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
-                                    onReply={gmailConnected && activeDeal?.client_email ? () => {
-                                      setReplyToEmail(e);
-                                      setComposeSubject(e.subject?.startsWith('Re:') ? e.subject : `Re: ${e.subject}`);
-                                      setComposeMoreTo(''); setComposeCc(''); setComposeBcc(''); setComposeIndividual(false);
-                                      clearComposeBody(); resetComposeFiles();
-                                      setShowCompose(true);
-                                      placeReplyQuote(composeBodyRef, quotedReplyHtml(e));
-                                      setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
-                                    } : undefined} />
+                                    onReply={gmailConnected && activeDeal?.client_email ? () => startDealReply(e, threadEmails, false) : undefined}
+                                    onReplyAll={gmailConnected && activeDeal?.client_email && hasReplyAll(e, threadEmails, activeDeal.client_email) ? () => startDealReply(e, threadEmails, true) : undefined} />
                                 ))}
 
                                 {/* Reply / Reply all at the bottom of the expanded thread (same Gmail thread, one shared email) */}
                                 {gmailConnected && activeDeal?.client_email && (() => {
-                                  const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
+                                  const lastEmail = sortedEmails(threadEmails).slice(-1)[0];
                                   const ra = replyAllRecipients(lastEmail, threadEmails, activeDeal?.client_email, [session?.user?.email, profile?.email]);
-                                  const start = (all: boolean) => {
-                                    setReplyToEmail(lastEmail);
-                                    setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
-                                    setComposeMoreTo(all ? ra.also : ''); setComposeCc(all ? ra.cc : ''); setComposeBcc('');
-                                    setComposeIndividual(false);
-                                    clearComposeBody(); resetComposeFiles();
-                                    setShowCompose(true);
-                                    placeReplyQuote(composeBodyRef, quotedReplyHtml(lastEmail));
-                                    setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
-                                  };
+                                  const start = (all: boolean) => startDealReply(lastEmail, threadEmails, all);
                                   return (
                                     <div style={{ padding: '10px 14px', background: 'var(--k-fff)' }}>
-                                      <ReplyButtons isMobile={isMobile} onReply={() => start(false)} onReplyAll={ra.also || ra.cc ? () => start(true) : undefined} onForward={() => openCompose({ subject: forwardSubject(lastEmail.subject), body: forwardedHtml(lastEmail) })} />
+                                      <ReplyButtons isMobile={isMobile} onReply={() => start(false)} onReplyAll={ra.also || ra.cc ? () => start(true) : undefined} onForward={() => openCompose({ subject: forwardSubject(lastEmail.subject), body: forwardedHtml(lastEmail), crmFiles: forwardFiles(lastEmail) })} />
                                     </div>
                                   );
                                 })()}
@@ -13501,13 +13528,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           threadMap.set(key, existing);
                         }
                         const groups = Array.from(threadMap.entries()).sort((a, b) => {
-                          const latestA = a[1].reduce((mx, e) => e.email_date > mx ? e.email_date : mx, '');
-                          const latestB = b[1].reduce((mx, e) => e.email_date > mx ? e.email_date : mx, '');
+                          const na = newestEmail(a[1]); const latestA = na.email_date + emailTs(na);
+                          const nb = newestEmail(b[1]); const latestB = nb.email_date + emailTs(nb);
                           return latestB.localeCompare(latestA);
                         });
                         return groups.map(([threadKey, threadEmails]) => {
                           const isExpanded = expandedContactThreads.has(threadKey);
-                          const latest = threadEmails.reduce((mx, e) => e.email_date > mx.email_date ? e : mx, threadEmails[0]);
+                          const latest = newestEmail(threadEmails);
                           const snippet = cleanEmailBody(latest.body).slice(0, 120).replace(/\s+/g, ' ');
                           const sentEmails = threadEmails.filter(e => e.direction === 'sent');
                           const openedEmails = sentEmails.filter(e => e.opened_at);
@@ -13549,17 +13576,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               {/* Expanded messages */}
                               {isExpanded && (
                                 <div style={{ borderTop: '1px solid var(--k-f0f0f0)' }}>
-                                  {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map((e, idx, arr) => (
+                                  {sortedEmails(threadEmails).map((e, idx, arr) => (
                                     <ThreadMessage key={e.id} e={e} isMobile={isMobile} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
-                                      onReply={() => {
-                                        setReplyToContactEmail(e);
-                                        setComposeSubject(e.subject?.startsWith('Re:') ? e.subject : `Re: ${e.subject}`);
-                                        setComposeMoreTo(''); setComposeCc(''); setComposeBcc(''); setComposeIndividual(false);
-                                        clearContactComposeBody(); resetComposeFiles();
-                                        setShowContactCompose(false);
-                                        setReplyingToThreadKey(threadKey);
-                                        placeReplyQuote(contactComposeBodyRef, quotedReplyHtml(e));
-                                      }} />
+                                      onReply={() => startContactReply(e, threadEmails, false, threadKey, c)}
+                                    onReplyAll={hasReplyAll(e, threadEmails, c.email) ? () => startContactReply(e, threadEmails, true, threadKey, c) : undefined} />
                                   ))}
                                   {/* Inline reply compose */}
                                   {replyingToThreadKey === threadKey ? (
@@ -13578,23 +13598,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     </div>
                                   ) : (
                                     (() => {
-                                      const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
-                                      const replyTo = lastEmail.direction === 'received' ? lastEmail : (threadEmails.find(e => e.direction === 'received') ?? lastEmail);
+                                      const lastEmail = sortedEmails(threadEmails).slice(-1)[0];
                                       const ra = replyAllRecipients(lastEmail, threadEmails, c.email, [session?.user?.email, profile?.email]);
-                                      const start = (all: boolean) => {
-                                        setReplyToContactEmail(replyTo);
-                                        setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
-                                        setComposeMoreTo(all ? ra.also : ''); setComposeCc(all ? ra.cc : ''); setComposeBcc('');
-                                        setComposeIndividual(false);
-                                        clearContactComposeBody();
-                                        resetComposeFiles();
-                                        setShowContactCompose(false);
-                                        setReplyingToThreadKey(threadKey);
-                                        placeReplyQuote(contactComposeBodyRef, quotedReplyHtml(lastEmail));
-                                      };
+                                      const start = (all: boolean) => startContactReply(lastEmail, threadEmails, all, threadKey, c);
                                       return (
                                         <div style={{ padding: '10px 12px', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>
-                                          <ReplyButtons isMobile={isMobile} onReply={() => start(false)} onReplyAll={ra.also || ra.cc ? () => start(true) : undefined} onForward={() => openCompose({ subject: forwardSubject(lastEmail.subject), body: forwardedHtml(lastEmail) })} />
+                                          <ReplyButtons isMobile={isMobile} onReply={() => start(false)} onReplyAll={ra.also || ra.cc ? () => start(true) : undefined} onForward={() => openCompose({ subject: forwardSubject(lastEmail.subject), body: forwardedHtml(lastEmail), crmFiles: forwardFiles(lastEmail) })} />
                                         </div>
                                       );
                                     })()

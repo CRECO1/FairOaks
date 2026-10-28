@@ -1,6 +1,6 @@
 import { htmlToText } from '@/lib/html-text';
 import { storeOutgoingAttachments } from '@/lib/email-attachments';
-import { resolveCrmAttachments, CRM_ATTACH_KINDS, type CrmAttachKind } from '@/lib/crm-attachments';
+import { resolveCrmAttachments, CRM_ATTACH_KINDS, EMAIL_ATT_ID, type CrmAttachKind } from '@/lib/crm-attachments';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, forbidden, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
     if (crmAttachments !== undefined && crmAttachments !== null) {
       if (!Array.isArray(crmAttachments)) return NextResponse.json({ error: 'crmAttachments is invalid' }, { status: 400 });
       const refs = (crmAttachments as Array<{ kind?: unknown; id?: unknown }>)
-        .filter(r => typeof r?.id === 'string' && UUID_RE.test(r.id) && (CRM_ATTACH_KINDS as string[]).includes(String(r?.kind)))
+        .filter(r => typeof r?.id === 'string' && (CRM_ATTACH_KINDS as string[]).includes(String(r?.kind)) && (r.kind === 'email_att' ? EMAIL_ATT_ID.test(r.id) : UUID_RE.test(r.id)))
         .map(r => ({ kind: r.kind as CrmAttachKind, id: r.id as string }));
       if (refs.length !== crmAttachments.length) return NextResponse.json({ error: 'crmAttachments is invalid' }, { status: 400 });
       if (attList.length + refs.length > MAX_ATTACHMENTS) return NextResponse.json({ error: `Too many attachments (${MAX_ATTACHMENTS} max)` }, { status: 400 });

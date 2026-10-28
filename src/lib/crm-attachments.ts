@@ -10,9 +10,12 @@
 import { adminClient } from '@/lib/supabase-admin';
 import { assertOwnsResource, hiddenDealIds, type CrmContext } from '@/lib/crm-auth';
 import { canAccessLinked } from '@/lib/crm-linked-access';
+import { EMAIL_ATTACH_BUCKET, type StoredAttachment } from '@/lib/email-attachments';
 
-export type CrmAttachKind = 'deal_doc' | 'form' | 'signed';
-export const CRM_ATTACH_KINDS: CrmAttachKind[] = ['deal_doc', 'form', 'signed'];
+export type CrmAttachKind = 'deal_doc' | 'form' | 'signed' | 'email_att';
+export const CRM_ATTACH_KINDS: CrmAttachKind[] = ['deal_doc', 'form', 'signed', 'email_att'];
+/** An 'email_att' id is `<crm_deal_emails.id>:<index into its attachments list>` (Forward carries an email's files). */
+export const EMAIL_ATT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:\d{1,2}$/i;
 export interface CrmAttachRef { kind: CrmAttachKind; id: string }
 export interface CrmAttachItem extends CrmAttachRef { name: string; size: number | null; type: string; sub?: string }
 export interface CrmAttachGroup { dealId: string; title: string; items: CrmAttachItem[] }
@@ -113,6 +116,16 @@ export async function resolveCrmAttachments(refs: CrmAttachRef[], ctx: CrmContex
         || !(await canAccessLinked(ctx, s as { business_unit?: string | null; deal_id?: string | null; listing_id?: string | null }))) return { ok: false, status: 404, error: 'A form you picked is no longer available' };
       name = `${clean(String(s.title ?? ''), 'Form')}.pdf`;
       bytes = await fetchBytes(FORMS, s.filled_path as string);
+    } else if (ref.kind === 'email_att') {
+      // A file from a logged email (Forward): authorized by the email's deal/contact, like opening it in the thread.
+      const [emailId, idxStr] = ref.id.split(':');
+      const { data: m } = await db.from('crm_deal_emails').select('deal_id, client_id, attachments').eq('id', emailId).maybeSingle();
+      const owned = m?.deal_id ? await assertOwnsResource('crm_deals', m.deal_id as string, ctx)
+        : m?.client_id ? await assertOwnsResource('crm_clients', m.client_id as string, ctx) : null;
+      const item = Array.isArray(m?.attachments) ? (m!.attachments as StoredAttachment[])[Number(idxStr)] : undefined;
+      if (!m || !owned || !item?.path) return { ok: false, status: 404, error: 'A file from that email is no longer available' };
+      name = item.name; mimeType = item.mime || 'application/octet-stream';
+      bytes = await fetchBytes(EMAIL_ATTACH_BUCKET, item.path);
     } else {
       const { data: e } = await db.from('crm_envelopes').select('id, title, status, executed_path, executed_clean_path, business_unit, deal_id, listing_id').eq('id', ref.id).maybeSingle();
       const path = (e?.executed_clean_path || e?.executed_path) as string | undefined;

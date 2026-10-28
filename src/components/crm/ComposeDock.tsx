@@ -12,7 +12,7 @@ import { listDrafts, onDraftsChanged, type EmailDraft } from '@/lib/email-drafts
 // send route files the email under the matching CRM contact (or creates one), so it is still logged,
 // tracked and shown on that contact's card.
 
-export type ComposeRequest = { nonce: number; to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string; view?: 'drafts' } | null;
+export type ComposeRequest = { nonce: number; to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string; view?: 'drafts'; crmFiles?: CrmAttachItem[] } | null;
 
 export default function ComposeDock(props: {
   request: ComposeRequest;
@@ -60,7 +60,7 @@ export default function ComposeDock(props: {
     lastNonce.current = request.nonce;
     setTo(request.to ?? ''); setCc(request.cc ?? ''); setBcc(request.bcc ?? '');
     setSubject(request.subject ?? '');
-    setAttachments([]); setCrmFiles([]); setMinimized(false); setFull(false);
+    setAttachments([]); setCrmFiles(request.crmFiles ?? []); setMinimized(false); setFull(false);
     setView(request.view ?? 'compose');
     setInstance(i => i + 1);
     setOpen(true);
