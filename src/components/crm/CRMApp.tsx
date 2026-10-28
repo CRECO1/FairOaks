@@ -1476,6 +1476,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  // ⌘K also searches email: subject, text, sender and recipient of everything logged in the CRM (RLS keeps it to the
+  // caller's workspace). Debounced; stale answers are dropped so a slow query can't overwrite a newer one.
+  type EmailHit = { id: string; deal_id: string | null; client_id: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; email_date: string; body: string | null };
+  const [emailHits, setEmailHits] = useState<EmailHit[]>([]);
+  useEffect(() => {
+    // PostgREST's or() uses , ( ) as syntax and % * as wildcards — they can't appear inside the term.
+    const term = searchQuery.replace(/[,()%*\\]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!showSearch || term.length < 3) { setEmailHits([]); return; }
+    let live = true;
+    const t = setTimeout(async () => {
+      const like = `%${term}%`;
+      const { data } = await supabase.from('crm_deal_emails')
+        .select('id,deal_id,client_id,direction,from_email,to_email,subject,email_date,body')
+        .or(`subject.ilike.${like},body.ilike.${like},from_email.ilike.${like},to_email.ilike.${like}`)
+        .order('email_date', { ascending: false }).order('created_at', { ascending: false }).limit(8);
+      if (live) setEmailHits((data ?? []) as EmailHit[]);
+    }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [searchQuery, showSearch]);
 
   // Notification center
   const [showNotifications, setShowNotifications] = useState(false);
@@ -14234,7 +14253,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         const campaignResults = q.length >= 1 ? campaigns.filter(c =>
           `${c.name} ${c.description}`.toLowerCase().includes(q)
         ).slice(0, 3) : [];
-        const hasResults = contactResults.length + dealResults.length + campaignResults.length > 0;
+        const hasResults = contactResults.length + dealResults.length + campaignResults.length + emailHits.length > 0;
+        const openEmailHit = (h: EmailHit) => {
+          const c = h.client_id ? clients.find(x => x.id === h.client_id) : undefined;
+          const d = h.deal_id ? deals.find(x => x.id === h.deal_id) : undefined;
+          setShowSearch(false); setSearchQuery('');
+          if (d) { setPage('deals'); setFilter(''); openDeal(d); setTimeout(() => setDealTab('emails'), 0); }
+          else if (c) { setPage('contacts'); setActiveClient(c); setTimeout(() => document.getElementById('contact-email-thread')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 600); }
+          else showToast('That conversation’s contact or deal isn’t loaded in this workspace');
+        };
+        // A few words of the message around the match, so the result says WHY it matched.
+        const hitSnippet = (h: EmailHit) => {
+          const body = cleanEmailBody(h.body ?? '').replace(/\s+/g, ' ');
+          const i = body.toLowerCase().indexOf(q);
+          if (i < 0) return body.slice(0, 90);
+          const a = Math.max(0, i - 30);
+          return (a > 0 ? '…' : '') + body.slice(a, i + q.length + 60) + (i + q.length + 60 < body.length ? '…' : '');
+        };
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 10000, display: 'flex', alignItems: isMobile ? 'flex-end' : 'flex-start', justifyContent: 'center', paddingTop: isMobile ? 0 : 80, paddingBottom: isMobile ? 0 : 0 }}
             onClick={() => { setShowSearch(false); setSearchQuery(''); }}>
@@ -14247,7 +14282,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   ref={searchRef}
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search contacts, deals, campaigns…"
+                  placeholder="Search contacts, deals, emails, campaigns…"
                   style={{ flex: 1, border: 'none', outline: 'none', fontSize: 16, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-111)', background: 'transparent' }}
                 />
                 <kbd style={{ fontSize: 11, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 4, padding: '2px 6px', color: 'var(--k-6b7280)', fontFamily: 'monospace' }}>ESC</kbd>
@@ -14256,7 +14291,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ maxHeight: isMobile ? '60vh' : 420, overflowY: 'auto', flex: 1 }}>
                 {!q && (
                   <div style={{ padding: '20px 18px', color: 'var(--k-9ca3af)', fontSize: 14, textAlign: 'center' }}>
-                    Start typing to search contacts, deals, and campaigns
+                    Start typing to search contacts, deals, emails and campaigns
                   </div>
                 )}
                 {q && !hasResults && (
@@ -14313,6 +14348,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, fontWeight: 700, background: c.status === 'active' ? 'var(--k-dcfce7)' : c.status === 'completed' ? 'var(--k-dbeafe)' : 'var(--k-f3f4f6)', color: c.status === 'active' ? 'var(--k-166534)' : c.status === 'completed' ? 'var(--k-1e40af)' : 'var(--k-6b7280)' }}>{c.status}</span>
                       </button>
                     ))}
+                  </div>
+                )}
+                {emailHits.length > 0 && (
+                  <div>
+                    <div style={{ padding: '8px 18px 4px', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 }}>Emails</div>
+                    {emailHits.map(h => {
+                      const other = h.direction === 'sent' ? h.to_email : h.from_email;
+                      return (
+                        <button key={h.id} onClick={() => openEmailHit(h)}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-f9fafb)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                          <span style={{ fontSize: 20 }}>✉️</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.subject || '(no subject)'}</div>
+                            <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.direction === 'sent' ? 'To' : 'From'} {emailDisplayName(other)} · {h.email_date}{hitSnippet(h) ? ` — ${hitSnippet(h)}` : ''}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
                 {hasResults && (
