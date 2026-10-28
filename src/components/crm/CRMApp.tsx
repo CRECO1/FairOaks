@@ -415,23 +415,32 @@ function MessageAttachments({ emailId, isMobile, none }: { emailId: string; isMo
     return () => { live = false; };
   }, [emailId, none]);
   if (!list?.length) return null;
-  const download = async (a: MailAttachment) => {
+  // PDFs and pictures open in a new tab (what you want when you're checking what went out); everything else downloads.
+  // Never HTML/SVG: only types a browser renders without running anything.
+  const previewable = (a: MailAttachment) => /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(a.mime);
+  const fetchFile = async (a: MailAttachment) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`/api/gmail/attachments?emailId=${emailId}&part=${encodeURIComponent(a.part)}`, { headers: session ? { Authorization: `Bearer ${session.access_token}` } : {} });
+    if (!res.ok) throw new Error(String(res.status));
+    return URL.createObjectURL(new Blob([await res.blob()], { type: a.mime }));
+  };
+  const download = async (a: MailAttachment, preview = false) => {
     setBusy(a.part); setErr('');
+    // The tab must open inside the click (before the await) or popup blockers stop it.
+    const tab = preview && previewable(a) ? window.open('', '_blank') : null;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`/api/gmail/attachments?emailId=${emailId}&part=${encodeURIComponent(a.part)}`, { headers: session ? { Authorization: `Bearer ${session.access_token}` } : {} });
-      if (!res.ok) throw new Error(String(res.status));
-      const url = URL.createObjectURL(new Blob([await res.blob()], { type: a.mime }));
-      const link = document.createElement('a'); link.href = url; link.download = a.name; document.body.appendChild(link); link.click(); link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
-    } catch { setErr(`Couldn’t download ${a.name} — try again, or open it in Gmail.`); }
+      const url = await fetchFile(a);
+      if (tab) { tab.location.href = url; }
+      else { const link = document.createElement('a'); link.href = url; link.download = a.name; document.body.appendChild(link); link.click(); link.remove(); }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    } catch { tab?.close(); setErr(`Couldn’t open ${a.name} — try again, or open it in Gmail.`); }
     finally { setBusy(null); }
   };
   return (
     <div style={{ paddingLeft: 42, marginTop: 10 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {list.map(a => (
-          <button key={a.part} type="button" onClick={() => download(a)} disabled={busy === a.part} title={`Download ${a.name}`}
+          <button key={a.part} type="button" onClick={() => download(a, true)} disabled={busy === a.part} title={previewable(a) ? `Open ${a.name}` : `Download ${a.name}`}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', minHeight: isMobile ? 44 : 32, padding: '0 12px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif" }}>
             <span aria-hidden>{busy === a.part ? '⏳' : '📎'}</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, fontWeight: 600 }}>{a.name}</span>
@@ -458,6 +467,7 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply }: { e
         <div style={{ width: 24, height: 24, borderRadius: '50%', background: emailAvatarColor(e.from_email), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{emailInitials(e.from_email)}</div>
         <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0, maxWidth: isMobile ? 110 : 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emailDisplayName(e.from_email)}</span>
         <span style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{bodyText.replace(/\s+/g, ' ').slice(0, 120)}</span>
+        {e.attachments && e.attachments.length > 0 && <span title={e.attachments.map(a => a.name).join('\n')} aria-label={`${e.attachments.length} attachment${e.attachments.length === 1 ? '' : 's'}`} style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }}>📎</span>}
         <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }}>{e.email_date}</span>
       </div>
     );

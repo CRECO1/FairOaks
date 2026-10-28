@@ -12,6 +12,7 @@ type SentRow = {
   id: string; deal_id: string | null; client_id: string | null; from_email: string; to_email: string;
   cc_emails: string | null; subject: string; body: string | null; created_at: string;
   opened_at: string | null; last_opened_at: string | null; open_count: number | null;
+  attachments: Array<{ name: string }> | null;
 };
 
 const CT: Intl.DateTimeFormatOptions = { timeZone: 'America/Chicago' };
@@ -55,7 +56,7 @@ export default function SentSection(p: Props) {
     let live = true;
     setSent(null);
     let query = supabase.from('crm_deal_emails')
-      .select('id,deal_id,client_id,from_email,to_email,cc_emails,subject,body,created_at,opened_at,last_opened_at,open_count')
+      .select('id,deal_id,client_id,from_email,to_email,cc_emails,subject,body,created_at,opened_at,last_opened_at,open_count,attachments')
       .eq('direction', 'sent').eq('tracked', true)
       .order('created_at', { ascending: false }).limit(300);
     const addrs = addrKey.split(',').filter(Boolean);
@@ -186,6 +187,9 @@ export default function SentSection(p: Props) {
                       </span>
                     ) : (
                       <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>
+                    )}
+                    {r.attachments && r.attachments.length > 0 && (
+                      <span title={r.attachments.map(x => x.name).join('\n')} style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>📎 {r.attachments.length === 1 ? r.attachments[0].name.slice(0, 40) : `${r.attachments.length} attachments`}</span>
                     )}
                     {context(r.deal_id, r.client_id)}
                     {scope === 'team' && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>from {r.from_email}</span>}
