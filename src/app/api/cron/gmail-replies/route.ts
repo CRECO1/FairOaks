@@ -15,8 +15,8 @@ import { chicagoToday } from '@/lib/chicago-time';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const LOOKBACK = 'newer_than:3h'; // 18 runs of overlap: a missed run or two costs nothing (inserts are de-duplicated)
-const MAX_MESSAGES = 60;
+const DEFAULT_HOURS = 3; // 18 runs of overlap: a missed run or two costs nothing (inserts are de-duplicated)
+const MAX_MESSAGES = 100;
 
 type Conn = { id: string; user_id: string; gmail_email: string | null; access_token: string; refresh_token: string; expires_at: string };
 type ContactRow = { id: string; first_name: string | null; last_name: string | null; email: string | null; extra_emails: string[] | null; agent_id: string | null };
@@ -75,6 +75,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const db = adminClient();
+  // ?hours=N (max 168) widens the window for a catch-up after an outage; the scheduled run uses the default.
+  const hours = Math.min(168, Math.max(1, Math.floor(Number(req.nextUrl.searchParams.get('hours'))) || DEFAULT_HOURS));
+  const LOOKBACK = `newer_than:${hours}h`;
 
   const { data: conns } = await db.from('gmail_connections').select('id, user_id, gmail_email, access_token, refresh_token, expires_at');
   if (!conns?.length) return NextResponse.json({ ok: true, connections: 0, filed: 0 });
