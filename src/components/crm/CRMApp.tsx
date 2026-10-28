@@ -5591,13 +5591,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <Ico n="mail" />Emails
             {inbox.unreadMine > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{inbox.unreadMine}</span>}
           </button>
-          {([['inbox', 'Inbox', inbox.unreadMine], ['drafts', 'Drafts', draftCount], ['sent', 'Sent', 0]] as const).map(([id, label, n]) => (
-            <button key={id} className={`crm-nav${page === 'emails' && emailsTab === id ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab(id); }}
-              style={{ paddingLeft: 40, fontSize: 13.5, minHeight: 32 }}>
-              {label}
-              {n > 0 && <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '0 6px', borderRadius: 10, background: id === 'inbox' ? 'rgba(201,146,44,.9)' : 'rgba(255,255,255,.18)', color: '#fff' }}>{n}</span>}
-            </button>
-          ))}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
