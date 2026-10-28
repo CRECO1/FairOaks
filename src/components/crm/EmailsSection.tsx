@@ -56,7 +56,7 @@ export default function EmailsSection(p: Props) {
   );
   const tabs: Array<[EmailsTab, string, number]> = [['inbox', 'Inbox', p.unread], ['drafts', 'Drafts', p.draftCount], ['sent', 'Sent', 0]];
   return (
-    <div style={{ maxWidth: 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
+    <div style={{ maxWidth: source === 'gmail' && p.tab !== 'drafts' ? 1400 : 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
       <div role="tablist" aria-label="Emails" className="crm-tabs-scroll" style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--k-e5e7eb)', marginBottom: 16, overflowX: 'auto' }}>
         {tabs.map(([id, label, n]) => {
           const on = p.tab === id;

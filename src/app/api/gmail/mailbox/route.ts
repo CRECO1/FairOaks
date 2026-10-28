@@ -6,7 +6,7 @@ import { listThreads, unreadCounts } from '@/lib/gmail-live';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-// GET /api/gmail/mailbox?box=inbox|sent&filter=primary|all|unread&q=…&pageToken=…&account=<email>
+// GET /api/gmail/mailbox?box=inbox|sent&filter=all|unread|files&q=…&pageToken=…&account=<email>
 // GET /api/gmail/mailbox?counts=1   → unread numbers for the sidebar badge
 // A live page of the CALLER'S OWN Gmail — nothing is stored, and a teammate's mailbox is never read.
 export async function GET(req: NextRequest) {
@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
   const parts: string[] = [];
   if (kind === 'inbox' && filter === 'primary') parts.push('category:primary');
   if (filter === 'unread') parts.push('is:unread');
+  if (filter === 'files') parts.push('has:attachment');
   const q = (sp.get('q') ?? '').replace(/[\r\n]/g, ' ').slice(0, 200).trim();
   if (q) parts.push(q);
   const pageToken = sp.get('pageToken');
