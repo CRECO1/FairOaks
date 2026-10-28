@@ -13485,7 +13485,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   {/* Inline reply compose */}
                                   {replyingToThreadKey === threadKey ? (
                                     <div style={{ borderTop: '2px solid #c9922c', padding: 10, background: 'var(--k-f9fafb)' }}>
-                                      <EmailComposer isMobile={isMobile} title={`Reply to ${emailDisplayName(replyToContactEmail?.from_email ?? c.email)}`}
+                                      <EmailComposer isMobile={isMobile} title={`Reply to ${replyToContactEmail && replyToContactEmail.direction === 'received' ? emailDisplayName(replyToContactEmail.from_email) : (`${c.first_name} ${c.last_name}`.trim() || emailDisplayName(c.email))}`}
                                         to={c.email} toName={`${c.first_name} ${c.last_name}`.trim()}
                         mergeName={c.first_name}
                                         bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`reply:${c.id}:${threadKey}`} draftContext={{ kind: 'contact', id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), replyToId: replyToContactEmail?.id }}
