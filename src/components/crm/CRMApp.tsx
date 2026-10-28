@@ -969,6 +969,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Gmail connection state
   const [gmailConnected, setGmailConnected] = useState(false);
+  const [gmailChecked, setGmailChecked] = useState(false); // the status check has answered (connected or not)
   const [gmailAccounts, setGmailAccounts] = useState<{ id: string; email: string }[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [mlsSyncing, setMlsSyncing] = useState(false);
@@ -1036,6 +1037,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [clients, profiles]);
   // Open the docked Compose window (optionally pre-addressed). Needs Gmail connected, same as the card composers.
   function openCompose(opts?: { to?: string; name?: string; subject?: string }) {
+    if (!gmailConnected && !gmailChecked) { showToast('Still connecting to Gmail — try again in a second.'); return; }
     if (!gmailConnected) { showToast('Connect your Google account first (bottom of the sidebar → Connect Google Account), then you can email from here.'); return; }
     setComposeReq({ nonce: Date.now(), ...opts });
   }
@@ -1554,6 +1556,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     fetch(`/api/gmail/status?userId=${session.user.id}`, { headers: authHeader })
       .then(r => r.json())
       .then(d => {
+        setGmailChecked(true);
         if (d.connected) {
           setGmailConnected(true);
           setGmailAccounts(d.accounts ?? []);
@@ -1575,7 +1578,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               .catch(() => {});
           }
         }
-      });
+      })
+      .catch(() => setGmailChecked(true)); // a failed check must not leave Compose stuck on "still connecting"
     // Handle OAuth redirect result — re-fetch accounts so new connection shows immediately
     const params = new URLSearchParams(window.location.search);
     if (params.get('gmail') === 'connected') {
