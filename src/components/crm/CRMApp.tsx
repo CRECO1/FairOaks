@@ -6,6 +6,7 @@ import { Session } from '@supabase/supabase-js';
 import { businessMinutesBetween, fmtMins, stlTone, STL_COLORS, STL_LATE_MIN, waitingLabel, isOpenNow, pickedUpHint, bestHours, hourLabel, isConnectNote } from '@/lib/speed-to-lead';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
+import EmailComposer from './EmailComposer';
 import dynamic from 'next/dynamic';
 import DealMeetings from '@/components/crm/DealMeetings';
 import ContactComms from '@/components/crm/ContactComms';
@@ -953,8 +954,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [expandedContactThreads, setExpandedContactThreads] = useState<Set<string>>(new Set());
   const [replyingToThreadKey, setReplyingToThreadKey] = useState<string | null>(null);
   const [composeAttachments, setComposeAttachments] = useState<File[]>([]);
-  const attachInputRef = useRef<HTMLInputElement>(null);
-  const contactAttachInputRef = useRef<HTMLInputElement>(null);
   const composeBodyRef = useRef<HTMLDivElement>(null);
   const contactComposeBodyRef = useRef<HTMLDivElement>(null);
 
@@ -964,13 +963,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   function clearContactComposeBody() {
     if (contactComposeBodyRef.current) contactComposeBodyRef.current.innerHTML = '';
   }
-  function richCmd(cmd: string, value?: string) {
-    composeBodyRef.current?.focus();
-    document.execCommand(cmd, false, value);
-  }
-  function richCmdContact(cmd: string, value?: string) {
-    contactComposeBodyRef.current?.focus();
-    document.execCommand(cmd, false, value);
+  function syncGmailSignature() {
+    fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(sg => {
+      if (sg.signature !== undefined) { setProfile(prev => prev ? { ...prev, email_signature: sg.signature } : prev); showToast('Signature synced from Gmail'); }
+    });
   }
 
   // Responsive
@@ -11060,188 +11056,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* Compose panel */}
                   {showCompose && activeDeal && (
-                    <div style={{ marginBottom: 14, border: '1px solid var(--k-e8e8e8)', borderRadius: 8, overflow: 'hidden' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#111', color: '#fff' }}>
-                        <span style={{ fontSize: 14, fontWeight: 600 }}>{replyToEmail ? '↩ Reply' : 'New Email'}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <button
-                            onClick={() => fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(s => { if (s.signature !== undefined) { setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); showToast('Signature synced from Gmail'); } })}
-                            style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 12, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>
-                            ↻ Sync signature
-                          </button>
-                          <button className="crm-icon-btn" onClick={() => { setShowCompose(false); setReplyToEmail(null); clearComposeBody(); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
-                        </div>
-                      </div>
-                      {replyToEmail && (
-                        <div style={{ padding: '8px 12px', background: 'var(--k-eff6ff)', borderBottom: '1px solid var(--k-bfdbfe)', fontSize: 13, color: 'var(--k-1d4ed8)' }}>
-                          ↩ Replying to: &ldquo;{replyToEmail.subject}&rdquo; — this will appear in the same Gmail thread
-                        </div>
-                      )}
-                      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>To</label>
-                          <div style={{ marginTop: 4, padding: '6px 10px', background: 'var(--k-f3f4f6)', borderRadius: 5, fontSize: 13, color: 'var(--k-6b7280)' }}>{activeDeal.client_email}</div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <div style={{ flex: '1 1 200px' }}>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Also to</label>
-                            <input className="crm-input" style={{ marginTop: 4 }} value={composeMoreTo} onChange={e => setComposeMoreTo(e.target.value)} placeholder="more people, comma-separated" />
-                          </div>
-                          <div style={{ flex: '1 1 200px' }}>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Cc</label>
-                            <input className="crm-input" style={{ marginTop: 4 }} value={composeCc} onChange={e => setComposeCc(e.target.value)} placeholder="cc, comma-separated" />
-                          </div>
-                        </div>
-                        {(composeMoreTo.trim() || composeCc.trim()) && (
-                          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--k-92400e)', background: 'var(--k-fef9f0)', border: '1px solid var(--k-fde68a)', borderRadius: 6, padding: '7px 9px', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={composeIndividual} onChange={e => setComposeIndividual(e.target.checked)} style={{ marginTop: 2 }} />
-                            <span><strong>Track each person&apos;s opens.</strong> {composeIndividual
-                              ? 'Everyone gets their own copy, so you can see who opened it. Replies still go to the whole group.'
-                              : 'One shared email — everyone sees the same To/Cc, but opens can’t be tied to one person.'}</span>
-                          </label>
-                        )}
-                        {activeDeal.assigned_agent_ids?.filter(id => id !== session!.user.id).length > 0 && (
-                          <div>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>CC (tagged agents)</label>
-                            <div style={{ marginTop: 4, padding: '6px 10px', background: 'var(--k-fef9f0)', border: '1px solid var(--k-fde68a)', borderRadius: 5, fontSize: 13, color: 'var(--k-92400e)' }}>
-                              {activeDeal.assigned_agent_ids.filter(id => id !== session!.user.id).map(id => agentName(id)).join(', ')}
-                            </div>
-                          </div>
-                        )}
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Subject</label>
-                          <input className="crm-input" style={{ marginTop: 4 }} value={composeSubject} onChange={e => setComposeSubject(e.target.value)} placeholder="Email subject…" />
-                        </div>
-                        {/* Rich text editor */}
-                        <div style={{ marginTop: 4, border: '1px solid var(--k-d1d5db)', borderRadius: 6, overflow: 'hidden', background: 'var(--k-fff)', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                          {/* Formatting toolbar */}
-                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 8px', background: 'var(--k-fafafa)', borderBottom: '1px solid var(--k-e9ecef)' }}>
-                            {/* Font family */}
-                            <select className="rtb-select" aria-label="Font family" defaultValue="Arial" onChange={e => richCmd('fontName', e.target.value)} style={{ padding: '0 6px', maxWidth: 104 }}>
-                              {['Arial','Georgia','Times New Roman','Courier New','Verdana','Trebuchet MS'].map(f => <option key={f} value={f}>{f === 'Times New Roman' ? 'Times' : f === 'Trebuchet MS' ? 'Trebuchet' : f}</option>)}
-                            </select>
-                            {/* Font size */}
-                            <select className="rtb-select" aria-label="Font size" defaultValue="3" onChange={e => richCmd('fontSize', e.target.value)} style={{ padding: '0 4px', width: 50 }}>
-                              {[['1','8'],['2','10'],['3','12'],['4','14'],['5','18'],['6','24'],['7','36']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                            </select>
-
-                            <span style={{ width: 1, height: 18, background: 'var(--k-e0e0e0)', margin: '0 5px', flexShrink: 0 }} />
-
-                            {/* Bold */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('bold'); }} title="Bold" aria-label="Bold" style={{ fontWeight: 700, fontSize: 14 }}>B</button>
-                            {/* Italic */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('italic'); }} title="Italic" aria-label="Italic" style={{ fontStyle: 'italic', fontSize: 14 }}>I</button>
-                            {/* Underline */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('underline'); }} title="Underline" aria-label="Underline" style={{ textDecoration: 'underline', fontSize: 14 }}>U</button>
-
-                            <span style={{ width: 1, height: 18, background: 'var(--k-e0e0e0)', margin: '0 5px', flexShrink: 0 }} />
-
-                            {/* Text color — hidden input overlaid behind A */}
-                            <label className="rtb" title="Text color" aria-label="Text color" style={{ position: 'relative', flexDirection: 'column', gap: 0 }}>
-                              <span style={{ fontWeight: 800, fontSize: 14, lineHeight: 1, display: 'block' }}>A</span>
-                              <span style={{ display: 'block', height: 3, background: '#c9922c', borderRadius: 1, marginTop: 1 }} />
-                              <input type="color" defaultValue="#000000" onChange={e => richCmd('foreColor', e.target.value)}
-                                style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
-                            </label>
-
-                            <span style={{ width: 1, height: 18, background: 'var(--k-e0e0e0)', margin: '0 5px', flexShrink: 0 }} />
-
-                            {/* Align left */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyLeft'); }} title="Align left" aria-label="Align left">
-                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="0" y="4.5" width="9" height="2" rx="1"/><rect x="0" y="9" width="12" height="2" rx="1"/></svg>
-                            </button>
-                            {/* Align center */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyCenter'); }} title="Align center" aria-label="Align center">
-                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="2.5" y="4.5" width="9" height="2" rx="1"/><rect x="1" y="9" width="12" height="2" rx="1"/></svg>
-                            </button>
-                            {/* Align right */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyRight'); }} title="Align right" aria-label="Align right">
-                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="5" y="4.5" width="9" height="2" rx="1"/><rect x="2" y="9" width="12" height="2" rx="1"/></svg>
-                            </button>
-
-                            <span style={{ width: 1, height: 18, background: 'var(--k-e0e0e0)', margin: '0 5px', flexShrink: 0 }} />
-
-                            {/* Bullet list */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('insertUnorderedList'); }} title="Bullet list" aria-label="Bullet list">
-                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><circle cx="1.5" cy="1.5" r="1.5"/><rect x="4" y="0.5" width="10" height="2" rx="1"/><circle cx="1.5" cy="5.5" r="1.5"/><rect x="4" y="4.5" width="10" height="2" rx="1"/><circle cx="1.5" cy="9.5" r="1.5"/><rect x="4" y="8.5" width="10" height="2" rx="1"/></svg>
-                            </button>
-                            {/* Numbered list */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('insertOrderedList'); }} title="Numbered list" aria-label="Numbered list">
-                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><text x="0" y="3" fontSize="3.5" fontFamily="Arial" fontWeight="bold">1.</text><rect x="4" y="0.5" width="10" height="2" rx="1"/><text x="0" y="7" fontSize="3.5" fontFamily="Arial" fontWeight="bold">2.</text><rect x="4" y="4.5" width="10" height="2" rx="1"/><text x="0" y="11" fontSize="3.5" fontFamily="Arial" fontWeight="bold">3.</text><rect x="4" y="8.5" width="10" height="2" rx="1"/></svg>
-                            </button>
-                            {/* Outdent */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('outdent'); }} title="Outdent" aria-label="Outdent">
-                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><polygon points="0,4.5 3.5,7 0,9.5"/><rect x="5" y="4.5" width="9" height="2" rx="1"/><rect x="5" y="8.5" width="9" height="2" rx="1"/></svg>
-                            </button>
-                            {/* Indent */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('indent'); }} title="Indent" aria-label="Indent">
-                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><polygon points="0,4.5 3.5,7 0,9.5" transform="rotate(180 1.75 7)"/><rect x="5" y="4.5" width="9" height="2" rx="1"/><rect x="5" y="8.5" width="9" height="2" rx="1"/></svg>
-                            </button>
-                          </div>
-                          {/* Editable body */}
-                          <div
-                            ref={composeBodyRef}
-                            contentEditable
-                            suppressContentEditableWarning
-                            role="textbox"
-                            aria-multiline="true"
-                            aria-label="Email body"
-                            style={{ minHeight: 180, maxHeight: 340, overflowY: 'auto', padding: '12px 14px', fontSize: 14, fontFamily: 'Arial, sans-serif', lineHeight: 1.65, outline: 'none', color: 'var(--k-111)' }}
-                            data-placeholder="Write your message…"
-                          />
-                        </div>
-                        {/* Attachments */}
-                        <div>
-                          <input
-                            ref={attachInputRef}
-                            type="file"
-                            multiple
-                            style={{ display: 'none' }}
-                            onChange={e => {
-                              const files = Array.from(e.target.files ?? []);
-                              setComposeAttachments(prev => [...prev, ...files]);
-                              e.target.value = '';
-                            }}
-                          />
-                          {composeAttachments.length > 0 && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
-                              {composeAttachments.map((file, i) => (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 5, fontSize: 12, color: 'var(--k-374151)' }}>
-                                  <span>📎</span>
-                                  <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
-                                  <span style={{ color: 'var(--k-9ca3af)', fontSize: 11 }}>({(file.size / 1024).toFixed(0)} KB)</span>
-                                  <button onClick={() => setComposeAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                                    aria-label="Remove attachment" title="Remove attachment" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}>✕</button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        {profile?.email_signature && (
-                          <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', borderTop: '1px dashed var(--k-e5e7eb)', paddingTop: 6 }}>
-                            <span style={{ fontWeight: 600 }}>Signature preview:</span>
-                            <div style={{ marginTop: 4, padding: '6px 10px', background: 'var(--k-f9fafb)', borderRadius: 5, fontSize: 13, color: 'var(--k-374151)' }}
-                              dangerouslySetInnerHTML={{ __html: sanitizeHtml(profile.email_signature) }} />
-                          </div>
-                        )}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingTop: 2 }}>
-                          <button onClick={() => attachInputRef.current?.click()}
-                            style={{ background: 'none', border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '5px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--k-374151)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                            📎 Attach
-                          </button>
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            <button className="crm-btn crm-btn-sm" onClick={() => { setShowCompose(false); setReplyToEmail(null); setComposeAttachments([]); clearComposeBody(); }}
-                              style={{ background: 'none', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: 'pointer' }}>
-                              Cancel
-                            </button>
-                            <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => sendGmailEmail(activeDeal)} disabled={composeSending}
-                              style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: composeSending ? 0.7 : 1 }}>
-                              {composeSending ? 'Sending…' : 'Send via Gmail'}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <EmailComposer isMobile={isMobile} title={replyToEmail ? 'Reply' : 'New email'} replyingTo={replyToEmail?.subject}
+                      to={activeDeal.client_email} toName={activeDeal.client}
+                      moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
+                      individual={composeIndividual} setIndividual={setComposeIndividual}
+                      subject={composeSubject} setSubject={setComposeSubject}
+                      autoCcLabel={(activeDeal.assigned_agent_ids ?? []).filter(id => id !== session!.user.id).map(id => agentName(id)).join(', ') || undefined}
+                      bodyRef={composeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments}
+                      signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
+                      sending={composeSending} onSend={() => sendGmailEmail(activeDeal)}
+                      onDiscard={() => { setShowCompose(false); setReplyToEmail(null); setComposeAttachments([]); clearComposeBody(); }} />
                   )}
 
                   {gmailConnected && activeDeal?.client_email && (
@@ -13183,153 +13007,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                     {/* Compose panel */}
                     {showContactCompose && (
-                      <div style={{ marginBottom: 14, border: '1px solid var(--k-e8e8e8)', borderRadius: 8, overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#111', color: '#fff' }}>
-                          <span style={{ fontSize: 14, fontWeight: 600 }}>{replyToContactEmail ? '↩ Reply' : 'New Email'}</span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <button
-                              onClick={() => fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(s => { if (s.signature !== undefined) { setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); showToast('Signature synced from Gmail'); } })}
-                              style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 12, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>
-                              ↻ Sync signature
-                            </button>
-                            <button className="crm-icon-btn" onClick={() => { setShowContactCompose(false); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
-                          </div>
-                        </div>
-                        {replyToContactEmail && (
-                          <div style={{ padding: '8px 12px', background: 'var(--k-eff6ff)', borderBottom: '1px solid var(--k-bfdbfe)', fontSize: 13, color: 'var(--k-1d4ed8)' }}>
-                            ↩ Replying to: &ldquo;{replyToContactEmail.subject}&rdquo; — this will appear in the same Gmail thread
-                          </div>
-                        )}
-                        <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <div>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>To</label>
-                            <div style={{ marginTop: 4, padding: '6px 10px', background: 'var(--k-f3f4f6)', borderRadius: 5, fontSize: 13, color: 'var(--k-6b7280)' }}>{c.email}</div>
-                          </div>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <div style={{ flex: '1 1 200px' }}>
-                              <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Also to</label>
-                              <input className="crm-input" style={{ marginTop: 4 }} value={composeMoreTo} onChange={e => setComposeMoreTo(e.target.value)} placeholder="more people, comma-separated" />
-                            </div>
-                            <div style={{ flex: '1 1 200px' }}>
-                              <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Cc</label>
-                              <input className="crm-input" style={{ marginTop: 4 }} value={composeCc} onChange={e => setComposeCc(e.target.value)} placeholder="cc, comma-separated" />
-                            </div>
-                          </div>
-                          {(composeMoreTo.trim() || composeCc.trim()) && (
-                          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--k-92400e)', background: 'var(--k-fef9f0)', border: '1px solid var(--k-fde68a)', borderRadius: 6, padding: '7px 9px', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={composeIndividual} onChange={e => setComposeIndividual(e.target.checked)} style={{ marginTop: 2 }} />
-                            <span><strong>Track each person&apos;s opens.</strong> {composeIndividual
-                              ? 'Everyone gets their own copy, so you can see who opened it. Replies still go to the whole group.'
-                              : 'One shared email — everyone sees the same To/Cc, but opens can’t be tied to one person.'}</span>
-                          </label>
-                        )}
-                          <div>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Subject</label>
-                            <input className="crm-input" style={{ marginTop: 4 }} value={composeSubject} onChange={e => setComposeSubject(e.target.value)} placeholder="Email subject…" />
-                          </div>
-                          {/* Rich text editor */}
-                          <div style={{ marginTop: 4, border: '1px solid var(--k-d1d5db)', borderRadius: 6, overflow: 'hidden', background: 'var(--k-fff)', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                            {/* Formatting toolbar */}
-                            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 8px', background: 'var(--k-fafafa)', borderBottom: '1px solid #e9ecef' }}>
-                              <select className="rtb-select" aria-label="Font family" defaultValue="Arial" onChange={e => richCmdContact('fontName', e.target.value)} style={{ padding: '0 6px', maxWidth: 104 }}>
-                                {['Arial','Georgia','Times New Roman','Courier New','Verdana','Trebuchet MS'].map(f => <option key={f} value={f}>{f === 'Times New Roman' ? 'Times' : f === 'Trebuchet MS' ? 'Trebuchet' : f}</option>)}
-                              </select>
-                              <select className="rtb-select" aria-label="Font size" defaultValue="3" onChange={e => richCmdContact('fontSize', e.target.value)} style={{ padding: '0 4px', width: 50 }}>
-                                {[['1','8'],['2','10'],['3','12'],['4','14'],['5','18'],['6','24'],['7','36']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                              </select>
-                              <span style={{ width: 1, height: 18, background: 'var(--k-e0e0e0)', margin: '0 5px', flexShrink: 0 }} />
-                              <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('bold'); }} title="Bold" aria-label="Bold" style={{ fontWeight: 700, fontSize: 14 }}>B</button>
-                              <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('italic'); }} title="Italic" aria-label="Italic" style={{ fontStyle: 'italic', fontSize: 14 }}>I</button>
-                              <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('underline'); }} title="Underline" aria-label="Underline" style={{ textDecoration: 'underline', fontSize: 14 }}>U</button>
-                              <span style={{ width: 1, height: 18, background: 'var(--k-e0e0e0)', margin: '0 5px', flexShrink: 0 }} />
-                              <label className="rtb" title="Text color" aria-label="Text color" style={{ position: 'relative', flexDirection: 'column', gap: 0 }}>
-                                <span style={{ fontWeight: 800, fontSize: 14, lineHeight: 1, display: 'block' }}>A</span>
-                                <span style={{ display: 'block', height: 3, background: '#c9922c', borderRadius: 1, marginTop: 1 }} />
-                                <input type="color" defaultValue="#000000" onChange={e => richCmdContact('foreColor', e.target.value)}
-                                  style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
-                              </label>
-                              <span style={{ width: 1, height: 18, background: 'var(--k-e0e0e0)', margin: '0 5px', flexShrink: 0 }} />
-                              <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('justifyLeft'); }} title="Align left" aria-label="Align left">
-                                <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="0" y="4.5" width="9" height="2" rx="1"/><rect x="0" y="9" width="12" height="2" rx="1"/></svg>
-                              </button>
-                              <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('justifyCenter'); }} title="Align center" aria-label="Align center">
-                                <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="2.5" y="4.5" width="9" height="2" rx="1"/><rect x="1" y="9" width="12" height="2" rx="1"/></svg>
-                              </button>
-                              <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('justifyRight'); }} title="Align right" aria-label="Align right">
-                                <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="5" y="4.5" width="9" height="2" rx="1"/><rect x="2" y="9" width="12" height="2" rx="1"/></svg>
-                              </button>
-                              <span style={{ width: 1, height: 18, background: 'var(--k-e0e0e0)', margin: '0 5px', flexShrink: 0 }} />
-                              <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('insertUnorderedList'); }} title="Bullet list" aria-label="Bullet list">
-                                <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><circle cx="1.5" cy="1.5" r="1.5"/><rect x="4" y="0.5" width="10" height="2" rx="1"/><circle cx="1.5" cy="5.5" r="1.5"/><rect x="4" y="4.5" width="10" height="2" rx="1"/><circle cx="1.5" cy="9.5" r="1.5"/><rect x="4" y="8.5" width="10" height="2" rx="1"/></svg>
-                              </button>
-                              <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('insertOrderedList'); }} title="Numbered list" aria-label="Numbered list">
-                                <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><text x="0" y="3" fontSize="3.5" fontFamily="Arial" fontWeight="bold">1.</text><rect x="4" y="0.5" width="10" height="2" rx="1"/><text x="0" y="7" fontSize="3.5" fontFamily="Arial" fontWeight="bold">2.</text><rect x="4" y="4.5" width="10" height="2" rx="1"/><text x="0" y="11" fontSize="3.5" fontFamily="Arial" fontWeight="bold">3.</text><rect x="4" y="8.5" width="10" height="2" rx="1"/></svg>
-                              </button>
-                            </div>
-                            {/* Editable body */}
-                            <div
-                              ref={contactComposeBodyRef}
-                              contentEditable
-                              suppressContentEditableWarning
-                              role="textbox"
-                              aria-multiline="true"
-                              aria-label="Email body"
-                              style={{ minHeight: 160, maxHeight: 300, overflowY: 'auto', padding: '12px 14px', fontSize: 14, fontFamily: 'Arial, sans-serif', lineHeight: 1.65, outline: 'none', color: 'var(--k-111)' }}
-                              data-placeholder="Write your message…"
-                            />
-                          </div>
-                          {/* Attachments */}
-                          <div>
-                            <input
-                              ref={contactAttachInputRef}
-                              type="file"
-                              multiple
-                              style={{ display: 'none' }}
-                              onChange={e => {
-                                const files = Array.from(e.target.files ?? []);
-                                setComposeAttachments(prev => [...prev, ...files]);
-                                e.target.value = '';
-                              }}
-                            />
-                            {composeAttachments.length > 0 && (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
-                                {composeAttachments.map((file, i) => (
-                                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 5, fontSize: 12, color: 'var(--k-374151)' }}>
-                                    <span>📎</span>
-                                    <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
-                                    <span style={{ color: 'var(--k-9ca3af)', fontSize: 11 }}>({(file.size / 1024).toFixed(0)} KB)</span>
-                                    <button onClick={() => setComposeAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                                      aria-label="Remove attachment" title="Remove attachment" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}>✕</button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          {profile?.email_signature && (
-                            <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', borderTop: '1px dashed var(--k-e5e7eb)', paddingTop: 6 }}>
-                              <span style={{ fontWeight: 600 }}>Signature preview:</span>
-                              <div style={{ marginTop: 4, padding: '6px 10px', background: 'var(--k-f9fafb)', borderRadius: 5, fontSize: 13, color: 'var(--k-374151)' }}
-                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(profile.email_signature) }} />
-                            </div>
-                          )}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingTop: 2 }}>
-                            <button onClick={() => contactAttachInputRef.current?.click()}
-                              style={{ background: 'none', border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '5px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--k-374151)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                              📎 Attach
-                            </button>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              <button className="crm-btn crm-btn-sm" onClick={() => { setShowContactCompose(false); setReplyToContactEmail(null); setComposeAttachments([]); clearContactComposeBody(); }}
-                                style={{ background: 'none', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: 'pointer' }}>
-                                Cancel
-                              </button>
-                              <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => sendGmailEmailToContact(c)} disabled={composeSending}
-                                style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: composeSending ? 0.7 : 1 }}>
-                                {composeSending ? 'Sending…' : 'Send via Gmail'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      <EmailComposer isMobile={isMobile} title={replyToContactEmail ? 'Reply' : 'New email'} replyingTo={replyToContactEmail?.subject}
+                        to={c.email} toName={`${c.first_name} ${c.last_name}`.trim()}
+                        moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
+                        individual={composeIndividual} setIndividual={setComposeIndividual}
+                        subject={composeSubject} setSubject={setComposeSubject}
+                        bodyRef={contactComposeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments}
+                        signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
+                        sending={composeSending} onSend={() => sendGmailEmailToContact(c)}
+                        onDiscard={() => { setShowContactCompose(false); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} />
                     )}
 
                     {/* Sync bar */}
@@ -13447,94 +13133,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   ))}
                                   {/* Inline reply compose */}
                                   {replyingToThreadKey === threadKey ? (
-                                    <div style={{ borderTop: '2px solid #c9922c', background: 'var(--k-fff)' }}>
-                                      {/* Reply header */}
-                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#111', color: '#fff' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                          <span style={{ fontSize: 13, fontWeight: 600 }}>↩ Reply to {emailDisplayName(replyToContactEmail?.from_email ?? c.email)}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                          <button onClick={() => fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(s => { if (s.signature !== undefined) { setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); showToast('Signature synced'); } })}
-                                            style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 11, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>↻ Sig</button>
-                                          <button onClick={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
-                                        </div>
-                                      </div>
-                                      {/* Subject (read-only for replies) */}
-                                      <div style={{ padding: '6px 12px', background: 'var(--k-f9fafb)', borderBottom: '1px solid var(--k-e5e7eb)', fontSize: 12, color: 'var(--k-6b7280)', display: 'flex', gap: 8 }}>
-                                        <span style={{ color: 'var(--k-9ca3af)' }}>Subject:</span>
-                                        <span style={{ fontWeight: 600, color: 'var(--k-374151)' }}>{composeSubject}</span>
-                                      </div>
-                                      <div style={{ padding: '8px 12px', background: 'var(--k-f9fafb)', borderBottom: '1px solid var(--k-e5e7eb)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                        <div style={{ flex: '1 1 200px' }}>
-                                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>To {c.email} +</label>
-                                          <input className="crm-input" style={{ marginTop: 4 }} value={composeMoreTo} onChange={e => setComposeMoreTo(e.target.value)} placeholder="more people, comma-separated" />
-                                        </div>
-                                        <div style={{ flex: '1 1 200px' }}>
-                                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Cc</label>
-                                          <input className="crm-input" style={{ marginTop: 4 }} value={composeCc} onChange={e => setComposeCc(e.target.value)} placeholder="cc, comma-separated" />
-                                        </div>
-                                        {(composeMoreTo.trim() || composeCc.trim()) && (
-                                          <label style={{ flexBasis: '100%', display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--k-92400e)', cursor: 'pointer' }}>
-                                            <input type="checkbox" checked={composeIndividual} onChange={e => setComposeIndividual(e.target.checked)} style={{ marginTop: 2 }} />
-                                            <span><strong>Track each person&apos;s opens</strong> — separate copies; replies still go to the whole group.</span>
-                                          </label>
-                                        )}
-                                      </div>
-                                      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                        {/* Toolbar */}
-                                        <div style={{ border: '1px solid var(--k-d1d5db)', borderRadius: 6, overflow: 'hidden', background: 'var(--k-fff)' }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 8px', background: 'var(--k-fafafa)', borderBottom: '1px solid #e9ecef' }}>
-                                            <select className="rtb-select" aria-label="Font family" defaultValue="Arial" onChange={e => richCmdContact('fontName', e.target.value)} style={{ padding: '0 6px', maxWidth: 104 }}>
-                                              {['Arial','Georgia','Times New Roman','Courier New','Verdana'].map(f => <option key={f} value={f}>{f === 'Times New Roman' ? 'Times' : f}</option>)}
-                                            </select>
-                                            <select className="rtb-select" aria-label="Font size" defaultValue="3" onChange={e => richCmdContact('fontSize', e.target.value)} style={{ padding: '0 4px', width: 50 }}>
-                                              {[['1','8'],['2','10'],['3','12'],['4','14'],['5','18'],['6','24']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                                            </select>
-                                            <span style={{ width: 1, height: 18, background: 'var(--k-e0e0e0)', margin: '0 4px' }} />
-                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('bold'); }} style={{ fontWeight: 700, fontSize: 14 }}>B</button>
-                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('italic'); }} style={{ fontStyle: 'italic', fontSize: 14 }}>I</button>
-                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('underline'); }} style={{ textDecoration: 'underline', fontSize: 14 }}>U</button>
-                                            <span style={{ width: 1, height: 18, background: 'var(--k-e0e0e0)', margin: '0 4px' }} />
-                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('insertUnorderedList'); }} title="Bullets">•≡</button>
-                                          </div>
-                                          <div
-                                            ref={contactComposeBodyRef}
-                                            contentEditable suppressContentEditableWarning
-                                            role="textbox" aria-multiline="true" aria-label="Reply body"
-                                            style={{ minHeight: 140, maxHeight: 280, overflowY: 'auto', padding: '12px 14px', fontSize: 14, fontFamily: 'Arial, sans-serif', lineHeight: 1.65, outline: 'none', color: 'var(--k-111)' }}
-                                            data-placeholder="Write your reply…"
-                                          />
-                                        </div>
-                                        {profile?.email_signature && (
-                                          <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', borderTop: '1px dashed var(--k-e5e7eb)', paddingTop: 6 }}>
-                                            <div style={{ padding: '6px 10px', background: 'var(--k-f9fafb)', borderRadius: 5, fontSize: 13, color: 'var(--k-374151)' }}
-                                              dangerouslySetInnerHTML={{ __html: sanitizeHtml(profile.email_signature) }} />
-                                          </div>
-                                        )}
-                                        {/* Attachments */}
-                                        <input ref={contactAttachInputRef} type="file" multiple style={{ display: 'none' }} onChange={e => { const files = Array.from(e.target.files ?? []); setComposeAttachments(prev => [...prev, ...files]); e.target.value = ''; }} />
-                                        {composeAttachments.length > 0 && (
-                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                            {composeAttachments.map((file, i) => (
-                                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 5, fontSize: 12, color: 'var(--k-374151)' }}>
-                                                <span>📎</span><span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
-                                                <button onClick={() => setComposeAttachments(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                          <button onClick={() => contactAttachInputRef.current?.click()} style={{ background: 'none', border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '5px 10px', fontSize: 13, cursor: 'pointer', color: 'var(--k-374151)' }}>📎 Attach</button>
-                                          <div style={{ display: 'flex', gap: 8 }}>
-                                            <button onClick={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); setComposeAttachments([]); clearContactComposeBody(); }}
-                                              style={{ background: 'none', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '5px 12px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-                                            <button onClick={() => sendGmailEmailToContact(c)} disabled={composeSending}
-                                              style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: composeSending ? 0.7 : 1 }}>
-                                              {composeSending ? 'Sending…' : '↩ Send Reply'}
-                                            </button>
-                                          </div>
-                                        </div>
-                                      </div>
+                                    <div style={{ borderTop: '2px solid #c9922c', padding: 10, background: 'var(--k-f9fafb)' }}>
+                                      <EmailComposer isMobile={isMobile} title={`Reply to ${emailDisplayName(replyToContactEmail?.from_email ?? c.email)}`}
+                                        to={c.email} toName={`${c.first_name} ${c.last_name}`.trim()}
+                                        moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
+                                        individual={composeIndividual} setIndividual={setComposeIndividual}
+                                        subject={composeSubject} setSubject={setComposeSubject} subjectReadOnly
+                                        bodyRef={contactComposeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments}
+                                        signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
+                                        sending={composeSending} sendLabel="Send reply" onSend={() => sendGmailEmailToContact(c)}
+                                        onDiscard={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} />
                                     </div>
                                   ) : (
                                     <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>
