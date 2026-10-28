@@ -1,3 +1,4 @@
+import { resolveCrmAttachments, CRM_ATTACH_KINDS, type CrmAttachKind } from '@/lib/crm-attachments';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, forbidden, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
@@ -154,7 +155,7 @@ export async function POST(req: NextRequest) {
     if (!ctx) return unauthorized();
     const caller = { id: ctx.userId };
 
-    const { userId, dealId, clientId: clientIdIn, to: toRaw, cc: ccRaw, bcc: bccRaw, toName, resolveClient, individual: individualRaw, subject, body, agentName, ccAgentIds, threadId: threadIdRaw, inReplyTo: inReplyToRaw, attachments, followUpDays: followUpRaw } = await req.json();
+    const { userId, dealId, clientId: clientIdIn, to: toRaw, cc: ccRaw, bcc: bccRaw, toName, resolveClient, individual: individualRaw, subject, body, agentName, ccAgentIds, threadId: threadIdRaw, inReplyTo: inReplyToRaw, attachments, crmAttachments, followUpDays: followUpRaw } = await req.json();
     let clientId: string | undefined = clientIdIn;
     // One group email: any number of To and Cc people on the same message, so everyone
     // sees the thread and can reply-all. Per-person open tracking isn't possible then —
@@ -232,6 +233,26 @@ export async function POST(req: NextRequest) {
         mimeType: typeof a?.mimeType === 'string' && MIME_TYPE_RE.test(a.mimeType) ? a.mimeType : 'application/octet-stream',
         data,
       });
+    }
+
+    // Documents picked from a deal's Docs tab ("Attach from the CRM") are attached here, server-side — each one is
+    // authorized by its deal. They share the same count and size caps as uploaded files.
+    if (crmAttachments !== undefined && crmAttachments !== null) {
+      if (!Array.isArray(crmAttachments)) return NextResponse.json({ error: 'crmAttachments is invalid' }, { status: 400 });
+      const refs = (crmAttachments as Array<{ kind?: unknown; id?: unknown }>)
+        .filter(r => typeof r?.id === 'string' && UUID_RE.test(r.id) && (CRM_ATTACH_KINDS as string[]).includes(String(r?.kind)))
+        .map(r => ({ kind: r.kind as CrmAttachKind, id: r.id as string }));
+      if (refs.length !== crmAttachments.length) return NextResponse.json({ error: 'crmAttachments is invalid' }, { status: 400 });
+      if (attList.length + refs.length > MAX_ATTACHMENTS) return NextResponse.json({ error: `Too many attachments (${MAX_ATTACHMENTS} max)` }, { status: 400 });
+      if (refs.length) {
+        const got = await resolveCrmAttachments(refs, ctx);
+        if (!got.ok) return NextResponse.json({ error: got.error }, { status: got.status });
+        for (const f of got.files) {
+          totalB64 += f.data.length;
+          if (f.data.length > MAX_ATTACHMENT_B64 || totalB64 > MAX_TOTAL_B64) return NextResponse.json({ error: 'Attachments are too large' }, { status: 413 });
+          attList.push({ name: stripLineBreaks(f.name).slice(0, 255) || 'attachment', mimeType: MIME_TYPE_RE.test(f.mimeType) ? f.mimeType : 'application/octet-stream', data: f.data });
+        }
+      }
     }
 
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;

@@ -10,6 +10,7 @@ import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import SentSection from './SentSection';
 import CardDrafts from './CardDrafts';
+import type { CrmAttachItem } from '@/lib/crm-attachments';
 import { setDraftAuth, syncDrafts, onDraftsChanged, listDrafts, type EmailDraft } from '@/lib/email-drafts';
 import dynamic from 'next/dynamic';
 import DealMeetings from '@/components/crm/DealMeetings';
@@ -1135,6 +1136,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [expandedContactThreads, setExpandedContactThreads] = useState<Set<string>>(new Set());
   const [replyingToThreadKey, setReplyingToThreadKey] = useState<string | null>(null);
   const [composeAttachments, setComposeAttachments] = useState<File[]>([]);
+  // Deal documents picked with "📁 Deal docs" — attached by the server at send, so the agent never downloads them.
+  const [composeCrmFiles, setComposeCrmFiles] = useState<CrmAttachItem[]>([]);
+  const resetComposeFiles = () => { setComposeAttachments([]); setComposeCrmFiles([]); };
   const composeBodyRef = useRef<HTMLDivElement>(null);
   const contactComposeBodyRef = useRef<HTMLDivElement>(null);
 
@@ -1234,7 +1238,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Drafts open in place when their deal / contact card is already on screen, and via the Drafts page otherwise.
   // A card that already has a composer open is closed first (one tick) so the old text is saved under the old
   // key, and only then is the picked draft loaded.
-  const draftFill = (d: EmailDraft) => { setComposeSubject(d.subject); setComposeMoreTo(d.moreTo); setComposeCc(d.cc); setComposeBcc(d.bcc); setComposeIndividual(false); setComposeAttachments([]); };
+  const draftFill = (d: EmailDraft) => { setComposeSubject(d.subject); setComposeMoreTo(d.moreTo); setComposeCc(d.cc); setComposeBcc(d.bcc); setComposeIndividual(false); resetComposeFiles(); };
   const draftReplyRow = async (d: EmailDraft): Promise<DealEmail | null> => {
     if (!d.context.replyToId) return null;
     const { data } = await supabase.from('crm_deal_emails').select('*').eq('id', d.context.replyToId).maybeSingle();
@@ -4287,7 +4291,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, followUpDays: composeFollowUp || undefined, ...threadingParams }),
+        body: JSON.stringify({ crmAttachments: composeCrmFiles.map(f => ({ kind: f.kind, id: f.id })), userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, followUpDays: composeFollowUp || undefined, ...threadingParams }),
       });
       const json = await res.json();
       if (!res.ok) { showToast('Send failed: ' + (json.error ?? res.status)); }
@@ -4299,7 +4303,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         setReplyingToThreadKey(null);
         clearContactComposeBody();
         setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
-        setComposeAttachments([]);
+        resetComposeFiles();
         loadContactEmails(client.id);
         logActivity(client.id, 'email', `Sent email: ${composeSubject}`);
       }
@@ -4339,7 +4343,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, followUpDays: composeFollowUp || undefined, ...threadingParams }),
+        body: JSON.stringify({ crmAttachments: composeCrmFiles.map(f => ({ kind: f.kind, id: f.id })), userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, followUpDays: composeFollowUp || undefined, ...threadingParams }),
       });
       let j: any = {};
       try { j = await res.json(); } catch {}
@@ -4352,7 +4356,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
         clearComposeBody();
         setReplyToEmail(null);
-        setComposeAttachments([]);
+        resetComposeFiles();
         loadDealEmails(deal.id);
         if (deal.client_id) logActivity(deal.client_id, 'email', `Sent email: ${composeSubject}`);
       }
@@ -11144,7 +11148,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button type="button" aria-label={`Email ${activeDeal.client}`} title={`Email ${activeDeal.client_email}`}
                   onClick={() => {
                     setDealTab('emails'); setReplyToEmail(null);
-                    clearComposeBody(); setComposeAttachments([]);
+                    clearComposeBody(); resetComposeFiles();
                     setComposeSubject(activeDeal.property ?? ''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
                     setShowCompose(true);
                     setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
@@ -11457,7 +11461,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             setComposeSubject(latest.subject?.startsWith('Re:') ? latest.subject : `Re: ${latest.subject}`);
                             setComposeMoreTo(ra.also); setComposeCc(ra.cc); setComposeBcc('');
                             setComposeIndividual(false);
-                            clearComposeBody(); setComposeAttachments([]);
+                            clearComposeBody(); resetComposeFiles();
                             setShowCompose(true);
                             placeReplyQuote(composeBodyRef, quotedReplyHtml(latest));
                             setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
@@ -11494,10 +11498,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       individual={composeIndividual} setIndividual={setComposeIndividual} followUp={composeFollowUp} setFollowUp={setComposeFollowUp}
                       subject={composeSubject} setSubject={setComposeSubject}
                       autoCcLabel={(activeDeal.assigned_agent_ids ?? []).filter(id => id !== session!.user.id).map(id => agentName(id)).join(', ') || undefined}
-                      bodyRef={composeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments}
+                      bodyRef={composeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments} crmFiles={{ ctx: { dealId: activeDeal.id }, items: composeCrmFiles, setItems: setComposeCrmFiles }}
                       signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
                       sending={composeSending} onSend={() => sendGmailEmail(activeDeal)}
-                      onDiscard={() => { setShowCompose(false); setReplyToEmail(null); setComposeAttachments([]); clearComposeBody(); }} />
+                      onDiscard={() => { setShowCompose(false); setReplyToEmail(null); resetComposeFiles(); clearComposeBody(); }} />
                     </div>
                   )}
 
@@ -11615,7 +11619,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       setReplyToEmail(e);
                                       setComposeSubject(e.subject?.startsWith('Re:') ? e.subject : `Re: ${e.subject}`);
                                       setComposeMoreTo(''); setComposeCc(''); setComposeBcc(''); setComposeIndividual(false);
-                                      clearComposeBody(); setComposeAttachments([]);
+                                      clearComposeBody(); resetComposeFiles();
                                       setShowCompose(true);
                                       placeReplyQuote(composeBodyRef, quotedReplyHtml(e));
                                       setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
@@ -11631,7 +11635,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
                                     setComposeMoreTo(all ? ra.also : ''); setComposeCc(all ? ra.cc : ''); setComposeBcc('');
                                     setComposeIndividual(false);
-                                    clearComposeBody(); setComposeAttachments([]);
+                                    clearComposeBody(); resetComposeFiles();
                                     setShowCompose(true);
                                     placeReplyQuote(composeBodyRef, quotedReplyHtml(lastEmail));
                                     setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
@@ -12795,7 +12799,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         e.preventDefault();
                         if (!showContactCompose) {
                           clearContactComposeBody(); setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
-                          setReplyToContactEmail(null); setComposeAttachments([]); setReplyingToThreadKey(null);
+                          setReplyToContactEmail(null); resetComposeFiles(); setReplyingToThreadKey(null);
                           setShowContactCompose(true);
                         }
                         setTimeout(() => document.getElementById('contact-email-thread')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
@@ -13441,7 +13445,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           clearContactComposeBody();
                           setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
                           setReplyToContactEmail(null);
-                          setComposeAttachments([]);
+                          resetComposeFiles();
                           setReplyingToThreadKey(null);
                         }
                         setShowContactCompose(v => !v);
@@ -13464,10 +13468,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                         individual={composeIndividual} setIndividual={setComposeIndividual} followUp={composeFollowUp} setFollowUp={setComposeFollowUp}
                         subject={composeSubject} setSubject={setComposeSubject}
-                        bodyRef={contactComposeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments}
+                        bodyRef={contactComposeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments} crmFiles={{ ctx: { clientId: activeClient.id }, items: composeCrmFiles, setItems: setComposeCrmFiles }}
                         signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
                         sending={composeSending} onSend={() => sendGmailEmailToContact(c)}
-                        onDiscard={() => { setShowContactCompose(false); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} />
+                        onDiscard={() => { setShowContactCompose(false); setReplyToContactEmail(null); clearContactComposeBody(); resetComposeFiles(); }} />
                     )}
 
                     {/* Sync bar */}
@@ -13555,7 +13559,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         setReplyToContactEmail(e);
                                         setComposeSubject(e.subject?.startsWith('Re:') ? e.subject : `Re: ${e.subject}`);
                                         setComposeMoreTo(''); setComposeCc(''); setComposeBcc(''); setComposeIndividual(false);
-                                        clearContactComposeBody(); setComposeAttachments([]);
+                                        clearContactComposeBody(); resetComposeFiles();
                                         setShowContactCompose(false);
                                         setReplyingToThreadKey(threadKey);
                                         placeReplyQuote(contactComposeBodyRef, quotedReplyHtml(e));
@@ -13571,10 +13575,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                                         individual={composeIndividual} setIndividual={setComposeIndividual} followUp={composeFollowUp} setFollowUp={setComposeFollowUp}
                                         subject={composeSubject} setSubject={setComposeSubject} subjectReadOnly
-                                        bodyRef={contactComposeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments}
+                                        bodyRef={contactComposeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments} crmFiles={{ ctx: { clientId: activeClient.id }, items: composeCrmFiles, setItems: setComposeCrmFiles }}
                                         signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
                                         sending={composeSending} sendLabel="Send reply" onSend={() => sendGmailEmailToContact(c)}
-                                        onDiscard={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} />
+                                        onDiscard={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); clearContactComposeBody(); resetComposeFiles(); }} />
                                     </div>
                                   ) : (
                                     (() => {
@@ -13587,7 +13591,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         setComposeMoreTo(all ? ra.also : ''); setComposeCc(all ? ra.cc : ''); setComposeBcc('');
                                         setComposeIndividual(false);
                                         clearContactComposeBody();
-                                        setComposeAttachments([]);
+                                        resetComposeFiles();
                                         setShowContactCompose(false);
                                         setReplyingToThreadKey(threadKey);
                                         placeReplyQuote(contactComposeBodyRef, quotedReplyHtml(lastEmail));

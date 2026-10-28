@@ -1,5 +1,7 @@
 'use client';
 
+import CrmAttachPicker from './CrmAttachPicker';
+import type { CrmAttachItem } from '@/lib/crm-attachments';
 import React, { useEffect, useRef, useState } from 'react';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { getDraft, saveDraft, deleteDraft, type DraftContext } from '@/lib/email-drafts';
@@ -149,6 +151,8 @@ export type EmailComposerProps = {
   notify?: (msg: string) => void;
   bodyRef: React.RefObject<HTMLDivElement | null>;
   attachments: File[]; setAttachments: React.Dispatch<React.SetStateAction<File[]>>;
+  // Documents from the deal's Docs tab, attached server-side at send (no download). Omit to hide the button.
+  crmFiles?: { ctx: { dealId?: string; clientId?: string }; items: CrmAttachItem[]; setItems: React.Dispatch<React.SetStateAction<CrmAttachItem[]>> };
   signature?: string | null;
   onSyncSignature: () => void;
   followUp?: number; setFollowUp?: (days: number) => void;
@@ -182,6 +186,8 @@ export default function EmailComposer(p: EmailComposerProps) {
   const [count, setCount] = useState<number | null>(null);
   const [draftNote, setDraftNote] = useState('');
   const attachRef = useRef<HTMLInputElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const attachCount = p.attachments.length + (p.crmFiles?.items.length ?? 0);
   const subjRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
   const [dragging, setDragging] = useState(false);
@@ -271,15 +277,15 @@ export default function EmailComposer(p: EmailComposerProps) {
     const text = (p.bodyRef.current?.innerText ?? '').trim();
     if (!hasTo && !p.moreTo.trim()) { p.notify?.('Add at least one recipient'); return; }
     if (!p.subjectReadOnly && !p.subject.trim()) { p.notify?.('Add a subject first'); subjRef.current?.focus(); return; }
-    if (!text && p.attachments.length === 0) { p.notify?.('Write a message first'); p.bodyRef.current?.focus(); return; }
-    if (/\battach(ed|ment|ments|ing)?\b/i.test(text) && p.attachments.length === 0
+    if (!text && attachCount === 0) { p.notify?.('Write a message first'); p.bodyRef.current?.focus(); return; }
+    if (/\battach(ed|ment|ments|ing)?\b/i.test(text) && attachCount === 0
       && !confirm('You mentioned an attachment, but nothing is attached. Send anyway?')) return;
     saveNow();
     setCount(UNDO_SECONDS);
   };
 
   const discard = () => {
-    const typed = (p.bodyRef.current?.innerText ?? '').trim().length > 0 || p.attachments.length > 0 || (!p.subjectReadOnly && p.subject.trim().length > 0);
+    const typed = (p.bodyRef.current?.innerText ?? '').trim().length > 0 || attachCount > 0 || (!p.subjectReadOnly && p.subject.trim().length > 0);
     if (typed && !confirm('Discard this draft?')) return;
     clearDraft();
     p.onDiscard();
@@ -290,7 +296,7 @@ export default function EmailComposer(p: EmailComposerProps) {
   const saveForLater = () => {
     if (!(p.bodyRef.current?.innerText ?? '').trim()) { p.notify?.('Write the email first — empty drafts aren’t kept.'); return; }
     saveNow();
-    p.notify?.(p.attachments.length ? 'Saved to Drafts. Attachments aren’t kept — add them again when you send.' : 'Saved to Drafts — open it from this card or the Drafts page to send.');
+    p.notify?.(attachCount ? 'Saved to Drafts. Attachments aren’t kept — add them again when you send.' : 'Saved to Drafts — open it from this card or the Drafts page to send.');
     p.onDiscard();
   };
 
@@ -429,7 +435,8 @@ export default function EmailComposer(p: EmailComposerProps) {
           {sep}
           <button type="button" onClick={() => setShowTpl(v => !v)} aria-label="Templates" aria-expanded={showTpl} title="Templates" style={tb({ fontSize: 13, fontWeight: 700, background: showTpl ? 'var(--k-f3f4f6)' : 'none' })}>📄{!p.isMobile && ' Templates'}</button>
           <button type="button" onClick={() => setShowMore(v => !v)} aria-label="More formatting" aria-expanded={showMore} title="More formatting" style={tb({ fontSize: 13, fontWeight: 700, background: showMore ? 'var(--k-f3f4f6)' : 'none' })}>Aa</button>
-          {!p.isMobile && <button type="button" onClick={() => attachRef.current?.click()} aria-label="Attach files" title="Attach files" style={tb({ marginLeft: 'auto', gap: 5, fontSize: 13 })}>📎 Attach</button>}
+          {!p.isMobile && p.crmFiles && <button type="button" onClick={() => setPickerOpen(true)} aria-label="Attach from the deal" title="Attach a document from this deal — nothing to download" style={tb({ marginLeft: 'auto', gap: 5, fontSize: 13 })}>📁 Deal docs</button>}
+          {!p.isMobile && <button type="button" onClick={() => attachRef.current?.click()} aria-label="Attach files" title="Attach files" style={tb({ marginLeft: p.crmFiles ? 0 : 'auto', gap: 5, fontSize: 13 })}>📎 Attach</button>}
           <input ref={attachRef} type="file" multiple style={{ display: 'none' }}
             onChange={e => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
         </div>
@@ -516,6 +523,23 @@ export default function EmailComposer(p: EmailComposerProps) {
           </div>
         )}
 
+        {p.crmFiles && p.crmFiles.items.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 12px 10px' }}>
+            {p.crmFiles.items.map(it => (
+              <span key={`${it.kind}:${it.id}`} style={CHIP} title="Attached from the deal when you send">
+                <span>📁</span>
+                <span style={{ maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</span>
+                <button type="button" onClick={() => p.crmFiles!.setItems(prev => prev.filter(x => !(x.kind === it.kind && x.id === it.id)))} aria-label={`Remove ${it.name}`}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 15, lineHeight: 1, padding: '0 4px', minWidth: 0, minHeight: 0 }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+        {pickerOpen && p.crmFiles && (
+          <CrmAttachPicker ctx={p.crmFiles.ctx} chosen={p.crmFiles.items} isMobile={p.isMobile} onClose={() => setPickerOpen(false)}
+            onAdd={items => p.crmFiles!.setItems(prev => [...prev, ...items.filter(n => !prev.some(x => x.kind === n.kind && x.id === n.id))])} />
+        )}
+
         {/* Signature */}
         {p.signature && (
           <div style={{ padding: '0 14px 8px' }}>
@@ -556,6 +580,10 @@ export default function EmailComposer(p: EmailComposerProps) {
           </>
         ) : (
           <>
+            {p.isMobile && p.crmFiles && (
+              <button type="button" onClick={() => setPickerOpen(true)} aria-label="Attach from the deal" title="Attach a document from this deal"
+                style={{ width: 48, height: 48, flexShrink: 0, background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 10, fontSize: 18, cursor: 'pointer' }}>📁</button>
+            )}
             {p.isMobile && (
               <button type="button" onClick={() => attachRef.current?.click()} aria-label="Attach files" title="Attach files"
                 style={{ width: 48, height: 48, flexShrink: 0, background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 10, fontSize: 18, cursor: 'pointer' }}>📎</button>
