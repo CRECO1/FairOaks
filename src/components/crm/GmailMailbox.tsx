@@ -94,6 +94,25 @@ export default function GmailMailbox(p: Props) {
   useEffect(() => { const t = setTimeout(() => setTerm(q.trim()), 350); return () => clearTimeout(t); }, [q]);
   useEffect(() => { void load(); }, [load]);
 
+  // A quiet check every 2 minutes: if newer conversations arrived, offer to show them (never reshuffles the list under you).
+  const [fresh, setFresh] = useState(0);
+  const topIds = useRef<string[]>([]);
+  useEffect(() => { topIds.current = (threads ?? []).slice(0, 25).map(t => `${t.id}:${t.date}`); setFresh(0); }, [threads]);
+  useEffect(() => {
+    if (open) return;
+    const tick = async () => {
+      if (document.visibilityState !== 'visible' || !topIds.current.length) return;
+      try {
+        const j = await (await fetch(build())).json();
+        const have = new Set(topIds.current);
+        const n = ((j.threads ?? []) as ThreadSummary[]).filter(t => !have.has(`${t.id}:${t.date}`)).length;
+        if (n > 0) setFresh(n);
+      } catch { /* try again next time */ }
+    };
+    const t = setInterval(tick, 2 * 60_000);
+    return () => clearInterval(t);
+  }, [build, open]);
+
   const more = async () => {
     if (!next) return;
     setLoadingMore(true);
@@ -131,7 +150,7 @@ export default function GmailMailbox(p: Props) {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: p.isMobile ? 0 : 'auto', flexWrap: 'wrap', width: p.isMobile ? '100%' : undefined }}>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search mail (from:, has:attachment…)" aria-label="Search Gmail"
-            style={{ flex: p.isMobile ? '1 1 100%' : '0 1 280px', minWidth: 0, height: p.isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
+            style={{ flex: p.isMobile ? '1 1 0' : '0 1 280px', minWidth: 0, height: p.isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
           {accounts.length > 1 && (
             <select value={account ?? ''} onChange={e => setAccount(e.target.value)} aria-label="Gmail account"
               style={{ height: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px' }}>
@@ -143,6 +162,12 @@ export default function GmailMailbox(p: Props) {
         </div>
       </div>
 
+      {fresh > 0 && (
+        <button type="button" onClick={() => void load()}
+          style={{ width: '100%', marginBottom: 10, padding: '10px', border: '1px solid var(--k-fde68a)', background: 'var(--k-fdf6e8)', color: 'var(--k-92400e)', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+          ↑ {fresh} new {fresh === 1 ? 'conversation' : 'conversations'} — show
+        </button>
+      )}
       {threads === null ? <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Loading your Gmail…</div>
       : !connected ? <Empty title="Gmail isn’t connected" sub="Connect your Google account (bottom of the sidebar) and your mail shows up here." />
       : err ? <Empty title="Couldn’t load your mail" sub={err} />
@@ -232,6 +257,23 @@ function ThreadReader(p: {
     finally { setBusy(null); }
   };
 
+  // Gmail's shortcuts: r reply · a reply all · f forward · Esc back (ignored while typing or when a modifier is held).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;
+      if (e.key === 'Escape') { p.onBack(); return; }
+      if (!last) return;
+      if (e.key === 'r') { e.preventDefault(); p.onReply(last, p.t.id, false, p.account); }
+      else if (e.key === 'a') { e.preventDefault(); p.onReply(last, p.t.id, true, p.account); }
+      else if (e.key === 'f') { e.preventDefault(); p.onForward(last, p.t.id, p.account); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [msgs, p]);
+
   const btn: React.CSSProperties = {
     minHeight: p.isMobile ? 40 : 32, padding: '0 14px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)',
     fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
@@ -239,7 +281,7 @@ function ThreadReader(p: {
 
   return (
     <div>
-      <button type="button" onClick={p.onBack} style={{ ...btn, marginBottom: 12 }}>← Back</button>
+      <button type="button" onClick={p.onBack} title="Back to the list (Esc)" style={{ ...btn, marginBottom: 12 }}>← Back</button>
       <h2 style={{ margin: '0 0 14px', fontSize: p.isMobile ? 18 : 20, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1.3 }}>{p.t.subject}</h2>
       {msgs === null && <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Opening conversation…</div>}
       {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
@@ -266,11 +308,12 @@ function ThreadReader(p: {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div onClick={() => setFolded(prev => new Set(prev).add(m.id))} title="Fold this message" style={{ cursor: 'pointer' }}>
                     <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-111)' }}>{name}</span>
-                    <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: 6, wordBreak: 'break-all' }}>&lt;{from.email}&gt;</span>
+                    <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: p.isMobile ? 0 : 6, display: p.isMobile ? 'block' : 'inline', wordBreak: 'break-all' }}>&lt;{from.email}&gt;</span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2, overflowWrap: 'anywhere' }}>
                     to {m.to || '—'}{m.cc ? ` · cc ${m.cc}` : ''}
                   </div>
+                  {p.isMobile && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>{whenLong(m.date)}</div>}
                   {match && (
                     <button type="button" onClick={() => (match.kind === 'deal' ? p.onOpenDeal(match.id) : p.onOpenContact(match.id))}
                       style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: 'var(--k-a06a12)', fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>
@@ -278,7 +321,7 @@ function ThreadReader(p: {
                     </button>
                   )}
                 </div>
-                <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(m.date)}>{when(m.date)}</span>
+                {!p.isMobile && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(m.date)}>{when(m.date)}</span>}
               </div>
               <MessageFrame html={m.html} />
               {m.attachments.length > 0 && (

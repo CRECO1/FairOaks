@@ -97,7 +97,7 @@ export default function InboxSection(p: Props) {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: p.isMobile ? 0 : 'auto', flexWrap: 'wrap', width: p.isMobile ? '100%' : undefined }}>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search sender, subject or text" aria-label="Search inbox"
-            style={{ flex: p.isMobile ? '1 1 100%' : '0 1 240px', minWidth: 0, height: p.isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
+            style={{ flex: p.isMobile ? '1 1 0' : '0 1 240px', minWidth: 0, height: p.isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
           <select value={scope} onChange={e => setScope(e.target.value as typeof scope)} aria-label="Whose inbox"
             style={{ height: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px', flex: p.isMobile ? 1 : undefined }}>
             <option value="mine">To me</option>
