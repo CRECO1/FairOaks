@@ -4,6 +4,7 @@ import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { chicagoToday } from '@/lib/chicago-time';
 import { extractEmailText } from '@/lib/gmail-body';
+import { storeGmailAttachments } from '@/lib/email-attachments';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -182,7 +183,30 @@ export async function POST(req: NextRequest) {
         if (!msgConnMap.has(msg.id)) msgConnMap.set(msg.id, conn);
       }
     }
+
+    // Anyone else on the conversation counts too: a colleague who was Cc'd or Bcc'd and answers (even without the
+    // contact on the reply) belongs to the same thread, so pull in every message of the threads already on this record.
+    const threadScope = dealId ? `deal_id=eq.${dealId}` : `client_id=eq.${clientId}`;
+    const threadRows = await (await fetch(
+      `${SUPABASE_URL}/rest/v1/crm_deal_emails?${threadScope}&gmail_thread_id=not.is.null&select=gmail_thread_id&order=created_at.desc&limit=30`,
+      { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
+    )).json().catch(() => []);
+    const threadIds = new Set<string>((Array.isArray(threadRows) ? threadRows : []).map((r: { gmail_thread_id?: string }) => r.gmail_thread_id).filter(Boolean) as string[]);
+    for (const conn of allConns) {
+      for (const tid of threadIds) {
+        const tr = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${tid}?format=minimal`, { headers: { Authorization: `Bearer ${conn.accessToken}` } });
+        if (!tr.ok) continue;
+        for (const m of (await tr.json()).messages ?? []) if (!msgConnMap.has(m.id)) msgConnMap.set(m.id, conn);
+      }
+    }
     if (msgConnMap.size === 0) return NextResponse.json({ synced: 0 });
+
+    // The team's own addresses: a message from one of them is "sent", from anyone else on the thread "received".
+    const { data: teamRows } = await adminClient().from('crm_profiles').select('email');
+    const ownAddrs = new Set<string>([
+      ...(teamRows ?? []).map((r: { email: string | null }) => (r.email ?? '').toLowerCase()),
+      ...allConns.map(c => (c.agentEmail ?? '').toLowerCase()),
+    ].filter(Boolean));
 
     // Fetch already-synced IDs for this deal/contact to avoid duplicates
     // Check both gmail_message_id (per-account) and rfc_message_id (universal) so two
@@ -201,6 +225,7 @@ export async function POST(req: NextRequest) {
     );
 
     let synced = 0;
+    let attachmentsStored = 0;
     let latestInboundMs = 0; // newest reply we just pulled in — it settles any "remind me if no reply" task
     for (const [msgId, conn] of msgConnMap) {
       if (existingMsgIds.has(msgId)) continue;
@@ -235,11 +260,13 @@ export async function POST(req: NextRequest) {
       const clientInFrom = fromLower.includes(clientLower);
       const clientInTo = toLower.includes(clientLower);
       const clientInCc = ccLower.includes(clientLower);
-      if (!clientInFrom && !clientInTo && !clientInCc) continue;
+      const inKnownThread = !!msgData.threadId && threadIds.has(msgData.threadId);
+      if (!clientInFrom && !clientInTo && !clientInCc && !inKnownThread) continue;
 
       // email_date column is type 'date' — use YYYY-MM-DD only
       const emailDate = chicagoToday(dateStr ? new Date(dateStr) : new Date());
-      const direction = clientInFrom ? 'received' : 'sent';
+      const fromAddr = (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLowerCase();
+      const direction = clientInFrom || (fromAddr && !ownAddrs.has(fromAddr)) ? 'received' : 'sent';
 
       const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/crm_deal_emails`, {
         method: 'POST',
@@ -247,7 +274,7 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json',
           'apikey': anonKey,
           'Authorization': `Bearer ${serviceRoleKey}`,
-          'Prefer': 'return=minimal',
+          'Prefer': 'return=representation',
         },
         body: JSON.stringify({
           gmail_message_id: msgId,
@@ -258,6 +285,8 @@ export async function POST(req: NextRequest) {
           to_email: to,
           // Everyone else on the message — otherwise a multi-recipient thread reads as one-to-one.
           ...(get('Cc').trim() ? { cc_emails: get('Cc').trim() } : {}),
+          // Gmail keeps the Bcc line on the sender's own copy.
+          ...(get('Bcc').trim() ? { bcc_emails: get('Bcc').trim() } : {}),
           subject,
           body: cleanBody(body).slice(0, 4000),
           email_date: emailDate,
@@ -268,6 +297,15 @@ export async function POST(req: NextRequest) {
 
       if (insertRes.ok || insertRes.status === 201) {
         synced++;
+        // Copy its attachments into the CRM so teammates can open them too (bounded per sync to keep this quick).
+        try {
+          const ins = await insertRes.json();
+          const rowId = Array.isArray(ins) ? ins[0]?.id : ins?.id;
+          if (rowId && attachmentsStored < 15) {
+            const got = await storeGmailAttachments(rowId, msgId, conn.accessToken, msgData.payload);
+            if (got?.length) attachmentsStored++;
+          }
+        } catch (err) { console.error('[gmail/sync] attachment copy failed', err); }
         if (direction === 'received') latestInboundMs = Math.max(latestInboundMs, Number(msgData.internalDate) || 0);
       }
       else {

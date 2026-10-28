@@ -11,6 +11,7 @@ import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import SentSection from './SentSection';
 import CardDrafts from './CardDrafts';
 import { htmlToText } from '@/lib/html-text';
+import { gmailSignatureBlock } from '@/lib/agent-signature';
 import type { CrmAttachItem } from '@/lib/crm-attachments';
 import { setDraftAuth, syncDrafts, onDraftsChanged, listDrafts, type EmailDraft } from '@/lib/email-drafts';
 import dynamic from 'next/dynamic';
@@ -106,7 +107,7 @@ interface ActionPlan { id: string; created_by: string; name: string; description
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; representation_side?: string | null; is_restricted?: boolean; created_at: string; last_touch: string; emails?: DealEmail[]; }
-interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; gmail_message_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; }
+interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; gmail_message_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; bcc_emails?: string | null; attachments?: Array<{ name: string; size: number; mime: string; path: string | null }> | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
@@ -308,17 +309,17 @@ function parseAddressList(raw?: string | null): { name: string; email: string }[
   });
 }
 // To / Cc line under an email header: a short summary that opens into every address.
-function EmailRecipients({ to, cc }: { to?: string | null; cc?: string | null }) {
+function EmailRecipients({ to, cc, bcc }: { to?: string | null; cc?: string | null; bcc?: string | null }) {
   const [open, setOpen] = useState(false);
-  const tos = parseAddressList(to); const ccs = parseAddressList(cc);
-  const total = tos.length + ccs.length;
+  const tos = parseAddressList(to); const ccs = parseAddressList(cc); const bccs = parseAddressList(bcc);
+  const total = tos.length + ccs.length + bccs.length;
   if (total === 0) return null;
-  const lead = tos.length ? tos : ccs;
+  const lead = tos.length ? tos : ccs.length ? ccs : bccs;
   const shown = Math.min(2, lead.length);
-  const summary = `${tos.length ? 'to ' : 'cc '}${lead.slice(0, 2).map(r => r.name).join(', ')}${total > shown ? ` +${total - shown} more` : ''}`;
+  const summary = `${tos.length ? 'to ' : ccs.length ? 'cc ' : 'bcc '}${lead.slice(0, 2).map(r => r.name).join(', ')}${total > shown ? ` +${total - shown} more` : ''}`;
   const row = (label: string, list: { name: string; email: string }[]) => list.length > 0 && (
     <div style={{ display: 'flex', gap: 8, marginTop: 3 }}>
-      <span style={{ width: 24, flexShrink: 0, color: 'var(--k-9ca3af)' }}>{label}</span>
+      <span style={{ width: 28, flexShrink: 0, color: 'var(--k-9ca3af)' }}>{label}</span>
       <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{list.map((r, i) => (
         <span key={r.email + i}>{i > 0 && ', '}<span style={{ color: 'var(--k-374151)', fontWeight: 600 }}>{r.name}</span> <span style={{ color: 'var(--k-9ca3af)' }}>&lt;{r.email}&gt;</span></span>
       ))}</span>
@@ -330,7 +331,7 @@ function EmailRecipients({ to, cc }: { to?: string | null; cc?: string | null })
         style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: total > 1 ? 'var(--k-6b7280)' : 'var(--k-9ca3af)', cursor: 'pointer' }}>
         {summary} <span style={{ fontSize: 10 }}>{open ? '▾' : '▸'}</span>
       </button>
-      {open && <div style={{ marginTop: 4, padding: '6px 9px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-eef0f2)', borderRadius: 8 }}>{row('To', tos)}{row('Cc', ccs)}</div>}
+      {open && <div style={{ marginTop: 4, padding: '6px 9px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-eef0f2)', borderRadius: 8 }}>{row('To', tos)}{row('Cc', ccs)}{row('Bcc', bccs)}</div>}
     </div>
   );
 }
@@ -395,11 +396,12 @@ function Linkified({ text }: { text: string }) {
 type MailAttachment = { part: string; name: string; size: number; mime: string };
 const attachmentCache = new Map<string, MailAttachment[]>();
 const fmtBytes = (n: number) => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`;
-function MessageAttachments({ emailId, isMobile }: { emailId: string; isMobile: boolean }) {
+function MessageAttachments({ emailId, isMobile, none }: { emailId: string; isMobile: boolean; none?: boolean }) {
   const [list, setList] = useState<MailAttachment[] | null>(() => attachmentCache.get(emailId) ?? null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState('');
   useEffect(() => {
+    if (none) { setList([]); return; } // checked when the email was logged: it has no attachments
     if (attachmentCache.has(emailId)) { setList(attachmentCache.get(emailId)!); return; }
     let live = true;
     (async () => {
@@ -411,7 +413,7 @@ function MessageAttachments({ emailId, isMobile }: { emailId: string; isMobile: 
       if (live) setList(a);
     })().catch(() => { if (live) setList([]); });
     return () => { live = false; };
-  }, [emailId]);
+  }, [emailId, none]);
   if (!list?.length) return null;
   const download = async (a: MailAttachment) => {
     setBusy(a.part); setErr('');
@@ -480,7 +482,7 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply }: { e
                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)' }}>↩</span>}
             </div>
           </div>
-          <EmailRecipients to={e.to_email} cc={e.cc_emails} />
+          <EmailRecipients to={e.to_email} cc={e.cc_emails} bcc={e.bcc_emails} />
         </div>
       </div>
       {bodyText.trim() && (
@@ -490,7 +492,7 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply }: { e
             : <div key={i} aria-hidden style={{ height: 9 }} />)}
         </div>
       )}
-      {e.gmail_message_id && <MessageAttachments emailId={e.id} isMobile={isMobile} />}
+      {(e.gmail_message_id || e.attachments?.length) && <MessageAttachments emailId={e.id} isMobile={isMobile} none={Array.isArray(e.attachments) && e.attachments.length === 0} />}
     </div>
   );
 }
@@ -4257,7 +4259,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setComposeSending(true);
     try {
       const messageHtml = contactComposeBodyRef.current?.innerHTML ?? '';
-      const sig = profile?.email_signature ? `<br/><br/><div class="gmail_signature">${profile.email_signature}</div>` : '';
+      const sig = profile?.email_signature ? gmailSignatureBlock(profile.email_signature) : '';
       const fullBody = profile?.email_signature ? `${messageHtml}${sig}` : messageHtml;
       const agentName = `${profile!.first_name} ${profile!.last_name}`;
       const threadingParams = replyToContactEmail ? {
@@ -4307,7 +4309,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const sig = profile?.email_signature ?? '';
       const messageHtml = composeBodyRef.current?.innerHTML ?? '';
       const fullBody = sig
-        ? `${messageHtml}<br/><br/><div class="gmail_signature">${sig}</div>`
+        ? `${messageHtml}${gmailSignatureBlock(sig)}`
         : messageHtml || '&nbsp;';
       const threadingParams = replyToEmail ? {
         threadId: replyToEmail.gmail_thread_id,

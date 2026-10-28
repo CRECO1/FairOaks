@@ -48,10 +48,19 @@ export async function resolveSignature(
   return '';
 }
 
+/**
+ * The signature exactly as Gmail's own composer writes it — same wrapper, same `gmail_signature` +
+ * `data-smartmail` markers, same two line breaks above it — so a message sent from the CRM is indistinguishable
+ * from one typed in Gmail (Gmail and other clients recognise and fold/trim the signature the same way).
+ */
+export function gmailSignatureBlock(signature: string): string {
+  return `<br clear="all"><br clear="all"><div dir="auto"><div dir="ltr" class="${MARKER}" data-smartmail="${MARKER}">${signature}</div></div>`;
+}
+
 /** Append the signature to an HTML email body (before </body> when there is one). */
 export function withSignature(html: string, signature: string | null | undefined): string {
   if (!signature || !signature.trim() || html.includes(MARKER)) return html;
-  const block = `<br><br><div class="${MARKER}" style="margin-top:24px">${signature}</div>`;
+  const block = gmailSignatureBlock(signature);
   if (html.includes(SIGNATURE_SLOT)) return html.replace(SIGNATURE_SLOT, block);
   const i = html.toLowerCase().lastIndexOf('</body>');
   return i === -1 ? html + block : html.slice(0, i) + block + html.slice(i);

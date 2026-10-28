@@ -152,7 +152,7 @@ export type EmailComposerProps = {
   bodyRef: React.RefObject<HTMLDivElement | null>;
   attachments: File[]; setAttachments: React.Dispatch<React.SetStateAction<File[]>>;
   // Documents from the deal's Docs tab, attached server-side at send (no download). Omit to hide the button.
-  crmFiles?: { ctx: { dealId?: string; clientId?: string }; items: CrmAttachItem[]; setItems: React.Dispatch<React.SetStateAction<CrmAttachItem[]>> };
+  crmFiles?: { ctx: { dealId?: string; clientId?: string; email?: string; searchable?: boolean }; items: CrmAttachItem[]; setItems: React.Dispatch<React.SetStateAction<CrmAttachItem[]>> };
   signature?: string | null;
   onSyncSignature: () => void;
   followUp?: number; setFollowUp?: (days: number) => void;
@@ -180,7 +180,6 @@ export default function EmailComposer(p: EmailComposerProps) {
   const [showCc, setShowCc] = useState(() => p.cc.trim().length > 0);
   const [showBcc, setShowBcc] = useState(() => (p.bcc ?? '').trim().length > 0);
   const [showMore, setShowMore] = useState(false);
-  const [showSig, setShowSig] = useState(false);
   const [showTpl, setShowTpl] = useState(false);
   const [mine, setMine] = useState<Tpl[]>(() => loadMine());
   const [count, setCount] = useState<number | null>(null);
@@ -540,20 +539,13 @@ export default function EmailComposer(p: EmailComposerProps) {
             onAdd={items => p.crmFiles!.setItems(prev => [...prev, ...items.filter(n => !prev.some(x => x.kind === n.kind && x.id === n.id))])} />
         )}
 
-        {/* Signature */}
+        {/* Signature — shown in the message the way Gmail shows it, so what you see is what goes out */}
         {p.signature && (
-          <div style={{ padding: '0 14px 8px' }}>
-            <button type="button" onClick={() => setShowSig(v => !v)} aria-expanded={showSig}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 12, padding: '4px 0', fontFamily: "'DM Sans',sans-serif" }}>
-              ✍ Your signature is added {showSig ? '▴' : '▾'}
-            </button>
-            {showSig && (
-              <div style={{ marginTop: 2 }}>
-                <div style={{ padding: '8px 10px', background: 'var(--k-f9fafb)', borderRadius: 8, fontSize: 13, color: 'var(--k-374151)' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(p.signature) }} />
-                <button type="button" onClick={p.onSyncSignature}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c9922c', fontSize: 12, fontWeight: 700, padding: '6px 0', fontFamily: "'DM Sans',sans-serif" }}>↻ Re-sync from Gmail</button>
-              </div>
-            )}
+          <div style={{ padding: '0 14px 10px' }}>
+            <div style={{ borderTop: '1px dashed var(--k-e5e7eb)', paddingTop: 8, fontSize: 13, color: 'var(--k-374151)', lineHeight: 1.5 }} title="Your Gmail signature — added when you send"
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(p.signature) }} />
+            <button type="button" onClick={p.onSyncSignature}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 11.5, fontWeight: 600, padding: '6px 0 0', fontFamily: "'DM Sans',sans-serif" }}>↻ Re-sync signature from Gmail</button>
           </div>
         )}
       </div>

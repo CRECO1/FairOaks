@@ -2,7 +2,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
+import type { CrmAttachItem } from '@/lib/crm-attachments';
 import DraftsSection from './DraftsSection';
+import { gmailSignatureBlock } from '@/lib/agent-signature';
 import { listDrafts, onDraftsChanged, type EmailDraft } from '@/lib/email-drafts';
 
 // The Gmail-style Compose window: docked bottom-right on desktop, full-screen on a phone, reachable from
@@ -47,6 +49,7 @@ export default function ComposeDock(props: {
   const [followUp, setFollowUp] = useState(0);
   useEffect(() => { setFollowUp(loadFollowUp()); }, []);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [crmFiles, setCrmFiles] = useState<CrmAttachItem[]>([]);
   const [sending, setSending] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const lastNonce = useRef<number | null>(null);
@@ -57,7 +60,7 @@ export default function ComposeDock(props: {
     lastNonce.current = request.nonce;
     setTo(request.to ?? ''); setCc(request.cc ?? ''); setBcc(request.bcc ?? '');
     setSubject(request.subject ?? '');
-    setAttachments([]); setMinimized(false); setFull(false);
+    setAttachments([]); setCrmFiles([]); setMinimized(false); setFull(false);
     setView(request.view ?? 'compose');
     setInstance(i => i + 1);
     setOpen(true);
@@ -95,7 +98,7 @@ export default function ComposeDock(props: {
     try {
       const messageHtml = bodyRef.current?.innerHTML ?? '';
       const sig = props.signature ?? '';
-      const fullBody = sig ? `${messageHtml}<br/><br/><div class="gmail_signature">${sig}</div>` : messageHtml || '&nbsp;';
+      const fullBody = sig ? `${messageHtml}${gmailSignatureBlock(sig)}` : messageHtml || '&nbsp;';
       const files = await Promise.all(attachments.map(file => new Promise<{ name: string; mimeType: string; data: string }>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve({ name: file.name, mimeType: file.type || 'application/octet-stream', data: (reader.result as string).split(',')[1] });
@@ -108,14 +111,14 @@ export default function ComposeDock(props: {
         body: JSON.stringify({
           userId: props.userId, resolveClient: true, toName: request?.name,
           to: recipients.join(', '), cc, bcc, individual: individual && !bcc.trim(),
-          subject, body: fullBody, agentName: props.agentName, ccAgentIds: [], attachments: files, followUpDays: followUp || undefined,
+          subject, body: fullBody, agentName: props.agentName, ccAgentIds: [], attachments: files, crmAttachments: crmFiles.map(f => ({ kind: f.kind, id: f.id })), followUpDays: followUp || undefined,
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) { props.notify('Send failed: ' + (json.error ?? res.status)); return; }
       props.notify(json.followUp?.due ? `Message sent · reminder set for ${json.followUp.label}` : 'Message sent');
       if (bodyRef.current) bodyRef.current.innerHTML = '';
-      setOpen(false); setAttachments([]);
+      setOpen(false); setAttachments([]); setCrmFiles([]);
       props.onSent();
     } catch (err) {
       console.error(err);
@@ -174,9 +177,10 @@ export default function ComposeDock(props: {
           suggest={props.suggest} nameFor={props.nameFor}
           draftKey={draftKey} notify={props.notify}
           bodyRef={bodyRef} attachments={attachments} setAttachments={setAttachments}
+          crmFiles={{ ctx: { email: to.split(/[,;]+/).map(x => x.trim()).filter(Boolean).map(x => x.match(/<([^>]+)>/)?.[1] ?? x)[0], searchable: true }, items: crmFiles, setItems: setCrmFiles }}
           signature={props.signature} onSyncSignature={props.onSyncSignature}
           sending={sending} onSend={send}
-          onDiscard={() => { setOpen(false); setAttachments([]); }}
+          onDiscard={() => { setOpen(false); setAttachments([]); setCrmFiles([]); }}
         />
       </div>
     </div>

@@ -11,7 +11,7 @@ const fmt = (n: number | null) => n == null ? '' : n > 1048576 ? `${(n / 1048576
 const icon = (i: CrmAttachItem) => i.kind === 'signed' ? '✅' : i.kind === 'form' ? '📝' : /^image\//.test(i.type) ? '🖼️' : /word|document/.test(i.type) ? '📃' : '📄';
 
 export default function CrmAttachPicker(p: {
-  ctx: { dealId?: string; clientId?: string };
+  ctx: { dealId?: string; clientId?: string; email?: string; searchable?: boolean };
   chosen: CrmAttachItem[];
   onAdd: (items: CrmAttachItem[]) => void;
   onClose: () => void;
@@ -22,17 +22,23 @@ export default function CrmAttachPicker(p: {
   const [pick, setPick] = useState<Record<string, CrmAttachItem>>({});
   const already = new Set(p.chosen.map(key));
 
+  const [q, setQ] = useState('');
+  const [term, setTerm] = useState('');
+  useEffect(() => { const t = setTimeout(() => setTerm(q.trim()), 250); return () => clearTimeout(t); }, [q]);
+
   useEffect(() => {
     let live = true;
-    const qs = p.ctx.dealId ? `dealId=${p.ctx.dealId}` : p.ctx.clientId ? `clientId=${p.ctx.clientId}` : '';
+    const qs = p.ctx.searchable && term.length >= 2 ? `q=${encodeURIComponent(term)}`
+      : p.ctx.dealId ? `dealId=${p.ctx.dealId}` : p.ctx.clientId ? `clientId=${p.ctx.clientId}` : p.ctx.email ? `email=${encodeURIComponent(p.ctx.email)}` : '';
     if (!qs) { setGroups([]); return; }
+    setGroups(null); setErr('');
     fetch(`/api/crm/attachables?${qs}`).then(async r => {
       const j = await r.json().catch(() => ({}));
       if (!live) return;
       if (!r.ok) { setErr(j.error ?? 'Couldn’t load documents'); setGroups([]); } else setGroups(j.groups ?? []);
     }).catch(() => { if (live) { setErr('Couldn’t load documents'); setGroups([]); } });
     return () => { live = false; };
-  }, [p.ctx.dealId, p.ctx.clientId]);
+  }, [p.ctx.dealId, p.ctx.clientId, p.ctx.email, p.ctx.searchable, term]);
 
   const n = Object.keys(pick).length;
   const toggle = (i: CrmAttachItem) => setPick(s => { const k = key(i); const c = { ...s }; if (c[k]) delete c[k]; else c[k] = i; return c; });
@@ -49,6 +55,13 @@ export default function CrmAttachPicker(p: {
           </div>
           <button type="button" onClick={p.onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--k-9ca3af)', cursor: 'pointer', width: 40, height: 40, minWidth: 0, minHeight: 0 }}>×</button>
         </div>
+        {p.ctx.searchable && (
+          <div style={{ padding: '10px 16px 6px' }}>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search a deal by client or property…" aria-label="Search deals"
+              style={{ width: '100%', height: p.isMobile ? 44 : 36, padding: '0 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)', boxSizing: 'border-box' }} />
+            <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 5 }}>{term.length >= 2 ? 'Showing matching deals.' : p.ctx.email ? 'Showing deals for the person you’re writing to.' : 'Type a client or property to find its documents.'}</div>
+          </div>
+        )}
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
           {groups === null ? <div style={{ padding: 24, fontSize: 14, color: 'var(--k-9ca3af)' }}>Loading documents…</div>
           : err ? <div style={{ padding: 24, fontSize: 14, color: 'var(--k-991b1b)' }}>{err}</div>
@@ -58,7 +71,7 @@ export default function CrmAttachPicker(p: {
             </div>
           ) : groups.map(g => (
             <div key={g.dealId}>
-              {groups.length > 1 || p.ctx.clientId ? <div style={{ padding: '10px 16px 4px', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>{g.title}</div> : null}
+              {groups.length > 1 || p.ctx.clientId || p.ctx.email || p.ctx.searchable ? <div style={{ padding: '10px 16px 4px', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>{g.title}</div> : null}
               {g.items.map(i => {
                 const k = key(i), done = already.has(k), on = !!pick[k];
                 return (

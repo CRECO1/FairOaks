@@ -1,4 +1,5 @@
 import { htmlToText } from '@/lib/html-text';
+import { storeOutgoingAttachments } from '@/lib/email-attachments';
 import { resolveCrmAttachments, CRM_ATTACH_KINDS, type CrmAttachKind } from '@/lib/crm-attachments';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, forbidden, notFound } from '@/lib/crm-auth';
@@ -365,6 +366,7 @@ export async function POST(req: NextRequest) {
           gmail_thread_id: threadId ?? sendData.threadId ?? null,
           ...(sentMessageId ? { rfc_message_id: sentMessageId } : {}),
           ...(opts.ccHeader ? { cc_emails: opts.ccHeader } : {}),
+          ...(opts.bccHeader ? { bcc_emails: opts.bccHeader } : {}),
         }),
       });
       if (!insertRes.ok) {
@@ -373,7 +375,10 @@ export async function POST(req: NextRequest) {
         throw new Error('Email sent but failed to log: ' + errText);
       }
       const inserted = await insertRes.json();
-      return Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
+      const rowId = Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
+      // Keep what we attached on the row so everyone on the deal sees (and can open) it, not just this mailbox.
+      if (rowId) await storeOutgoingAttachments(rowId, attList).catch(err => console.error('[gmail/send] attachment copy failed', err));
+      return rowId;
     };
 
     // Individual copies (per-person open tracking): everyone gets their own message, but

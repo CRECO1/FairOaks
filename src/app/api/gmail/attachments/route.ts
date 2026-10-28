@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { callerMailboxes } from '@/lib/gmail-mailbox';
+import { EMAIL_ATTACH_BUCKET, type StoredAttachment } from '@/lib/email-attachments';
 
 // Attachments on a logged email (a tenant's signed LOI, a flyer…): list them, or download one.
 //   GET ?emailId=<crm_deal_emails.id>             → { attachments: [{ part, name, size, mime }] }
@@ -28,13 +29,36 @@ export async function GET(req: NextRequest) {
   const partId = req.nextUrl.searchParams.get('part');
   if (!/^[0-9a-f-]{36}$/i.test(emailId)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
-  const { data: row } = await adminClient().from('crm_deal_emails').select('id, deal_id, client_id, gmail_message_id').eq('id', emailId).maybeSingle();
+  const { data: row } = await adminClient().from('crm_deal_emails').select('id, deal_id, client_id, gmail_message_id, attachments').eq('id', emailId).maybeSingle();
   if (!row) return notFound();
   const owned = row.deal_id
     ? await assertOwnsResource('crm_deals', row.deal_id as string, ctx, { requireOwner: false })
     : row.client_id ? await assertOwnsResource('crm_clients', row.client_id as string, ctx, { requireOwner: false }) : null;
   if (!owned) return notFound();
-  if (!row.gmail_message_id) return NextResponse.json({ attachments: [] });
+  // Copied into the CRM when the email was logged: anyone with access to the deal/contact can open them, whichever
+  // mailbox the message lives in. Part ids "s0", "s1"… index that stored list.
+  const stored = Array.isArray(row.attachments) ? (row.attachments as StoredAttachment[]) : null;
+  if (stored && (stored.length === 0 || stored.some(a => a.path))) {
+    if (partId === null) return NextResponse.json({ attachments: stored.map((a, i) => ({ part: `s${i}`, name: a.name, size: a.size, mime: a.mime, stored: !!a.path })) });
+    const m = /^s(\d+)$/.exec(partId);
+    const item = m ? stored[Number(m[1])] : undefined;
+    if (item?.path) {
+      const { data: file } = await adminClient().storage.from(EMAIL_ATTACH_BUCKET).download(item.path);
+      if (!file) return NextResponse.json({ error: 'That file could not be read' }, { status: 502 });
+      const bytes = Buffer.from(await file.arrayBuffer());
+      const name = (item.name || 'attachment').replace(/[\r\n"]/g, '_');
+      return new NextResponse(bytes, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${name.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+          'X-Content-Type-Options': 'nosniff',
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+    if (partId !== null) return notFound('Attachment not found');
+  }
+  if (!row.gmail_message_id) return NextResponse.json({ attachments: stored ? stored.map((a, i) => ({ part: `s${i}`, name: a.name, size: a.size, mime: a.mime, stored: false })) : [] });
 
   const boxes = await callerMailboxes(ctx.userId);
   if (!boxes.length) return NextResponse.json({ attachments: [], unavailable: true });

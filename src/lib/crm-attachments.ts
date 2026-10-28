@@ -37,8 +37,22 @@ async function dealItems(dealId: string): Promise<CrmAttachItem[]> {
   return items;
 }
 
-/** The deal(s) to offer: one deal, or a contact's deals (hidden/Restricted ones left out). */
-export async function listAttachables(ctx: CrmContext, opts: { dealId?: string; clientId?: string }): Promise<CrmAttachGroup[] | null> {
+/** Groups of attachable documents for these deals (hidden/Restricted ones left out, deals with nothing on them skipped). */
+async function groupsFor(ctx: CrmContext, deals: Array<{ id: unknown; client: unknown; property: unknown }>): Promise<CrmAttachGroup[]> {
+  const hidden = new Set(await hiddenDealIds(ctx));
+  const groups: CrmAttachGroup[] = [];
+  for (const d of deals.filter(x => !hidden.has(x.id as string))) {
+    const items = await dealItems(d.id as string);
+    if (items.length) groups.push({ dealId: d.id as string, title: [d.client, d.property].filter(Boolean).join(' — ') || 'Deal', items });
+  }
+  return groups;
+}
+
+/**
+ * The deal(s) to offer: one deal, a contact's deals, the deals of whoever an address belongs to (the Compose window,
+ * which has no deal open), or a search over deals by client/property.
+ */
+export async function listAttachables(ctx: CrmContext, opts: { dealId?: string; clientId?: string; email?: string; q?: string }): Promise<CrmAttachGroup[] | null> {
   const db = adminClient();
   if (opts.dealId) {
     if (!(await assertOwnsResource('crm_deals', opts.dealId, ctx))) return null;
@@ -48,14 +62,23 @@ export async function listAttachables(ctx: CrmContext, opts: { dealId?: string; 
   }
   if (opts.clientId) {
     if (!(await assertOwnsResource('crm_clients', opts.clientId, ctx))) return null;
-    const hidden = new Set(await hiddenDealIds(ctx));
     const { data: deals } = await db.from('crm_deals').select('id, client, property').eq('client_id', opts.clientId).limit(10);
-    const groups: CrmAttachGroup[] = [];
-    for (const d of (deals ?? []).filter(x => !hidden.has(x.id as string))) {
-      const items = await dealItems(d.id as string);
-      if (items.length) groups.push({ dealId: d.id as string, title: [d.client, d.property].filter(Boolean).join(' — ') || 'Deal', items });
-    }
-    return groups;
+    return groupsFor(ctx, deals ?? []);
+  }
+  if (opts.email) {
+    const { data: clients } = await db.from('crm_clients').select('id').ilike('email', opts.email.trim().replace(/[%_\\]/g, m => '\\' + m)).limit(5);
+    const ids: string[] = [];
+    for (const c of clients ?? []) if (await assertOwnsResource('crm_clients', c.id as string, ctx)) ids.push(c.id as string);
+    if (!ids.length) return [];
+    const { data: deals } = await db.from('crm_deals').select('id, client, property').in('client_id', ids).order('updated_at', { ascending: false }).limit(10);
+    return groupsFor(ctx, deals ?? []);
+  }
+  if (opts.q && opts.q.trim().length >= 2) {
+    const term = opts.q.trim().replace(/[%_\\,()]/g, ' ').slice(0, 60);
+    const { data: found } = await db.from('crm_deals').select('id, client, property').or(`client.ilike.%${term}%,property.ilike.%${term}%`).order('updated_at', { ascending: false }).limit(15);
+    const allowed: typeof found = [];
+    for (const d of found ?? []) if (await assertOwnsResource('crm_deals', d.id as string, ctx)) allowed.push(d);
+    return groupsFor(ctx, allowed);
   }
   return [];
 }
