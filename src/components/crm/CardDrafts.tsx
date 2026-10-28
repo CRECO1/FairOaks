@@ -34,7 +34,7 @@ export default function CardDrafts({ match, hideKeys = [], isMobile, onOpen }: {
   return (
     <div style={{ margin: '0 0 12px', border: '1px solid var(--k-fde68a)', background: 'var(--k-fef9f0)', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ padding: '7px 12px', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: 700, color: 'var(--k-92400e)' }}>
-        ✎ Drafts · {mine.length}
+        ✎ Saved drafts · {mine.length}
       </div>
       {mine.map(d => {
         const snippet = plain(d.bodyHtml);

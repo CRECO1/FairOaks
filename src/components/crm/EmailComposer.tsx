@@ -286,6 +286,13 @@ export default function EmailComposer(p: EmailComposerProps) {
   };
   // The ✕ keeps your draft (like Gmail) — Discard is the one that throws it away.
   const closeKeepingDraft = () => { saveNow(); p.onDiscard(); };
+  // Prep now, send later (Zack, 2026-10-28): put it in Saved drafts on purpose and close. Attachments aren't stored.
+  const saveForLater = () => {
+    if (!(p.bodyRef.current?.innerText ?? '').trim()) { p.notify?.('Write the email first — empty drafts aren’t kept.'); return; }
+    saveNow();
+    p.notify?.(p.attachments.length ? 'Saved to Drafts. Attachments aren’t kept — add them again when you send.' : 'Saved to Drafts — open it from this card or the Drafts page to send.');
+    p.onDiscard();
+  };
 
   const fill = (t: string, html: boolean) => {
     const name = p.mergeName?.trim() || 'there';
@@ -557,6 +564,12 @@ export default function EmailComposer(p: EmailComposerProps) {
               style={{ flex: p.isMobile ? 1 : undefined, minWidth: 120, height: p.isMobile ? 48 : 40, padding: '0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: p.sending ? 'default' : 'pointer', opacity: p.sending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif" }}>
               {p.sending ? 'Sending…' : (p.sendLabel ?? 'Send')}
             </button>
+            {p.draftKey && (
+              <button type="button" onClick={saveForLater} title="Keep it in Saved drafts to send later"
+                style={{ height: p.isMobile ? 48 : 40, padding: '0 14px', background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+                {p.isMobile ? 'Save' : 'Save draft'}
+              </button>
+            )}
             <button type="button" onClick={discard} aria-label="Discard draft" title="Discard draft"
               style={{ height: p.isMobile ? 48 : 40, padding: '0 14px', background: 'none', color: 'var(--k-6b7280)', border: 'none', borderRadius: 10, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
               Discard
