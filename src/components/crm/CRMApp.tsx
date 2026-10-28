@@ -8,7 +8,8 @@ import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
 import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
-import SentSection from './SentSection';
+import EmailsSection, { type EmailsTab } from './EmailsSection';
+import { useInbox } from '@/lib/use-inbox';
 import CardDrafts from './CardDrafts';
 import { htmlToText } from '@/lib/html-text';
 import { gmailSignatureBlock } from '@/lib/agent-signature';
@@ -375,7 +376,7 @@ const forwardFiles = (e: DealEmail): CrmAttachItem[] => {
 // so whoever receives the reply sees the conversation it belongs to.
 function quotedReplyHtml(e: DealEmail): string {
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const when = (() => { const d = new Date(e.email_date); return isNaN(d.getTime()) ? e.email_date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); })();
+  const when = (() => { const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(e.email_date) ? `${e.email_date}T12:00:00` : e.email_date); return isNaN(d.getTime()) ? e.email_date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); })();
   const text = htmlToPlainText(e.body ?? '').trim();
   const clipped = text.length > 1800 ? text.slice(0, 1800).trimEnd() + '…' : text;
   const from = parseAddressList(e.from_email)[0] ?? { name: e.from_email, email: e.from_email };
@@ -396,7 +397,7 @@ function placeReplyQuote(ref: React.RefObject<HTMLDivElement | null>, html: stri
 // Forward: the original, headed like Gmail's "---------- Forwarded message ---------" block.
 function forwardedHtml(e: DealEmail): string {
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const when = (() => { const d = new Date(e.email_date); return isNaN(d.getTime()) ? e.email_date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); })();
+  const when = (() => { const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(e.email_date) ? `${e.email_date}T12:00:00` : e.email_date); return isNaN(d.getTime()) ? e.email_date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); })();
   const from = parseAddressList(e.from_email)[0] ?? { name: e.from_email, email: e.from_email };
   const text = htmlToPlainText(e.body ?? '').trim();
   const clipped = text.length > 4000 ? text.slice(0, 4000).trimEnd() + '…' : text;
@@ -928,10 +929,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'sent'] as const;
+  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'emails'] as const;
   // The sidebar says "Marketing" but the page is called 'campaigns', so a
   // #marketing link silently left you wherever you already were.
-  const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties', 'calling-log': 'calls', calling: 'calls', phone: 'calls', 'sent-mail': 'sent' };
+  const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties', 'calling-log': 'calls', calling: 'calls', phone: 'calls', 'sent-mail': 'emails', sent: 'emails', inbox: 'emails', drafts: 'emails', email: 'emails' };
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -1150,6 +1151,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   useEffect(() => { setComposeFollowUp(loadFollowUp()); }, []);
   const [composeReq, setComposeReq] = useState<ComposeRequest>(null);
   const [draftCount, setDraftCount] = useState(0);
+  // Emails page: Inbox · Drafts · Sent. #sent / #drafts / #inbox links land on the right tab.
+  const [emailsTab, setEmailsTab] = useState<EmailsTab>(() => {
+    if (typeof window === 'undefined') return 'inbox';
+    const raw = window.location.hash.slice(1);
+    return raw === 'sent' || raw === 'sent-mail' ? 'sent' : raw === 'drafts' ? 'drafts' : 'inbox';
+  });
+  const inbox = useInbox([...gmailAccounts.map(a => a.email), profile?.email ?? '', session?.user?.email ?? ''].filter(Boolean));
   // Group email as separate copies (per-person open tracking) vs one shared message.
   const [composeIndividual, setComposeIndividual] = useState(false);
   const [composeSending, setComposeSending] = useState(false);
@@ -1758,6 +1766,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const raw = window.location.hash.slice(1);
       const hash = (PAGE_ALIASES[raw] ?? raw) as PageType;
       if (VALID_PAGES.includes(hash)) setPage(hash);
+      if (raw === 'sent' || raw === 'sent-mail') setEmailsTab('sent'); else if (raw === 'drafts') setEmailsTab('drafts'); else if (raw === 'inbox') setEmailsTab('inbox');
     };
     window.addEventListener('hashchange', handler);
     return () => window.removeEventListener('hashchange', handler);
@@ -5243,7 +5252,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', sent: 'Sent',
+    'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', emails: 'Emails',
     agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'Transaction Docs', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
   };
 
@@ -5561,9 +5570,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           </button>
         </div>
         <div style={{ padding: '2px 12px 0' }}>
-          <button className={`crm-nav${page === 'sent' ? ' active' : ''}`} onClick={() => setPage('sent')}>
-            <Ico n="mail" />Sent
+          <button className={`crm-nav${page === 'emails' ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab('inbox'); }}>
+            <Ico n="mail" />Emails
+            {inbox.unreadMine > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{inbox.unreadMine}</span>}
           </button>
+          {([['inbox', 'Inbox', inbox.unreadMine], ['drafts', 'Drafts', draftCount], ['sent', 'Sent', 0]] as const).map(([id, label, n]) => (
+            <button key={id} className={`crm-nav${page === 'emails' && emailsTab === id ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab(id); }}
+              style={{ paddingLeft: 40, fontSize: 13.5, minHeight: 32 }}>
+              {label}
+              {n > 0 && <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '0 6px', borderRadius: 10, background: id === 'inbox' ? 'rgba(201,146,44,.9)' : 'rgba(255,255,255,.18)', color: '#fff' }}>{n}</span>}
+            </button>
+          ))}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
@@ -5791,7 +5808,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   Contacts, Calendar, Marketing, Properties, Calls, E-Sign and Docs, so they are not repeated here). */}
               <div style={{ padding: '16px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>More</div>
-                <button className={`crm-nav${page === 'sent' ? ' active' : ''}`} onClick={() => { setPage('sent'); setMobileMenuOpen(false); }}><Ico n="mail" />Sent</button>
+                <button className={`crm-nav${page === 'emails' ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab('inbox'); setMobileMenuOpen(false); }}><Ico n="mail" />Emails{inbox.unreadMine > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{inbox.unreadMine}</span>}</button>
                 {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}><Ico n="briefcase" />Broker / Agents</button>}
                 {isAdmin && (
                   <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
@@ -11118,14 +11135,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             />
           )}
 
-          {page === 'sent' && (
-            <SentSection isMobile={isMobile}
+          {page === 'emails' && (
+            <EmailsSection isMobile={isMobile} tab={emailsTab} setTab={setEmailsTab}
+              unread={inbox.unreadMine} draftCount={draftCount} inbox={inbox}
               myAddresses={[...gmailAccounts.map(a => a.email), profile.email, session?.user?.email ?? ''].filter(Boolean)}
               nameFor={nameForEmail}
               dealLabel={id => deals.find(d => d.id === id)?.client ?? null}
               clientLabel={id => { const c = clients.find(x => x.id === id); return c ? (`${c.first_name} ${c.last_name}`.trim() || c.email) : null; }}
               onOpenDeal={id => { const d = deals.find(x => x.id === id); if (d) { openDeal(d); setTimeout(() => setDealTab('emails'), 0); } }}
               onOpenContact={id => { const c = clients.find(x => x.id === id); if (c) setActiveClient(c); else showToast('That contact is not loaded in this workspace'); }}
+              onResumeDraft={resumeDraft}
               />
           )}
 

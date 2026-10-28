@@ -45,7 +45,7 @@ type Props = {
   onOpenContact: (id: string) => void;
 };
 
-export default function SentSection(p: Props) {
+export default function SentSection(p: Props & { embedded?: boolean }) {
   const [scope, setScope] = useState<'mine' | 'team'>('mine');
   const [sent, setSent] = useState<SentRow[] | null>(null);
   const [filter, setFilter] = useState<'all' | 'opened' | 'unopened' | 'hot'>('all');
@@ -122,7 +122,7 @@ export default function SentSection(p: Props) {
   );
 
   return (
-    <div style={{ maxWidth: 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
+    <div style={p.embedded ? undefined : { maxWidth: 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>Email sent from the CRM, with who opened it and when.</div>
       </div>
