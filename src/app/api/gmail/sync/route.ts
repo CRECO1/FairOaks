@@ -3,6 +3,7 @@ import { getCrmContext, assertOwnsResource, unauthorized, forbidden } from '@/li
 import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { chicagoToday } from '@/lib/chicago-time';
+import { extractEmailText } from '@/lib/gmail-body';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -81,21 +82,7 @@ function decodeBase64(encoded: string): string {
   return Buffer.from(encoded.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
 }
 
-function extractBody(payload: any): string {
-  if (!payload) return '';
-  if (payload.body?.data) return decodeBase64(payload.body.data);
-  if (payload.parts) {
-    for (const part of payload.parts) {
-      if (part.mimeType === 'text/plain' && part.body?.data) return decodeBase64(part.body.data);
-    }
-    for (const part of payload.parts) {
-      if (part.mimeType === 'text/html' && part.body?.data) {
-        return decodeBase64(part.body.data).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-      }
-    }
-  }
-  return '';
-}
+const extractBody = extractEmailText;
 
 function cleanBody(raw: string): string {
   const lines = raw.split('\n');

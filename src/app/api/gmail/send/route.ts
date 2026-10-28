@@ -1,3 +1,4 @@
+import { htmlToText } from '@/lib/html-text';
 import { resolveCrmAttachments, CRM_ATTACH_KINDS, type CrmAttachKind } from '@/lib/crm-attachments';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, forbidden, notFound } from '@/lib/crm-auth';
@@ -312,7 +313,7 @@ export async function POST(req: NextRequest) {
     const { data: prof } = await sigDb.from('crm_profiles').select('first_name, last_name').eq('id', userId).maybeSingle();
     const profileName = `${prof?.first_name ?? ''} ${prof?.last_name ?? ''}`.trim();
     const fromLine = formatAddress(profileName || (typeof agentName === 'string' ? agentName : ''), gmailEmail);
-    const plainBody = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+    const plainBody = htmlToText(body).slice(0, 4000);
     const emailDate = chicagoToday();
 
     // One Gmail send + one logged row. Each copy carries its OWN tracking id, so a copy

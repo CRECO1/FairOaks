@@ -10,6 +10,7 @@ import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import SentSection from './SentSection';
 import CardDrafts from './CardDrafts';
+import { htmlToText } from '@/lib/html-text';
 import type { CrmAttachItem } from '@/lib/crm-attachments';
 import { setDraftAuth, syncDrafts, onDraftsChanged, listDrafts, type EmailDraft } from '@/lib/email-drafts';
 import dynamic from 'next/dynamic';
@@ -518,24 +519,7 @@ function emailAvatarColor(addr: string): string {
   return colors[Math.abs(h) % colors.length];
 }
 
-function htmlToPlainText(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/tr>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&hellip;/gi, '…')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
-}
+const htmlToPlainText = htmlToText;
 
 // Patterns that mark the start of boilerplate we want to cut off
 const CUTOFF_PATTERNS = [

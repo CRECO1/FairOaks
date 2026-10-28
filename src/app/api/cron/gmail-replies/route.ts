@@ -8,6 +8,7 @@
  * reply" follow-up task. It never sends anything and never stores mail from people who aren't contacts.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { extractEmailText } from '@/lib/gmail-body';
 import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { chicagoToday } from '@/lib/chicago-time';
@@ -33,22 +34,7 @@ async function getValidToken(db: ReturnType<typeof adminClient>, conn: Conn): Pr
   return data.access_token;
 }
 
-const b64 = (s: string) => Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
-
-function extractBody(payload: any): string {
-  if (!payload) return '';
-  const walk = (p: any, mime: string): string => {
-    if (p.mimeType === mime && p.body?.data) return b64(p.body.data);
-    for (const part of p.parts ?? []) { const got = walk(part, mime); if (got) return got; }
-    return '';
-  };
-  const plain = walk(payload, 'text/plain');
-  if (plain) return plain;
-  const html = walk(payload, 'text/html');
-  if (html) return html.replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|tr)>/gi, '\n').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n\n').trim();
-  if (payload.body?.data) return b64(payload.body.data);
-  return '';
-}
+const extractBody = extractEmailText;
 
 // Same trimming the manual Sync applies: drop quoted history, "On … wrote:" tails, and disclaimers.
 function cleanBody(raw: string): string {
@@ -64,6 +50,28 @@ function cleanBody(raw: string): string {
     out.push(line);
   }
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+
+// Emails logged before 2026-10-28 had their line breaks flattened (and "&nbsp;" left in): re-read each from the mailbox
+// it lives in and store it properly. Only this connection's own mail, a few per run, and a row stops matching once fixed.
+async function healBodies(db: ReturnType<typeof adminClient>, mailbox: string, auth: Record<string, string>): Promise<number> {
+  const addr = mailbox.trim().toLowerCase();
+  if (!addr) return 0;
+  const since = new Date(Date.now() - 120 * 86_400_000).toISOString().slice(0, 10);
+  const { data } = await db.from('crm_deal_emails').select('id, gmail_message_id, body')
+    .not('gmail_message_id', 'is', null).gte('email_date', since)
+    .or(`from_email.ilike.%${addr}%,to_email.ilike.%${addr}%`)
+    .order('created_at', { ascending: false }).limit(300);
+  const bad = (data ?? []).filter((r: { body: string | null }) => { const b = r.body ?? ''; return /&(nbsp|amp|lt|gt|quot|#\d+);/i.test(b) || (b.length > 140 && !b.includes('\n')); }).slice(0, 25);
+  let healed = 0;
+  for (const r of bad as Array<{ id: string; gmail_message_id: string; body: string | null }>) {
+    const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${r.gmail_message_id}?format=full`, { headers: auth });
+    if (!res.ok) continue; // not in this mailbox
+    const text = extractEmailText((await res.json()).payload).slice(0, 4000);
+    if (text && text !== r.body) { await db.from('crm_deal_emails').update({ body: text }).eq('id', r.id); healed++; }
+  }
+  return healed;
 }
 
 const addrOf = (h: string) => (h.match(/<([^>]+)>/)?.[1] ?? h).trim().toLowerCase();
@@ -95,13 +103,14 @@ export async function GET(req: NextRequest) {
   const { data: team } = await db.from('crm_profiles').select('email');
   const own = new Set<string>([...(team ?? []).map((p: { email: string | null }) => (p.email ?? '').toLowerCase()), ...conns.map(c => (c.gmail_email ?? '').toLowerCase())].filter(Boolean));
 
-  let filed = 0, scanned = 0, tokenFailures = 0;
+  let filed = 0, scanned = 0, tokenFailures = 0, healed = 0;
   const errors: string[] = [];
 
   for (const conn of conns as Conn[]) {
     const token = await getValidToken(db, conn);
     if (!token) { tokenFailures++; errors.push(`token refresh failed for ${conn.gmail_email}`); continue; }
     const auth = { Authorization: `Bearer ${token}` };
+    try { healed += await healBodies(db, conn.gmail_email ?? '', auth); } catch (e) { errors.push(`heal ${conn.gmail_email}: ${e instanceof Error ? e.message : String(e)}`); }
     try {
       const list = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(`in:inbox ${LOOKBACK}`)}&maxResults=${MAX_MESSAGES}`, { headers: auth });
       if (!list.ok) { errors.push(`list ${conn.gmail_email}: ${list.status}`); continue; }
@@ -176,5 +185,5 @@ export async function GET(req: NextRequest) {
   if (errors.length) console.error('[cron/gmail-replies]', errors.join(' | '));
   // A run where every inbox failed to authorise must show up as a failure in Vercel, not a quiet 200.
   const status = tokenFailures === conns.length ? 500 : 200;
-  return NextResponse.json({ ok: status === 200, connections: conns.length, scanned, filed, errors: errors.slice(0, 5) }, { status });
+  return NextResponse.json({ ok: status === 200, connections: conns.length, scanned, filed, healed, errors: errors.slice(0, 5) }, { status });
 }
