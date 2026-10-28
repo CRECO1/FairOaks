@@ -73,7 +73,7 @@ export default function EmailsSection(p: Props) {
           const on = p.tab === id;
           return (
             <button key={id} role="tab" aria-selected={on} onClick={() => p.setTab(id)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: p.isMobile ? '12px 16px' : '10px 16px', minHeight: p.isMobile ? 46 : 40, background: 'none', border: 'none', borderBottom: `2px solid ${on ? '#c9922c' : 'transparent'}`, marginBottom: -1, cursor: 'pointer', fontSize: 14.5, fontWeight: on ? 700 : 600, color: on ? 'var(--k-111)' : 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: p.isMobile ? '12px 11px' : '10px 16px', minHeight: p.isMobile ? 46 : 40, background: 'none', border: 'none', borderBottom: `2px solid ${on ? '#c9922c' : 'transparent'}`, marginBottom: -1, cursor: 'pointer', fontSize: 14.5, fontWeight: on ? 700 : 600, color: on ? 'var(--k-111)' : 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
               {label}
               {n > 0 && <span style={{ background: id === 'inbox' ? '#c9922c' : 'var(--k-e5e7eb)', color: id === 'inbox' ? '#fff' : 'var(--k-374151)', fontSize: 11, fontWeight: 700, padding: '0 7px', borderRadius: 10, lineHeight: '18px' }}>{n}</span>}
             </button>
@@ -82,8 +82,8 @@ export default function EmailsSection(p: Props) {
       </div>
       {/* Compose lives here now (it used to be in the top bar on every page). Press c anywhere on this page. */}
       <button type="button" onClick={p.onCompose} title="Compose a new email (c)" aria-label="Compose a new email"
-        style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginBottom: 7, padding: p.isMobile ? '10px 16px' : '8px 18px', minHeight: p.isMobile ? 44 : undefined, borderRadius: 22, border: 'none', background: '#c9922c', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 14, fontWeight: 700, boxShadow: '0 2px 8px rgba(201,146,44,.35)' }}>
-        <span aria-hidden style={{ fontSize: 16 }}>✉</span> Compose
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 0, marginBottom: 7, padding: p.isMobile ? 0 : '8px 18px', width: p.isMobile ? 44 : undefined, height: p.isMobile ? 44 : undefined, borderRadius: p.isMobile ? 22 : 22, border: 'none', background: '#c9922c', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 14, fontWeight: 700, boxShadow: '0 2px 8px rgba(201,146,44,.35)' }}>
+        <span aria-hidden style={{ fontSize: p.isMobile ? 19 : 16 }}>✉</span>{!p.isMobile && ' Compose'}
       </button>
       </div>
 
