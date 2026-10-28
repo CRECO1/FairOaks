@@ -47,6 +47,31 @@ const OPENED_KEY = 'crm-gmail-opened';
 const loadOpened = (): Set<string> => { try { return new Set(JSON.parse(localStorage.getItem(OPENED_KEY) ?? '[]') as string[]); } catch { return new Set(); } };
 const previewable = (mime: string) => /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(mime);
 
+// In-session caches (gone on a full reload, which is fine): the list paints instantly from the last visit while a quiet
+// refresh runs, and a conversation you hover or reopen is already there.
+type ListCacheEntry = { threads: ThreadSummary[]; next: string | null; accounts: string[]; account: string | null };
+const listCache = new Map<string, ListCacheEntry>();
+const threadCache = new Map<string, LiveMessage[]>();
+const inflight = new Map<string, Promise<LiveMessage[] | null>>();
+const threadKey = (account: string | null, id: string, date: number) => `${account ?? ''}|${id}|${date}`;
+async function loadThread(account: string | null, id: string, date: number): Promise<LiveMessage[] | null> {
+  const key = threadKey(account, id, date);
+  const hit = threadCache.get(key); if (hit) return hit;
+  const running = inflight.get(key); if (running) return running;
+  const job = (async () => {
+    try {
+      const r = await fetch(`/api/gmail/thread?id=${id}${account ? `&account=${encodeURIComponent(account)}` : ''}`);
+      if (!r.ok) return null;
+      const msgs = ((await r.json()).messages ?? []) as LiveMessage[];
+      threadCache.set(key, msgs);
+      if (threadCache.size > 40) threadCache.delete(threadCache.keys().next().value as string);
+      return msgs;
+    } catch { return null; } finally { inflight.delete(key); }
+  })();
+  inflight.set(key, job);
+  return job;
+}
+
 export type ContactMatch = { kind: 'deal' | 'contact'; id: string; label: string } | null;
 
 type Props = {
@@ -139,7 +164,8 @@ export default function GmailMailbox(p: Props) {
   const [err, setErr] = useState('');
   const [loadingMore, setLoadingMore] = useState(false);
   const [accounts, setAccounts] = useState<string[]>([]);
-  const [account, setAccount] = useState<string | null>(null);
+  const [account, setAccount] = useState<string | null>(null); // the mailbox you picked (null = your first)
+  const [self, setSelf] = useState<string | null>(null);       // whose mailbox is being shown (to label your own messages "Me")
   const [connected, setConnected] = useState(true);
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
   const [open, setOpenThread] = useState<ThreadSummary | null>(null);
@@ -161,20 +187,28 @@ export default function GmailMailbox(p: Props) {
     return `/api/gmail/mailbox?${sp}`;
   }, [p.box, filter, term, account]);
 
-  const load = useCallback(async () => {
-    setThreads(null); setErr('');
+  const cacheKey = `${p.box}|${filter}|${term}|${account ?? ''}`;
+  const load = useCallback(async (silent = false) => {
+    setErr('');
+    const cached = listCache.get(cacheKey);
+    if (cached && !silent) { setThreads(cached.threads); setNext(cached.next); setAccounts(cached.accounts); } // instant paint, refresh below
+    else if (!silent) setThreads(null);
     try {
       const r = await fetch(build());
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) { setErr(j.error ?? 'Could not load your mail.'); setThreads([]); return; }
-      setConnected(j.connected !== false); setAccounts(j.accounts ?? []); if (!account && j.account) setAccount(j.account);
-      setThreads(j.threads ?? []); setNext(j.next ?? null);
-    } catch { setErr('Could not reach Gmail — check your connection.'); setThreads([]); }
-  }, [build, account]);
+      if (!r.ok) { if (!cached) { setErr(j.error ?? 'Could not load your mail.'); setThreads([]); } return; }
+      setConnected(j.connected !== false); setAccounts(j.accounts ?? []); if (j.account) setSelf(j.account);
+      const fresh = (j.threads ?? []) as ThreadSummary[];
+      listCache.set(cacheKey, { threads: fresh, next: j.next ?? null, accounts: j.accounts ?? [], account: j.account ?? account });
+      setThreads(fresh); setNext(j.next ?? null);
+    } catch { if (!cached) { setErr('Could not reach Gmail — check your connection.'); setThreads([]); } }
+  }, [build, account, cacheKey]);
 
   useEffect(() => { setOpenThread(null); setFilter(f => (p.box === 'sent' && f === 'unread' ? 'all' : f)); }, [p.box]);
   useEffect(() => { const t = setTimeout(() => setTerm(q.trim()), 350); return () => clearTimeout(t); }, [q]);
   useEffect(() => { void load(); }, [load]);
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => { setRefreshing(true); try { await load(true); } finally { setRefreshing(false); } };
 
   // A quiet check every 2 minutes: if newer conversations arrived, offer to show them (never reshuffles the list under you).
   const [fresh, setFresh] = useState(0);
@@ -261,7 +295,7 @@ export default function GmailMailbox(p: Props) {
   });
 
   const reader = (embedded: boolean) => open && (
-    <ThreadReader key={open.id} t={open} account={account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
+    <ThreadReader key={open.id} t={open} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
       onReply={p.onReply} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />
   );
 
@@ -280,13 +314,13 @@ export default function GmailMailbox(p: Props) {
         <input ref={searchRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Search mail (from:, to:, has:attachment…)  ·  press /" aria-label="Search Gmail"
           style={{ flex: p.isMobile || wide ? '1 1 0' : '0 1 300px', minWidth: 0, height: p.isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
         {accounts.length > 1 && (
-          <select value={account ?? ''} onChange={e => setAccount(e.target.value)} aria-label="Gmail account"
+          <select value={account ?? self ?? ''} onChange={e => setAccount(e.target.value)} aria-label="Gmail account"
             style={{ height: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px' }}>
             {accounts.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         )}
-        <button type="button" onClick={() => void load()} title="Refresh" aria-label="Refresh"
-          style={{ height: p.isMobile ? 42 : 34, width: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 15, cursor: 'pointer' }}>↻</button>
+        <button type="button" onClick={() => void refresh()} title="Refresh" aria-label="Refresh"
+          style={{ height: p.isMobile ? 42 : 34, width: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 15, cursor: 'pointer', opacity: refreshing ? 0.5 : 1 }}>{refreshing ? '…' : '↻'}</button>
       </div>
     </div>
   );
@@ -294,7 +328,7 @@ export default function GmailMailbox(p: Props) {
   const list = (
     <>
       {fresh > 0 && (
-        <button type="button" onClick={() => void load()}
+        <button type="button" onClick={() => void load(true)}
           style={{ width: '100%', marginBottom: 10, padding: '10px', border: '1px solid var(--k-fde68a)', background: 'var(--k-fdf6e8)', color: 'var(--k-92400e)', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           ↑ {fresh} new {fresh === 1 ? 'conversation' : 'conversations'} — show
         </button>
@@ -317,6 +351,7 @@ export default function GmailMailbox(p: Props) {
               <React.Fragment key={t.id}>
                 {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div>}
                 <div role="button" tabIndex={0} onClick={() => openThread(t)} onKeyDown={e => { if (e.key === 'Enter') openThread(t); }}
+                  onMouseEnter={() => { if (!p.isMobile) void loadThread(account, t.id, t.date); }}
                   style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
                   <Avatar name={name} email={a.email} warm={!!match} />
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -406,7 +441,7 @@ function Empty({ title, sub }: { title: string; sub: string }) {
 }
 
 function ThreadReader(p: {
-  t: ThreadSummary; account: string | null; isMobile: boolean; embedded: boolean; contactFor: (email: string) => ContactMatch;
+  t: ThreadSummary; account: string | null; self: string | null; isMobile: boolean; embedded: boolean; contactFor: (email: string) => ContactMatch;
   onOpenDeal: (id: string) => void; onOpenContact: (id: string) => void;
   onReply: Props['onReply']; onForward: Props['onForward']; onBack: () => void;
   notify: Props['notify']; onAddContact: Props['onAddContact'];
@@ -434,17 +469,17 @@ function ThreadReader(p: {
 
   useEffect(() => {
     let live = true;
-    setMsgs(null); setErr('');
-    fetch(`/api/gmail/thread?id=${p.t.id}${p.account ? `&account=${encodeURIComponent(p.account)}` : ''}`)
-      .then(async r => { const j = await r.json().catch(() => ({})); if (!live) return; if (!r.ok) { setErr(j.error ?? 'Could not open this conversation.'); setMsgs([]); } else {
-        const list: LiveMessage[] = j.messages ?? [];
-        setMsgs(list);
-        // Older messages fold like Gmail; the latest stays open.
-        setFolded(new Set(list.slice(0, -1).map(m => m.id)));
-      } })
-      .catch(() => { if (live) { setErr('Could not reach Gmail.'); setMsgs([]); } });
+    setErr('');
+    const cached = threadCache.get(threadKey(p.account, p.t.id, p.t.date));
+    const show = (list: LiveMessage[]) => { setMsgs(list); setFolded(new Set(list.slice(0, -1).map(m => m.id))); }; // older messages fold like Gmail
+    if (cached) { show(cached); return () => { live = false; }; }
+    setMsgs(null);
+    loadThread(p.account, p.t.id, p.t.date).then(list => {
+      if (!live) return;
+      if (!list) { setErr('Could not open this conversation.'); setMsgs([]); } else show(list);
+    });
     return () => { live = false; };
-  }, [p.t.id, p.account]);
+  }, [p.t.id, p.t.date, p.account]);
 
   // PDFs and pictures open in a new tab; everything else downloads. ⬇ always downloads.
   const fetchFile = async (m: LiveMessage, a: { part: string; mime: string }) => {
@@ -503,7 +538,7 @@ function ThreadReader(p: {
     fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap',
   };
   const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;
-  const me = (p.account ?? '').toLowerCase();
+  const me = (p.self ?? p.account ?? '').toLowerCase();
   const toSummary = (m: LiveMessage) => {
     const list = (m.to || '').split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(s => parseAddr(s)).filter(a => a.email);
     const names = list.map(a => (a.email.toLowerCase() === me ? 'me' : (a.name || a.email)));
