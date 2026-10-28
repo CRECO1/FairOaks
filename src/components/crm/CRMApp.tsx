@@ -104,7 +104,7 @@ interface ActionPlan { id: string; created_by: string; name: string; description
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; representation_side?: string | null; is_restricted?: boolean; created_at: string; last_touch: string; emails?: DealEmail[]; }
-interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; }
+interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; gmail_message_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
@@ -388,6 +388,58 @@ function Linkified({ text }: { text: string }) {
   })}</>;
 }
 
+// Files attached to a logged email, read from Gmail on demand (/api/gmail/attachments): 📎 chips that download on click.
+// Only mail that lives in YOUR connected mailbox can show them, so a message filed from a teammate's inbox just has none.
+type MailAttachment = { part: string; name: string; size: number; mime: string };
+const attachmentCache = new Map<string, MailAttachment[]>();
+const fmtBytes = (n: number) => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`;
+function MessageAttachments({ emailId, isMobile }: { emailId: string; isMobile: boolean }) {
+  const [list, setList] = useState<MailAttachment[] | null>(() => attachmentCache.get(emailId) ?? null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (attachmentCache.has(emailId)) { setList(attachmentCache.get(emailId)!); return; }
+    let live = true;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/gmail/attachments?emailId=${emailId}`, { headers: session ? { Authorization: `Bearer ${session.access_token}` } : {} });
+      const j = res.ok ? await res.json().catch(() => null) : null;
+      const a: MailAttachment[] = j?.attachments ?? [];
+      if (j && !j.unavailable) attachmentCache.set(emailId, a); // a "can't reach the mailbox" answer isn't cached
+      if (live) setList(a);
+    })().catch(() => { if (live) setList([]); });
+    return () => { live = false; };
+  }, [emailId]);
+  if (!list?.length) return null;
+  const download = async (a: MailAttachment) => {
+    setBusy(a.part); setErr('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/gmail/attachments?emailId=${emailId}&part=${encodeURIComponent(a.part)}`, { headers: session ? { Authorization: `Bearer ${session.access_token}` } : {} });
+      if (!res.ok) throw new Error(String(res.status));
+      const url = URL.createObjectURL(new Blob([await res.blob()], { type: a.mime }));
+      const link = document.createElement('a'); link.href = url; link.download = a.name; document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch { setErr(`Couldn’t download ${a.name} — try again, or open it in Gmail.`); }
+    finally { setBusy(null); }
+  };
+  return (
+    <div style={{ paddingLeft: 42, marginTop: 10 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {list.map(a => (
+          <button key={a.part} type="button" onClick={() => download(a)} disabled={busy === a.part} title={`Download ${a.name}`}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', minHeight: isMobile ? 44 : 32, padding: '0 12px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif" }}>
+            <span aria-hidden>{busy === a.part ? '⏳' : '📎'}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, fontWeight: 600 }}>{a.name}</span>
+            <span style={{ color: 'var(--k-9ca3af)', flexShrink: 0 }}>{fmtBytes(a.size)}</span>
+          </button>
+        ))}
+      </div>
+      {err && <div style={{ fontSize: 12, color: 'var(--k-dc2626)', marginTop: 6 }}>{err}</div>}
+    </div>
+  );
+}
+
 // One message inside an expanded thread, like Gmail: the latest is open, older ones fold to a single line you can
 // tap open. Used by both the deal and the contact thread so they can't drift apart.
 function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply }: { e: DealEmail; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void }) {
@@ -436,6 +488,7 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply }: { e
           ))}
         </div>
       )}
+      {e.gmail_message_id && <MessageAttachments emailId={e.id} isMobile={isMobile} />}
     </div>
   );
 }
