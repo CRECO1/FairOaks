@@ -13,6 +13,21 @@ const chipLabel = (a: string) => {
   return m ? (m[1].trim().replace(/^"|"$/g, '') || m[2].trim()) : a;
 };
 
+type Tpl = { name: string; subject: string; body: string };
+// Starters use {first_name} and {property}; the signature is added on send, so none end with a sign-off.
+const STARTERS: Tpl[] = [
+  { name: 'Quick follow-up', subject: 'Following up', body: 'Hi {first_name},<br><br>Just following up on my last note. Do you have a few minutes this week to talk through next steps?<br><br>Happy to work around your schedule.' },
+  { name: 'Nice to connect', subject: 'Nice to connect', body: 'Hi {first_name},<br><br>Great to connect. I work with owners, tenants and investors on commercial property in the area, and I would be glad to help however makes sense for you.<br><br>What are you looking for right now?' },
+  { name: 'Sending documents', subject: 'Documents for {property}', body: 'Hi {first_name},<br><br>Attached are the documents we discussed for {property}. Take a look and let me know if you have any questions.<br><br>I can walk through anything on a quick call.' },
+  { name: 'Schedule a tour', subject: 'Tour of {property}', body: 'Hi {first_name},<br><br>Would you like to tour {property}? I can meet you there. Let me know a couple of days and times that work and I will confirm.' },
+  { name: 'After a tour', subject: 'Thanks for touring {property}', body: 'Hi {first_name},<br><br>Thanks for taking the time to see {property}. What did you think? If it is a fit, I can put together next steps, and if not, tell me what to look for and I will keep searching.' },
+  { name: 'Lease check-in', subject: 'Checking in on your lease', body: 'Hi {first_name},<br><br>I wanted to check in as your lease at {property} comes up. Have you thought about your plans? I can walk through renewal options or other space if you are weighing a change.' },
+];
+const TPL_KEY = 'crm_email_templates_v1';
+const loadMine = (): Tpl[] => { try { const v = JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
+const saveMine = (t: Tpl[]) => { try { localStorage.setItem(TPL_KEY, JSON.stringify(t)); } catch { /* private window — templates just won't persist */ } };
+const esc = (x: string) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 const LABEL: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', width: 52, flexShrink: 0, paddingTop: 11 };
 const ROW: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 6, padding: '2px 12px', borderBottom: '1px solid var(--k-f3f4f6)' };
 const CHIP: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%', padding: '3px 4px 3px 9px', background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, fontSize: 13, color: 'var(--k-374151)' };
@@ -87,6 +102,8 @@ export type EmailComposerProps = {
   subject: string; setSubject: (v: string) => void;
   subjectReadOnly?: boolean;
   autoCcLabel?: string;
+  mergeName?: string;
+  mergeProperty?: string;
   bodyRef: React.RefObject<HTMLDivElement | null>;
   attachments: File[]; setAttachments: React.Dispatch<React.SetStateAction<File[]>>;
   signature?: string | null;
@@ -101,6 +118,8 @@ export default function EmailComposer(p: EmailComposerProps) {
   const [showCc, setShowCc] = useState(() => p.cc.trim().length > 0);
   const [showMore, setShowMore] = useState(false);
   const [showSig, setShowSig] = useState(false);
+  const [showTpl, setShowTpl] = useState(false);
+  const [mine, setMine] = useState<Tpl[]>(() => loadMine());
   const attachRef = useRef<HTMLInputElement>(null);
   const hasExtras = p.moreTo.trim().length > 0 || p.cc.trim().length > 0;
 
@@ -115,6 +134,31 @@ export default function EmailComposer(p: EmailComposerProps) {
     const typed = (p.bodyRef.current?.innerText ?? '').trim().length > 0 || p.attachments.length > 0 || (!p.subjectReadOnly && p.subject.trim().length > 0);
     if (typed && !confirm('Discard this email?')) return;
     p.onDiscard();
+  };
+  // Function replacers: a name containing "$" must not be read as a replacement pattern.
+  const fill = (t: string, html: boolean) => {
+    const name = p.mergeName?.trim() || 'there';
+    const prop = p.mergeProperty?.trim() || 'the property';
+    return t.replace(/\{first_name\}/g, () => (html ? esc(name) : name)).replace(/\{property\}/g, () => (html ? esc(prop) : prop));
+  };
+  const applyTpl = (t: Tpl) => {
+    const body = p.bodyRef.current;
+    if (!body) return;
+    if (!p.subjectReadOnly && !p.subject.trim()) p.setSubject(fill(t.subject, false));
+    body.focus();
+    // Saved templates are already filled HTML; starters carry placeholders.
+    const html = fill(t.body, true);
+    if (!(body.innerText ?? '').trim()) body.innerHTML = html;
+    else document.execCommand('insertHTML', false, '<br><br>' + html);
+    setShowTpl(false);
+  };
+  const saveCurrent = () => {
+    const bodyHtml = (p.bodyRef.current?.innerHTML ?? '').trim();
+    if (!(p.bodyRef.current?.innerText ?? '').trim()) { window.alert('Write the email first, then save it as a template.'); return; }
+    const name = window.prompt('Name this template', p.subject.trim() || 'My template');
+    if (!name) return;
+    const next = [...mine.filter(m => m.name !== name.trim()), { name: name.trim(), subject: p.subject, body: bodyHtml }];
+    setMine(next); saveMine(next);
   };
   const addLink = () => {
     const url = window.prompt('Link address', 'https://');
@@ -194,11 +238,38 @@ export default function EmailComposer(p: EmailComposerProps) {
         <button type="button" onMouseDown={e => { e.preventDefault(); cmd('insertOrderedList'); }} aria-label="Numbered list" title="Numbered list" style={tb({ fontSize: 12, fontWeight: 700 })}>1.</button>
         <button type="button" onMouseDown={e => { e.preventDefault(); addLink(); }} aria-label="Add link" title="Add link" style={tb()}>🔗</button>
         {sep}
+        <button type="button" onClick={() => setShowTpl(v => !v)} aria-label="Templates" aria-expanded={showTpl} title="Templates" style={tb({ fontSize: 13, fontWeight: 700, background: showTpl ? 'var(--k-f3f4f6)' : 'none' })}>📄{!p.isMobile && ' Templates'}</button>
         <button type="button" onClick={() => setShowMore(v => !v)} aria-label="More formatting" aria-expanded={showMore} title="More formatting" style={tb({ fontSize: 13, fontWeight: 700, background: showMore ? 'var(--k-f3f4f6)' : 'none' })}>Aa</button>
         {!p.isMobile && <button type="button" onClick={() => attachRef.current?.click()} aria-label="Attach files" title="Attach files" style={tb({ marginLeft: 'auto', gap: 5, fontSize: 13 })}>📎 Attach</button>}
         <input ref={attachRef} type="file" multiple style={{ display: 'none' }}
           onChange={e => { const files = Array.from(e.target.files ?? []); p.setAttachments(prev => [...prev, ...files]); e.target.value = ''; }} />
       </div>
+      {showTpl && (
+        <div style={{ padding: '8px 10px', background: 'var(--k-f9fafb)', borderBottom: '1px solid var(--k-f3f4f6)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 6 }}>Start from a template</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {STARTERS.map(t => (
+              <button key={t.name} type="button" onClick={() => applyTpl(t)}
+                style={{ padding: '0 12px', height: p.isMobile ? 44 : 32, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 16, fontSize: 13, color: 'var(--k-374151)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{t.name}</button>
+            ))}
+          </div>
+          {mine.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', margin: '10px 0 6px' }}>Mine</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {mine.map(t => (
+                  <span key={t.name} style={{ display: 'inline-flex', alignItems: 'center', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 16 }}>
+                    <button type="button" onClick={() => applyTpl(t)} style={{ padding: '0 6px 0 12px', height: p.isMobile ? 44 : 32, background: 'none', border: 'none', fontSize: 13, color: 'var(--k-92400e)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{t.name}</button>
+                    <button type="button" aria-label={`Delete template ${t.name}`} onClick={() => { if (!confirm(`Delete template “${t.name}”?`)) return; const next = mine.filter(m => m.name !== t.name); setMine(next); saveMine(next); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 15, padding: '0 10px 0 2px', minWidth: 0 }}>×</button>
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+          <button type="button" onClick={saveCurrent} style={{ marginTop: 10, background: 'none', border: 'none', cursor: 'pointer', color: '#c9922c', fontSize: 12, fontWeight: 700, padding: '6px 0', fontFamily: "'DM Sans',sans-serif" }}>＋ Save what I’ve written as a template</button>
+        </div>
+      )}
       {showMore && (
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, padding: '4px 8px', background: 'var(--k-f9fafb)', borderBottom: '1px solid var(--k-f3f4f6)' }}>
           <select aria-label="Font family" defaultValue="Arial" onChange={e => cmd('fontName', e.target.value)} style={{ height: p.isMobile ? 40 : 30, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 6px' }}>

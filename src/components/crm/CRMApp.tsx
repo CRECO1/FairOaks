@@ -11058,6 +11058,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {showCompose && activeDeal && (
                     <EmailComposer isMobile={isMobile} title={replyToEmail ? 'Reply' : 'New email'} replyingTo={replyToEmail?.subject}
                       to={activeDeal.client_email} toName={activeDeal.client}
+                      mergeName={(activeDeal.client ?? '').trim().split(/\s+/)[0]} mergeProperty={activeDeal.property}
                       moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                       individual={composeIndividual} setIndividual={setComposeIndividual}
                       subject={composeSubject} setSubject={setComposeSubject}
@@ -13020,6 +13021,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {showContactCompose && (
                       <EmailComposer isMobile={isMobile} title={replyToContactEmail ? 'Reply' : 'New email'} replyingTo={replyToContactEmail?.subject}
                         to={c.email} toName={`${c.first_name} ${c.last_name}`.trim()}
+                        mergeName={c.first_name}
                         moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                         individual={composeIndividual} setIndividual={setComposeIndividual}
                         subject={composeSubject} setSubject={setComposeSubject}
@@ -13147,6 +13149,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <div style={{ borderTop: '2px solid #c9922c', padding: 10, background: 'var(--k-f9fafb)' }}>
                                       <EmailComposer isMobile={isMobile} title={`Reply to ${emailDisplayName(replyToContactEmail?.from_email ?? c.email)}`}
                                         to={c.email} toName={`${c.first_name} ${c.last_name}`.trim()}
+                        mergeName={c.first_name}
                                         moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                                         individual={composeIndividual} setIndividual={setComposeIndividual}
                                         subject={composeSubject} setSubject={setComposeSubject} subjectReadOnly
