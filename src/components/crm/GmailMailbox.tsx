@@ -172,7 +172,7 @@ export default function GmailMailbox(p: Props) {
     } catch { setErr('Could not reach Gmail — check your connection.'); setThreads([]); }
   }, [build, account]);
 
-  useEffect(() => { setOpenThread(null); }, [p.box]);
+  useEffect(() => { setOpenThread(null); setFilter(f => (p.box === 'sent' && f === 'unread' ? 'all' : f)); }, [p.box]);
   useEffect(() => { const t = setTimeout(() => setTerm(q.trim()), 350); return () => clearTimeout(t); }, [q]);
   useEffect(() => { void load(); }, [load]);
 
@@ -272,7 +272,7 @@ export default function GmailMailbox(p: Props) {
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
       <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%' }}>
         <button onClick={() => setFilter('all')} style={chip(filter === 'all')}>{p.box === 'inbox' ? 'All inbox' : 'All sent'}</button>
-        <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>
+        {p.box === 'inbox' && <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>}
         <button onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 Files</button>
         <button onClick={() => setContactsOnly(v => !v)} aria-pressed={contactsOnly} title="Only people who are in your CRM (of what is loaded)" style={chip(contactsOnly)}>👤 Contacts</button>
       </div>
