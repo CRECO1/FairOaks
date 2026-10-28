@@ -195,7 +195,7 @@ export default function EmailComposer(p: EmailComposerProps) {
         <button type="button" onMouseDown={e => { e.preventDefault(); addLink(); }} aria-label="Add link" title="Add link" style={tb()}>🔗</button>
         {sep}
         <button type="button" onClick={() => setShowMore(v => !v)} aria-label="More formatting" aria-expanded={showMore} title="More formatting" style={tb({ fontSize: 13, fontWeight: 700, background: showMore ? 'var(--k-f3f4f6)' : 'none' })}>Aa</button>
-        <button type="button" onClick={() => attachRef.current?.click()} aria-label="Attach files" title="Attach files" style={tb({ marginLeft: 'auto', gap: 5, fontSize: 13 })}>📎{!p.isMobile && ' Attach'}</button>
+        {!p.isMobile && <button type="button" onClick={() => attachRef.current?.click()} aria-label="Attach files" title="Attach files" style={tb({ marginLeft: 'auto', gap: 5, fontSize: 13 })}>📎 Attach</button>}
         <input ref={attachRef} type="file" multiple style={{ display: 'none' }}
           onChange={e => { const files = Array.from(e.target.files ?? []); p.setAttachments(prev => [...prev, ...files]); e.target.value = ''; }} />
       </div>
@@ -267,6 +267,10 @@ export default function EmailComposer(p: EmailComposerProps) {
 
       {/* Send bar — sticks to the bottom of the scrolling card on phones */}
       <div style={{ position: 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--k-fff)', borderTop: '1px solid var(--k-e5e7eb)' }}>
+        {p.isMobile && (
+          <button type="button" onClick={() => attachRef.current?.click()} aria-label="Attach files" title="Attach files"
+            style={{ width: 48, height: 48, flexShrink: 0, background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 10, fontSize: 18, cursor: 'pointer' }}>📎</button>
+        )}
         <button type="button" onClick={p.onSend} disabled={p.sending}
           style={{ flex: p.isMobile ? 1 : undefined, minWidth: 120, height: p.isMobile ? 48 : 40, padding: '0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: p.sending ? 'default' : 'pointer', opacity: p.sending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif" }}>
           {p.sending ? 'Sending…' : (p.sendLabel ?? 'Send')}
