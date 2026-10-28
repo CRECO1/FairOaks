@@ -371,7 +371,7 @@ export default function GmailMailbox(p: Props) {
                         {p.box === 'sent' ? <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}>To: </span> : null}{name}
                         {t.count > 1 && <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}> {t.count}</span>}
                       </span>
-                      <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(t.date)}>{when(t.date)}</span>
+                      <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(t.date)}>{t.files && <span aria-label="Has attachments" title="Has attachments" style={{ marginRight: 5 }}>📎</span>}{when(t.date)}</span>
                     </div>
                     <div style={{ fontSize: 13.5, color: 'var(--k-111)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 500 }}>{t.subject}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decodeSnippet(t.snippet)}</div>

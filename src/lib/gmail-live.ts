@@ -8,7 +8,7 @@ import { collectAttachmentParts } from '@/lib/email-attachments';
 
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
-export type ThreadSummary = { id: string; subject: string; snippet: string; from: string; to: string; date: number; unread: boolean; count: number };
+export type ThreadSummary = { id: string; subject: string; snippet: string; from: string; to: string; date: number; unread: boolean; count: number; files: boolean };
 export type LiveAttachment = { part: string; name: string; size: number; mime: string };
 export type LiveMessage = {
   id: string; from: string; to: string; cc: string; subject: string; date: number; unread: boolean;
@@ -41,7 +41,15 @@ export async function listThreads(token: string, opts: { box: 'inbox' | 'sent'; 
   const params = new URLSearchParams({ maxResults: '25', labelIds: opts.box === 'sent' ? 'SENT' : 'INBOX' });
   if (opts.q) params.set('q', opts.q);
   if (opts.pageToken) params.set('pageToken', opts.pageToken);
-  const list = await g(token, `/threads?${params}`);
+  // Which of these have files? On the first page Gmail can say exactly (the same search plus has:attachment lists the
+  // newest attachment threads, a superset of this page's); on older pages we fall back to the message's MIME shape.
+  const filesParams = new URLSearchParams({ maxResults: '100', labelIds: params.get('labelIds')! });
+  filesParams.set('q', `${opts.q ?? ''} has:attachment`.trim());
+  const [list, filesList] = await Promise.all([
+    g(token, `/threads?${params}`),
+    opts.pageToken ? Promise.resolve(null) : g(token, `/threads?${filesParams}`),
+  ]);
+  const withFiles = filesList?.ok ? new Set<string>((filesList.json.threads ?? []).map((t: { id: string }) => t.id)) : null;
   if (!list.ok) return { ok: false as const, status: list.status };
   const ids: string[] = (list.json.threads ?? []).map((t: { id: string }) => t.id);
   const got = await pool(ids, 8, async id => {
@@ -58,6 +66,7 @@ export async function listThreads(token: string, opts: { box: 'inbox' | 'sent'; 
       id: t.id, subject: hdr(msgs[0], 'Subject') || '(no subject)', snippet: last.snippet ?? '',
       from: hdr(last, 'From'), to: hdr(last, 'To'), date: Number(last.internalDate) || 0,
       unread: msgs.some(m => m.labelIds?.includes('UNREAD')), count: msgs.length,
+      files: withFiles ? withFiles.has(t.id) : msgs.some(m => m.payload?.mimeType === 'multipart/mixed'),
     });
   }
   return { ok: true as const, threads, next: (list.json.nextPageToken as string | undefined) ?? null };
