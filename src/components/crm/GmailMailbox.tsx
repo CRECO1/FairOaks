@@ -56,7 +56,7 @@ function MessageFrame({ html }: { html: string }) {
 }
 
 export default function GmailMailbox(p: Props) {
-  const [filter, setFilter] = useState<'primary' | 'all' | 'unread'>('primary');
+  const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
@@ -72,7 +72,7 @@ export default function GmailMailbox(p: Props) {
 
   const build = useCallback((pageToken?: string) => {
     const sp = new URLSearchParams({ box: p.box });
-    if (p.box === 'inbox') sp.set('filter', filter); else if (filter === 'unread') sp.set('filter', 'unread');
+    if (filter === 'unread') sp.set('filter', 'unread');
     if (term) sp.set('q', term);
     if (account) sp.set('account', account);
     if (pageToken) sp.set('pageToken', pageToken);
@@ -125,7 +125,7 @@ export default function GmailMailbox(p: Props) {
     <div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
         <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%' }}>
-          {(p.box === 'inbox' ? [['primary', 'Primary'], ['all', 'All inbox'], ['unread', 'Unread']] : [['all', 'All sent'], ['unread', 'Unread']] as const).map(([v, l]) => (
+          {(p.box === 'inbox' ? [['all', 'All inbox'], ['unread', 'Unread']] : [['all', 'All sent'], ['unread', 'Unread']] as const).map(([v, l]) => (
             <button key={v} onClick={() => setFilter(v as typeof filter)} style={chip((p.box === 'sent' && v === 'all' ? filter !== 'unread' : filter === v))}>{l}</button>
           ))}
         </div>

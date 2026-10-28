@@ -1160,12 +1160,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return raw === 'sent' || raw === 'sent-mail' ? 'sent' : raw === 'drafts' ? 'drafts' : 'inbox';
   });
   const inbox = useInbox([...gmailAccounts.map(a => a.email), profile?.email ?? '', session?.user?.email ?? ''].filter(Boolean));
-  // Gmail's own unread count (Primary) for the Emails badge — a cheap label read, refreshed every few minutes.
+  // Gmail's own unread count (inbox) for the Emails badge — a cheap label read, refreshed every few minutes.
   const [gmailUnread, setGmailUnread] = useState<number | null>(null);
   useEffect(() => {
     if (!gmailConnected) { setGmailUnread(null); return; }
     let live = true;
-    const tick = () => { if (document.visibilityState !== 'visible') return; fetch('/api/gmail/mailbox?counts=1').then(r => r.json()).then(j => { if (live && j && j.connected) setGmailUnread(j.unreadPrimary ?? j.unreadInbox ?? 0); }).catch(() => {}); };
+    const tick = () => { if (document.visibilityState !== 'visible') return; fetch('/api/gmail/mailbox?counts=1').then(r => r.json()).then(j => { if (live && j && j.connected) setGmailUnread(j.unreadInbox ?? 0); }).catch(() => {}); };
     tick();
     const t = setInterval(tick, 3 * 60_000);
     window.addEventListener('focus', tick);
