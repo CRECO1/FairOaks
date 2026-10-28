@@ -130,6 +130,16 @@ function collapseQuotes(html: string): string {
   return html;
 }
 
+// Never load tracking pixels while reading. Our own open-tracking pixel sits in every email sent from the CRM, so showing
+// your sent mail here would count as the RECIPIENT opening it; incoming mail's 1×1 trackers are dropped too (privacy).
+function stripTrackers(html: string): string {
+  return html.replace(/<img\b[^>]*>/gi, tag => {
+    if (/\/api\/track\//i.test(tag)) return '';
+    const one = (attr: string) => new RegExp(`\\b${attr}\\s*=\\s*["']?1(px)?["']?(?=[\\s/>"'])`, 'i').test(tag) || new RegExp(`${attr}\\s*:\\s*1px`, 'i').test(tag);
+    return one('width') && one('height') ? '' : tag;
+  });
+}
+
 // A sandboxed frame for the message HTML: no scripts can run, links open in new tabs, and it grows to fit its content.
 function MessageFrame({ html }: { html: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
@@ -139,7 +149,7 @@ function MessageFrame({ html }: { html: string }) {
     if (d?.documentElement) setH(Math.min(30000, Math.max(40, d.documentElement.scrollHeight)));
   }, []);
   // No scripts or event handlers survive; links open in a new tab, never inside the frame.
-  const safe = useMemo(() => collapseQuotes(sanitizeHtml(html).replace(/<a\s/gi, '<a target="_blank" rel="noopener noreferrer" ')), [html]);
+  const safe = useMemo(() => collapseQuotes(sanitizeHtml(stripTrackers(html)).replace(/<a\s/gi, '<a target="_blank" rel="noopener noreferrer" ')), [html]);
   const doc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;padding:0;background:#fff;color:#222;font:14px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;word-wrap:break-word;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}blockquote{margin:0 0 0 .8ex;border-left:2px solid #d5d9df;padding-left:1ex;color:#555}a{color:#1a56c4}details.q{margin:10px 0}details.q>summary{display:inline-block;cursor:pointer;list-style:none;background:#eceff3;color:#4b5563;border-radius:10px;padding:0 10px;font-size:13px;line-height:18px;user-select:none}details.q>summary::-webkit-details-marker{display:none}details.q[open]>summary{margin-bottom:8px}.gmail_signature{color:#555}</style></head><body>${safe}</body></html>`;
   return <iframe ref={ref} title="Message" srcDoc={doc} sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
     onLoad={() => {
@@ -619,7 +629,7 @@ function ThreadReader(p: {
                 <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }} title={whenLong(m.date)}>{p.isMobile ? when(m.date) : whenLong(m.date)}</span>
                   {opens.has(m.id) && (opens.get(m.id)!.opened
-                    ? <span title={opens.get(m.id)!.last ? `Last opened ${whenLong(new Date(opens.get(m.id)!.last!).getTime())}` : 'Opened'} style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-065f46)', background: 'var(--k-d1fae5)', borderRadius: 10, padding: '1px 8px' }}>👁 Opened{opens.get(m.id)!.n > 1 ? ` ${opens.get(m.id)!.n}×` : ''}</span>
+                    ? <span title={opens.get(m.id)!.last ? `Last opened ${whenLong(new Date(opens.get(m.id)!.last!).getTime())}` : 'Opened'} style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-065f46)', background: 'var(--k-d1fae5)', borderRadius: 10, padding: '1px 8px' }}>👁 Opened{opens.get(m.id)!.n > 1 ? ` ${opens.get(m.id)!.n}×` : ''}{opens.get(m.id)!.last ? ` · ${when(new Date(opens.get(m.id)!.last!).getTime())}` : ''}</span>
                     : <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px' }}>Not opened</span>)}
                 </div>
               </div>

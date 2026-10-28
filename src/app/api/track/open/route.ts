@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/ratelimit';
 
+const AUTO_OPEN_WINDOW_MS = 20_000;
+
 // 1×1 transparent GIF
 const TRANSPARENT_GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
@@ -89,18 +91,37 @@ export async function GET(req: NextRequest) {
         // Original deal email tracking
         const { data: rows } = await supabase
           .from('crm_deal_emails')
-          .select('id, opened_at, open_count')
+          .select('id, opened_at, open_count, created_at, email_at, from_email, to_email, subject, deal_id, client_id')
           .eq('tracking_id', trackingId)
           .limit(1);
 
         const row = rows?.[0];
-        if (row) {
+        // Mail-security scanners and image prefetchers load every image the instant a message lands, and the sender's
+        // own first look at the sent copy does too — none of that is the recipient reading it. A hit within the first
+        // 20 seconds is ignored; a person opening it takes longer than that.
+        const sentAt = row ? new Date((row.email_at as string | null) ?? (row.created_at as string)).getTime() : 0;
+        if (row && Date.now() - sentAt >= AUTO_OPEN_WINDOW_MS) {
           // last_opened_at (2026-10-27) lets the deal card say "opened 3× · last Tue 2:14 PM".
           await supabase.from('crm_deal_emails').update({
             open_count: (row.open_count ?? 0) + 1,
             last_opened_at: now,
             ...(row.opened_at ? {} : { opened_at: now }),
           }).eq('id', row.id);
+
+          // First real open: tell whoever sent it (bell) — "Hina opened BOV for 104 & 106 Main".
+          if (!row.opened_at && (row.deal_id || row.client_id)) {
+            const sender = String(row.from_email ?? '').match(/<([^>]+)>/)?.[1] ?? String(row.from_email ?? '');
+            const { data: prof } = await supabase.from('crm_profiles').select('id').ilike('email', sender.trim()).maybeSingle();
+            if (prof?.id) {
+              const first = String(row.to_email ?? '').split(',')[0] ?? '';
+              const who = (first.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] ?? first.split('@')[0]).trim() || 'Someone';
+              await supabase.from('crm_notifications').insert([{
+                recipient_id: prof.id, sender_id: null, type: 'email_open',
+                message: `👁 ${who} opened your email: ${String(row.subject ?? '').slice(0, 80)}`,
+                entity_type: row.deal_id ? 'deal' : 'contact', entity_id: (row.deal_id ?? row.client_id) as string,
+              }]);
+            }
+          }
         }
       }
     } catch {
