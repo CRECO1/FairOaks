@@ -101,7 +101,7 @@ interface ActionPlan { id: string; created_by: string; name: string; description
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; representation_side?: string | null; is_restricted?: boolean; created_at: string; last_touch: string; emails?: DealEmail[]; }
-interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; }
+interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
@@ -134,6 +134,14 @@ function historyOrder<T extends HistoryRow>(mode: HistorySort) {
 
 interface CampaignSend { last_open_at?: string | null; open_times?: string[]; id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
+
+// "👁 Opened 3× · Tue, Oct 28, 2:14 PM" for a tracked email (open_count + last_opened_at from /api/track/open).
+const openWhen = (iso: string) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const openTail = (e: DealEmail) => {
+  const n = e.open_count ?? (e.opened_at ? 1 : 0);
+  const at = e.last_opened_at ?? e.opened_at;
+  return `${n > 1 ? ` ${n}×` : ''}${at ? ` · ${openWhen(at)}` : ''}`;
+};
 
 const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Crexi', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
 const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
@@ -3632,8 +3640,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function importClients(file: File) {
     try {
       const XLSX = await import('xlsx');
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
+      // CSVs are read as UTF-8 text: handed raw bytes, SheetJS decodes them as Latin-1 and turns every
+      // "·", "—" and "’" into "Â·", "â€”", "â€™" (hit 811 imported contacts in the HG CRM, 2026-10-27).
+      const wb = /\.csv$/i.test(file.name)
+        ? XLSX.read(await file.text(), { type: 'string' })
+        : XLSX.read(await file.arrayBuffer(), { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<Record<string, string>>(ws);
       let added = 0, errors = 0, dupes = 0;
@@ -11127,18 +11138,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Emails tab */}
               {dealTab === 'emails' && (
                 <div>
-                  {/* Compose button */}
+                  {/* Compose button. Once the deal has a thread, "Reply in thread" (reply-all to its latest message) is
+                      the main action, so follow-ups stay in one chain instead of a new email each time (Zack, 2026-10-27). */}
                   {gmailConnected && activeDeal?.client_email && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 10 }}>
+                      {!showCompose && dealEmails.length > 0 && (() => {
+                        const latest = [...dealEmails].sort((a, b) => b.email_date.localeCompare(a.email_date))[0];
+                        const thread = dealEmails.filter(e => (e.gmail_thread_id ?? `solo_${e.id}`) === (latest.gmail_thread_id ?? `solo_${latest.id}`));
+                        const ra = replyAllRecipients(latest, thread, activeDeal?.client_email, [session?.user?.email, profile?.email]);
+                        return (
+                          <button className="crm-btn crm-btn-sm" title="Reply all in the latest email thread" onClick={() => {
+                            setReplyToEmail(latest);
+                            setComposeSubject(latest.subject?.startsWith('Re:') ? latest.subject : `Re: ${latest.subject}`);
+                            setComposeMoreTo(ra.also); setComposeCc(ra.cc); setComposeBcc('');
+                            setComposeIndividual(false);
+                            clearComposeBody(); setComposeAttachments([]);
+                            setShowCompose(true);
+                            placeReplyQuote(composeBodyRef, quotedReplyHtml(latest));
+                            setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+                          }}
+                            style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                            ↩ Reply in thread
+                          </button>
+                        );
+                      })()}
                       <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => {
                         if (!showCompose) {
                           clearComposeBody();
                           setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
                         }
+                        setReplyToEmail(null);
                         setShowCompose(v => !v);
                       }}
-                        style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                        ✉️ Compose
+                        style={dealEmails.length > 0 && !showCompose
+                          ? { background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }
+                          : { background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                        {showCompose ? '✕ Close' : dealEmails.length > 0 ? '✉️ New email' : '✉️ Compose'}
                       </button>
                     </div>
                   )}
@@ -11179,6 +11214,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     </div>
                   )}
+
+                  {/* Open tracking at a glance: what the deal's sent emails did */}
+                  {(() => {
+                    const tracked = dealEmails.filter(e => e.direction === 'sent' && e.tracking_id);
+                    if (!tracked.length) return null;
+                    const opened = tracked.filter(e => e.opened_at);
+                    const opens = tracked.reduce((t, e) => t + (e.open_count ?? (e.opened_at ? 1 : 0)), 0);
+                    const last = opened.map(e => e.last_opened_at ?? e.opened_at!).sort().pop();
+                    const stat = (label: string, value: string, tone?: string) => (
+                      <div style={{ flex: '1 1 110px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '8px 12px' }}>
+                        <div style={{ fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 }}>{label}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: tone ?? 'var(--k-111)', marginTop: 2 }}>{value}</div>
+                      </div>
+                    );
+                    return (
+                      <div title="Opens are approximate: some mail apps load images automatically, and some block them." style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                        {stat('Sent', String(tracked.length))}
+                        {stat('Opened', `${opened.length} · ${Math.round((opened.length / tracked.length) * 100)}%`, opened.length ? 'var(--k-065f46)' : undefined)}
+                        {stat('Total opens', String(opens))}
+                        {stat('Last opened', last ? openWhen(last) : '—')}
+                      </div>
+                    );
+                  })()}
 
                   {/* Threaded email list */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
@@ -11228,7 +11286,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0 }}>{emailDisplayName(senderAddr)}</span>
                                   {threadEmails.length > 1 && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{threadEmails.length}</span>}
                                   {(() => { const n = new Set(threadEmails.flatMap(m => [...parseAddressList(m.from_email), ...parseAddressList(m.to_email), ...parseAddressList(m.cc_emails)].map(r => r.email.toLowerCase()))).size; return n > 2 ? <span title="People on this thread" style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-eef2ff)', color: 'var(--k-3730a3)' }}>👥 {n}</span> : null; })()}
-                                  {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened</span>}
+                                  {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened{(() => { const n = sentEmails.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0); return n > 1 ? ` ${n}×` : ''; })()}</span>}
                                   {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, overflow: 'hidden' }}>
@@ -11261,7 +11319,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                             <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: 5 }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
                                           </div>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                            {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? '👁 Opened by someone on this email' : '👁 Opened'}</span>; })()}
+                                            {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
                                             {e.direction === 'sent' && !e.opened_at && e.tracking_id && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
                                             <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{e.email_date}</span>
                                           </div>
@@ -13189,7 +13247,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0 }}>{emailDisplayName(senderAddrC)}</span>
                                     {threadEmails.length > 1 && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{threadEmails.length}</span>}
                                   {(() => { const n = new Set(threadEmails.flatMap(m => [...parseAddressList(m.from_email), ...parseAddressList(m.to_email), ...parseAddressList(m.cc_emails)].map(r => r.email.toLowerCase()))).size; return n > 2 ? <span title="People on this thread" style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-eef2ff)', color: 'var(--k-3730a3)' }}>👥 {n}</span> : null; })()}
-                                    {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened</span>}
+                                    {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened{(() => { const n = sentEmails.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0); return n > 1 ? ` ${n}×` : ''; })()}</span>}
                                     {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, overflow: 'hidden' }}>
@@ -13219,7 +13277,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                               <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: 5 }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                              {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? '👁 Opened by someone on this email' : '👁 Opened'}</span>; })()}
+                                              {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
                                               {e.direction === 'sent' && !e.opened_at && e.tracking_id && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
                                               <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{e.email_date}</span>
                                             </div>

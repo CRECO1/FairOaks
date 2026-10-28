@@ -95,8 +95,10 @@ export async function GET(req: NextRequest) {
 
         const row = rows?.[0];
         if (row) {
+          // last_opened_at (2026-10-27) lets the deal card say "opened 3× · last Tue 2:14 PM".
           await supabase.from('crm_deal_emails').update({
             open_count: (row.open_count ?? 0) + 1,
+            last_opened_at: now,
             ...(row.opened_at ? {} : { opened_at: now }),
           }).eq('id', row.id);
         }

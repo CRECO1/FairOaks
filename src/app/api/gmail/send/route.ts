@@ -318,6 +318,13 @@ export async function POST(req: NextRequest) {
       });
       const sendData = await sendRes.json();
       if (!sendRes.ok) throw new Error(sendData.error?.message ?? 'Gmail send failed');
+      // Gmail assigns the Message-ID: keep it so a follow-up to this email (not just to a received one)
+      // threads for the recipient too (In-Reply-To / References).
+      let sentMessageId: string | null = null;
+      try {
+        const meta = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${sendData.id}?format=metadata&metadataHeaders=Message-ID`, { headers: { Authorization: `Bearer ${accessToken}` } });
+        if (meta.ok) sentMessageId = ((await meta.json()).payload?.headers ?? []).find((h: { name: string }) => h.name.toLowerCase() === 'message-id')?.value ?? null;
+      } catch { /* threading still works by Gmail thread id */ }
       const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/crm_deal_emails`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}`, Prefer: 'return=representation' },
@@ -333,6 +340,7 @@ export async function POST(req: NextRequest) {
           gmail_message_id: sendData.id,
           tracking_id: opts.tid,
           gmail_thread_id: threadId ?? sendData.threadId ?? null,
+          ...(sentMessageId ? { rfc_message_id: sentMessageId } : {}),
           ...(opts.ccHeader ? { cc_emails: opts.ccHeader } : {}),
         }),
       });
