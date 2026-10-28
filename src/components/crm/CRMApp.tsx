@@ -338,8 +338,10 @@ function EmailRecipients({ to, cc, bcc }: { to?: string | null; cc?: string | nu
 // Reply-all: everyone on the last message except us and the primary contact (who is already
 // the To). Returns comma-joined strings for the "Also to" and "Cc" boxes.
 function replyAllRecipients(last: DealEmail, thread: DealEmail[], primary: string | undefined, selfEmails: Array<string | undefined | null>) {
-  const skip = new Set<string>([(primary ?? '').toLowerCase(), ...selfEmails.map(e => (e ?? '').toLowerCase()),
-    ...thread.filter(e => e.direction === 'sent').flatMap(e => parseAddressList(e.from_email).map(r => r.email.toLowerCase()))].filter(Boolean));
+  // Skip only the person replying (all their addresses) and the primary contact. Teammates who sent earlier in the
+  // thread stay on: when Zack replies-all to Brian's email, Brian is still a recipient.
+  void thread;
+  const skip = new Set<string>([(primary ?? '').toLowerCase(), ...selfEmails.map(e => (e ?? '').toLowerCase())].filter(Boolean));
   const seen = new Set<string>();
   const pick = (raw?: string | null) => parseAddressList(raw).filter(r => {
     const k = r.email.toLowerCase(); if (skip.has(k) || seen.has(k)) return false; seen.add(k); return true;
@@ -4336,7 +4338,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Reply / Reply all on one message, deal card. Reply goes to the sender (the contact is always on the To line);
   // Reply all adds everyone else who was on that message. Threads onto that message and quotes it.
-  const selfAddrs = () => [session?.user?.email, profile?.email];
+  const selfAddrs = () => [session?.user?.email, profile?.email, ...gmailAccounts.map(a => a.email)];
   const hasReplyAll = (e: DealEmail, thread: DealEmail[], primary: string | undefined) => { const r = replyAllRecipients(e, thread, primary, selfAddrs()); return !!(r.also || r.cc); };
   function startDealReply(e: DealEmail, thread: DealEmail[], all: boolean) {
     const primary = activeDeal?.client_email;
@@ -11661,7 +11663,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 {/* Reply / Reply all at the bottom of the expanded thread (same Gmail thread, one shared email) */}
                                 {gmailConnected && activeDeal?.client_email && (() => {
                                   const lastEmail = sortedEmails(threadEmails).slice(-1)[0];
-                                  const ra = replyAllRecipients(lastEmail, threadEmails, activeDeal?.client_email, [session?.user?.email, profile?.email]);
+                                  const ra = replyAllRecipients(lastEmail, threadEmails, activeDeal?.client_email, selfAddrs());
                                   const start = (all: boolean) => startDealReply(lastEmail, threadEmails, all);
                                   return (
                                     <div style={{ padding: '10px 14px', background: 'var(--k-fff)' }}>
@@ -13599,7 +13601,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   ) : (
                                     (() => {
                                       const lastEmail = sortedEmails(threadEmails).slice(-1)[0];
-                                      const ra = replyAllRecipients(lastEmail, threadEmails, c.email, [session?.user?.email, profile?.email]);
+                                      const ra = replyAllRecipients(lastEmail, threadEmails, c.email, selfAddrs());
                                       const start = (all: boolean) => startContactReply(lastEmail, threadEmails, all, threadKey, c);
                                       return (
                                         <div style={{ padding: '10px 12px', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>
