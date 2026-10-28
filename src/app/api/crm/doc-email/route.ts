@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { escapeLike } from '@/lib/like-escape';
+import { gmailSignatureBlock } from '@/lib/agent-signature';
 import { POST as gmailSend } from '@/app/api/gmail/send/route';
 
 // "Email as attachment" for any document the CRM files in crm_form_submissions (LOI, lease,
@@ -83,7 +84,7 @@ export async function GET(req: NextRequest) {
   } else {
     body += `<p>Please find the ${esc(docTitle)}${property ? ` for ${esc(property)}` : ''} attached. Let me know if you have any questions.</p>`;
   }
-  body += me.signature ? `<br/><div class="gmail_signature">${me.signature}</div>` : (me.name ? `<p>Thank you,<br/>${esc(me.name)}</p>` : '');
+  body += me.signature ? gmailSignatureBlock(me.signature) : (me.name ? `<p>Thank you,<br/>${esc(me.name)}</p>` : '');
 
   return NextResponse.json({
     to,
