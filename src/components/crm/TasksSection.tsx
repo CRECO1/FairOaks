@@ -795,8 +795,8 @@ export default function TasksSection({
                           {t.title}
                         </div>
                       </div>
-                      {/* Contact */}
-                      {contact && (
+                      {/* Contact (phones: shares the footer row instead) */}
+                      {contact && !isMobile && (
                         <button onClick={e => { e.stopPropagation(); const full = clients.find(c => c.id === t.client_id); setContactPopup(full ?? null); }}
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--k-f1f5f9)', border: 'none', borderRadius: 6, padding: '2px 7px', margin: '8px 0 0 22px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", maxWidth: 'calc(100% - 22px)' }}>
                           <span style={{ fontSize: 10 }}>👤</span>
@@ -804,7 +804,14 @@ export default function TasksSection({
                         </button>
                       )}
                       {/* Footer: priority · reschedule · assignee */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginTop: 8, paddingLeft: 22 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginTop: 8, paddingLeft: isMobile ? 0 : 22 }}>
+                        {isMobile && contact && (
+                          <button onClick={e => { e.stopPropagation(); const full = clients.find(c => c.id === t.client_id); setContactPopup(full ?? null); }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--k-f1f5f9)', border: 'none', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flex: '1 1 0', minWidth: 0, justifyContent: 'flex-start' }}>
+                            <span style={{ fontSize: 10 }}>👤</span>
+                            <span style={{ fontSize: 12, color: 'var(--k-374151)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.first_name} {contact.last_name}</span>
+                          </button>
+                        )}
                         <span style={{ ...pc, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" } as React.CSSProperties}>{pc.label}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <DuePill value={t.due_date} overdue={!!isOverdue} isToday={t.due_date === todayStr && t.status !== 'done'}
