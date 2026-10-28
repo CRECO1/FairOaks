@@ -214,6 +214,7 @@ export async function POST(req: NextRequest) {
     );
 
     let synced = 0;
+    let latestInboundMs = 0; // newest reply we just pulled in — it settles any "remind me if no reply" task
     for (const [msgId, conn] of msgConnMap) {
       if (existingMsgIds.has(msgId)) continue;
       // rfc_message_id check happens after fetching headers below
@@ -278,11 +279,29 @@ export async function POST(req: NextRequest) {
         }),
       });
 
-      if (insertRes.ok || insertRes.status === 201) synced++;
+      if (insertRes.ok || insertRes.status === 201) {
+        synced++;
+        if (direction === 'received') latestInboundMs = Math.max(latestInboundMs, Number(msgData.internalDate) || 0);
+      }
       else {
         const errText = await insertRes.text();
         console.error(`Failed to insert email ${msgId}:`, errText);
       }
+    }
+
+    // They answered: complete this contact's open email follow-up reminders created before that reply.
+    if (latestInboundMs > 0) {
+      try {
+        let reminderClient: string | undefined = clientId;
+        if (!reminderClient && dealId) {
+          const dr = await fetch(`${SUPABASE_URL}/rest/v1/crm_deals?id=eq.${encodeURIComponent(dealId)}&select=client_id`, { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } });
+          reminderClient = (await dr.json().catch(() => []))?.[0]?.client_id ?? undefined;
+        }
+        if (reminderClient) await fetch(
+          `${SUPABASE_URL}/rest/v1/crm_tasks?client_id=eq.${encodeURIComponent(reminderClient)}&completed_at=is.null&notes=like.${encodeURIComponent('Email follow-up%')}&created_at=lt.${encodeURIComponent(new Date(latestInboundMs).toISOString())}`,
+          { method: 'PATCH', headers: { 'Content-Type': 'application/json', apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}`, Prefer: 'return=minimal' }, body: JSON.stringify({ completed_at: new Date().toISOString() }) },
+        );
+      } catch (e) { console.error('Follow-up auto-complete failed:', e); }
     }
 
     return NextResponse.json({ synced });

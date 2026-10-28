@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
     if (!ctx) return unauthorized();
     const caller = { id: ctx.userId };
 
-    const { userId, dealId, clientId: clientIdIn, to: toRaw, cc: ccRaw, bcc: bccRaw, toName, resolveClient, individual: individualRaw, subject, body, agentName, ccAgentIds, threadId: threadIdRaw, inReplyTo: inReplyToRaw, attachments } = await req.json();
+    const { userId, dealId, clientId: clientIdIn, to: toRaw, cc: ccRaw, bcc: bccRaw, toName, resolveClient, individual: individualRaw, subject, body, agentName, ccAgentIds, threadId: threadIdRaw, inReplyTo: inReplyToRaw, attachments, followUpDays: followUpRaw } = await req.json();
     let clientId: string | undefined = clientIdIn;
     // One group email: any number of To and Cc people on the same message, so everyone
     // sees the thread and can reply-all. Per-person open tracking isn't possible then —
@@ -403,7 +403,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, emailId, clientId, copies: individual ? everyone.length : 1 });
+    // "Remind me if no reply": a follow-up task for the sender, due N days out. The Gmail sync completes it
+    // if the person answers first (marker: notes start with "Email follow-up").
+    let followUp: { taskId: string; due: string; label: string } | null = null;
+    const followDays = Number(followUpRaw);
+    if (Number.isInteger(followDays) && followDays >= 1 && followDays <= 30) {
+      try {
+        let taskClient = clientId;
+        if (!taskClient && dealId) {
+          const { data: d } = await sigDb.from('crm_deals').select('client_id').eq('id', dealId).maybeSingle();
+          taskClient = (d?.client_id as string | null) ?? undefined;
+        }
+        if (taskClient) {
+          const due = chicagoToday(new Date(Date.now() + followDays * 86_400_000));
+          const shortSubject = String(subject).slice(0, 90);
+          const { data: t, error: tErr } = await sigDb.from('crm_tasks').insert([{
+            client_id: taskClient, agent_id: userId, type: 'follow_up', title: `Follow up: ${shortSubject}`, due_date: due,
+            notes: `Email follow-up — no reply yet to "${shortSubject}" (sent to ${to}).`,
+            business_unit: ctx.businessUnit ?? 'commercial', status: 'open',
+          }]).select('id').single();
+          if (!tErr && t?.id) {
+            const label = new Date(`${due}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            followUp = { taskId: t.id as string, due, label };
+          } else if (tErr) console.error('Follow-up task failed:', tErr.message);
+        }
+      } catch (e) { console.error('Follow-up task failed:', e); }
+    }
+
+    return NextResponse.json({ success: true, emailId, clientId, followUp, copies: individual ? everyone.length : 1 });
   } catch (err) {
     console.error('Gmail send error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

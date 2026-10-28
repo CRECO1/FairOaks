@@ -151,6 +151,7 @@ export type EmailComposerProps = {
   attachments: File[]; setAttachments: React.Dispatch<React.SetStateAction<File[]>>;
   signature?: string | null;
   onSyncSignature: () => void;
+  followUp?: number; setFollowUp?: (days: number) => void;
   sending: boolean;
   sendLabel?: string;
   onSend: () => void | Promise<void>;
@@ -158,6 +159,16 @@ export type EmailComposerProps = {
 };
 
 const UNDO_SECONDS = 5;
+
+// "Remind me if no reply" — the choice sticks (per browser) so agents who always follow up set it once.
+const FOLLOW_UP_KEY = 'crm_email_followup_v1';
+export const FOLLOW_UP_CHOICES: { days: number; label: string }[] = [
+  { days: 0, label: 'No reminder' }, { days: 2, label: 'in 2 days' }, { days: 3, label: 'in 3 days' }, { days: 7, label: 'in 1 week' }, { days: 14, label: 'in 2 weeks' },
+];
+export function loadFollowUp(): number {
+  try { const n = Number(localStorage.getItem(FOLLOW_UP_KEY)); return FOLLOW_UP_CHOICES.some(c => c.days === n) ? n : 0; } catch { return 0; }
+}
+export function saveFollowUp(days: number) { try { localStorage.setItem(FOLLOW_UP_KEY, String(days)); } catch { /* private mode */ } }
 
 export default function EmailComposer(p: EmailComposerProps) {
   const dock = p.variant === 'dock';
@@ -517,6 +528,16 @@ export default function EmailComposer(p: EmailComposerProps) {
       </div>
 
       {/* Send bar — sticks to the bottom; becomes the Undo bar for a few seconds after Send */}
+      {p.setFollowUp && !busy && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'var(--k-fff)', borderTop: '1px solid var(--k-f3f4f6)', fontSize: 13, color: 'var(--k-6b7280)' }}>
+          <span aria-hidden>🔔</span>
+          <label htmlFor="email-followup" style={{ whiteSpace: 'nowrap' }}>Remind me if no reply</label>
+          <select id="email-followup" value={p.followUp ?? 0} onChange={e => { const d = Number(e.target.value); saveFollowUp(d); p.setFollowUp?.(d); }}
+            style={{ height: p.isMobile ? 40 : 30, border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px', fontFamily: "'DM Sans',sans-serif" }}>
+            {FOLLOW_UP_CHOICES.map(c => <option key={c.days} value={c.days}>{c.label}</option>)}
+          </select>
+        </div>
+      )}
       <div style={{ position: dock ? 'relative' : 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--k-fff)', borderTop: '1px solid var(--k-e5e7eb)' }}>
         {busy ? (
           <>

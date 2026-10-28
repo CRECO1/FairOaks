@@ -6,7 +6,7 @@ import { Session } from '@supabase/supabase-js';
 import { businessMinutesBetween, fmtMins, stlTone, STL_COLORS, STL_LATE_MIN, waitingLabel, isOpenNow, pickedUpHint, bestHours, hourLabel, isConnectNote } from '@/lib/speed-to-lead';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
-import EmailComposer, { type Suggestion } from './EmailComposer';
+import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import DraftsSection from './DraftsSection';
 import SentSection from './SentSection';
@@ -1071,6 +1071,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [composeMoreTo, setComposeMoreTo] = useState('');
   const [composeCc, setComposeCc] = useState('');
   const [composeBcc, setComposeBcc] = useState('');
+  const [composeFollowUp, setComposeFollowUp] = useState(0);
+  useEffect(() => { setComposeFollowUp(loadFollowUp()); }, []);
   const [composeReq, setComposeReq] = useState<ComposeRequest>(null);
   const [draftCount, setDraftCount] = useState(0);
   // Group email as separate copies (per-person open tracking) vs one shared message.
@@ -4214,12 +4216,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, ...threadingParams }),
+        body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, followUpDays: composeFollowUp || undefined, ...threadingParams }),
       });
       const json = await res.json();
       if (!res.ok) { showToast('Send failed: ' + (json.error ?? res.status)); }
       else {
-        showToast('Email sent');
+        showToast(json.followUp?.due ? `Email sent · reminder set for ${json.followUp.label}` : 'Email sent');
+        if (json.followUp) loadAllTasks();
         setShowContactCompose(false);
         setReplyToContactEmail(null);
         setReplyingToThreadKey(null);
@@ -4265,14 +4268,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
+        body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, followUpDays: composeFollowUp || undefined, ...threadingParams }),
       });
       let j: any = {};
       try { j = await res.json(); } catch {}
       if (!res.ok) {
         showToast('Send failed: ' + (j.error || `HTTP ${res.status}`));
       } else {
-        showToast('✉️ Email sent via Gmail');
+        showToast(j.followUp?.due ? `✉️ Email sent · reminder set for ${j.followUp.label}` : '✉️ Email sent via Gmail');
+        if (j.followUp) loadAllTasks();
         setShowCompose(false);
         setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
         clearComposeBody();
@@ -11412,7 +11416,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       mergeName={(activeDeal.client ?? '').trim().split(/\s+/)[0]} mergeProperty={activeDeal.property}
                       bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`deal:${activeDeal.id}:${replyToEmail?.gmail_thread_id ?? 'new'}`} draftContext={{ kind: 'deal', id: activeDeal.id, label: activeDeal.client, replyToId: replyToEmail?.id }}
                       moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
-                      individual={composeIndividual} setIndividual={setComposeIndividual}
+                      individual={composeIndividual} setIndividual={setComposeIndividual} followUp={composeFollowUp} setFollowUp={setComposeFollowUp}
                       subject={composeSubject} setSubject={setComposeSubject}
                       autoCcLabel={(activeDeal.assigned_agent_ids ?? []).filter(id => id !== session!.user.id).map(id => agentName(id)).join(', ') || undefined}
                       bodyRef={composeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments}
@@ -13383,7 +13387,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         mergeName={c.first_name}
                         bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`contact:${c.id}:${replyToContactEmail?.gmail_thread_id ?? 'new'}`} draftContext={{ kind: 'contact', id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), replyToId: replyToContactEmail?.id }}
                         moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
-                        individual={composeIndividual} setIndividual={setComposeIndividual}
+                        individual={composeIndividual} setIndividual={setComposeIndividual} followUp={composeFollowUp} setFollowUp={setComposeFollowUp}
                         subject={composeSubject} setSubject={setComposeSubject}
                         bodyRef={contactComposeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments}
                         signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
@@ -13490,7 +13494,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         mergeName={c.first_name}
                                         bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`reply:${c.id}:${threadKey}`} draftContext={{ kind: 'contact', id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), replyToId: replyToContactEmail?.id }}
                                         moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
-                                        individual={composeIndividual} setIndividual={setComposeIndividual}
+                                        individual={composeIndividual} setIndividual={setComposeIndividual} followUp={composeFollowUp} setFollowUp={setComposeFollowUp}
                                         subject={composeSubject} setSubject={setComposeSubject} subjectReadOnly
                                         bodyRef={contactComposeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments}
                                         signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
@@ -14158,7 +14162,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <ComposeDock request={composeReq} isMobile={isMobile} userId={session.user.id} accessToken={session.access_token}
           agentName={`${profile.first_name} ${profile.last_name}`} signature={profile.email_signature}
           suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} onSyncSignature={syncGmailSignature}
-          onSent={() => { void loadClients(undefined, 0, true); }} />
+          onSent={() => { void loadClients(undefined, 0, true); void loadAllTasks(); }} />
       )}
 
       {/* ── Global Search (⌘K) ── */}

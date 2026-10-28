@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import EmailComposer, { type Suggestion } from './EmailComposer';
+import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
 
 // The Gmail-style Compose window: docked bottom-right on desktop, full-screen on a phone, reachable from
 // every page, minimisable so you can keep working in the CRM while it waits. It writes to ANYONE — the
@@ -33,6 +33,8 @@ export default function ComposeDock(props: {
   const [bcc, setBcc] = useState('');
   const [subject, setSubject] = useState('');
   const [individual, setIndividual] = useState(false);
+  const [followUp, setFollowUp] = useState(0);
+  useEffect(() => { setFollowUp(loadFollowUp()); }, []);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -94,12 +96,12 @@ export default function ComposeDock(props: {
         body: JSON.stringify({
           userId: props.userId, resolveClient: true, toName: request?.name,
           to: recipients.join(', '), cc, bcc, individual: individual && !bcc.trim(),
-          subject, body: fullBody, agentName: props.agentName, ccAgentIds: [], attachments: files,
+          subject, body: fullBody, agentName: props.agentName, ccAgentIds: [], attachments: files, followUpDays: followUp || undefined,
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) { props.notify('Send failed: ' + (json.error ?? res.status)); return; }
-      props.notify('Message sent');
+      props.notify(json.followUp?.due ? `Message sent · reminder set for ${json.followUp.label}` : 'Message sent');
       if (bodyRef.current) bodyRef.current.innerHTML = '';
       setOpen(false); setAttachments([]);
       props.onSent();
@@ -143,6 +145,7 @@ export default function ComposeDock(props: {
           variant="dock" isMobile={isMobile} title="New message"
           moreTo={to} setMoreTo={setTo} cc={cc} setCc={setCc} bcc={bcc} setBcc={setBcc}
           individual={individual} setIndividual={setIndividual}
+          followUp={followUp} setFollowUp={setFollowUp}
           subject={subject} setSubject={setSubject}
           suggest={props.suggest} nameFor={props.nameFor}
           draftKey={draftKey} notify={props.notify}
