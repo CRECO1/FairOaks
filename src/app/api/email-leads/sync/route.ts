@@ -7,6 +7,7 @@ import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
 import { newTrackingId, withOpenPixel, unsubscribeUrlFor } from '@/lib/email-tracking';
 import { emailLeadOwner, type OwnerProfile } from '@/lib/email-lead-owner';
+import { extractEmailText } from '@/lib/gmail-body';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -792,8 +793,9 @@ export async function POST(req: import('next/server').NextRequest) {
             .eq('business_unit', business_unit)
             .maybeSingle();
 
+          let leadDealId: string | null = (existingDeal?.id as string | undefined) ?? null;
           if (!existingDeal) {
-            await supabase.from('crm_deals').insert([{
+            const { data: madeDeal } = await supabase.from('crm_deals').insert([{
               client_id:           clientId,
               client:              clientName,
               client_email:        parsed.email  ?? '',
@@ -810,7 +812,34 @@ export async function POST(req: import('next/server').NextRequest) {
               stage:               'Prospect',
               last_touch:          nowIso,
               business_unit,
-            }]);
+            }]).select('id').single();
+            leadDealId = (madeDeal?.id as string | undefined) ?? null;
+          }
+
+          // The lead's original email belongs on the card: log it on the deal (new or existing) so the team sees what
+          // they actually asked for in the deal's Email Log, not just a one-line note. Once per message.
+          if (leadDealId) {
+            try {
+              const { data: logged } = await supabase.from('crm_deal_emails').select('id').eq('deal_id', leadDealId).eq('gmail_message_id', messageId).limit(1);
+              if (!logged?.length) {
+                const ms = Number(msg.internalDate) || Date.now();
+                await supabase.from('crm_deal_emails').insert([{
+                  gmail_message_id: messageId,
+                  deal_id: leadDealId,
+                  client_id: clientId,
+                  direction: 'received',
+                  from_email: from,
+                  to_email: getHeader(msg, 'to'),
+                  subject,
+                  body: extractEmailText(msg.payload).replace(/\r\n?/g, '\n').trim().slice(0, 4000),
+                  email_date: new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }),
+                  email_at: new Date(ms).toISOString(),
+                  gmail_thread_id: msg.threadId ?? null,
+                  rfc_message_id: getHeader(msg, 'message-id') || null,
+                  attachments: [],
+                }]);
+              }
+            } catch (e) { console.error('[email-leads] could not log the lead email on the deal', e); }
           }
 
           // Auto-enroll into any matching 'new_contact' action plans and fire Step 1.
