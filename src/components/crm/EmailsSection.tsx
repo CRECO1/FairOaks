@@ -46,6 +46,16 @@ export default function EmailsSection(p: Props) {
   const [source, setSourceState] = useState<'gmail' | 'crm'>('gmail');
   useEffect(() => { try { if (localStorage.getItem('crm-emails-source') === 'crm') setSourceState('crm'); } catch { /* ignore */ } }, []);
   const setSource = (v: 'gmail' | 'crm') => { setSourceState(v); try { localStorage.setItem('crm-emails-source', v); } catch { /* ignore */ } };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      e.preventDefault(); p.onCompose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [p]);
   const toggle = (gmailLabel: string, crmLabel: string) => (
     <div role="group" aria-label="Mail source" style={{ display: 'inline-flex', padding: 3, gap: 2, background: 'var(--k-f3f4f6)', borderRadius: 10, marginBottom: 14 }}>
       {([['gmail', gmailLabel], ['crm', crmLabel]] as const).map(([v, l]) => (
@@ -57,7 +67,8 @@ export default function EmailsSection(p: Props) {
   const tabs: Array<[EmailsTab, string, number]> = [['inbox', 'Inbox', p.unread], ['drafts', 'Drafts', p.draftCount], ['sent', 'Sent', 0]];
   return (
     <div style={{ maxWidth: source === 'gmail' && p.tab !== 'drafts' ? 1400 : 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
-      <div role="tablist" aria-label="Emails" className="crm-tabs-scroll" style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--k-e5e7eb)', marginBottom: 16, overflowX: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, borderBottom: '1px solid var(--k-e5e7eb)', marginBottom: 16 }}>
+      <div role="tablist" aria-label="Emails" className="crm-tabs-scroll" style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto' }}>
         {tabs.map(([id, label, n]) => {
           const on = p.tab === id;
           return (
@@ -68,6 +79,12 @@ export default function EmailsSection(p: Props) {
             </button>
           );
         })}
+      </div>
+      {/* Compose lives here now (it used to be in the top bar on every page). Press c anywhere on this page. */}
+      <button type="button" onClick={p.onCompose} title="Compose a new email (c)" aria-label="Compose a new email"
+        style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginBottom: 7, padding: p.isMobile ? '10px 16px' : '8px 18px', minHeight: p.isMobile ? 44 : undefined, borderRadius: 22, border: 'none', background: '#c9922c', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 14, fontWeight: 700, boxShadow: '0 2px 8px rgba(201,146,44,.35)' }}>
+        <span aria-hidden style={{ fontSize: 16 }}>✉</span> Compose
+      </button>
       </div>
 
       {p.tab === 'inbox' && (

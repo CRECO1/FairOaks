@@ -5796,8 +5796,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   ✎<span style={{ position: 'absolute', top: 3, right: 3, background: '#c9922c', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, lineHeight: '16px', borderRadius: 8 }}>{draftCount}</span>
                 </button>
               )}
-              <button onClick={() => openCompose()} aria-label="Compose a new email" title="Compose"
-                style={{ background: '#c9922c', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, flexShrink: 0 }}>✉</button>
               <button onClick={() => { setShowSearch(true); setSearchQuery(''); }} aria-label="Search"
                 style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🔍</button>
             </div>
@@ -5937,11 +5935,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 600, flex: 1, color: 'var(--c-ink)' }}>
             {pageLabel[page]}
           </h2>
-          {/* Compose — like Gmail's big button: write to anyone, from any page */}
-          <button onClick={() => openCompose()} title="Compose a new email" aria-label="Compose a new email"
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', borderRadius: 22, border: 'none', background: '#c9922c', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 14, fontWeight: 700, boxShadow: '0 2px 8px rgba(201,146,44,.35)' }}>
-            <span style={{ fontSize: 16 }}>✉</span> Compose
-          </button>
           {draftCount > 0 && (
             <button onClick={() => openCompose({ view: 'drafts' })} title="Your saved email drafts" aria-label={`Drafts (${draftCount})`}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 22, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 600 }}>
