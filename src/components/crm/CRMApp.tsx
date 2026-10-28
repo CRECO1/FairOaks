@@ -363,13 +363,24 @@ function placeReplyQuote(ref: React.RefObject<HTMLDivElement | null>, html: stri
     el.dispatchEvent(new Event('input', { bubbles: true }));
   }, 120);
 }
+// Forward: the original, headed like Gmail's "---------- Forwarded message ---------" block.
+function forwardedHtml(e: DealEmail): string {
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const when = (() => { const d = new Date(e.email_date); return isNaN(d.getTime()) ? e.email_date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); })();
+  const from = parseAddressList(e.from_email)[0] ?? { name: e.from_email, email: e.from_email };
+  const text = htmlToPlainText(e.body ?? '').trim();
+  const clipped = text.length > 4000 ? text.slice(0, 4000).trimEnd() + '…' : text;
+  return `<br><br><div class="gmail_quote">---------- Forwarded message ---------<br>From: <b>${esc(from.name)}</b> &lt;${esc(from.email)}&gt;<br>Date: ${esc(when)}<br>Subject: ${esc(e.subject ?? '')}<br>To: ${esc(e.to_email ?? '')}${e.cc_emails ? `<br>Cc: ${esc(e.cc_emails)}` : ''}<br><br>${esc(clipped).replace(/\n/g, '<br>')}</div>`;
+}
+const forwardSubject = (subj?: string) => `Fwd: ${(subj ?? '').replace(/^\s*((re|fwd?):\s*)+/i, '')}`;
 // Gmail's bottom-of-thread buttons: Reply (just the person), and Reply all only when others are on the email.
-function ReplyButtons({ onReply, onReplyAll, isMobile }: { onReply: () => void; onReplyAll?: () => void; isMobile: boolean }) {
+function ReplyButtons({ onReply, onReplyAll, onForward, isMobile }: { onReply: () => void; onReplyAll?: () => void; onForward?: () => void; isMobile: boolean }) {
   const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, height: isMobile ? 44 : 34, padding: '0 18px', background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 18, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       <button type="button" onClick={onReply} style={btn}>↩ Reply</button>
       {onReplyAll && <button type="button" onClick={onReplyAll} style={btn}>↩↩ Reply all</button>}
+      {onForward && <button type="button" onClick={onForward} style={btn}>↪ Forward</button>}
     </div>
   );
 }
@@ -1044,11 +1055,41 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return hits.filter(h => { const k = h.s.email.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8).map(h => h.s);
   }, [clients, profiles]);
   // Open the docked Compose window (optionally pre-addressed). Needs Gmail connected, same as the card composers.
-  function openCompose(opts?: { to?: string; name?: string; subject?: string }) {
+  function openCompose(opts?: { to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string }) {
     if (!gmailConnected && !gmailChecked) { showToast('Still connecting to Gmail — try again in a second.'); return; }
     if (!gmailConnected) { showToast('Connect your Google account first (bottom of the sidebar → Connect Google Account), then you can email from here.'); return; }
     setComposeReq({ nonce: Date.now(), ...opts });
   }
+
+  // ANY email address in the CRM (Property DB brokers, Listings, Tasks, campaign lists, contact cards…) opens the
+  // Compose window instead of the computer's mail app — as long as Gmail is connected. A ref keeps the one
+  // document listener pointing at the latest state.
+  const mailtoRef = useRef<{ ready: boolean; open: typeof openCompose; nameFor: (e: string) => string | undefined }>({ ready: false, open: () => {}, nameFor: () => undefined });
+  mailtoRef.current = { ready: gmailConnected, open: openCompose, nameFor: nameForEmail };
+  useEffect(() => {
+    const onClick = (ev: MouseEvent) => {
+      if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      const a = (ev.target as Element | null)?.closest?.('a[href^="mailto:" i]') as HTMLAnchorElement | null;
+      const cur = mailtoRef.current;
+      if (!a || !cur.ready) return;
+      if (a.closest('[role="dialog"][aria-label="New message"]')) return; // links inside the composer itself
+      try {
+        const u = new URL(a.getAttribute('href') ?? '');
+        const to = decodeURIComponent(u.pathname).split(/[,;]/).map(x => x.trim()).filter(Boolean).join(', ');
+        if (!to) return;
+        const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const bodyTxt = u.searchParams.get('body');
+        ev.preventDefault();
+        cur.open({
+          to, name: cur.nameFor(to.split(',')[0].trim()),
+          subject: u.searchParams.get('subject') ?? undefined, cc: u.searchParams.get('cc') ?? undefined, bcc: u.searchParams.get('bcc') ?? undefined,
+          body: bodyTxt ? esc(bodyTxt).replace(/\r?\n/g, '<br>') : undefined,
+        });
+      } catch { /* malformed link — let the browser handle it */ }
+    };
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
+  }, []);
 
   function syncGmailSignature() {
     fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(sg => {
@@ -10850,7 +10891,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div className="overlay" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: 12, borderRadius: '12px 12px 0 0' }}>
-              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>{activeDeal.client}</h3>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1, minWidth: 0 }}>{activeDeal.client}</h3>
+              {gmailConnected && activeDeal.client_email && (
+                <button type="button" aria-label={`Email ${activeDeal.client}`} title={`Email ${activeDeal.client_email}`}
+                  onClick={() => {
+                    setDealTab('emails'); setReplyToEmail(null);
+                    clearComposeBody(); setComposeAttachments([]);
+                    setComposeSubject(activeDeal.property ?? ''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
+                    setShowCompose(true);
+                    setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+                  }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✉ Email</button>
+              )}
               <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>
               <button className="crm-icon-btn" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
@@ -11357,7 +11409,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   };
                                   return (
                                     <div style={{ padding: '10px 14px', background: 'var(--k-fff)' }}>
-                                      <ReplyButtons isMobile={isMobile} onReply={() => start(false)} onReplyAll={ra.also || ra.cc ? () => start(true) : undefined} />
+                                      <ReplyButtons isMobile={isMobile} onReply={() => start(false)} onReplyAll={ra.also || ra.cc ? () => start(true) : undefined} onForward={() => openCompose({ subject: forwardSubject(lastEmail.subject), body: forwardedHtml(lastEmail) })} />
                                     </div>
                                   );
                                 })()}
@@ -13331,7 +13383,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       };
                                       return (
                                         <div style={{ padding: '10px 12px', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>
-                                          <ReplyButtons isMobile={isMobile} onReply={() => start(false)} onReplyAll={ra.also || ra.cc ? () => start(true) : undefined} />
+                                          <ReplyButtons isMobile={isMobile} onReply={() => start(false)} onReplyAll={ra.also || ra.cc ? () => start(true) : undefined} onForward={() => openCompose({ subject: forwardSubject(lastEmail.subject), body: forwardedHtml(lastEmail) })} />
                                         </div>
                                       );
                                     })()

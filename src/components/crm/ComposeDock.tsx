@@ -8,7 +8,7 @@ import EmailComposer, { type Suggestion } from './EmailComposer';
 // send route files the email under the matching CRM contact (or creates one), so it is still logged,
 // tracked and shown on that contact's card.
 
-export type ComposeRequest = { nonce: number; to?: string; name?: string; subject?: string } | null;
+export type ComposeRequest = { nonce: number; to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string } | null;
 
 export default function ComposeDock(props: {
   request: ComposeRequest;
@@ -42,11 +42,24 @@ export default function ComposeDock(props: {
   useEffect(() => {
     if (!request || request.nonce === lastNonce.current) return;
     lastNonce.current = request.nonce;
-    setTo(request.to ?? ''); setCc(''); setBcc('');
+    setTo(request.to ?? ''); setCc(request.cc ?? ''); setBcc(request.bcc ?? '');
     setSubject(request.subject ?? '');
     setAttachments([]); setMinimized(false); setFull(false);
     setInstance(i => i + 1);
     setOpen(true);
+    // A Forward / mailto link brings its own body (HTML). Drop it in once the editor exists — unless a saved draft already filled it.
+    if (request.body) {
+      const html = request.body;
+      setTimeout(() => {
+        const el = bodyRef.current;
+        if (!el || (el.innerText ?? '').trim()) { el?.focus(); return; }
+        el.innerHTML = html;
+        el.focus();
+        const sel = window.getSelection();
+        if (sel) { const r = document.createRange(); r.setStart(el, 0); r.collapse(true); sel.removeAllRanges(); sel.addRange(r); }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }, 160);
+    }
   }, [request]);
 
   // Keep a phone's browser back/overscroll from fighting the full-screen sheet.
@@ -59,7 +72,7 @@ export default function ComposeDock(props: {
 
   if (!open) return null;
 
-  const draftKey = `dock:${(request?.to ?? 'new').toLowerCase()}`;
+  const draftKey = `dock:${(request?.to ?? 'new').toLowerCase()}${request?.subject ? ':' + request.subject.slice(0, 60) : ''}`;
 
   async function send() {
     const recipients = to.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
