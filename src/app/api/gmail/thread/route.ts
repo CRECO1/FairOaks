@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
 // GET /api/gmail/thread?id=<gmail thread id>&account=<email> — one conversation from the caller's own Gmail, with
-// sanitized HTML (no scripts, no event handlers), plain text for quoting, and its attachments.
+// the message HTML (sanitized by the browser before it is shown), plain text for quoting, and its attachments.
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();

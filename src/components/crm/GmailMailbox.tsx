@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { LiveMessage, ThreadSummary } from '@/lib/gmail-live';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 // Your real Gmail inside the CRM: the Inbox or Sent folder read live from Gmail (nothing is copied), a reader for whole
 // conversations, and Reply / Reply all / Forward that open the CRM's Compose window — so the mail you send is still
@@ -47,7 +48,9 @@ function MessageFrame({ html }: { html: string }) {
     const d = ref.current?.contentDocument;
     if (d?.body) setH(Math.min(20000, Math.max(60, d.documentElement.scrollHeight)));
   }, []);
-  const doc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;padding:0;background:#fff;color:#222;font:14px/1.55 Arial,Helvetica,sans-serif;word-wrap:break-word;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}blockquote{margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;color:#555}a{color:#1a56c4}</style></head><body>${html}</body></html>`;
+  // No scripts or event handlers survive; links open in a new tab, never inside the frame.
+  const safe = sanitizeHtml(html).replace(/<a\s/gi, '<a target="_blank" rel="noopener noreferrer" ');
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;padding:0;background:#fff;color:#222;font:14px/1.55 Arial,Helvetica,sans-serif;word-wrap:break-word;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}blockquote{margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;color:#555}a{color:#1a56c4}</style></head><body>${safe}</body></html>`;
   return <iframe ref={ref} title="Message" srcDoc={doc} sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" onLoad={() => { fit(); setTimeout(fit, 400); setTimeout(fit, 1500); }}
     style={{ width: '100%', height: h, border: 'none', display: 'block', background: '#fff', borderRadius: 6 }} />;
 }

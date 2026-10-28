@@ -3,7 +3,6 @@
  * is copied into the CRM: threads are listed and read from Gmail on demand, with the same token the CRM already holds
  * (gmail.readonly). Only the caller's own connected mailbox is ever read — never a teammate's.
  */
-import { sanitizeHtml } from '@/lib/sanitize';
 import { extractEmailText } from '@/lib/gmail-body';
 import { collectAttachmentParts } from '@/lib/email-attachments';
 
@@ -69,7 +68,7 @@ export async function unreadCounts(token: string) {
   return { inbox: Number(all.json.threadsUnread) || 0, primary: primary.ok ? Number(primary.json.threadsUnread) || 0 : null };
 }
 
-/** A whole conversation, ready to render: sanitized HTML, plain text (for quoting), attachments. */
+/** A whole conversation: the message HTML (sanitized in the BROWSER before display — the jsdom-based sanitizer can't load in a serverless route), plain text for quoting, attachments. */
 export async function readThread(token: string, id: string): Promise<{ ok: false; status: number } | { ok: true; messages: LiveMessage[] }> {
   const r = await g(token, `/threads/${id}?format=full`);
   if (!r.ok) return { ok: false, status: r.status };
@@ -118,8 +117,7 @@ async function renderHtml(token: string, m: GMsg): Promise<string> {
     const a = await g(token, `/messages/${m.id}/attachments/${p.body!.attachmentId}`);
     if (a.ok && a.json.data) raw = raw.split(`cid:${cid}`).join(`data:${p.mimeType};base64,${b64(a.json.data).toString('base64')}`);
   });
-  // Links open in a new tab, never inside the frame.
-  return sanitizeHtml(raw).replace(/<a\s/gi, '<a target="_blank" rel="noopener noreferrer" ');
+  return raw;
 }
 
 /** The bytes of one attachment of one message, or null. Identified by partId, like the rest of the CRM. */
