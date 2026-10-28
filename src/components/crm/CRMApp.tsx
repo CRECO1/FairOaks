@@ -340,8 +340,8 @@ function quotedReplyHtml(e: DealEmail): string {
   const when = (() => { const d = new Date(e.email_date); return isNaN(d.getTime()) ? e.email_date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); })();
   const text = htmlToPlainText(e.body ?? '').trim();
   const clipped = text.length > 1800 ? text.slice(0, 1800).trimEnd() + '…' : text;
-  const who = emailDisplayName(e.from_email);
-  return `<br><br><div class="gmail_quote"><div>On ${esc(when)}, ${esc(who)} &lt;${esc(e.from_email)}&gt; wrote:</div><blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">${esc(clipped).replace(/\n/g, '<br>')}</blockquote></div>`;
+  const from = parseAddressList(e.from_email)[0] ?? { name: e.from_email, email: e.from_email };
+  return `<br><br><div class="gmail_quote"><div>On ${esc(when)}, ${esc(from.name)} &lt;${esc(from.email)}&gt; wrote:</div><blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">${esc(clipped).replace(/\n/g, '<br>')}</blockquote></div>`;
 }
 // The composer mounts a tick after a Reply is clicked; drop the quote in then — unless a saved draft already filled it.
 function placeReplyQuote(ref: React.RefObject<HTMLDivElement | null>, html: string) {
