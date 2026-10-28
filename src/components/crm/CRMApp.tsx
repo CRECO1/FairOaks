@@ -8,6 +8,8 @@ import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
 import EmailComposer, { type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
+import DraftsSection from './DraftsSection';
+import { setDraftAuth, syncDrafts, onDraftsChanged, listDrafts, type EmailDraft } from '@/lib/email-drafts';
 import dynamic from 'next/dynamic';
 import DealMeetings from '@/components/crm/DealMeetings';
 import ContactComms from '@/components/crm/ContactComms';
@@ -782,7 +784,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site'] as const;
+  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'drafts'] as const;
   // The sidebar says "Marketing" but the page is called 'campaigns', so a
   // #marketing link silently left you wherever you already were.
   const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties', 'calling-log': 'calls', calling: 'calls', phone: 'calls' };
@@ -1001,6 +1003,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [composeCc, setComposeCc] = useState('');
   const [composeBcc, setComposeBcc] = useState('');
   const [composeReq, setComposeReq] = useState<ComposeRequest>(null);
+  const [draftCount, setDraftCount] = useState(0);
   // Group email as separate copies (per-person open tracking) vs one shared message.
   const [composeIndividual, setComposeIndividual] = useState(false);
   const [composeSending, setComposeSending] = useState(false);
@@ -1055,7 +1058,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return hits.filter(h => { const k = h.s.email.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8).map(h => h.s);
   }, [clients, profiles]);
   // Open the docked Compose window (optionally pre-addressed). Needs Gmail connected, same as the card composers.
-  function openCompose(opts?: { to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string }) {
+  function openCompose(opts?: { to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string }) {
     if (!gmailConnected && !gmailChecked) { showToast('Still connecting to Gmail — try again in a second.'); return; }
     if (!gmailConnected) { showToast('Connect your Google account first (bottom of the sidebar → Connect Google Account), then you can email from here.'); return; }
     setComposeReq({ nonce: Date.now(), ...opts });
@@ -1090,6 +1093,50 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     document.addEventListener('click', onClick);
     return () => document.removeEventListener('click', onClick);
   }, []);
+
+  // Drafts: keep the sidebar count honest, and pull in drafts started on the agent's other devices.
+  useEffect(() => { setDraftAuth(session?.access_token); }, [session?.access_token]);
+  useEffect(() => {
+    if (!session?.user.id) return;
+    const refresh = () => setDraftCount(listDrafts().length);
+    refresh();
+    const off = onDraftsChanged(refresh);
+    let last = 0;
+    const pull = () => { if (Date.now() - last < 60_000) return; last = Date.now(); void syncDrafts().then(refresh); };
+    pull();
+    window.addEventListener('focus', pull);
+    return () => { off(); window.removeEventListener('focus', pull); };
+  }, [session?.user.id]);
+
+  // Open a draft where it belongs and let the composer restore it (reply drafts reattach to their thread).
+  async function resumeDraft(d: EmailDraft) {
+    const ctx = d.context;
+    const fill = () => { setComposeSubject(d.subject); setComposeMoreTo(d.moreTo); setComposeCc(d.cc); setComposeBcc(d.bcc); setComposeIndividual(false); setComposeAttachments([]); };
+    const fetchReply = async (): Promise<DealEmail | null> => {
+      if (!ctx.replyToId) return null;
+      const { data } = await supabase.from('crm_deal_emails').select('*').eq('id', ctx.replyToId).maybeSingle();
+      return (data as DealEmail | null) ?? null;
+    };
+    if (ctx.kind === 'deal' && ctx.id) {
+      const deal = deals.find(x => x.id === ctx.id);
+      if (!deal) { showToast('That deal isn’t available any more — you can still copy the text from the draft.'); return; }
+      const reply = await fetchReply();
+      setPage('deals'); openDeal(deal); setDealTab('emails');
+      setReplyToEmail(reply); clearComposeBody(); fill(); setShowCompose(true);
+      placeReplyQuote(composeBodyRef, d.bodyHtml);
+      setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+    } else if (ctx.kind === 'contact' && ctx.id) {
+      const client = clients.find(x => x.id === ctx.id);
+      if (!client) { showToast('That contact isn’t available any more.'); return; }
+      const reply = await fetchReply();
+      setPage('contacts'); setActiveClient(client);
+      setReplyingToThreadKey(null); setReplyToContactEmail(reply); clearContactComposeBody(); fill(); setShowContactCompose(true);
+      placeReplyQuote(contactComposeBodyRef, d.bodyHtml);
+      setTimeout(() => document.getElementById('contact-email-thread')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    } else {
+      openCompose({ resumeKey: d.key });
+    }
+  }
 
   function syncGmailSignature() {
     fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(sg => {
@@ -4969,7 +5016,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site',
+    'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', drafts: 'Drafts',
     agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'Transaction Docs', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
   };
 
@@ -5286,6 +5333,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             )}
           </button>
         </div>
+        <div style={{ padding: '2px 12px 0' }}>
+          <button className={`crm-nav${page === 'drafts' ? ' active' : ''}`} onClick={() => setPage('drafts')}>
+            <Ico n="pen" />Drafts
+            {draftCount > 0 && (
+              <span style={{ marginLeft: 'auto', background: 'rgba(201,146,44,.9)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{draftCount}</span>
+            )}
+          </button>
+        </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
           <button className={`crm-nav${page === 'deals' && !filter ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); }}><Ico n="deals" />All Deals <span style={{ marginLeft: 'auto', background: '#c9922c', color: 'var(--k-111)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span></button>
@@ -5506,6 +5561,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   Contacts, Calendar, Marketing, Properties, Calls, E-Sign and Docs, so they are not repeated here). */}
               <div style={{ padding: '16px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>More</div>
+                <button className={`crm-nav${page === 'drafts' ? ' active' : ''}`} onClick={() => { setPage('drafts'); setMobileMenuOpen(false); }}><Ico n="pen" />Drafts{draftCount > 0 && <span style={{ marginLeft: 'auto', background: 'rgba(201,146,44,.9)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{draftCount}</span>}</button>
                 {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}><Ico n="briefcase" />Broker / Agents</button>}
                 {isAdmin && (
                   <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
@@ -10826,6 +10882,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             />
           )}
 
+          {page === 'drafts' && <DraftsSection isMobile={isMobile} onResume={resumeDraft} />}
+
           {page === 'plaza-site' && (isAdmin ? (
             <PlazaPosts authToken={session?.access_token} showToast={showToast} isMobile={isMobile} />
           ) : (
@@ -11236,7 +11294,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <EmailComposer isMobile={isMobile} title={replyToEmail ? 'Reply' : 'New email'} replyingTo={replyToEmail?.subject}
                       to={activeDeal.client_email} toName={activeDeal.client}
                       mergeName={(activeDeal.client ?? '').trim().split(/\s+/)[0]} mergeProperty={activeDeal.property}
-                      bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`deal:${activeDeal.id}:${replyToEmail?.gmail_thread_id ?? 'new'}`}
+                      bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`deal:${activeDeal.id}:${replyToEmail?.gmail_thread_id ?? 'new'}`} draftContext={{ kind: 'deal', id: activeDeal.id, label: activeDeal.client, replyToId: replyToEmail?.id }}
                       moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                       individual={composeIndividual} setIndividual={setComposeIndividual}
                       subject={composeSubject} setSubject={setComposeSubject}
@@ -13227,7 +13285,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <EmailComposer isMobile={isMobile} title={replyToContactEmail ? 'Reply' : 'New email'} replyingTo={replyToContactEmail?.subject}
                         to={c.email} toName={`${c.first_name} ${c.last_name}`.trim()}
                         mergeName={c.first_name}
-                        bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`contact:${c.id}:${replyToContactEmail?.gmail_thread_id ?? 'new'}`}
+                        bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`contact:${c.id}:${replyToContactEmail?.gmail_thread_id ?? 'new'}`} draftContext={{ kind: 'contact', id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), replyToId: replyToContactEmail?.id }}
                         moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                         individual={composeIndividual} setIndividual={setComposeIndividual}
                         subject={composeSubject} setSubject={setComposeSubject}
@@ -13356,7 +13414,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       <EmailComposer isMobile={isMobile} title={`Reply to ${emailDisplayName(replyToContactEmail?.from_email ?? c.email)}`}
                                         to={c.email} toName={`${c.first_name} ${c.last_name}`.trim()}
                         mergeName={c.first_name}
-                                        bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`reply:${c.id}:${threadKey}`}
+                                        bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`reply:${c.id}:${threadKey}`} draftContext={{ kind: 'contact', id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), replyToId: replyToContactEmail?.id }}
                                         moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
                                         individual={composeIndividual} setIndividual={setComposeIndividual}
                                         subject={composeSubject} setSubject={setComposeSubject} subjectReadOnly

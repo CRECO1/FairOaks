@@ -8,7 +8,7 @@ import EmailComposer, { type Suggestion } from './EmailComposer';
 // send route files the email under the matching CRM contact (or creates one), so it is still logged,
 // tracked and shown on that contact's card.
 
-export type ComposeRequest = { nonce: number; to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string } | null;
+export type ComposeRequest = { nonce: number; to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string } | null;
 
 export default function ComposeDock(props: {
   request: ComposeRequest;
@@ -72,7 +72,7 @@ export default function ComposeDock(props: {
 
   if (!open) return null;
 
-  const draftKey = `dock:${(request?.to ?? 'new').toLowerCase()}${request?.subject ? ':' + request.subject.slice(0, 60) : ''}`;
+  const draftKey = request?.resumeKey ?? `dock:${(request?.to ?? 'new').toLowerCase()}${request?.subject ? ':' + request.subject.slice(0, 60) : ''}`;
 
   async function send() {
     const recipients = to.split(/[,;]+/).map(s => s.trim()).filter(Boolean);

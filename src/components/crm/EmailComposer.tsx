@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { sanitizeHtml } from '@/lib/sanitize';
+import { getDraft, saveDraft, deleteDraft, type DraftContext } from '@/lib/email-drafts';
 
 // One composer for every "write an email" surface (deal Emails tab, contact card, inline thread
 // reply, and the docked global Compose window). State and sending stay with the caller — this is
@@ -31,12 +32,6 @@ const TPL_KEY = 'crm_email_templates_v1';
 const loadMine = (): Tpl[] => { try { const v = JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
 const saveMine = (t: Tpl[]) => { try { localStorage.setItem(TPL_KEY, JSON.stringify(t)); } catch { /* private window — templates just won't persist */ } };
 const esc = (x: string) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-// ── drafts (per browser) ─────────────────────────────────────────────────────
-type Draft = { subject: string; moreTo: string; cc: string; bcc: string; bodyHtml: string; t: number };
-const DRAFT_PREFIX = 'crm_email_draft_v1:';
-const readDraft = (key: string): Draft | null => { try { const v = JSON.parse(localStorage.getItem(DRAFT_PREFIX + key) || 'null'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
-const writeDraft = (key: string, d: Draft | null) => { try { if (d) localStorage.setItem(DRAFT_PREFIX + key, JSON.stringify(d)); else localStorage.removeItem(DRAFT_PREFIX + key); } catch { /* ignore */ } };
 
 const LABEL: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', width: 52, flexShrink: 0, paddingTop: 11 };
 const ROW: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 6, padding: '2px 12px', borderBottom: '1px solid var(--k-f3f4f6)' };
@@ -150,6 +145,7 @@ export type EmailComposerProps = {
   suggest?: (q: string) => Suggestion[];
   nameFor?: (email: string) => string | undefined;
   draftKey?: string;
+  draftContext?: DraftContext;
   notify?: (msg: string) => void;
   bodyRef: React.RefObject<HTMLDivElement | null>;
   attachments: File[]; setAttachments: React.Dispatch<React.SetStateAction<File[]>>;
@@ -207,8 +203,8 @@ export default function EmailComposer(p: EmailComposerProps) {
     const l = lastRef.current;
     // Only a draft with body text is worth keeping — and it stops a just-sent email leaving a subject-only ghost behind.
     const empty = !text;
-    if (empty) { writeDraft(p.draftKey, null); setDraftNote(''); return; }
-    writeDraft(p.draftKey, { subject: l.subject, moreTo: l.moreTo, cc: l.cc, bcc: l.bcc, bodyHtml: html, t: Date.now() });
+    if (empty) { deleteDraft(p.draftKey); setDraftNote(''); return; }
+    saveDraft({ key: p.draftKey, subject: l.subject, to: p.to ?? '', moreTo: l.moreTo, cc: l.cc, bcc: l.bcc, bodyHtml: html, context: p.draftContext ?? { kind: 'dock' } });
     setDraftNote('Draft saved');
   };
   const scheduleSave = () => {
@@ -216,10 +212,10 @@ export default function EmailComposer(p: EmailComposerProps) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(saveNow, 1200);
   };
-  const clearDraft = () => { mirror.current = { html: '', text: '' }; if (p.draftKey) { if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; } writeDraft(p.draftKey, null); } setDraftNote(''); };
+  const clearDraft = () => { mirror.current = { html: '', text: '' }; if (p.draftKey) { if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; } deleteDraft(p.draftKey); } setDraftNote(''); };
   useEffect(() => {
     if (!p.draftKey) return;
-    const d = readDraft(p.draftKey);
+    const d = getDraft(p.draftKey);
     const body = p.bodyRef.current;
     if (d && body && !(body.innerText ?? '').trim()) {
       if (d.bodyHtml) { body.innerHTML = sanitizeHtml(d.bodyHtml); syncMirror(); }
