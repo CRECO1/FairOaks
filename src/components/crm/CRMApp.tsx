@@ -12353,7 +12353,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ display: 'flex', gap: 8, padding: isMobile ? '10px 14px' : '10px 28px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-f0f0f0)' }}>
                     <a href={ph ? `tel:${ph}` : undefined} aria-label={ph ? `Call ${phoneDisp(ph)}` : 'No phone on file'} style={{ ...base, ...(ph ? { background: '#c9922c', borderColor: '#c9922c', color: '#fff' } : off) }}>📞 Call</a>
                     {isMobile && <a href={ph ? `sms:${ph}` : undefined} aria-label="Text" style={{ ...base, ...(ph ? {} : off) }}>💬 Text</a>}
-                    <a href={c.email ? `mailto:${c.email}` : undefined} aria-label={c.email ? `Email ${c.email}` : 'No email on file'} style={{ ...base, ...(c.email ? {} : off) }}>✉ Email</a>
+                    <a href={c.email ? `mailto:${c.email}` : undefined} aria-label={c.email ? `Email ${c.email}` : 'No email on file'} style={{ ...base, ...(c.email ? {} : off) }}
+                      onClick={e => {
+                        // Gmail connected: write it here, in the CRM, instead of bouncing to a mail app.
+                        if (!gmailConnected || !c.email) return;
+                        e.preventDefault();
+                        if (!showContactCompose) {
+                          clearContactComposeBody(); setComposeSubject(''); setComposeMoreTo(''); setComposeCc('');
+                          setReplyToContactEmail(null); setComposeAttachments([]); setReplyingToThreadKey(null);
+                          setShowContactCompose(true);
+                        }
+                        setTimeout(() => document.getElementById('contact-email-thread')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+                      }}>✉ Email</a>
                     <button onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }} aria-label="Add a task" style={base}>✓ Task</button>
                   </div>
                 );
@@ -12987,7 +12998,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 {/* Gmail Email Thread */}
                 {gmailConnected && c.email && (
-                  <div>
+                  <div id="contact-email-thread">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                       <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 }}>Email Thread</div>
                       <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => {

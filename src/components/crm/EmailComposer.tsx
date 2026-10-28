@@ -19,7 +19,7 @@ const CHIP: React.CSSProperties = { display: 'inline-flex', alignItems: 'center'
 
 // Chips + a free-typing tail. The parent only ever sees one comma-separated string, and
 // anything still being typed is included in it, so a pending address is never silently dropped.
-function AddressField({ value, onChange, placeholder, autoFocus }: { value: string; onChange: (v: string) => void; placeholder: string; autoFocus?: boolean }) {
+function AddressField({ value, onChange, placeholder, autoFocus, leading }: { value: string; onChange: (v: string) => void; placeholder: string; autoFocus?: boolean; leading?: React.ReactNode }) {
   const [chips, setChips] = useState<string[]>(() => splitAddrs(value));
   const [draft, setDraft] = useState('');
   const emitted = useRef(value);
@@ -44,6 +44,7 @@ function AddressField({ value, onChange, placeholder, autoFocus }: { value: stri
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, padding: '6px 0' }}>
+      {leading}
       {chips.map((a, i) => (
         <span key={a + i} style={CHIP} title={a}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chipLabel(a)}</span>
@@ -139,12 +140,12 @@ export default function EmailComposer(p: EmailComposerProps) {
       {/* To */}
       <div style={ROW}>
         <span style={LABEL}>To</span>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5 }}>
-          <span style={{ ...CHIP, padding: '3px 9px', background: 'var(--k-fdf6e8)', borderColor: 'var(--k-fde68a)', color: 'var(--k-92400e)', marginTop: 6, marginBottom: 6 }} title={p.to}>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.toName ? `${p.toName} · ${p.to}` : p.to}</span>
-          </span>
-          <AddressField value={p.moreTo} onChange={p.setMoreTo} placeholder="Add people…" />
-        </div>
+        <AddressField value={p.moreTo} onChange={p.setMoreTo} placeholder="Add people…"
+          leading={
+            <span style={{ ...CHIP, padding: '3px 10px', background: 'var(--k-fdf6e8)', borderColor: 'var(--k-fde68a)', color: 'var(--k-92400e)' }} title={p.to}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.toName ? `${p.toName} · ${p.to}` : p.to}</span>
+            </span>
+          } />
         {!showCc && (
           <button type="button" onClick={() => setShowCc(true)} style={{ ...tb({ color: '#c9922c', fontWeight: 700, fontSize: 13 }), marginTop: 4 }}>Cc</button>
         )}
