@@ -9,6 +9,7 @@ import { sanitizeHtml } from '@/lib/sanitize';
 import EmailComposer, { type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import DraftsSection from './DraftsSection';
+import SentSection from './SentSection';
 import { setDraftAuth, syncDrafts, onDraftsChanged, listDrafts, type EmailDraft } from '@/lib/email-drafts';
 import dynamic from 'next/dynamic';
 import DealMeetings from '@/components/crm/DealMeetings';
@@ -103,7 +104,7 @@ interface ActionPlan { id: string; created_by: string; name: string; description
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; representation_side?: string | null; is_restricted?: boolean; created_at: string; last_touch: string; emails?: DealEmail[]; }
-interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; }
+interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
@@ -784,10 +785,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'drafts'] as const;
+  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'drafts', 'sent'] as const;
   // The sidebar says "Marketing" but the page is called 'campaigns', so a
   // #marketing link silently left you wherever you already were.
-  const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties', 'calling-log': 'calls', calling: 'calls', phone: 'calls' };
+  const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties', 'calling-log': 'calls', calling: 'calls', phone: 'calls', 'sent-mail': 'sent' };
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -5023,7 +5024,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', drafts: 'Drafts',
+    'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', drafts: 'Drafts', sent: 'Sent',
     agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'Transaction Docs', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
   };
 
@@ -5347,6 +5348,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <span style={{ marginLeft: 'auto', background: 'rgba(201,146,44,.9)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{draftCount}</span>
             )}
           </button>
+          <button className={`crm-nav${page === 'sent' ? ' active' : ''}`} onClick={() => setPage('sent')}>
+            <Ico n="mail" />Sent
+          </button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
@@ -5569,6 +5573,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ padding: '16px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>More</div>
                 <button className={`crm-nav${page === 'drafts' ? ' active' : ''}`} onClick={() => { setPage('drafts'); setMobileMenuOpen(false); }}><Ico n="pen" />Drafts{draftCount > 0 && <span style={{ marginLeft: 'auto', background: 'rgba(201,146,44,.9)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{draftCount}</span>}</button>
+                <button className={`crm-nav${page === 'sent' ? ' active' : ''}`} onClick={() => { setPage('sent'); setMobileMenuOpen(false); }}><Ico n="mail" />Sent</button>
                 {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}><Ico n="briefcase" />Broker / Agents</button>}
                 {isAdmin && (
                   <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
@@ -10890,6 +10895,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           )}
 
           {page === 'drafts' && <DraftsSection isMobile={isMobile} onResume={resumeDraft} />}
+          {page === 'sent' && (
+            <SentSection isMobile={isMobile}
+              myAddresses={[...gmailAccounts.map(a => a.email), profile.email, session?.user?.email ?? ''].filter(Boolean)}
+              nameFor={nameForEmail}
+              dealLabel={id => deals.find(d => d.id === id)?.client ?? null}
+              clientLabel={id => { const c = clients.find(x => x.id === id); return c ? (`${c.first_name} ${c.last_name}`.trim() || c.email) : null; }}
+              onOpenDeal={id => { const d = deals.find(x => x.id === id); if (d) { openDeal(d); setTimeout(() => setDealTab('emails'), 0); } }}
+              onOpenContact={id => { const c = clients.find(x => x.id === id); if (c) setActiveClient(c); else showToast('That contact is not loaded in this workspace'); }}
+              onCompose={() => openCompose()} />
+          )}
 
           {page === 'plaza-site' && (isAdmin ? (
             <PlazaPosts authToken={session?.access_token} showToast={showToast} isMobile={isMobile} />
@@ -11334,7 +11349,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* Open tracking at a glance: what the deal's sent emails did */}
                   {(() => {
-                    const tracked = dealEmails.filter(e => e.direction === 'sent' && e.tracking_id);
+                    const tracked = dealEmails.filter(e => e.direction === 'sent' && e.tracked);
                     if (!tracked.length) return null;
                     const opened = tracked.filter(e => e.opened_at);
                     const opens = tracked.reduce((t, e) => t + (e.open_count ?? (e.opened_at ? 1 : 0)), 0);
@@ -11380,7 +11395,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         // Open status summary for collapsed header
                         const sentEmails = threadEmails.filter(e => e.direction === 'sent');
                         const openedEmails = sentEmails.filter(e => e.opened_at);
-                        const hasTracked = sentEmails.some(e => e.tracking_id);
+                        const hasTracked = sentEmails.some(e => e.tracked);
                         const senderAddr = latest.direction === 'sent' ? latest.to_email : latest.from_email;
                         return (
                           <div key={threadKey} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
@@ -11437,7 +11452,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                           </div>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                                             {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
-                                            {e.direction === 'sent' && !e.opened_at && e.tracking_id && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
+                                            {e.direction === 'sent' && !e.opened_at && e.tracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
                                             <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{e.email_date}</span>
                                           </div>
                                         </div>
@@ -13343,7 +13358,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           const snippet = cleanEmailBody(latest.body).slice(0, 120).replace(/\s+/g, ' ');
                           const sentEmails = threadEmails.filter(e => e.direction === 'sent');
                           const openedEmails = sentEmails.filter(e => e.opened_at);
-                          const hasTracked = sentEmails.some(e => e.tracking_id);
+                          const hasTracked = sentEmails.some(e => e.tracked);
                           const senderAddrC = latest.direction === 'sent' ? latest.to_email : latest.from_email;
                           return (
                             <div key={threadKey} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
@@ -13395,7 +13410,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                                               {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
-                                              {e.direction === 'sent' && !e.opened_at && e.tracking_id && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
+                                              {e.direction === 'sent' && !e.opened_at && e.tracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
                                               <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{e.email_date}</span>
                                             </div>
                                           </div>

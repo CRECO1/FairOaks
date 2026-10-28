@@ -339,6 +339,7 @@ export async function POST(req: NextRequest) {
           email_date: emailDate,
           gmail_message_id: sendData.id,
           tracking_id: opts.tid,
+          tracked: true, // carries the pixel above (Gmail-synced rows get a default tracking_id but no pixel)
           gmail_thread_id: threadId ?? sendData.threadId ?? null,
           ...(sentMessageId ? { rfc_message_id: sentMessageId } : {}),
           ...(opts.ccHeader ? { cc_emails: opts.ccHeader } : {}),
