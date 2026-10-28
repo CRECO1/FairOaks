@@ -463,6 +463,7 @@ function ThreadReader(p: {
   const [busy, setBusy] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [filed, setFiled] = useState<Set<string>>(() => new Set());
+  const [savedAtt, setSavedAtt] = useState<Set<string>>(() => new Set());
   const [opens, setOpens] = useState<Map<string, { opened: boolean; n: number; last: string | null }>>(() => new Map());
   useEffect(() => {
     let live = true;
@@ -520,6 +521,19 @@ function ThreadReader(p: {
       setFiled(prev => new Set(prev).add(m.id));
       p.notify(j.already ? `Already on ${target.label}` : `Filed to ${target.label}`);
     } finally { setWorking(null); }
+  };
+  // Save to Docs: put this attachment on the deal's Docs tab (the only place outgoing email can attach files from).
+  const saveToDeal = async (m: LiveMessage, a: { part: string; name: string }, deal: NonNullable<ContactMatch>) => {
+    const key = `${m.id}:${a.part}`;
+    setBusy(key);
+    try {
+      const r = await fetch('/api/gmail/save-attachment', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'gmail', messageId: m.id, part: a.part, dealId: deal.id, account: p.account ?? undefined }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { p.notify(j.error ?? 'Could not save the file.'); return; }
+      setSavedAtt(prev => new Set(prev).add(key));
+      p.notify(j.duplicate ? `Already in ${deal.label}’s Docs` : `Saved to ${deal.label}’s Docs`);
+    } finally { setBusy(null); }
   };
   const addContact = async (m: LiveMessage, email: string, name: string) => {
     setWorking(m.id);
@@ -648,6 +662,10 @@ function ThreadReader(p: {
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, fontWeight: 600 }}>{a.name}</span>
                             <span style={{ color: 'var(--k-9ca3af)', flexShrink: 0 }}>{fmtBytes(a.size)}</span>
                           </button>
+                          {target?.kind === 'deal' && /\.(pdf|docx?|jpe?g|png|webp)$/i.test(a.name) && (
+                            <button type="button" disabled={busy === key || savedAtt.has(key)} onClick={() => void saveToDeal(m, a, target)} aria-label={`Save ${a.name} to ${target.label}’s Docs`} title={`Save to ${target.label}’s Docs`}
+                              style={{ minWidth: p.isMobile ? 44 : 34, padding: '0 9px', border: 'none', borderLeft: '1px solid var(--k-e5e7eb)', background: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: savedAtt.has(key) ? 'var(--k-065f46)' : 'var(--k-a06a12)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>{savedAtt.has(key) ? '✓ Saved' : '📁 Docs'}</button>
+                          )}
                           {previewable(a.mime) && (
                             <button type="button" onClick={() => void openAtt(m, a, true)} aria-label={`Download ${a.name}`} title="Download"
                               style={{ width: p.isMobile ? 44 : 34, border: 'none', borderLeft: '1px solid var(--k-e5e7eb)', background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--k-6b7280)' }}>⬇</button>

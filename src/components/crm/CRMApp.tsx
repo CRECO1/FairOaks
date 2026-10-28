@@ -423,7 +423,8 @@ function Linkified({ text }: { text: string }) {
 type MailAttachment = { part: string; name: string; size: number; mime: string };
 const attachmentCache = new Map<string, MailAttachment[]>();
 const fmtBytes = (n: number) => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`;
-function MessageAttachments({ emailId, isMobile, none }: { emailId: string; isMobile: boolean; none?: boolean }) {
+function MessageAttachments({ emailId, isMobile, none, dealId, onNote }: { emailId: string; isMobile: boolean; none?: boolean; dealId?: string; onNote?: (msg: string) => void }) {
+  const [saved, setSaved] = useState<Set<string>>(() => new Set());
   const [list, setList] = useState<MailAttachment[] | null>(() => attachmentCache.get(emailId) ?? null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState('');
@@ -442,6 +443,18 @@ function MessageAttachments({ emailId, isMobile, none }: { emailId: string; isMo
     return () => { live = false; };
   }, [emailId, none]);
   if (!list?.length) return null;
+  // Save to Docs: copy a stored attachment onto this deal's Docs tab (PDF / Word / images — what the bucket accepts).
+  const saveToDocs = async (a: MailAttachment) => {
+    if (!dealId) return;
+    setBusy(a.part); setErr('');
+    try {
+      const r = await fetch('/api/gmail/save-attachment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'logged', emailId, index: Number(a.part.slice(1)), dealId }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setErr(j.error ?? 'Could not save the file.'); return; }
+      setSaved(prev => new Set(prev).add(a.part));
+      onNote?.(j.duplicate ? 'That file is already in this deal’s Docs' : 'Saved to this deal’s Docs');
+    } catch { setErr('Could not save the file.'); } finally { setBusy(null); }
+  };
   // PDFs and pictures open in a new tab (what you want when you're checking what went out); everything else downloads.
   // Never HTML/SVG: only types a browser renders without running anything.
   const previewable = (a: MailAttachment) => /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(a.mime);
@@ -467,12 +480,18 @@ function MessageAttachments({ emailId, isMobile, none }: { emailId: string; isMo
     <div style={{ paddingLeft: 42, marginTop: 10 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {list.map(a => (
-          <button key={a.part} type="button" onClick={() => download(a, true)} disabled={busy === a.part} title={previewable(a) ? `Open ${a.name}` : `Download ${a.name}`}
+          <Fragment key={a.part}>
+          <button type="button" onClick={() => download(a, true)} disabled={busy === a.part} title={previewable(a) ? `Open ${a.name}` : `Download ${a.name}`}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', minHeight: isMobile ? 44 : 32, padding: '0 12px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif" }}>
             <span aria-hidden>{busy === a.part ? '⏳' : '📎'}</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, fontWeight: 600 }}>{a.name}</span>
             <span style={{ color: 'var(--k-9ca3af)', flexShrink: 0 }}>{fmtBytes(a.size)}</span>
           </button>
+          {dealId && /^s\d+$/.test(a.part) && /\.(pdf|docx?|jpe?g|png|webp)$/i.test(a.name) && (
+            <button type="button" disabled={busy === a.part || saved.has(a.part)} onClick={() => void saveToDocs(a)} title="Save to this deal’s Docs"
+              style={{ minHeight: isMobile ? 44 : 32, padding: '0 10px', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: saved.has(a.part) ? 'var(--k-065f46)' : 'var(--k-a06a12)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>{saved.has(a.part) ? '✓ Saved' : '📁 Docs'}</button>
+          )}
+          </Fragment>
         ))}
       </div>
       {err && <div style={{ fontSize: 12, color: 'var(--k-dc2626)', marginTop: 6 }}>{err}</div>}
@@ -482,7 +501,7 @@ function MessageAttachments({ emailId, isMobile, none }: { emailId: string; isMo
 
 // One message inside an expanded thread, like Gmail: the latest is open, older ones fold to a single line you can
 // tap open. Used by both the deal and the contact thread so they can't drift apart.
-function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onReplyAll }: { e: DealEmail; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void; onReplyAll?: () => void }) {
+function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onReplyAll, dealId, onNote }: { e: DealEmail; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void; onReplyAll?: () => void; dealId?: string; onNote?: (msg: string) => void }) {
   const [open, setOpen] = useState(defaultOpen);
   const bodyText = cleanEmailBody(e.body ?? '');
   const bg = striped ? 'var(--k-fafafa)' : 'var(--k-fff)';
@@ -531,7 +550,7 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
             : <div key={i} aria-hidden style={{ height: 9 }} />)}
         </div>
       )}
-      {(e.gmail_message_id || e.attachments?.length) && <MessageAttachments emailId={e.id} isMobile={isMobile} none={Array.isArray(e.attachments) && e.attachments.length === 0} />}
+      {(e.gmail_message_id || e.attachments?.length) && <MessageAttachments emailId={e.id} isMobile={isMobile} dealId={dealId} onNote={onNote} none={Array.isArray(e.attachments) && e.attachments.length === 0} />}
     </div>
   );
 }
@@ -11742,7 +11761,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {isExpanded && (
                               <div style={{ borderTop: '1px solid var(--k-f0f0f0)' }}>
                                 {sortedEmails(threadEmails).map((e, idx, arr) => (
-                                  <ThreadMessage key={e.id} e={e} isMobile={isMobile} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
+                                  <ThreadMessage key={e.id} e={e} isMobile={isMobile} dealId={activeDeal?.id} onNote={showToast} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
                                     onReply={gmailConnected && activeDeal?.client_email ? () => startDealReply(e, threadEmails, false) : undefined}
                                     onReplyAll={gmailConnected && activeDeal?.client_email && hasReplyAll(e, threadEmails, activeDeal.client_email) ? () => startDealReply(e, threadEmails, true) : undefined} />
                                 ))}
