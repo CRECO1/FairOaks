@@ -38,6 +38,8 @@ type Props = {
   onReply: (m: LiveMessage, threadId: string, all: boolean, account: string | null) => void;
   onForward: (m: LiveMessage, threadId: string, account: string | null) => void;
   onNewCompose: () => void;
+  notify: (msg: string) => void;
+  onAddContact: (email: string, name: string) => Promise<boolean>;
 };
 
 // A sandboxed frame for the message HTML: no scripts can run, links open in new tabs, and it grows to fit its content.
@@ -137,7 +139,7 @@ export default function GmailMailbox(p: Props) {
 
   if (open) {
     return <ThreadReader t={open} account={account} isMobile={p.isMobile} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
-      onReply={p.onReply} onForward={p.onForward} onBack={() => setOpenThread(null)} />;
+      onReply={p.onReply} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />;
   }
 
   return (
@@ -225,11 +227,14 @@ function ThreadReader(p: {
   t: ThreadSummary; account: string | null; isMobile: boolean; contactFor: (email: string) => ContactMatch;
   onOpenDeal: (id: string) => void; onOpenContact: (id: string) => void;
   onReply: Props['onReply']; onForward: Props['onForward']; onBack: () => void;
+  notify: Props['notify']; onAddContact: Props['onAddContact'];
 }) {
   const [msgs, setMsgs] = useState<LiveMessage[] | null>(null);
   const [err, setErr] = useState('');
   const [folded, setFolded] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState<string | null>(null);
+  const [working, setWorking] = useState<string | null>(null);
+  const [filed, setFiled] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     let live = true;
@@ -255,6 +260,23 @@ function ThreadReader(p: {
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch { setErr(`Couldn’t download ${a.name} — try again.`); }
     finally { setBusy(null); }
+  };
+
+  // File to CRM: copy this one message onto the deal/contact card (attachments included) — the whole team sees it there.
+  const fileTo = async (m: LiveMessage, target: NonNullable<ContactMatch>) => {
+    setWorking(m.id);
+    try {
+      const r = await fetch('/api/gmail/file-message', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId: m.id, account: p.account ?? undefined, ...(target.kind === 'deal' ? { dealId: target.id } : { clientId: target.id }) }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { p.notify(j.error ?? 'Could not file this message.'); return; }
+      setFiled(prev => new Set(prev).add(m.id));
+      p.notify(j.already ? `Already on ${target.label}` : `Filed to ${target.label}`);
+    } finally { setWorking(null); }
+  };
+  const addContact = async (m: LiveMessage, email: string, name: string) => {
+    setWorking(m.id);
+    try { await p.onAddContact(email, name); } finally { setWorking(null); }
   };
 
   // Gmail's shortcuts: r reply · a reply all · f forward · Esc back (ignored while typing or when a modifier is held).
@@ -340,6 +362,20 @@ function ThreadReader(p: {
                 <button type="button" style={btn} onClick={() => p.onReply(m, p.t.id, false, p.account)}>↩ Reply</button>
                 <button type="button" style={btn} onClick={() => p.onReply(m, p.t.id, true, p.account)}>↩↩ Reply all</button>
                 <button type="button" style={btn} onClick={() => p.onForward(m, p.t.id, p.account)}>↪ Forward</button>
+                {(() => {
+                  const mine = !!p.account && from.email.toLowerCase() === p.account.toLowerCase();
+                  const other = mine ? parseAddr(m.to) : from;
+                  const target = other.email ? p.contactFor(other.email) : null;
+                  if (!other.email) return null;
+                  if (target) return (
+                    <button type="button" disabled={working === m.id || filed.has(m.id)} style={{ ...btn, marginLeft: p.isMobile ? 0 : 'auto' }} onClick={() => void fileTo(m, target)}
+                      title="Copy this message onto the card so the team sees it there">{filed.has(m.id) ? '✓ Filed' : working === m.id ? 'Filing…' : `📁 File to ${target.label.length > 22 ? target.label.slice(0, 21) + '…' : target.label}`}</button>
+                  );
+                  return (
+                    <button type="button" disabled={working === m.id} style={{ ...btn, marginLeft: p.isMobile ? 0 : 'auto' }} onClick={() => void addContact(m, other.email, other.name)}
+                      title="Create a CRM contact for this address, then you can file the email on it">{working === m.id ? 'Adding…' : '＋ Add contact'}</button>
+                  );
+                })()}
               </div>
             </div>
           );

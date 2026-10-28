@@ -4413,6 +4413,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     });
   }
 
+  // "Add contact" from a message in the live Gmail reader: create (or find) the contact, then refresh the list so the
+  // reader immediately offers "File to <contact>".
+  async function addContactFromMail(email: string, name: string): Promise<boolean> {
+    try {
+      const r = await fetch('/api/crm/quick-contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, name }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast(j.error ?? 'Could not add this contact.'); return false; }
+      await loadClients(profile ?? undefined, 0, true);
+      showToast(j.existing ? 'That contact already exists' : 'Contact added');
+      return true;
+    } catch { showToast('Could not add this contact.'); return false; }
+  }
+
   // Reply / Reply all / Forward on a message read live from Gmail: opens the Compose window addressed, quoted and
   // threaded onto Gmail's own conversation (so it lands in the same thread in Gmail), filed on the deal/contact we know.
   const liveAsEmail = (m: LiveMessage): DealEmail => {
@@ -11198,6 +11211,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <EmailsSection isMobile={isMobile} tab={emailsTab} setTab={setEmailsTab}
               unread={emailBadge} draftCount={draftCount} inbox={inbox}
               contactFor={contactFor} onLiveReply={liveReply} onLiveForward={liveForward} onCompose={() => openCompose()}
+              notify={showToast} onAddContact={addContactFromMail}
               myAddresses={[...gmailAccounts.map(a => a.email), profile.email, session?.user?.email ?? ''].filter(Boolean)}
               nameFor={nameForEmail}
               dealLabel={id => deals.find(d => d.id === id)?.client ?? null}
