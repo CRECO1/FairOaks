@@ -55,7 +55,7 @@ function cleanBody(raw: string): string {
 
 // Emails logged before 2026-10-28 had their line breaks flattened (and "&nbsp;" left in): re-read each from the mailbox
 // it lives in and store it properly. Only this connection's own mail, a few per run, and a row stops matching once fixed.
-async function healBodies(db: ReturnType<typeof adminClient>, mailbox: string, auth: Record<string, string>): Promise<number> {
+async function healBodies(db: ReturnType<typeof adminClient>, mailbox: string, auth: Record<string, string>, all = false): Promise<number> {
   const addr = mailbox.trim().toLowerCase();
   if (!addr) return 0;
   const since = new Date(Date.now() - 120 * 86_400_000).toISOString().slice(0, 10);
@@ -63,7 +63,7 @@ async function healBodies(db: ReturnType<typeof adminClient>, mailbox: string, a
     .not('gmail_message_id', 'is', null).gte('email_date', since)
     .or(`from_email.ilike.%${addr}%,to_email.ilike.%${addr}%`)
     .order('created_at', { ascending: false }).limit(300);
-  const bad = (data ?? []).filter((r: { body: string | null }) => { const b = r.body ?? ''; return /&(nbsp|amp|lt|gt|quot|#\d+);/i.test(b) || (b.length > 140 && !b.includes('\n')); }).slice(0, 25);
+  const bad = (data ?? []).filter((r: { body: string | null }) => { const b = r.body ?? ''; return all || /&(nbsp|amp|lt|gt|quot|#\d+);/i.test(b) || (b.length > 140 && !b.includes('\n')); }).slice(0, all ? 120 : 25);
   let healed = 0;
   for (const r of bad as Array<{ id: string; gmail_message_id: string; body: string | null }>) {
     const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${r.gmail_message_id}?format=full`, { headers: auth });
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
     const token = await getValidToken(db, conn);
     if (!token) { tokenFailures++; errors.push(`token refresh failed for ${conn.gmail_email}`); continue; }
     const auth = { Authorization: `Bearer ${token}` };
-    try { healed += await healBodies(db, conn.gmail_email ?? '', auth); } catch (e) { errors.push(`heal ${conn.gmail_email}: ${e instanceof Error ? e.message : String(e)}`); }
+    try { healed += await healBodies(db, conn.gmail_email ?? '', auth, req.nextUrl.searchParams.get('heal') === 'all'); } catch (e) { errors.push(`heal ${conn.gmail_email}: ${e instanceof Error ? e.message : String(e)}`); }
     try {
       const list = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(`in:inbox ${LOOKBACK}`)}&maxResults=${MAX_MESSAGES}`, { headers: auth });
       if (!list.ok) { errors.push(`list ${conn.gmail_email}: ${list.status}`); continue; }

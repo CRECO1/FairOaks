@@ -34,6 +34,8 @@ export function htmlToText(html: string): string {
     if (looksLikeAddress(txt) || !/^https?:/i.test(href) || href.length > 120) return txt;
     return `${txt} (${href})`;
   });
+  // Signatures often stack lines as styled inline elements (display:block) — each one starts a new line.
+  t = t.replace(/<(span|a|b|strong|em|i|font|label)\b[^>]*display\s*:\s*block[^>]*>/gi, '\n$&');
   t = t
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<li\b[^>]*>/gi, '• ')
