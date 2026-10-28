@@ -1614,7 +1614,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     agent_phone: profile.phone || '',
   } : undefined, [profile]);
   // Client + property info from a deal, seeded into a blank form by field_key
-  // (e.g. the 8000 lease's tenant_name / tenant_email / tenant_phone / suite / building).
+  // (e.g. the 8000 lease's tenant_name / tenant_email / tenant_phone / suite / building; the buyer rep agreement's client_name / client_email / client_phone).
   /** The inferred side, shown only as a hint next to "not set" — never saved silently. */
   const dealSideHint = useCallback((d: Deal | null): string => {
     if (!d) return '';
@@ -1633,9 +1633,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const suite = (prop.match(/(?:ste|suite)\.?\s*#?\s*([0-9A-Za-z-]+)/i) || [])[1] || '';
     const building = (prop.match(/(?:bldg|building)\.?\s*#?\s*([0-9A-Za-z-]+)/i) || [])[1] || '';
     const out: Record<string, string> = {};
-    if (name) out.tenant_name = name;
-    if (email) out.tenant_email = email;
-    if (phone) out.tenant_phone = phone;
+    if (name) { out.tenant_name = name; out.client_name = name; }
+    if (email) { out.tenant_email = email; out.client_email = email; }
+    if (phone) { out.tenant_phone = phone; out.client_phone = phone; }
     if (suite) out.suite = suite;
     if (building) out.building = building;
     return out;
