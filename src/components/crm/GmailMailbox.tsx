@@ -3,6 +3,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LiveMessage, ThreadSummary } from '@/lib/gmail-live';
 import { sanitizeHtml } from '@/lib/sanitize';
+import { createClient } from '@/lib/supabase/client';
+
+const supabase = createClient();
+// CRM open tracking for emails sent from the CRM: per Gmail thread / message, so the live views can show "👁 Opened 3×".
+type Track = { tracked: boolean; opens: number; opened: boolean };
 
 // Your real Gmail inside the CRM. On a wide screen it is a two-pane inbox (list on the left, the conversation on the
 // right, so you never lose your place); on a phone the list and the conversation are separate screens. Mail is read live
@@ -189,6 +194,26 @@ export default function GmailMailbox(p: Props) {
     return () => clearInterval(t);
   }, [build]);
 
+  const [tracking, setTracking] = useState<Map<string, Track>>(() => new Map());
+  useEffect(() => {
+    const ids = (threads ?? []).map(t => t.id).filter(id => !tracking.has(id));
+    if (!ids.length) return;
+    let live = true;
+    (async () => {
+      const got = new Map<string, Track>(ids.map(id => [id, { tracked: false, opens: 0, opened: false }]));
+      for (let i = 0; i < ids.length; i += 60) {
+        const { data } = await supabase.from('crm_deal_emails').select('gmail_thread_id,opened_at,open_count,tracked').in('gmail_thread_id', ids.slice(i, i + 60)).eq('direction', 'sent').eq('tracked', true);
+        for (const r of (data ?? []) as Array<{ gmail_thread_id: string; opened_at: string | null; open_count: number | null }>) {
+          const t = got.get(r.gmail_thread_id); if (!t) continue;
+          t.tracked = true; t.opens += r.open_count ?? (r.opened_at ? 1 : 0); t.opened = t.opened || !!r.opened_at;
+        }
+      }
+      if (live) setTracking(prev => { const n = new Map(prev); got.forEach((v, k) => n.set(k, v)); return n; });
+    })().catch(() => {});
+    return () => { live = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads]);
+
   const more = async () => {
     if (!next) return;
     setLoadingMore(true);
@@ -274,7 +299,7 @@ export default function GmailMailbox(p: Props) {
           ↑ {fresh} new {fresh === 1 ? 'conversation' : 'conversations'} — show
         </button>
       )}
-      {threads === null ? <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Loading your Gmail…</div>
+      {threads === null ? <ListSkeleton />
       : !connected ? <Empty title="Gmail isn’t connected" sub="Connect your Google account (bottom of the sidebar) and your mail shows up here." />
       : err ? <Empty title="Couldn’t load your mail" sub={err} />
       : visible.length === 0 ? <Empty title={term || contactsOnly || filter !== 'all' ? 'Nothing matches' : p.box === 'inbox' ? 'You’re all caught up' : 'Nothing here yet'} sub={contactsOnly && threads.length ? 'None of the loaded conversations are with people in your CRM — try “Load older mail”.' : term ? 'Try different words.' : 'Nothing to show.'} />
@@ -305,7 +330,14 @@ export default function GmailMailbox(p: Props) {
                     </div>
                     <div style={{ fontSize: 13.5, color: 'var(--k-111)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 500 }}>{t.subject}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decodeSnippet(t.snippet)}</div>
-                    {match && <div style={{ marginTop: 4, fontSize: 11.5, color: 'var(--k-a06a12)', fontWeight: 700 }}>{match.kind === 'deal' ? '💼 Deal' : '👤 Contact'} · {match.label}</div>}
+                    {(match || tracking.get(t.id)?.tracked) && (
+                      <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
+                        {match && <span style={{ color: 'var(--k-a06a12)' }}>{match.kind === 'deal' ? '💼 Deal' : '👤 Contact'} · {match.label}</span>}
+                        {tracking.get(t.id)?.tracked && (tracking.get(t.id)!.opened
+                          ? <span title="Opened by the recipient (CRM open tracking)" style={{ color: 'var(--k-065f46)', background: 'var(--k-d1fae5)', borderRadius: 10, padding: '0 7px' }}>👁 Opened{tracking.get(t.id)!.opens > 1 ? ` ${tracking.get(t.id)!.opens}×` : ''}</span>
+                          : <span title="Not opened yet" style={{ color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '0 7px', fontWeight: 600 }}>Not opened</span>)}
+                      </div>
+                    )}
                   </div>
                 </div>
               </React.Fragment>
@@ -345,6 +377,25 @@ export default function GmailMailbox(p: Props) {
   );
 }
 
+function ListSkeleton() {
+  const bar = (w: string, h = 10): React.CSSProperties => ({ width: w, height: h, borderRadius: 5, background: 'var(--k-eef0f2)', animation: 'crmPulse 1.2s ease-in-out infinite' });
+  return (
+    <div aria-busy="true" aria-label="Loading your Gmail" style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
+      <style>{'@keyframes crmPulse{0%,100%{opacity:.55}50%{opacity:1}}'}</style>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} style={{ display: 'flex', gap: 12, padding: '13px 14px', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none' }}>
+          <div style={{ ...bar('36px', 36), borderRadius: '50%', flexShrink: 0 }} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={bar(`${40 + (i * 13) % 30}%`, 12)} />
+            <div style={bar(`${70 - (i * 7) % 25}%`)} />
+            <div style={bar(`${55 + (i * 11) % 30}%`, 8)} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Empty({ title, sub }: { title: string; sub: string }) {
   return (
     <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--k-6b7280)', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 12 }}>
@@ -367,6 +418,19 @@ function ThreadReader(p: {
   const [busy, setBusy] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [filed, setFiled] = useState<Set<string>>(() => new Set());
+  const [opens, setOpens] = useState<Map<string, { opened: boolean; n: number; last: string | null }>>(() => new Map());
+  useEffect(() => {
+    let live = true;
+    supabase.from('crm_deal_emails').select('gmail_message_id,opened_at,last_opened_at,open_count').eq('gmail_thread_id', p.t.id).eq('direction', 'sent').eq('tracked', true)
+      .then(({ data }) => {
+        if (!live) return;
+        const m = new Map<string, { opened: boolean; n: number; last: string | null }>();
+        for (const r of (data ?? []) as Array<{ gmail_message_id: string | null; opened_at: string | null; last_opened_at: string | null; open_count: number | null }>)
+          if (r.gmail_message_id) m.set(r.gmail_message_id, { opened: !!r.opened_at, n: r.open_count ?? (r.opened_at ? 1 : 0), last: r.last_opened_at ?? r.opened_at });
+        setOpens(m);
+      });
+    return () => { live = false; };
+  }, [p.t.id]);
 
   useEffect(() => {
     let live = true;
@@ -457,6 +521,8 @@ function ThreadReader(p: {
         </h2>
         {last && (
           <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
+            <a href={`https://mail.google.com/mail/${p.account ? `?authuser=${encodeURIComponent(p.account)}` : ''}#all/${p.t.id}`} target="_blank" rel="noopener noreferrer" title="Open this conversation in Gmail (labels, trash…)"
+              style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>Gmail ↗</a>
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, false, p.account)} title="Reply (r)">↩ Reply</button>
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, true, p.account)} title="Reply all (a)">↩↩ All</button>
             <button type="button" style={btn} onClick={() => p.onForward(last, p.t.id, p.account)} title="Forward (f)">↪</button>
@@ -515,7 +581,12 @@ function ThreadReader(p: {
                     </button>
                   )}
                 </div>
-                <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0, textAlign: 'right' }} title={whenLong(m.date)}>{p.isMobile ? when(m.date) : whenLong(m.date)}</span>
+                <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }} title={whenLong(m.date)}>{p.isMobile ? when(m.date) : whenLong(m.date)}</span>
+                  {opens.has(m.id) && (opens.get(m.id)!.opened
+                    ? <span title={opens.get(m.id)!.last ? `Last opened ${whenLong(new Date(opens.get(m.id)!.last!).getTime())}` : 'Opened'} style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-065f46)', background: 'var(--k-d1fae5)', borderRadius: 10, padding: '1px 8px' }}>👁 Opened{opens.get(m.id)!.n > 1 ? ` ${opens.get(m.id)!.n}×` : ''}</span>
+                    : <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px' }}>Not opened</span>)}
+                </div>
               </div>
               <MessageFrame html={m.html} />
               {m.attachments.length > 0 && (
