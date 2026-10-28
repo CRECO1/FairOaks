@@ -485,9 +485,9 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply }: { e
       </div>
       {bodyText.trim() && (
         <div style={{ fontSize: 14, color: 'var(--k-374151)', lineHeight: 1.65, paddingLeft: 42, marginTop: 4 }}>
-          {bodyText.split('\n').map((line, i) => (
-            <p key={i} style={{ margin: 0, marginBottom: line.trim() ? 6 : 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}><Linkified text={line || ' '} /></p>
-          ))}
+          {bodyText.split('\n').map((line, i) => line.trim()
+            ? <p key={i} style={{ margin: 0, marginBottom: 2, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}><Linkified text={line} /></p>
+            : <div key={i} aria-hidden style={{ height: 9 }} />)}
         </div>
       )}
       {e.gmail_message_id && <MessageAttachments emailId={e.id} isMobile={isMobile} />}

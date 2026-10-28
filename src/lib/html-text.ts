@@ -34,15 +34,19 @@ export function htmlToText(html: string): string {
     if (looksLikeAddress(txt) || !/^https?:/i.test(href) || href.length > 120) return txt;
     return `${txt} (${href})`;
   });
-  // Signatures often stack lines as styled inline elements (display:block) — each one starts a new line.
-  t = t.replace(/<(span|a|b|strong|em|i|font|label)\b[^>]*display\s*:\s*block[^>]*>/gi, '\n$&');
+  // A block element starts a new line even right after inline text ("<b>Name</b><div>Title</div>" is two lines in a
+  // browser). Opening blocks leave a marker that merges with an already-pending newline, so back-to-back <div>s stay
+  // single-spaced while <div><br></div> still makes a blank line.
+  t = t.replace(/<(span|a|b|strong|em|i|font|label)\b[^>]*display\s*:\s*block[^>]*>/gi, '\u0001$&');
+  t = t.replace(/<(div|p|ul|ol|table|tr|h[1-6]|blockquote|pre)\b[^>]*>/gi, '\u0001');
   t = t
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<li\b[^>]*>/gi, '• ')
+    .replace(/<li\b[^>]*>/gi, '\u0001• ')
     .replace(/<\/(p|h[1-6]|blockquote|ul|ol|table|pre)>/gi, '\n\n')
     .replace(/<\/(div|tr|li)>/gi, '\n')
     .replace(/<\/t[dh]>/gi, '  ')
     .replace(/<[^>]*>/g, '');
+  t = t.replace(/\n?\u0001/g, '\n').replace(/\u0001/g, '');
   t = decodeEntities(t);
   return t.split('\n').map(l => l.replace(/[ \t ]+/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
