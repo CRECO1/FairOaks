@@ -28,7 +28,12 @@ type Props = {
   rows: InboxRow[] | null;
   mine: (r: InboxRow) => boolean;
   isUnread: (r: InboxRow) => boolean;
+  isDone: (r: InboxRow) => boolean;
   markRead: (ids: string[]) => void;
+  markUnread: (ids: string[]) => void;
+  setDoneIds: (ids: string[], on: boolean) => void;
+  onReply: (r: InboxRow, all: boolean) => void;
+  canReplyAll: (r: InboxRow) => boolean;
   markAllRead: (rows: InboxRow[]) => void;
   reload: () => void;
   nameFor: (email: string) => string | undefined;
@@ -40,7 +45,7 @@ type Props = {
 
 export default function InboxSection(p: Props) {
   const [scope, setScope] = useState<'mine' | 'team'>('mine');
-  const [filter, setFilter] = useState<'all' | 'unread' | 'files'>('all');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'files' | 'done'>('all');
   const [q, setQ] = useState('');
 
   const threads = useMemo(() => {
@@ -49,10 +54,12 @@ export default function InboxSection(p: Props) {
     const needle = q.trim().toLowerCase();
     if (needle) rows = rows.filter(r => `${r.from_email} ${r.subject} ${r.body ?? ''}`.toLowerCase().includes(needle));
     let list = groupThreads(rows, p.isUnread);
+    // Done conversations are out of the way (Gmail's Archive) — until a NEW message arrives on them.
+    list = filter === 'done' ? list.filter(t => t.rows.every(p.isDone)) : list.filter(t => !t.rows.every(p.isDone));
     if (filter === 'unread') list = list.filter(t => t.unread > 0);
     if (filter === 'files') list = list.filter(t => t.rows.some(r => r.attachments && r.attachments.length > 0));
     return list;
-  }, [p.rows, p.mine, p.isUnread, scope, filter, q]);
+  }, [p.rows, p.mine, p.isUnread, p.isDone, scope, filter, q]);
 
   const unreadTotal = useMemo(() => threads.reduce((n, t) => n + t.unread, 0), [threads]);
 
@@ -68,6 +75,10 @@ export default function InboxSection(p: Props) {
     border: `1px solid ${on ? '#111' : 'var(--k-e5e7eb)'}`, background: on ? '#111' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-374151)',
     fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap',
   });
+  const act: React.CSSProperties = {
+    minHeight: p.isMobile ? 38 : 28, padding: '0 11px', borderRadius: 7, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)',
+    fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap',
+  };
   const empty = (title: string, sub: string) => (
     <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--k-6b7280)', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 12 }}>
       <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-374151)' }}>{title}</div>
@@ -80,7 +91,7 @@ export default function InboxSection(p: Props) {
       <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginBottom: 12 }}>Replies that came in on your contacts and deals — including people who were copied on the thread.</div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
         <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%' }}>
-          {([['all', 'All'], ['unread', 'Unread'], ['files', '📎 With files']] as const).map(([v, l]) => (
+          {([['all', 'All'], ['unread', 'Unread'], ['files', '📎 With files'], ['done', '✓ Done']] as const).map(([v, l]) => (
             <button key={v} onClick={() => setFilter(v)} style={chip(filter === v)}>{l}</button>
           ))}
         </div>
@@ -102,7 +113,7 @@ export default function InboxSection(p: Props) {
       </div>
 
       {p.rows === null ? <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Loading your inbox…</div>
-      : threads.length === 0 ? (p.rows.length ? empty(filter === 'unread' ? 'You’re all caught up' : 'Nothing matches', filter === 'unread' ? 'No unread replies.' : 'Try another filter or search.') : empty('No replies yet', 'When a contact answers an email you sent from the CRM, it lands here (checked every 10 minutes).'))
+      : threads.length === 0 ? (p.rows.length ? empty(filter === 'unread' || filter === 'all' ? 'You’re all caught up' : 'Nothing matches', filter === 'unread' || filter === 'all' ? 'Nothing waiting for you here.' : 'Try another filter or search.') : empty('No replies yet', 'When a contact answers an email you sent from the CRM, it lands here (checked every 10 minutes).'))
       : (
         <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
           {threads.map((t, i) => {
@@ -135,6 +146,16 @@ export default function InboxSection(p: Props) {
                     {unread && <span style={{ fontWeight: 700, color: 'var(--k-a06a12)' }}>● {t.unread} new</span>}
                     {files > 0 && <span style={{ color: 'var(--k-6b7280)' }}>📎 {files === 1 ? '1 file' : `${files} files`}</span>}
                     {(deal || contact) && <span style={{ color: 'var(--k-a06a12)', fontWeight: 600 }}>{deal ? `Deal · ${deal}` : `Contact · ${contact}`} →</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+                    {!t.rows.every(p.isDone) && <button type="button" style={act} title="Reply to this message" onClick={() => { p.markRead(t.rows.map(x => x.id)); p.onReply(r, false); }}>↩ Reply</button>}
+                    {!t.rows.every(p.isDone) && p.canReplyAll(r) && <button type="button" style={act} title="Reply to everyone on this message" onClick={() => { p.markRead(t.rows.map(x => x.id)); p.onReply(r, true); }}>↩↩ Reply all</button>}
+                    {t.rows.every(p.isDone)
+                      ? <button type="button" style={act} title="Put it back in the inbox" onClick={() => p.setDoneIds(t.rows.map(x => x.id), false)}>↺ Move back</button>
+                      : <button type="button" style={act} title="Done — hide it until someone writes again" onClick={() => p.setDoneIds(t.rows.map(x => x.id), true)}>✓ Done</button>}
+                    {unread
+                      ? <button type="button" style={act} title="Mark as read" onClick={() => p.markRead(t.rows.map(x => x.id))}>Mark read</button>
+                      : <button type="button" style={act} title="Mark as unread" onClick={() => p.markUnread([t.latest.id])}>Mark unread</button>}
                   </div>
                 </div>
               </div>

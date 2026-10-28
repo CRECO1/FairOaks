@@ -1215,7 +1215,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return hits.filter(h => { const k = h.s.email.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8).map(h => h.s);
   }, [clients, profiles]);
   // Open the docked Compose window (optionally pre-addressed). Needs Gmail connected, same as the card composers.
-  function openCompose(opts?: { to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string; view?: 'drafts'; crmFiles?: CrmAttachItem[] }) {
+  function openCompose(opts?: { to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string; view?: 'drafts'; crmFiles?: CrmAttachItem[]; dealId?: string | null; clientId?: string | null; threadId?: string | null; inReplyTo?: string | null }) {
     if (!gmailConnected && !gmailChecked) { showToast('Still connecting to Gmail — try again in a second.'); return; }
     if (!gmailConnected) { showToast('Connect your Google account first (bottom of the sidebar → Connect Google Account), then you can email from here.'); return; }
     setComposeReq({ nonce: Date.now(), ...opts });
@@ -4372,6 +4372,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setShowContactCompose(false);
     setReplyingToThreadKey(threadKey);
     placeReplyQuote(contactComposeBodyRef, quotedReplyHtml(e));
+  }
+
+  // Reply / Reply all straight from the Inbox: opens the Compose window addressed, quoted and threaded onto that message
+  // (and filed on the same deal/contact), so you never have to open the card first.
+  const inboxAsEmail = (r: { id: string; deal_id: string | null; client_id: string | null; from_email: string; to_email: string; cc_emails: string | null; subject: string; body: string | null; email_date: string; created_at: string; gmail_thread_id: string | null; rfc_message_id: string | null }): DealEmail =>
+    ({ ...r, direction: 'received', body: r.body ?? '' } as unknown as DealEmail);
+  const inboxCanReplyAll = (r: Parameters<typeof inboxAsEmail>[0]) => { const ra = replyAllRecipients(inboxAsEmail(r), [], undefined, selfAddrs()); return ra.also.split(',').filter(Boolean).length + ra.cc.split(',').filter(Boolean).length > 1; };
+  function inboxReply(r: Parameters<typeof inboxAsEmail>[0], all: boolean) {
+    const e = inboxAsEmail(r);
+    const from = parseAddressList(r.from_email)[0];
+    const ra = replyAllRecipients(e, [], undefined, selfAddrs());
+    openCompose({
+      to: all ? ra.also : (from?.email ?? r.from_email), name: from?.name, cc: all ? ra.cc : '',
+      subject: r.subject?.startsWith('Re:') ? r.subject : `Re: ${r.subject}`,
+      body: quotedReplyHtml(e),
+      dealId: r.deal_id, clientId: r.client_id, threadId: r.gmail_thread_id, inReplyTo: r.rfc_message_id,
+    });
   }
 
   // ── Gmail compose & send ─────────────────────────────────────────────────────
@@ -11144,6 +11161,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               clientLabel={id => { const c = clients.find(x => x.id === id); return c ? (`${c.first_name} ${c.last_name}`.trim() || c.email) : null; }}
               onOpenDeal={id => { const d = deals.find(x => x.id === id); if (d) { openDeal(d); setTimeout(() => setDealTab('emails'), 0); } }}
               onOpenContact={id => { const c = clients.find(x => x.id === id); if (c) setActiveClient(c); else showToast('That contact is not loaded in this workspace'); }}
+              onInboxReply={inboxReply} canInboxReplyAll={inboxCanReplyAll}
               onResumeDraft={resumeDraft}
               />
           )}

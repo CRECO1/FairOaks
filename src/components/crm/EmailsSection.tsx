@@ -18,8 +18,9 @@ type Props = {
   unread: number;
   draftCount: number;
   inbox: {
-    rows: InboxRow[] | null; mine: (r: InboxRow) => boolean; isUnread: (r: InboxRow) => boolean;
-    markRead: (ids: string[]) => void; markAllRead: (rows: InboxRow[]) => void; reload: () => void;
+    rows: InboxRow[] | null; mine: (r: InboxRow) => boolean; isUnread: (r: InboxRow) => boolean; isDone: (r: InboxRow) => boolean;
+    markRead: (ids: string[]) => void; markUnread: (ids: string[]) => void; setDoneIds: (ids: string[], on: boolean) => void;
+    markAllRead: (rows: InboxRow[]) => void; reload: () => void;
   };
   myAddresses: string[];
   nameFor: (email: string) => string | undefined;
@@ -27,6 +28,8 @@ type Props = {
   clientLabel: (id: string) => string | null;
   onOpenDeal: (id: string) => void;
   onOpenContact: (id: string) => void;
+  onInboxReply: (r: InboxRow, all: boolean) => void;
+  canInboxReplyAll: (r: InboxRow) => boolean;
   onResumeDraft: (d: EmailDraft) => void;
 };
 
@@ -48,7 +51,7 @@ export default function EmailsSection(p: Props) {
       </div>
 
       {p.tab === 'inbox' && (
-        <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} />
+        <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />
       )}
       {p.tab === 'drafts' && <DraftsSection isMobile={p.isMobile} onResume={p.onResumeDraft} />}
       {p.tab === 'sent' && (

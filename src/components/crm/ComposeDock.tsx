@@ -12,7 +12,7 @@ import { listDrafts, onDraftsChanged, type EmailDraft } from '@/lib/email-drafts
 // send route files the email under the matching CRM contact (or creates one), so it is still logged,
 // tracked and shown on that contact's card.
 
-export type ComposeRequest = { nonce: number; to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string; view?: 'drafts'; crmFiles?: CrmAttachItem[] } | null;
+export type ComposeRequest = { nonce: number; to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string; view?: 'drafts'; crmFiles?: CrmAttachItem[]; dealId?: string | null; clientId?: string | null; threadId?: string | null; inReplyTo?: string | null } | null;
 
 export default function ComposeDock(props: {
   request: ComposeRequest;
@@ -109,7 +109,9 @@ export default function ComposeDock(props: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${props.accessToken}` },
         body: JSON.stringify({
-          userId: props.userId, resolveClient: true, toName: request?.name,
+          userId: props.userId, toName: request?.name,
+          ...(request?.dealId || request?.clientId ? { dealId: request.dealId ?? undefined, clientId: request.clientId ?? undefined } : { resolveClient: true }),
+          ...(request?.threadId ? { threadId: request.threadId, inReplyTo: request.inReplyTo ?? undefined } : {}),
           to: recipients.join(', '), cc, bcc, individual: individual && !bcc.trim(),
           subject, body: fullBody, agentName: props.agentName, ccAgentIds: [], attachments: files, crmAttachments: crmFiles.map(f => ({ kind: f.kind, id: f.id })), followUpDays: followUp || undefined,
         }),
