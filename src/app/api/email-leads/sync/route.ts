@@ -8,6 +8,7 @@ import { resolveActionPlanFrom } from '@/lib/action-plan-from';
 import { newTrackingId, withOpenPixel, unsubscribeUrlFor } from '@/lib/email-tracking';
 import { emailLeadOwner, type OwnerProfile } from '@/lib/email-lead-owner';
 import { extractEmailText } from '@/lib/gmail-body';
+import { formatLeadEmail } from '@/lib/lead-email-text';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -831,7 +832,7 @@ export async function POST(req: import('next/server').NextRequest) {
                   from_email: from,
                   to_email: getHeader(msg, 'to'),
                   subject,
-                  body: extractEmailText(msg.payload).replace(/\r\n?/g, '\n').trim().slice(0, 4000),
+                  body: (source.ownWebsite && /<table/i.test(body) ? formatLeadEmail(body) : extractEmailText(msg.payload).replace(/\r\n?/g, '\n').trim()).slice(0, 4000),
                   email_date: new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }),
                   email_at: new Date(ms).toISOString(),
                   gmail_thread_id: msg.threadId ?? null,
