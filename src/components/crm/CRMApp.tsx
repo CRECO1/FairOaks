@@ -1121,18 +1121,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const deal = deals.find(x => x.id === ctx.id);
       if (!deal) { showToast('That deal isn’t available any more — you can still copy the text from the draft.'); return; }
       const reply = await fetchReply();
-      setPage('deals'); openDeal(deal); setDealTab('emails');
-      setReplyToEmail(reply); clearComposeBody(); fill(); setShowCompose(true);
-      placeReplyQuote(composeBodyRef, d.bodyHtml);
-      setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+      setPage('deals'); openDeal(deal);
+      // Opening a card resets its composer state in an effect — set ours just after that has run.
+      setTimeout(() => {
+        setDealTab('emails');
+        setReplyToEmail(reply); clearComposeBody(); fill(); setShowCompose(true);
+        placeReplyQuote(composeBodyRef, d.bodyHtml);
+        setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+      }, 200);
     } else if (ctx.kind === 'contact' && ctx.id) {
       const client = clients.find(x => x.id === ctx.id);
       if (!client) { showToast('That contact isn’t available any more.'); return; }
       const reply = await fetchReply();
       setPage('contacts'); setActiveClient(client);
-      setReplyingToThreadKey(null); setReplyToContactEmail(reply); clearContactComposeBody(); fill(); setShowContactCompose(true);
-      placeReplyQuote(contactComposeBodyRef, d.bodyHtml);
-      setTimeout(() => document.getElementById('contact-email-thread')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+      // Opening a contact card closes its composer in an effect — open ours just after that has run.
+      setTimeout(() => {
+        setReplyingToThreadKey(null); setReplyToContactEmail(reply); clearContactComposeBody(); fill(); setShowContactCompose(true);
+        placeReplyQuote(contactComposeBodyRef, d.bodyHtml);
+        setTimeout(() => document.getElementById('contact-email-thread')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+      }, 200);
     } else {
       openCompose({ resumeKey: d.key });
     }
