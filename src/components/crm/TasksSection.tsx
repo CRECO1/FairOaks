@@ -653,6 +653,7 @@ export default function TasksSection({
   async function bulkDelete() {
     const ids = [...selected];
     if (ids.length === 0) return;
+    if (ids.length > 1 && !confirm(`Delete ${ids.length} tasks? This can't be undone.`)) return;
     await Promise.all(ids.map(id => apiDeleteTask(id)));
     onTasksChange(tasks.filter(t => !selected.has(t.id)));
     setSelected(new Set()); setBulkMenu(null);
@@ -761,7 +762,17 @@ export default function TasksSection({
               <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '3px solid ' + grp.color }}>
                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: grp.color, display: 'inline-block', flexShrink: 0 }} />
                 <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>{grp.label}</span>
-                <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', background: 'var(--k-fff)', borderRadius: 10, padding: '1px 7px', fontWeight: 600, marginLeft: 'auto' }}>{groupTasks.length}</span>
+                {groupTasks.length > 1 && (() => {
+                  const allSel = groupTasks.every(t => selected.has(t.id));
+                  return (
+                    <button onClick={() => setSelected(prev => { const next = new Set(prev); groupTasks.forEach(t => (allSel ? next.delete(t.id) : next.add(t.id))); return next; })}
+                      aria-label={allSel ? `Deselect all ${grp.label} tasks` : `Select all ${groupTasks.length} ${grp.label} tasks`}
+                      style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#c9922c', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: '0 6px', fontFamily: "'DM Sans',sans-serif" }}>
+                      {allSel ? 'Clear' : 'Select all'}
+                    </button>
+                  );
+                })()}
+                <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', background: 'var(--k-fff)', borderRadius: 10, padding: '1px 7px', fontWeight: 600, marginLeft: groupTasks.length > 1 ? 0 : 'auto' }}>{groupTasks.length}</span>
               </div>
 
               {/* Cards */}
