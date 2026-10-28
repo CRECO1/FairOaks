@@ -2,13 +2,15 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
+import DraftsSection from './DraftsSection';
+import { listDrafts, onDraftsChanged, type EmailDraft } from '@/lib/email-drafts';
 
 // The Gmail-style Compose window: docked bottom-right on desktop, full-screen on a phone, reachable from
 // every page, minimisable so you can keep working in the CRM while it waits. It writes to ANYONE — the
 // send route files the email under the matching CRM contact (or creates one), so it is still logged,
 // tracked and shown on that contact's card.
 
-export type ComposeRequest = { nonce: number; to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string } | null;
+export type ComposeRequest = { nonce: number; to?: string; name?: string; subject?: string; cc?: string; bcc?: string; body?: string; resumeKey?: string; view?: 'drafts' } | null;
 
 export default function ComposeDock(props: {
   request: ComposeRequest;
@@ -22,12 +24,21 @@ export default function ComposeDock(props: {
   notify: (msg: string) => void;
   onSyncSignature: () => void;
   onSent: () => void;
+  onResumeDraft: (d: EmailDraft) => void;
 }) {
   const { request, isMobile } = props;
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [full, setFull] = useState(false);
   const [instance, setInstance] = useState(0);
+  // The window has two views, like Gmail's: the message you're writing, and your saved drafts.
+  const [view, setView] = useState<'compose' | 'drafts'>('compose');
+  const [draftCount, setDraftCount] = useState(0);
+  useEffect(() => {
+    const refresh = () => setDraftCount(listDrafts().length);
+    refresh();
+    return onDraftsChanged(refresh);
+  }, []);
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
   const [bcc, setBcc] = useState('');
@@ -47,6 +58,7 @@ export default function ComposeDock(props: {
     setTo(request.to ?? ''); setCc(request.cc ?? ''); setBcc(request.bcc ?? '');
     setSubject(request.subject ?? '');
     setAttachments([]); setMinimized(false); setFull(false);
+    setView(request.view ?? 'compose');
     setInstance(i => i + 1);
     setOpen(true);
     // A Forward / mailto link brings its own body (HTML). Drop it in once the editor exists — unless a saved draft already filled it.
@@ -134,12 +146,24 @@ export default function ComposeDock(props: {
     <div role="dialog" aria-label="New message" style={shell}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: isMobile ? '4px 6px 4px 14px' : '0 6px 0 14px', height: isMobile ? 52 : 44, flexShrink: 0, background: '#111', color: '#fff', cursor: !isMobile && minimized ? 'pointer' : 'default' }}
         onClick={() => { if (!isMobile && minimized) setMinimized(false); }}>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject.trim() || 'New message'}</span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{view === 'drafts' ? 'Drafts' : (subject.trim() || 'New message')}</span>
+        {(draftCount > 0 || view === 'drafts') && (
+          <button type="button" onClick={e => { e.stopPropagation(); setView(v => (v === 'drafts' ? 'compose' : 'drafts')); setMinimized(false); }}
+            aria-label={view === 'drafts' ? 'Back to your message' : `Drafts (${draftCount})`} title={view === 'drafts' ? 'Back to your message' : 'Your saved drafts'}
+            style={{ ...barBtn, width: 'auto', padding: '0 10px', fontSize: 13, fontWeight: 600, gap: 6, color: view === 'drafts' ? '#c9922c' : 'rgba(255,255,255,.85)' }}>
+            {view === 'drafts' ? '← Message' : <>✎ Drafts <span style={{ background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '0 6px', borderRadius: 9, lineHeight: '16px' }}>{draftCount}</span></>}
+          </button>
+        )}
         <button type="button" onClick={e => { e.stopPropagation(); setMinimized(m => !m); }} aria-label={minimized ? 'Restore' : 'Minimize'} title={minimized ? 'Restore' : 'Minimize'} style={barBtn}>{minimized ? '▢' : '—'}</button>
         {!isMobile && <button type="button" onClick={e => { e.stopPropagation(); setFull(f => !f); setMinimized(false); }} aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen' : 'Full screen'} style={barBtn}>{full ? '⤡' : '⤢'}</button>}
         <button type="button" onClick={e => { e.stopPropagation(); setOpen(false); }} aria-label="Close (keeps your draft)" title="Close — your draft is kept" style={{ ...barBtn, fontSize: 18 }}>✕</button>
       </div>
-      <div style={{ flex: 1, minHeight: 0, display: minimized ? 'none' : 'flex', flexDirection: 'column' }}>
+      {view === 'drafts' && !minimized && (
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobile ? '12px 12px 24px' : '14px 16px 20px', background: 'var(--k-f9fafb)' }}>
+          <DraftsSection isMobile={isMobile} onResume={d => { setOpen(false); props.onResumeDraft(d); }} />
+        </div>
+      )}
+      <div style={{ flex: 1, minHeight: 0, display: minimized || view === 'drafts' ? 'none' : 'flex', flexDirection: 'column' }}>
         <EmailComposer
           key={`${instance}`}
           variant="dock" isMobile={isMobile} title="New message"
