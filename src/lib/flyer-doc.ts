@@ -17,10 +17,9 @@ const INK: RGB = rgb(0.11, 0.11, 0.13);
 const BODY: RGB = rgb(0.24, 0.26, 0.29);
 const LINE: RGB = rgb(0.85, 0.86, 0.88);
 
-const W = 612, H = 792;
+const W = 792, H = 612;   // US Letter, landscape — the Elkhorn Point standard
 // Matches the letterhead used on the LOIs — a rule, the tagline, the company line.
-const FOOT_TAG = 'Where your real estate ventures find the support they deserve';
-const FOOT_CONTACT = '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015   |   (210) 817-3443   |   info@crecotx.com   |   crecotx.com';
+const FOOT_COMPANY = 'CRECO — Commercial Real Estate Company   |   8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015   |   crecotx.com';
 
 export interface FlyerInput {
   badge: string;                 // "FOR LEASE" / "FOR SALE"
@@ -35,6 +34,11 @@ export interface FlyerInput {
   statZoning?: string | null;    // "I-1"
   agentNames: string[];
   contacts: string[];            // email / phone lines
+  // Header title + line under it (the property's name and its address). Absent = the address is the title.
+  title?: string | null;
+  subtitle?: string | null;
+  // One footer row per agent. Absent = built from agentNames + contacts.
+  agents?: Array<{ name: string; phone?: string; email?: string }> | null;
   hero?: { bytes: Uint8Array; png: boolean } | null;
   galleryPhotos?: Array<{ bytes: Uint8Array; png: boolean }>;   // page-2 gallery (pre-cropped ~4:3)
   mapBytes?: Uint8Array | null;        // page-1 location map (PNG)
@@ -172,42 +176,30 @@ function drawMapLabels(page: PDFPage, r: Rect, img: PDFImage, labels: FlyerInput
     page.drawText(text, { x: ox, y: oy, size: fs, font, color: WHITE, rotate: degrees(l.angle) });
   }
 }
-// How tall a photo grid wants to be at width w — blocks ask first so they only
-// reserve what the grid will really use.
-function photoGridHeight(n: number, w: number) {
-  if (!n) return 0;
-  const cols = n === 1 ? 1 : n === 2 || n === 4 ? 2 : 3;
-  const rows = Math.ceil(n / cols), g = 6;
-  return rows * (((w - (cols - 1) * g) / cols) * 0.75) + (rows - 1) * g;
-}
 /**
- * Height/width for the page-2 area map so it fills what the other blocks leave, edge to
- * edge. A fixed 700x540 map either left a hole under it (short gallery) or was shrunk to
- * a narrow centred strip (tall gallery, or a floor plan taking most of the page). Runs the
- * same weighted allocation as the page-2 layout below, with the map as a block that can
- * stretch. A hand-made site aerial has its own aspect, so the default stands there.
+ * Height/width for the page-2 area map so it matches the space the other blocks leave in the landscape layout.
+ * Mirrors the placement in renderFlyer: one visual fills the page; two sit side by side (a lone 4:3 photo takes
+ * 470pt, the map the remaining column); three put the gallery left and the plan + map stacked right. A hand-made
+ * site aerial has its own aspect, so the default stands there.
  */
 export function areaMapAspect(o: { gallery: number; trade: boolean; floorAspect: number; siteAerial: boolean }): number {
   const DEFAULT = 540 / 700;
   if (o.siteAerial) return DEFAULT;
-  const boxW = W - 36, titleH = 18, gap = 16;
-  const blocks: Array<{ wt: number; nat: number }> = [];
-  if (o.trade) blocks.push({ wt: 1.0, nat: 77 });
-  if (o.gallery) blocks.push({ wt: o.gallery === 1 ? 2.2 : 1.9, nat: photoGridHeight(o.gallery, boxW) });
-  if (o.floorAspect > 0) blocks.push({ wt: 2.6, nat: boxW * o.floorAspect });
-  blocks.push({ wt: 1.4, nat: Infinity });   // the map
-  const avail = ((H - 72 - gap) - (54 + 14)) - blocks.length * titleH - (blocks.length - 1) * gap;
-  const totalWt = blocks.reduce((s, b) => s + b.wt, 0);
-  const heights = blocks.map(b => avail * (b.wt / totalWt));
-  let slack = 0, stretchWt = 0;
-  blocks.forEach((b, i) => { if (b.nat < heights[i]) { slack += heights[i] - b.nat; heights[i] = b.nat; } else stretchWt += b.wt; });
-  const mapH = heights[heights.length - 1] + (stretchWt > 0 ? slack * (1.4 / stretchWt) : 0);
-  return Math.max(0.3, Math.min(1.1, (mapH - 6) / boxW));
+  const AW = W - 56, G = 16, CAP = 30, AH = 444, IH = AH - CAP;
+  const n = (o.gallery ? 1 : 0) + (o.floorAspect > 0 ? 1 : 0) + 1;
+  let wMap: number, hMap: number;
+  if (n === 1) { wMap = AW; hMap = IH; }
+  else if (n === 2) {
+    if (o.gallery === 1) { wMap = AW - G - 470; hMap = 470 * 0.75; }
+    else if (o.gallery > 1) { wMap = (AW - G) / 2; hMap = IH; }
+    else { wMap = (AW - G) / 2; hMap = Math.min(IH, wMap * o.floorAspect); }
+  } else { wMap = (AW - G) / 2; hMap = (AH - G) / 2 - CAP; }
+  return Math.max(0.3, Math.min(1.5, hMap / wMap));
 }
 // Lay pre-cropped (~4:3) photos into a grid filling the box.
 function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w: number, h: number, line: RGB): Rect {
   const n = imgs.length; if (!n) return { x, y: y + h, w: 0, h: 0 };
-  const cols = n === 1 ? 1 : n === 2 || n === 4 ? 2 : 3;
+  const cols = n <= 2 ? 1 : 2;
   const rows = Math.ceil(n / cols);
   const g = 6;
   // Cells are held at the photos' own 4:3 so they fill edge to edge instead of
@@ -226,37 +218,6 @@ function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w:
   });
   const usedH = rows * ch + (rows - 1) * g;
   return { x: x0, y: top - usedH, w: gridW, h: usedH };
-}
-
-// Dark demographics strip: up to 4 gold-value / white-label cells with dividers, plus
-// an optional source/value-prop caption underneath. Drawn top-aligned in its box.
-function drawTradeArea(
-  page: PDFPage, ta: { tiles: Array<{ value: string; label: string }>; caption?: string },
-  x: number, y: number, w: number, h: number, osw: PDFFont, body: PDFFont, accent: RGB = GOLD,
-): Rect {
-  const barH = 60;
-  const barY = y + h - barH;                       // top-align the bar within the block box
-  page.drawRectangle({ x, y: barY, width: w, height: barH, color: BLACK });
-  const tiles = ta.tiles.slice(0, 4);
-  const cw = w / Math.max(1, tiles.length);
-  tiles.forEach((t, i) => {
-    const cx = x + i * cw;
-    if (i > 0) page.drawRectangle({ x: cx, y: barY + 11, width: 1, height: barH - 22, color: rgb(0.3, 0.31, 0.34) });
-    const val = sanitize(t.value) || '—';
-    const vs = fitSize(val, osw, cw - 16, 20, 10);
-    page.drawText(val, { x: cx + (cw - osw.widthOfTextAtSize(val, vs)) / 2, y: barY + barH - 27, size: vs, font: osw, color: accent });
-    const lab = sanitize(t.label).toUpperCase();
-    const ls = fitSize(lab, body, cw - 8, 7.5, 5);
-    page.drawText(lab, { x: cx + (cw - body.widthOfTextAtSize(lab, ls)) / 2, y: barY + 11, size: ls, font: body, color: WHITE });
-  });
-  let usedH = barH;
-  if (ta.caption) {
-    const cs = 8, cap = sanitize(ta.caption);
-    const cw2 = fitSize(cap, body, w, cs, 6);
-    page.drawText(cap, { x: x + (w - body.widthOfTextAtSize(cap, cw2)) / 2, y: barY - 13, size: cw2, font: body, color: rgb(0.42, 0.44, 0.47) });
-    usedH += 17;
-  }
-  return { x, y: y + h - usedH, w, h: usedH };
 }
 
 export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
@@ -284,314 +245,191 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   const floor = await embed(input.floorPlan);
   const gallery = (await Promise.all((input.galleryPhotos || []).map(embed))).filter((g): g is PDFImage => !!g).slice(0, 6);
 
-  // ── PAGE 1 ─────────────────────────────────────────────────────────────────
+  // ── Landscape layout — the Elkhorn Point standard ───────────────────────────
+  // Letter, landscape. Page 1: a white header (two-tone tracked title, address, gold kicker), a full-width photo with a
+  // dark label chip and headline band, three columns of facts, and a dark contact footer with the logo on a white
+  // block. Later pages carry the photos / plan / map, each under a dark caption bar. Same bones as the hand-built
+  // Elkhorn Point flyer, so every listing reads at that level.
+  const M = 28, HEAD_H = 66, FOOT_H = 68;
+  const GREY = rgb(0.45, 0.47, 0.5), HAIR = rgb(0.84, 0.85, 0.87), SOFT = rgb(0.74, 0.76, 0.79);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const badge = sanitize(input.badge).toUpperCase();
+  const kickParts = sanitize(input.kicker || '').split(/\s*·\s*/).map(s => s.trim()).filter(Boolean);
+  const propType = kickParts[0] || '', propPlace = kickParts.slice(1).join(', ');
+
+  // Title: the property's name, last word in gold (a brand wordmark overrides). Falls back to the address.
+  const titleText = sanitize(input.title || input.address).toUpperCase();
+  const tw = titleText.split(/\s+/);
+  const [t1, t2] = brand ? brand.wordmark.map(t => sanitize(t).toUpperCase())
+    : tw.length > 1 ? [tw.slice(0, -1).join(' '), tw[tw.length - 1]] : [titleText, ''];
+  const subtitle = sanitize(input.subtitle ?? (input.title ? input.address : ''));
+
+  const drawHeader = (pg: PDFPage, right: string) => {
+    const maxW = W - 2 * M - 240;
+    let ts = 25;
+    const width = () => spacedWidth(t1, body, ts, ts * 0.17) + (t2 ? ts * 0.5 + spacedWidth(t2, body, ts, ts * 0.17) : 0);
+    while (width() > maxW && ts > 12) ts -= 0.5;
+    const w1 = drawSpaced(pg, t1, M, H - 40, ts, body, INK, ts * 0.17);
+    if (t2) drawSpaced(pg, t2, M + w1 + ts * 0.5, H - 40, ts, body, gold, ts * 0.17);
+    if (subtitle) pg.drawText(subtitle, { x: M, y: H - 56, size: 9.5, font: body, color: GREY });
+    const r = sanitize(right).toUpperCase();
+    if (r) { let rs = 8.5; while (spacedWidth(r, body, rs, 2.2) > 300 && rs > 6) rs -= 0.5; drawSpaced(pg, r, W - M - spacedWidth(r, body, rs, 2.2), H - 33, rs, body, gold, 2.2); }
+    pg.drawLine({ start: { x: M, y: H - HEAD_H }, end: { x: W - M, y: H - HEAD_H }, thickness: 0.75, color: HAIR });
+  };
+
+  // Footer: dark bar, thin gold rule above, one row per agent (name | phone | email), the company line, and the logo
+  // on a white block at the right.
+  const emails = input.contacts.filter(c => c.includes('@'));
+  const phone = input.contacts.find(c => !c.includes('@') && /\d{3}\D*\d{4}/.test(c)) || '';
+  const agents = (input.agents?.length ? input.agents : input.agentNames.map((n, i) => ({ name: n, phone, email: emails[i] || '' }))).slice(0, 3);
+  const drawFooter = (pg: PDFPage) => {
+    pg.drawRectangle({ x: 0, y: 0, width: W, height: FOOT_H, color: BLACK });
+    pg.drawRectangle({ x: 0, y: FOOT_H, width: W, height: 2.2, color: gold });
+    const lw = 176;
+    pg.drawRectangle({ x: W - lw, y: 0, width: lw, height: FOOT_H, color: WHITE });
+    if (logo) drawContain(pg, logo, W - lw + 10, 6, lw - 20, FOOT_H - 10);
+    const rows = agents.length >= 3 ? [51, 38, 25] : agents.length === 2 ? [49, 33] : [44];
+    agents.forEach((a, i) => {
+      const y = rows[i];
+      drawSpaced(pg, sanitize(a.name).toUpperCase(), M, y, 10, body, WHITE, 2.2);
+      if (a.phone) { pg.drawText('|', { x: 236, y, size: 10, font: body, color: gold }); pg.drawText(sanitize(a.phone), { x: 250, y, size: 10, font: body, color: WHITE }); }
+      if (a.email) { pg.drawText('|', { x: 346, y, size: 10, font: body, color: gold }); pg.drawText(sanitize(a.email), { x: 360, y, size: 10, font: body, color: WHITE }); }
+    });
+    if (agents.length < 3) pg.drawText(FOOT_COMPANY, { x: M, y: 13, size: 7.3, font: body, color: SOFT });
+  };
+
+  // ── PAGE 1 ───────────────────────────────────────────────────────────────────
   const p1 = pdf.addPage([W, H]);
   p1.drawRectangle({ x: 0, y: 0, width: W, height: H, color: WHITE });
-
-  // Hero (full-bleed top) — cover, then paint white below to erase any spill.
-  const heroY = 462, heroH = H - heroY;   // 330 tall
+  const heroTop = H - HEAD_H, heroH = 236, heroY = heroTop - heroH;
   if (hero) drawCover(p1, hero, 0, heroY, W, heroH);
-  else { p1.drawRectangle({ x: 0, y: heroY, width: W, height: heroH, color: rgb(0.9, 0.91, 0.93) }); p1.drawText('Add a property photo', { x: W / 2 - 70, y: heroY + heroH / 2, size: 12, font: body, color: rgb(0.6, 0.63, 0.67) }); }
+  else { p1.drawRectangle({ x: 0, y: heroY, width: W, height: heroH, color: rgb(0.9, 0.91, 0.93) }); p1.drawText('Add a property photo', { x: W / 2 - 60, y: heroY + heroH / 2, size: 12, font: body, color: rgb(0.6, 0.63, 0.67) }); }
+  // drawCover can spill past its box: paint the header and body areas back to white before anything else lands on them.
+  p1.drawRectangle({ x: 0, y: heroTop, width: W, height: HEAD_H, color: WHITE });
   p1.drawRectangle({ x: 0, y: 0, width: W, height: heroY, color: WHITE });
+  drawHeader(p1, [propType, badge].filter(Boolean).join(' · '));
 
-  const badge = sanitize(input.badge).toUpperCase();
-  const drawWordmark = (pg: PDFPage, x: number, y: number, size: number, track: number) => {
-    const [a, b] = brand!.wordmark.map(t => sanitize(t).toUpperCase());
-    const w1 = drawSpaced(pg, a, x, y, size, labelFont, WHITE, track);
-    drawSpaced(pg, b, x + w1 + size * 0.55, y, size, labelFont, gold, track);
-  };
-  if (brand) {
-    // The property's campaign-email header: two-tone wordmark + tag across the top,
-    // kicker + headline bottom-left, gold rule where the cover meets the banner. The
-    // caller supplies the cover already shaded (dark top and foot, lighter middle) —
-    // a raster gradient; stacked translucent bands here show seams in some viewers.
-    drawWordmark(p1, 30, H - 38, 17, 3.4);
-    if (brand.tag) {
-      const tag = sanitize(brand.tag).toUpperCase();
-      drawSpaced(p1, tag, W - 30 - spacedWidth(tag, labelFont, 8, 1.1), H - 36, 8, labelFont, rgb(0.89, 0.89, 0.89), 1.1);
-    }
-    // Headline: two lines at most — shrink to fit rather than drop words.
-    // At the top the headline shares the sky with the canopy, so it starts a size smaller.
-    let hs = brand.headlineAt === 'top' ? 31 : 36, hl = wrapText(sanitize(brand.headline || ''), osw, hs, 470);
-    while (hl.length > 2 && hs > 18) { hs -= 1; hl = wrapText(sanitize(brand.headline || ''), osw, hs, 470); }
-    // Balance a two-line headline: narrow the measure until one more step would need a
-    // third line, so it never ends on a single orphaned word.
-    if (hl.length === 2) for (let w = 460; w > 160; w -= 10) {
-      const t = wrapText(sanitize(brand.headline || ''), osw, hs, w);
-      if (t.length > 2) break;
-      hl = t;
-    }
-    const lead = hs * 1.12;
-    const kick = sanitize(brand.kicker || badge).toUpperCase();
-    const kickY = brand.headlineAt === 'top' ? H - 64 : heroY + 30 + (hl.length - 1) * lead + hs + 10;
-    let hy = kickY - 10 - hs;
-    drawSpaced(p1, kick, 30, kickY, 9.5, labelFont, brand.kickerColor ? hexRgb(brand.kickerColor) : gold, 2.2);
-    for (const line of hl) { p1.drawText(line, { x: 30, y: hy, size: hs, font: osw, color: WHITE }); hy -= lead; }
-    p1.drawRectangle({ x: 0, y: heroY - 1.5, width: W, height: 3, color: gold });
-  } else {
-    // FOR LEASE badge (top-left over hero)
-    const bSize = 30, bW = osw.widthOfTextAtSize(badge, bSize);
-    p1.drawRectangle({ x: 0, y: H - 62, width: bW + 30, height: 62, color: BLACK, opacity: 0.82 });
-    p1.drawText(badge, { x: 15, y: H - 45, size: bSize, font: osw, color: WHITE });
-
-    // Cover overlay: kicker + headline + stat row, bottom-left of the photo, on a dark fade.
-    const stats = (input.coverStats || []).filter(t => t && t.value && t.label).slice(0, 4);
-    const headline = sanitize(input.headline || '').trim();
-    if (hero && (headline || stats.length)) {
-      const shade = await embedPng(input.coverShade);
-      if (shade) p1.drawImage(shade, { x: 0, y: heroY, width: W, height: 270 });
-      let baseY = heroY + 14;
-      if (stats.length) {
-        const colW = (W - 60) / stats.length;
-        stats.forEach((t, i) => {
-          const x = 30 + i * colW;
-          p1.drawText(sanitize(t.value), { x, y: baseY + 14, size: 21, font: osw, color: gold });
-          // label: shrink to fit its column rather than cut it off
-          const lab = sanitize(t.label).toUpperCase();
-          const ls = fitSize(lab, labelFont, colW - 22, 6.6, 4.6);
-          p1.drawText(lab, { x, y: baseY + 2, size: ls, font: labelFont, color: rgb(0.9, 0.91, 0.92) });
-          if (i > 0) p1.drawRectangle({ x: x - 12, y: baseY, width: 0.8, height: 32, color: rgb(1, 1, 1), opacity: 0.35 });
-        });
-        baseY += 50;
-      }
-      if (headline) {
-        let hs = 30, lines = wrapText(headline, osw, hs, W - 70);
-        while (lines.length > 2 && hs > 18) { hs -= 1; lines = wrapText(headline, osw, hs, W - 70); }
-        // balance a two-line headline so it never ends on one orphaned word
-        if (lines.length === 2) for (let w = W - 80; w > 200; w -= 10) { const t = wrapText(headline, osw, hs, w); if (t.length > 2) break; lines = t; }
-        const lead = hs * 1.12;
-        lines.slice(0, 2).reverse().forEach((ln, i) => p1.drawText(ln, { x: 30, y: baseY + i * lead, size: hs, font: osw, color: WHITE }));
-        baseY += Math.min(lines.length, 2) * lead + 6;
-      }
-      const kick = sanitize(input.kicker || '').toUpperCase().trim();
-      if (kick) drawSpaced(p1, kick, 30, baseY, 9, labelFont, rgb(0.95, 0.78, 0.47), 2);
-    }
+  // Dark label chip, top-left of the photo, and the headline band across its foot.
+  const chip = sanitize(brand?.kicker || badge).toUpperCase();
+  const chipW = spacedWidth(chip, body, 14, 4.2) + 44;
+  p1.drawRectangle({ x: M, y: heroTop - 50, width: chipW, height: 38, color: BLACK, opacity: 0.9 });
+  drawSpaced(p1, chip, M + 22, heroTop - 50 + 13, 14, body, gold, 4.2);
+  const headline = sanitize(brand?.headline || input.headline || '').trim().toUpperCase();
+  if (headline) {
+    p1.drawRectangle({ x: 0, y: heroY, width: W, height: 46, color: BLACK, opacity: 0.88 });
+    const hs = fitSize(headline, osw, W - 2 * M, 25, 14);
+    p1.drawText(headline, { x: M, y: heroY + 15, size: hs, font: osw, color: WHITE });
   }
 
-  // Address banner (black bar, gold text)
-  const bannerY = heroY - 50 - (brand ? 1.5 : 0), bannerH = 50;
-  p1.drawRectangle({ x: 0, y: bannerY, width: W, height: bannerH, color: BLACK });
-  const addr = sanitize(input.address);
-  const aSize = fitSize(addr, osw, W - 44, 27, 13);
-  p1.drawText(addr, { x: 22, y: bannerY + bannerH / 2 - aSize * 0.34, size: aSize, font: osw, color: gold });
+  // Three columns under the photo.
+  const colTop = heroY - 22, colBottom = FOOT_H + 20;
+  const c1x = M, c1w = 300, c2x = M + 326, c2w = 190, c3x = c2x + 216, c3w = W - M - c3x;
+  const secTitle = (t: string, x: number) => drawSpaced(p1, t, x, colTop - 10, 11, body, gold, 2.6);
 
-  // ── Two-column body ──
-  const M = 34;
-  const colGap = 22;
-  const leftX = M, leftW = 250;
-  const rightX = leftX + leftW + colGap, rightW = W - M - rightX;   // ~272
-  let ly = bannerY - 24;
-
-  // The left column must never reach the footer, so description and highlights share a
-  // fixed budget: highlights reserve their space first (they're the scannable part),
-  // and whatever is left caps the description.
-  const FLOOR = 148;                       // the agent block's divider sits at 128
-  // A flyer is read in seconds. The column is therefore: one bold sentence that says
-  // what this is, a couple of plain sentences under it, and a short list of bullets —
-  // set large enough to read at arm's length and never cut off mid-thought. Anything
-  // that doesn't fit is left out whole (a sentence, a bullet), not trailed off with "…".
-  const DESC_SIZE = 10.2, DESC_LEAD = 14, LEAD_SIZE = 11.2, LEAD_LEAD = 15;
-  const HL_SIZE = 10.2, HL_ROW = 17, HL_WRAP = 13, HL_MAX = 6;
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  // Column 1 — the one bold sentence that says what this is, a short paragraph if there is room, then the bullets.
+  // Whole sentences and whole bullets only: anything that doesn't fit is left out, never trailed off.
+  const DESC_SIZE = 9, DESC_LEAD = 12.4, LEAD_SIZE = 10.2, LEAD_LEAD = 13.4;
+  const HL_SIZE = 9.2, HL_ROW = 14.5, HL_WRAP = 11.5, HL_MAX = 6;
   const hl = (input.highlights || []).map(s => sanitize(s).trim()).filter(Boolean).slice(0, HL_MAX);
   const sentences = sanitize(input.description || 'Contact the listing agent for full property details.')
     .replace(/\s*\n+\s*/g, ' ').split(/(?<=[.!?])\s+(?=[A-Z0-9$~"'])/).map(t => t.trim()).filter(Boolean);
-  const leadLines = wrapText(sentences[0] || '', bold, LEAD_SIZE, leftW).slice(0, 3);
-
-  // Bullets are the scannable part, so they reserve their room first.
-  const hlHeights = hl.map(h => HL_ROW + (wrapText(h, body, HL_SIZE, leftW - 16).length - 1) * HL_WRAP);
-  const hlWant = hl.length ? 19 + hlHeights.reduce((a, b) => a + b, 0) : 0;
-
-  p1.drawText('PROPERTY DESCRIPTION', { x: leftX, y: ly, size: 13, font: osw, color: INK });
-  ly -= 18;
-  for (const ln of leadLines) { p1.drawText(ln, { x: leftX, y: ly, size: LEAD_SIZE, font: bold, color: INK }); ly -= LEAD_LEAD; }
-  ly -= 3;
-  // Whole sentences only, set as one paragraph, for as long as they fit above the bullets.
-  const room = ly - FLOOR - hlWant - 10;
+  const leadLines = wrapText(sentences[0] || '', bold, LEAD_SIZE, c1w).slice(0, 2);
+  const hlHeights = hl.map(h => HL_ROW + (wrapText(h, body, HL_SIZE, c1w - 14).length - 1) * HL_WRAP);
+  const hlWant = hlHeights.reduce((a, b) => a + b, 0);
+  secTitle(hl.length ? 'PROPERTY HIGHLIGHTS' : 'OVERVIEW', c1x);
+  let ly = colTop - 33;
+  for (const ln of leadLines) { p1.drawText(ln, { x: c1x, y: ly, size: LEAD_SIZE, font: bold, color: INK }); ly -= LEAD_LEAD; }
+  ly -= 4;
+  const room = ly - colBottom - hlWant - 6;
   let para: string[] = [];
   for (let n = 2; n <= sentences.length; n++) {
-    const lines = wrapText(sentences.slice(1, n).join(' '), body, DESC_SIZE, leftW);
+    const lines = wrapText(sentences.slice(1, n).join(' '), body, DESC_SIZE, c1w);
     if (lines.length * DESC_LEAD > room) break;
     para = lines;
   }
-  for (const ln of para) { p1.drawText(ln, { x: leftX, y: ly, size: DESC_SIZE, font: body, color: BODY }); ly -= DESC_LEAD; }
-  ly -= 12;
+  for (const ln of para) { p1.drawText(ln, { x: c1x, y: ly, size: DESC_SIZE, font: body, color: BODY }); ly -= DESC_LEAD; }
+  if (para.length) ly -= 6;
+  hl.forEach((h, i) => {
+    if (ly - hlHeights[i] + HL_ROW < colBottom) return;
+    const lines = wrapText(h, body, HL_SIZE, c1w - 14);
+    p1.drawEllipse({ x: c1x + 3, y: ly + 3, xScale: 2, yScale: 2, color: gold });
+    lines.forEach((ln, j) => { p1.drawText(ln, { x: c1x + 13, y: ly, size: HL_SIZE, font: body, color: INK }); if (j < lines.length - 1) ly -= HL_WRAP; });
+    ly -= HL_ROW;
+  });
 
-  if (hl.length) {
-    p1.drawText('HIGHLIGHTS', { x: leftX, y: ly, size: 13, font: osw, color: INK });
-    ly -= 19;
-    hl.forEach((h, i) => {
-      if (ly - hlHeights[i] < FLOOR - 14) return;
-      const lines = wrapText(h, body, HL_SIZE, leftW - 16);
-      p1.drawEllipse({ x: leftX + 3, y: ly + 3.2, xScale: 2.2, yScale: 2.2, color: gold });
-      lines.forEach((ln, j) => { p1.drawText(ln, { x: leftX + 14, y: ly, size: HL_SIZE, font: body, color: INK }); if (j < lines.length - 1) ly -= HL_WRAP; });
-      ly -= HL_ROW;
-    });
-  }
-
-  // Right: stat tiles (black, white value, gold icon). Price + size always; lot size
-  // and zoning make a second row when the listing has them.
-  const tileH = 46;
-  const half = rightW / 2;
-  const extra = [
-    { kind: 'lot' as const, value: sanitize(input.statLot || '').trim() },
-    { kind: 'zoning' as const, value: sanitize(input.statZoning || '').trim() },
-  ].filter(t => t.value);
-  const tileRows = extra.length ? 2 : 1;
-  const tileTop = bannerY - 24;
-  const tileY = tileTop - tileH;                      // first row
-  const tilesBottom = tileTop - tileRows * tileH;
-  p1.drawRectangle({ x: rightX, y: tilesBottom, width: rightW, height: tileRows * tileH, color: BLACK });
-  const hair = rgb(0.3, 0.31, 0.34);
-  // A lone second-row tile spans the full width, so that row gets no divider.
-  for (let r = 0; r < (extra.length === 1 ? 1 : tileRows); r++) p1.drawRectangle({ x: rightX + half - 0.5, y: tileTop - (r + 1) * tileH + 8, width: 1, height: tileH - 16, color: hair });
-  if (tileRows === 2) p1.drawRectangle({ x: rightX + 12, y: tileY - 0.5, width: rightW - 24, height: 1, color: hair });
-  const tile = (cx: number, cy: number, cw: number, kind: 'price' | 'size' | 'lot' | 'zoning', value: string) => {
-    // Vector icon (drawSvgPath anchors at the top-left, SVG y points down from there).
-    const ix = cx + 12, iyTop = cy + tileH / 2 + 7.5;
-    if (kind === 'price') {
-      p1.drawSvgPath('M6 1 L15 1 L15 15 L6 15 L1 8 Z', { x: ix, y: iyTop, color: gold });
-      p1.drawEllipse({ x: ix + 5, y: iyTop - 8, xScale: 1.5, yScale: 1.5, color: BLACK });
-    } else if (kind === 'size') {
-      p1.drawSvgPath('M1 1 L15 1 L15 15 L1 15 Z M1 8 L15 8 M8 1 L8 15', { x: ix, y: iyTop, borderColor: gold, borderWidth: 1.4 });
-    } else if (kind === 'lot') {
-      // a parcel: an irregular outline
-      p1.drawSvgPath('M2 4 L13 1 L15 12 L5 15 Z', { x: ix, y: iyTop, borderColor: gold, borderWidth: 1.4 });
-    } else {
-      // zoning: a stacked-layers mark
-      p1.drawSvgPath('M8 1 L15 5 L8 9 L1 5 Z M1 9 L8 13 L15 9', { x: ix, y: iyTop, borderColor: gold, borderWidth: 1.4 });
+  // A label / value table with a hairline under each row (Elkhorn's "Available" and "Demographics" columns).
+  const table = (rows: Array<[string, string]>, x: number, w: number, top: number) => {
+    let y = top;
+    for (const [label, value] of rows) {
+      const lab = sanitize(label), val = sanitize(value) || '—';
+      p1.drawText(lab, { x, y, size: 9, font: body, color: GREY });
+      const vs = fitSize(val, body, w - body.widthOfTextAtSize(lab, 9) - 12, 9.6, 6.5);
+      p1.drawText(val, { x: x + w - body.widthOfTextAtSize(val, vs), y, size: vs, font: body, color: INK });
+      p1.drawLine({ start: { x, y: y - 7 }, end: { x: x + w, y: y - 7 }, thickness: 0.6, color: HAIR });
+      y -= 23;
     }
-    const v = sanitize(value) || '—';
-    const vs = fitSize(v, osw, cw - 44, 15, 8);
-    p1.drawText(v, { x: cx + 36, y: cy + tileH / 2 - vs * 0.34, size: vs, font: osw, color: WHITE });
-  };
-  tile(rightX, tileY, half, 'price', input.statPrice);
-  tile(rightX + half, tileY, half, 'size', input.statSize);
-  extra.forEach((t, i) => tile(rightX + (extra.length === 1 ? 0 : i * half), tilesBottom, extra.length === 1 ? rightW : half, t.kind, t.value));
-
-  // Right: location map
-  const mapTop = tilesBottom - 12, mapBottom = 140, mapH = mapTop - mapBottom;   // divider sits at 128
-  if (map) { const r = drawContain(p1, map, rightX, mapBottom, rightW, mapH); p1.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, borderColor: LINE, borderWidth: 1 }); drawMapCredit(p1, r, input.mapCredit, body); }
-  else { p1.drawRectangle({ x: rightX, y: mapBottom, width: rightW, height: mapH, color: rgb(0.95, 0.96, 0.97), borderColor: LINE, borderWidth: 1 }); p1.drawText('Location map', { x: rightX + rightW / 2 - 30, y: mapBottom + mapH / 2, size: 10, font: body, color: rgb(0.6, 0.63, 0.67) }); }
-
-  // ── Footer — the LOI letterhead footer, on every page we generate. ──
-  const FOOT_RULE_Y = 54;
-  const centre = (pg: PDFPage, t: string, y: number, size: number, font: PDFFont, color: RGB) => {
-    const txt = sanitize(t);
-    pg.drawText(txt, { x: (W - font.widthOfTextAtSize(txt, size)) / 2, y, size, font, color });
-  };
-  const drawFooter = (pg: PDFPage) => {
-    pg.drawLine({ start: { x: M, y: FOOT_RULE_Y }, end: { x: W - M, y: FOOT_RULE_Y }, thickness: 2.4, color: BLACK });
-    centre(pg, FOOT_TAG, FOOT_RULE_Y - 13, 8.5, italic, rgb(0.35, 0.37, 0.4));
-    centre(pg, FOOT_CONTACT, FOOT_RULE_Y - 24, 7.5, body, rgb(0.45, 0.47, 0.5));
-    pg.drawRectangle({ x: 0, y: 0, width: W, height: 8, color: gold });
+    return y;
   };
 
-  // Page 1 also names the agent to call, sitting just above that footer.
-  const footTop = 128;
-  p1.drawLine({ start: { x: M, y: footTop }, end: { x: W - M, y: footTop }, thickness: 1, color: LINE });
-  {
-    const names = input.agentNames.filter(Boolean);
-    let ny = names.length > 1 ? 104 : 96;
-    for (const nm of names.slice(0, 3)) { p1.drawText(sanitize(nm).toUpperCase(), { x: M, y: ny, size: 15, font: osw, color: INK }); ny -= 18; }
-    p1.drawLine({ start: { x: 188, y: 72 }, end: { x: 188, y: 114 }, thickness: 1, color: LINE });
-    let cy = 106;
-    for (const c of input.contacts.filter(Boolean).slice(0, 3)) {
-      p1.drawEllipse({ x: 206, y: cy + 3, xScale: 2.2, yScale: 2.2, color: gold });
-      p1.drawText(sanitize(c), { x: 216, y: cy, size: 10.5, font: body, color: INK });
-      cy -= 17;
-    }
-    if (logo) drawContain(p1, logo, W - M - 168, 68, 168, 50);
+  // Column 2 — the facts.
+  const facts: Array<[string, string]> = [['Type', propType], ['Location', propPlace], ['Size', input.statSize], ['Lot', input.statLot || ''], ['Zoning', input.statZoning || ''], ['Pricing', input.statPrice]]
+    .filter(([, v]) => v && v !== '—') as Array<[string, string]>;
+  secTitle('AVAILABLE', c2x);
+  table(facts, c2x, c2w, colTop - 34);
+
+  // Column 3 — trade-area numbers when the listing has them, otherwise the location map.
+  const tiles = (input.tradeArea?.tiles?.length ? input.tradeArea.tiles : input.coverStats || []).filter(t => t && t.value && t.label).slice(0, 4);
+  if (tiles.length) {
+    secTitle('TRADE AREA', c3x);
+    const endY = table(tiles.map(t => [t.label, t.value] as [string, string]), c3x, c3w, colTop - 34);
+    if (input.tradeArea?.caption) wrapText(sanitize(input.tradeArea.caption), body, 7, c3w).slice(0, 3).forEach((ln, i) => p1.drawText(ln, { x: c3x, y: endY + 10 - i * 9, size: 7, font: body, color: GREY }));
+  } else {
+    secTitle('LOCATION', c3x);
+    const mTop = colTop - 24, mH = mTop - colBottom;
+    if (map) { const r = drawContainTop(p1, map, c3x, colBottom, c3w, mH); p1.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, borderColor: HAIR, borderWidth: 0.75 }); drawMapCredit(p1, r, input.mapCredit, body); }
+    else p1.drawRectangle({ x: c3x, y: colBottom, width: c3w, height: mH, color: rgb(0.95, 0.96, 0.97), borderColor: HAIR, borderWidth: 0.75 });
   }
   drawFooter(p1);
 
   // ── PAGE 2 — adaptive: only added when there's a gallery / floor plan / aerial ─
-  let p2: PDFPage | null = null;
-  const p2blocks: Array<{ title: string; weight: number; border: boolean; natural?: (w: number) => number; draw: (x: number, y: number, w: number, h: number) => Rect }> = [];
-  // Order is deliberate: the numbers a site selector screens on come first, then the
-  // photos, then the plan, then where it sits.
-  if (input.tradeArea?.tiles?.length) {
-    const ta = input.tradeArea;
-    p2blocks.push({
-      title: 'BY THE NUMBERS', weight: 1.0, border: false,
-      natural: () => 60 + (ta.caption ? 17 : 0),
-      draw: (x, y, w, h) => drawTradeArea(p2!, ta, x, y, w, h, osw, body, gold),
-    });
-  }
-  if (gallery.length === 1) {
-    // A single gallery photo reads far better as a full-width banner (contained at
-    // its own aspect) than as a small centred 4:3 cell — so the rendering is legible.
-    const g = gallery[0];
-    p2blocks.push({
-      title: input.titles?.photos || 'PHOTOS', weight: 2.2, border: true,
-      natural: (w) => w * (g.height / g.width),
-      draw: (x, y, w, h) => drawContainTop(p2!, g, x, y, w, h),
-    });
-  } else if (gallery.length) p2blocks.push({
-    title: input.titles?.photos || 'PHOTOS', weight: 1.9, border: false,
-    // The grid holds the photos' 4:3, so it can't use a taller box — say so up front
-    // and the leftover goes to the map instead of becoming a hole in the page.
-    natural: (w) => photoGridHeight(gallery.length, w),
-    draw: (x, y, w, h) => drawPhotoGrid(p2!, gallery, x, y, w, h, LINE),
-  });
-  // Floor plan is the key page-2 visual — weight it to fill most of the width so the
-  // site plan is actually legible rather than a small centred letterbox.
-  if (floor) p2blocks.push({ title: input.titles?.floorPlan || 'FLOOR PLAN', weight: 2.6, border: true, natural: (w) => w * (floor.height / floor.width), draw: (x, y, w, h) => drawContainTop(p2!, floor!, x, y, w, h) });
-  // Where it sits. A hand-made aerial (lot outlined) wins over the generated one, and
-  // there is only ever one: a single aerial at full width reads; two at half size don't.
   const siteAerial = (await Promise.all((input.siteAerials || []).slice(0, 1).map(embed))).find((g): g is PDFImage => !!g);
-  if (siteAerial) {
-    p2blocks.push({
-      title: input.titles?.siteAerial || 'SITE AERIAL', weight: 1.6, border: true,
-      natural: (w) => w * (siteAerial.height / siteAerial.width),
-      draw: (x, y, w, h) => drawContainTop(p2!, siteAerial, x, y, w, h),
-    });
-  } else if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => {
-    const r = drawContainTop(p2!, aerial!, x, y, w, h);
-    drawMapLabels(p2!, r, aerial!, input.aerialLabels, labelFont);
+  let p2: PDFPage | null = null;
+  const visuals: Array<{ title: string; kind: 'gallery' | 'floor' | 'map'; draw: (x: number, y: number, w: number, h: number) => Rect }> = [];
+  if (gallery.length) visuals.push({ title: input.titles?.photos || 'PHOTOS', kind: 'gallery', draw: (x, y, w, h) => drawPhotoGrid(p2!, gallery, x, y, w, h, HAIR) });
+  if (floor) visuals.push({ title: input.titles?.floorPlan || 'FLOOR PLAN', kind: 'floor', draw: (x, y, w, h) => drawContainTop(p2!, floor, x, y, w, h) });
+  // Where it sits. A hand-made aerial (lot outlined) wins over the generated one, and there is only ever one.
+  if (siteAerial) visuals.push({ title: input.titles?.siteAerial || 'SITE AERIAL', kind: 'map', draw: (x, y, w, h) => drawContainTop(p2!, siteAerial, x, y, w, h) });
+  else if (aerial) visuals.push({ title: 'AREA MAP', kind: 'map', draw: (x, y, w, h) => {
+    const r = drawContainTop(p2!, aerial, x, y, w, h);
+    drawMapLabels(p2!, r, aerial, input.aerialLabels, labelFont);
     drawMapCredit(p2!, r, input.aerialCredit, body);
     return r;
   } });
 
-  if (p2blocks.length) {
+  if (visuals.length) {
     p2 = pdf.addPage([W, H]);
     p2.drawRectangle({ x: 0, y: 0, width: W, height: H, color: WHITE });
-    const b2H = 72, b2Y = H - b2H;
-    p2.drawRectangle({ x: 0, y: b2Y, width: W, height: b2H, color: BLACK });
-    if (brand) drawWordmark(p2, 22, b2Y + b2H - 26, 12.5, 2.6);
-    else p2.drawText(badge, { x: 22, y: b2Y + b2H - 24, size: 13, font: osw, color: WHITE });
-    const a2 = fitSize(addr, osw, W - 44, 24, 12);
-    p2.drawText(addr, { x: 22, y: b2Y + 14, size: a2, font: osw, color: gold });
-
-    const gap = 16, titleH = 18, usableTop = b2Y - gap, usableBottom = FOOT_RULE_Y + 14;
-    const totalWt = p2blocks.reduce((s, b) => s + b.weight, 0);
-    const boxW = W - 36;
-    const avail = (usableTop - usableBottom) - p2blocks.length * titleH - (p2blocks.length - 1) * gap;
-    // Pass 1: weighted shares. Any block that can't use its share gives the rest back;
-    // pass 2 hands that slack to the blocks that stretch, so the page has no dead space.
-    const heights = p2blocks.map(b => avail * (b.weight / totalWt));
-    const capped = p2blocks.map(() => false);
-    let slack = 0, stretchWt = 0;
-    p2blocks.forEach((b, i) => {
-      const nat = b.natural?.(boxW);
-      if (nat !== undefined && nat < heights[i]) { slack += heights[i] - nat; heights[i] = nat; capped[i] = true; }
-      else stretchWt += b.weight;
-    });
-    if (slack > 0 && stretchWt > 0) p2blocks.forEach((b, i) => {
-      if (!capped[i]) heights[i] += slack * (b.weight / stretchWt);
-    });
-    const leftover = Math.max(0, avail - heights.reduce((a, b) => a + b, 0));
-    const pad = Math.min(leftover / Math.max(1, p2blocks.length), 30);
-    let cur = usableTop;
-    p2blocks.forEach((blk, i) => {
-      const bh = heights[i];
-      p2!.drawText(blk.title, { x: 20, y: cur - 13, size: 12, font: osw, color: INK });
-      cur -= titleH;
-      const used = blk.draw(18, cur - bh, boxW, bh);
-      // Frame what was drawn, not the slot — a letterboxed border reads as a layout bug.
-      if (blk.border && used.w > 0) p2!.drawRectangle({ x: used.x, y: used.y, width: used.w, height: used.h, borderColor: LINE, borderWidth: 1 });
-      cur -= bh + gap + pad;
-    });
+    drawHeader(p2, visuals.map(v => v.title).join(' · '));
+    const top = H - HEAD_H - 16, areaH = top - (FOOT_H + 18), areaW = W - 2 * M, CAP = 30, G = 16;
+    // Each visual is drawn in a box CAP shorter than its slot; the dark caption bar sits right under what was drawn.
+    const place = (v: (typeof visuals)[number], x: number, w: number, yTop: number, h: number) => {
+      const r = v.draw(x, yTop - (h - CAP), w, h - CAP);
+      if (r.w <= 0) return;
+      p2!.drawRectangle({ x: r.x, y: r.y - CAP, width: r.w, height: CAP, color: BLACK });
+      drawSpaced(p2!, sanitize(v.title).toUpperCase(), r.x + 14, r.y - CAP + 11, 10, body, gold, 2.6);
+    };
+    if (visuals.length === 1) place(visuals[0], M, areaW, top, areaH);
+    else if (visuals.length === 2) {
+      // A lone photo is a 4:3 that fills most of the page height at 470pt wide; the map takes the rest.
+      const leftW = visuals[0].kind === 'gallery' && gallery.length === 1 ? 470 : (areaW - G) / 2;
+      place(visuals[0], M, leftW, top, areaH);
+      place(visuals[1], M + leftW + G, areaW - G - leftW, top, areaH);
+    } else {
+      const leftW = (areaW - G) / 2, half = (areaH - G) / 2;
+      place(visuals[0], M, leftW, top, areaH);
+      place(visuals[1], M + leftW + G, areaW - G - leftW, top, half);
+      place(visuals[2], M + leftW + G, areaW - G - leftW, top - half - G, half);
+    }
     drawFooter(p2);
   }
 
