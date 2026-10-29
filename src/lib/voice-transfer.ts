@@ -16,6 +16,12 @@ export interface TransferTarget { key: TransferKey; name: string; number: string
 
 const last10 = (n: string | null | undefined) => (n ?? '').replace(/\D/g, '').slice(-10);
 
+/** Saturday and Sunday in Central time: Zack's rule is no live transfers on the weekend, emergencies included (Ava takes the message instead). */
+export function isWeekend(at: Date = new Date()): boolean {
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short' }).format(at);
+  return day === 'Sat' || day === 'Sun';
+}
+
 export function transferMode(): 'on' | 'off' | 'test' {
   const m = (process.env.VOICEBOT_TRANSFER || 'test').toLowerCase();
   return m === 'on' || m === 'off' ? m : 'test';
@@ -44,7 +50,7 @@ export async function transferTargets(db: SupabaseClient, s: VoicebotSettings): 
  */
 export async function transferOptions(db: SupabaseClient, s: VoicebotSettings, fromNumber: string | null, unit: string): Promise<TransferTarget[]> {
   const mode = transferMode();
-  if (mode === 'off') return [];
+  if (mode === 'off' || isWeekend()) return [];
   const targets = await transferTargets(db, s);
   if (!targets.length) return [];
   if (mode === 'test') {
@@ -65,8 +71,9 @@ export function pickTarget(options: TransferTarget[], want: string | null | unde
   return options.find(t => t.key === w) ?? options[0];
 }
 
-/** Outside Mon–Sat 8–6 CT only a genuine emergency rings a cell phone. */
+/** Outside Mon–Sat 8–6 CT only a genuine emergency rings a cell phone; on weekends nothing rings. */
 export function mayRingNow(urgent: boolean, at: Date = new Date()): boolean {
+  if (isWeekend(at)) return false;
   return urgent || officeOpen(at);
 }
 
