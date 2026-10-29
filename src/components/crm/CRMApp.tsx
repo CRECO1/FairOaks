@@ -1195,7 +1195,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const contactIndex = useMemo(() => {
     const m = new Map<string, ContactMatch>();
     for (const c of clients) for (const em of [c.email, ...(c.extra_emails ?? [])]) if (em) m.set(em.toLowerCase(), { kind: 'contact', id: c.id, label: `${c.first_name} ${c.last_name}`.trim() || em });
-    for (const d of deals) if (d.client_email) m.set(d.client_email.toLowerCase(), { kind: 'deal', id: d.id, label: d.client });
+    // One address can have several deals: prefer a live one (not Lost), then the most recently touched.
+    const best = new Map<string, Deal>();
+    for (const d of deals) {
+      if (!d.client_email) continue;
+      const k = d.client_email.toLowerCase(), cur = best.get(k);
+      const lost = (x: Deal) => x.stage === 'Lost';
+      if (!cur || (lost(cur) && !lost(d)) || (lost(cur) === lost(d) && (d.last_touch || '') > (cur.last_touch || ''))) best.set(k, d);
+    }
+    for (const [k, d] of best) m.set(k, { kind: 'deal', id: d.id, label: d.client, sub: [d.stage, d.property].filter(Boolean).join(' · ') });
     return m;
   }, [clients, deals]);
   const contactFor = (email: string): ContactMatch => contactIndex.get(email.trim().toLowerCase()) ?? null;

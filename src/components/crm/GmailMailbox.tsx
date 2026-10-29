@@ -72,7 +72,7 @@ async function loadThread(account: string | null, id: string, date: number): Pro
   return job;
 }
 
-export type ContactMatch = { kind: 'deal' | 'contact'; id: string; label: string } | null;
+export type ContactMatch = { kind: 'deal' | 'contact'; id: string; label: string; sub?: string } | null;
 
 type Props = {
   box: 'inbox' | 'sent';
@@ -522,6 +522,26 @@ function ThreadReader(p: {
       p.notify(j.already ? `Already on ${target.label}` : `Filed to ${target.label}`);
     } finally { setWorking(null); }
   };
+  // File the whole conversation at once (every message; the route skips ones already on the card).
+  const [filingAll, setFilingAll] = useState(false);
+  const fileAll = async (target: NonNullable<ContactMatch>) => {
+    if (!msgs?.length) return;
+    setFilingAll(true);
+    let added = 0, already = 0, failed = 0;
+    try {
+      for (const m of msgs) {
+        const r = await fetch('/api/gmail/file-message', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messageId: m.id, account: p.account ?? undefined, ...(target.kind === 'deal' ? { dealId: target.id } : { clientId: target.id }) }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { failed++; continue; }
+        if (j.already) already++; else added++;
+        setFiled(prev => new Set(prev).add(m.id));
+      }
+    } finally { setFilingAll(false); }
+    p.notify(failed ? `Filed ${added + already} of ${msgs.length} to ${target.label} — ${failed} failed, try again`
+      : added ? `Filed ${added} message${added === 1 ? '' : 's'} to ${target.label}${already ? ` (${already} already there)` : ''}`
+      : `All ${msgs.length} already on ${target.label}`);
+  };
   // Save to Docs: put this attachment on the deal's Docs tab (the only place outgoing email can attach files from).
   const saveToDeal = async (m: LiveMessage, a: { part: string; name: string }, deal: NonNullable<ContactMatch>) => {
     const key = `${m.id}:${a.part}`;
@@ -570,6 +590,18 @@ function ThreadReader(p: {
     return `to ${names.slice(0, 2).join(', ') || '—'}${names.length > 2 ? ` +${names.length - 2}` : ''}${cc ? ` · cc ${cc}` : ''}`;
   };
 
+  // Who this conversation is with: the first outside party we know (a deal wins over a contact card).
+  const threadTarget: NonNullable<ContactMatch> | null = (() => {
+    let found: NonNullable<ContactMatch> | null = null;
+    for (const m of msgs ?? []) {
+      const f = parseAddr(m.from);
+      const o = me && f.email.toLowerCase() === me ? parseAddr(m.to) : f;
+      const hit = o.email ? p.contactFor(o.email) : null;
+      if (hit && (!found || (hit.kind === 'deal' && found.kind !== 'deal'))) found = hit;
+    }
+    return found;
+  })();
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -588,6 +620,20 @@ function ThreadReader(p: {
           </div>
         )}
       </div>
+      {threadTarget && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12, padding: '9px 12px', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 10 }}>
+          <button type="button" onClick={() => (threadTarget.kind === 'deal' ? p.onOpenDeal(threadTarget.id) : p.onOpenContact(threadTarget.id))}
+            style={{ flex: '1 1 200px', minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, color: 'var(--k-92400e)', fontWeight: 700, fontFamily: "'DM Sans',sans-serif", overflowWrap: 'anywhere' }}>
+            {threadTarget.kind === 'deal' ? '💼' : '👤'} {threadTarget.label}{threadTarget.sub ? <span style={{ fontWeight: 500 }}> · {threadTarget.sub}</span> : null} →
+          </button>
+          {msgs && msgs.length > 1 && (
+            <button type="button" disabled={filingAll || (msgs.length > 0 && msgs.every(m => filed.has(m.id)))} onClick={() => void fileAll(threadTarget)} style={btn}
+              title="Copy every message in this conversation onto the card so the team sees the whole thread">
+              {filingAll ? 'Filing…' : msgs.every(m => filed.has(m.id)) ? '✓ All filed' : `📁 File all ${msgs.length}`}
+            </button>
+          )}
+        </div>
+      )}
       {msgs === null && <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Opening conversation…</div>}
       {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
