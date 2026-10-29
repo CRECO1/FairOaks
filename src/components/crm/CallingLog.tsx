@@ -8,6 +8,7 @@ import CallWrapUp, { outcomeMeta } from '@/components/crm/CallWrapUp';
 import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 import WrapUpQueue from '@/components/crm/WrapUpQueue';
 import CallbackTimeMenu from '@/components/crm/CallbackTimeMenu';
+import QuickText from '@/components/crm/QuickText';
 import BlockedNumbersPanel from '@/components/crm/BlockedNumbersPanel';
 import { formatCentral } from '@/lib/callback-time';
 import { useRememberedState } from '@/lib/view-memory';
@@ -134,6 +135,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const [showInternal, setShowInternal] = useState(false);          // calls between us / the team's phones
   const [internalHidden, setInternalHidden] = useState(0);
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [textFor, setTextFor] = useState<string | null>(null);   // call id whose office-line text box is open
   const [textsNeedReply, setTextsNeedReply] = useState(false);   // within the Texts view: only unanswered
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [thread, setThread] = useState<Record<string, TextMsg[]>>({});
@@ -672,6 +674,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: '0 1 auto', maxWidth: '100%', minWidth: 0 }}>
                       {needsWrap(c) && wrapFor !== c.id && <button onClick={() => setWrapFor(c.id)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }} title="Ten seconds: what it was, a note, and who it was">📝 Wrap up</button>}
                       {num && <a href={`tel:${num}`} data-call-id={c.id} data-contact-id={c.contact?.id ?? ''} data-name={c.contact?.name || c.caller_name || ''} data-pending={pending ? '1' : '0'} style={{ ...mini, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call back">📞</a>}
+                      {num && <button onClick={() => setTextFor(textFor === c.id ? null : c.id)} style={{ ...mini, background: textFor === c.id ? '#111' : undefined, color: textFor === c.id ? '#fff' : undefined }} title="Text them from the office line">💬 Text</button>}
                       {c.has_recording && <button onClick={() => play(c)} disabled={busy === c.id} style={mini} title="Play recording">{audio[c.id] ? '🔊' : '▶'}</button>}
                       {(c.summary || c.transcript || c.source === 'voicebot' || c.notes) && <button onClick={() => toggleOpen(c)} style={mini}>{openNow ? '▾ Less' : '▸ Details'}</button>}
                       {pending
@@ -688,6 +691,13 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                       {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...mini, color: '#e5b4b4', borderColor: 'var(--k-f3e4e4)' }} title="Delete this record">✕</button>}
                     </div>
                   </div>
+                  {textFor === c.id && num && (
+                    <div style={{ marginTop: 9 }}>
+                      <QuickText authToken={authToken} businessUnit={businessUnit} contactId={c.contact?.id ?? null} phone={num} name={c.contact?.name || c.caller_name || undefined}
+                        templates={[{ label: 'Tried to reach you', body: "Hi, this is CRECO. We just tried to reach you. What's a good time to talk?" }, { label: 'Thanks for calling', body: 'Hi, this is CRECO. Thanks for calling. How can we help?' }]}
+                        showToast={showToast} />
+                    </div>
+                  )}
                   {pending && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: 9, paddingTop: 9, borderTop: '1px dashed var(--k-f0e6cf)' }}>
                       <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#c9922c' }}>Call back</span>

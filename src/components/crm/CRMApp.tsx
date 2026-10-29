@@ -20,6 +20,7 @@ import { setDraftAuth, syncDrafts, onDraftsChanged, listDrafts, type EmailDraft 
 import dynamic from 'next/dynamic';
 import DealMeetings from '@/components/crm/DealMeetings';
 import ContactComms from '@/components/crm/ContactComms';
+import QuickText from '@/components/crm/QuickText';
 import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope as EsignEnvelope } from '@/components/crm/EsignPanel';
 import type { ComposerDoc } from '@/components/crm/EsignComposer';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
@@ -1134,6 +1135,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callScriptEdit, setCallScriptEdit] = useState(false);
   const [callMyDay, setCallMyDay] = useState<{ calls: number; talked: number; voicemail: number; none: number; leads: number } | null>(null);
   const [callGoal, setCallGoal] = useState<number>(() => { try { return Number(localStorage.getItem('crm:callGoal')) || 25; } catch { return 25; } });
+  const [dealTextOpen, setDealTextOpen] = useState(false);                                           // deal card → office-line text box
   const [callTextOpen, setCallTextOpen] = useState(false);                                          // Text → templates   // phone: campaign stats fold away by default
   const [callDialed, setCallDialed] = useState<{ taskId: string; at: number } | null>(null);
   const [callReturnOpen, setCallReturnOpen] = useState(false);
@@ -5218,6 +5220,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Open deal modal ───────────────────────────────────────────────────────────
   function openDeal(deal: Deal) {
     setDealFormPick('');   // a pick left on the previous deal must not act on this one
+    setDealTextOpen(false);
     setActiveDeal(deal);
     setDealNotesText(deal.notes ?? '');
     setDealTab('overview');
@@ -8075,6 +8078,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             ];
                             return (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+                                <QuickText authToken={session?.access_token} businessUnit={businessUnit} contactId={c?.id ?? null} phone={phone} name={c ? `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() : curMeta?.contactName}
+                                  templates={tpl.filter(t => t.body)} showToast={showToast}
+                                  onSent={text => { if (c) logActivity(c.id, 'note', `💬 Texted from the office line: ${text.slice(0, 300)}`); }} />
+                                <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', margin: '2px 0 0' }}>Or from my own phone</div>
                                 {tpl.map(t => (
                                   <a key={t.label} href={`sms:${phone}${t.body ? `?&body=${encodeURIComponent(t.body)}` : ''}`}
                                     onClick={() => { setCallTextOpen(false); if (c && t.body) logActivity(c.id, 'note', `💬 Texted (${t.label}): ${t.body}`); }}
@@ -11320,10 +11327,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   }}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✉ Email</button>
               )}
+              {(activeDeal.client_phone || clients.find(x => x.id === activeDeal.client_id)?.phone) && (
+                <button type="button" aria-label={`Text ${activeDeal.client}`} title="Text from the office line" onClick={() => setDealTextOpen(o => !o)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', background: dealTextOpen ? '#fff' : 'transparent', color: dealTextOpen ? '#111' : '#fff', border: '1px solid rgba(255,255,255,.55)', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>💬 Text</button>
+              )}
               <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>
               <button className="crm-icon-btn" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ padding: isMobile ? '16px 18px' : '20px 26px', overflowY: 'auto', flex: 1 }}>
+              {dealTextOpen && (() => {
+                const dc = clients.find(x => x.id === activeDeal.client_id);
+                const first = (dc?.first_name || activeDeal.client.split(' ')[0] || '').trim();
+                const me = profile?.first_name || '';
+                const org = businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group';
+                const hi = first ? `Hi ${first}, ` : 'Hi, ';
+                return (
+                  <QuickText authToken={session?.access_token} businessUnit={businessUnit} contactId={activeDeal.client_id ?? null} phone={activeDeal.client_phone || dc?.phone || dc?.cell_phone || null} name={activeDeal.client}
+                    templates={[
+                      { label: 'Checking in', body: `${hi}${me} with ${org} — just checking in${activeDeal.property ? ` on ${activeDeal.property}` : ''}. Let me know if you have any questions.` },
+                      { label: 'Tried to reach you', body: `${hi}${me} with ${org} — I just tried to reach you. What's a good time to talk?` },
+                    ]}
+                    showToast={showToast}
+                    onSent={text => { if (activeDeal.client_id) logActivity(activeDeal.client_id, 'note', `💬 Texted from the office line: ${text.slice(0, 300)}`); }} />
+                );
+              })()}
               {/* Pipeline bar */}
               <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--k-e5e7eb)', marginBottom: 18 }}>
                 {STAGES.map((s, i) => {
