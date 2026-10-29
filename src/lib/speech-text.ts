@@ -33,6 +33,9 @@ export function speechText(input: string): string {
   t = t.replace(/\b(?:the|my|our) (?:listing |fact )?(?:sheet|notes|data|system|records?) (?:lists|shows|says|has|gives|indicates)(?: it)?(?: at| as)?\s+(?=(?:about|approximately|around|roughly|an?|\d))/gi, "it's ");
   t = t.replace(/\b(?:the|my|our) (?:listing |fact )?(?:sheet|notes|data|system|records?) (?:has|have) (?:that|it|this)(?: one)?[:,]?\s*/gi, '');
   t = t.replace(/\b(?:according to|per) (?:the|my|our) (?:listing |fact )?(?:sheet|notes|data|system|records?),?\s*/gi, '');
+  // The generative voice swallows the final "t" of "can't" so it is heard as "can" — the opposite meaning ("I can't see
+  // your schedule" came out as "I can see your schedule"). Spell the two meaning-flipping contractions out in full.
+  t = t.replace(/\bcan['\u2019]t\b/gi, m => (m[0] === 'C' ? 'Cannot' : 'cannot')).replace(/\bwon['\u2019]t\b/gi, m => (m[0] === 'W' ? 'Will not' : 'will not'));
   for (const [re, to] of EXPAND) t = t.replace(re, to);
   for (const [re, to] of PRONOUNCE) t = t.replace(re, to);
   return t.replace(/\s{2,}/g, ' ').replace(/\s+([,.!?])/g, '$1').trim();
