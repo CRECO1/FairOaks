@@ -3,10 +3,11 @@ import { officeOpen, ownLineNumbers, type VoicebotSettings } from '@/lib/voicebo
 import { toE164 } from '@/lib/phone';
 
 /**
- * Live transfer: the caller asks for a person, Ava rings that agent's CELL. If the agent doesn't pick up, the
- * caller lands in the agent's own cell voicemail and leaves the message there (a carrier voicemail answers the
- * Dial, so from Twilio's side it connected) — while the CRM still logs the call, who it was sent to, how long
- * it rang/talked, and a follow-up to make sure the message is returned.
+ * Live transfer: the caller asks for a person, Ava rings that agent's CELL. The agent hears who is calling and has
+ * to press 1 (/api/voice/whisper) before the caller is connected. If they don't — no answer, busy, or a carrier
+ * voicemail that can't press a key — the caller comes back to Ava, who takes the message in the CRM (the caller never
+ * reaches a personal voicemail, whose default greeting can read the cell number aloud). The CRM logs the call, who it
+ * was sent to, how long it rang/talked, and a follow-up to make sure the message is returned.
  *
  * VOICEBOT_TRANSFER = on | off | test (default test). In test mode only the team's own phones can trigger a
  * transfer (so it can be proven on a real call before customers hit it); `off` disables it everywhere.
@@ -78,8 +79,10 @@ export function mayRingNow(urgent: boolean, at: Date = new Date()): boolean {
 }
 
 /** What the Dial leg did, in words, for the call note / notification. */
-export function describeDial(t: { name: string; status: string; durationSec: number | null }): string {
+export function describeDial(t: { name: string; status: string; durationSec: number | null; screen?: string | null }): string {
   const d = t.durationSec ?? 0;
+  if (t.screen === 'declined') return `Tried ${t.name}'s cell — it rang but nobody pressed 1 to take the call (likely voicemail); Ava took the message instead.`;
+  if (t.status === 'completed' && t.screen === 'accepted' && d < 45) return `Transferred to ${t.name} — they took the call (${d}s).`;
   if (t.status === 'completed' && d >= 45) return `Transferred to ${t.name} — connected, ${Math.round(d / 60) || 1} min.`;
   if (t.status === 'completed') return `Transferred to ${t.name} — rang through and the caller most likely left ${t.name} a voicemail on their cell (${d}s). Follow up to make sure it was returned.`;
   if (t.status === 'no-answer') return `Tried ${t.name}'s cell — no answer; Ava took the message instead.`;

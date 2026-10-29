@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     const multi = (call.ai_meta as { stt?: string } | null)?.stt === 'multi';
     const voice = (call.ai_meta as { voice?: string } | null)?.voice === 'new' ? 'new' as const : 'classic' as const;
     const t = (botTurn.meta as { transfer?: { name?: string; number?: string } } | null)?.transfer;
-    const dial: DialTarget | null = action === 'transfer' && t?.number ? { name: t.name || 'agent', number: t.number, callerId: settings.twilio_number } : null;
+    const dial: DialTarget | null = action === 'transfer' && t?.number ? { name: t.name || 'agent', number: t.number, callerId: settings.twilio_number, callSid: p.CallSid } : null;
     return twiml(renderReply({ say: botTurn.text, action }, settings, call.from_number, await speechHints(call.business_unit), { lang, multi, voice, dial }));
   }
   const waited = callerTurn ? Date.now() - new Date(callerTurn.created_at).getTime() : MAX_WAIT_MS;

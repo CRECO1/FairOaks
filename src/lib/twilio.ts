@@ -157,21 +157,23 @@ export async function fetchRecording(recordingSid: string): Promise<Response> {
 }
 
 /** Who a "transfer" rings: the agent's cell, shown to them as coming from our bot line. */
-export interface DialTarget { name: string; number: string; callerId: string | null }
+export interface DialTarget { name: string; number: string; callerId: string | null; /** The bot call's Twilio CallSid — lets the agent's leg run the "press 1 to accept" screen (/api/voice/whisper). */ callSid?: string }
 
 /**
  * TwiML for a finished bot reply: keep listening, hang up, or transfer. Shared by /api/voice/turn and /api/voice/wait.
- * A transfer rings the agent's cell for up to 40 s (long enough for their carrier voicemail to pick up, so a caller
- * nobody answers for leaves the message there). answerOnBridge keeps the caller hearing ringing, not silence, and the
- * `action` URL gets control back when the leg ends so the CRM can record how it went — and, if nobody was reached,
- * Ava can take the message herself.
+ * A transfer rings the agent's cell for up to 30 s. When the cell answers, the agent first hears a short whisper (who
+ * is calling) and must press 1 to take the call (/api/voice/whisper) — a carrier voicemail can't press a key, so the
+ * caller never lands in anyone's personal voicemail (whose default greeting can read the cell number aloud). answerOnBridge
+ * keeps the caller hearing ringing, not silence, and the `action` URL gets control back when the leg ends so the CRM can
+ * record how it went — and, if nobody took the call, Ava can take the message herself.
  */
 export function renderReply(reply: { say: string; action: 'continue' | 'end' | 'transfer' }, settings: { transfer_number: string | null }, callerNumber: string | null, hints?: string[], opts: { lang?: 'en' | 'es'; multi?: boolean; voice?: VoiceGen; dial?: DialTarget | null } = {}): string {
   const lang = opts.lang ?? 'en';
   const turnUrl = `${voiceOrigin()}/api/voice/turn`;
   if (reply.action === 'transfer' && opts.dial) {
     const cid = opts.dial.callerId ? ` callerId="${xml(opts.dial.callerId)}"` : '';
-    return `${say(reply.say, lang, opts.voice)}<Dial timeout="40" answerOnBridge="true"${cid} action="${voiceOrigin()}/api/voice/dial-result" method="POST">${xml(opts.dial.number)}</Dial>`;
+    const screen = opts.dial.callSid ? ` url="${xml(`${voiceOrigin()}/api/voice/whisper?cs=${encodeURIComponent(opts.dial.callSid)}`)}" method="POST"` : '';
+    return `${say(reply.say, lang, opts.voice)}<Dial timeout="30" answerOnBridge="true"${cid} action="${voiceOrigin()}/api/voice/dial-result" method="POST"><Number${screen}>${xml(opts.dial.number)}</Number></Dial>`;
   }
   if (reply.action === 'end') return `${say(reply.say, lang, opts.voice)}<Hangup/>`;
   return gather(reply.say, turnUrl, { hints, lang, multi: opts.multi, voice: opts.voice });

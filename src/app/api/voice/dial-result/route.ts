@@ -10,9 +10,10 @@ export const dynamic = 'force-dynamic';
  * POST /api/voice/dial-result — the <Dial action> after Ava rang an agent's cell.
  *
  * Records how the ring went on the call (who, answered or not, for how long) so the CRM tracks it either way.
- * A "completed" leg means the cell (or the cell's own voicemail) picked up and the call ran its course — nothing
- * more to do. Anything else (no-answer / busy / failed) means nobody was reached and there is no voicemail to
- * catch the caller, so Ava comes back on the line and takes the message in our system instead.
+ * The agent's leg runs a "press 1 to accept" screen first (/api/voice/whisper), so a "completed" leg only counts as
+ * a real connection when it was accepted there. Anything else — no-answer / busy / failed, or a cell that picked up
+ * but nobody pressed 1 (a carrier voicemail) — means nobody took the call, so Ava comes back on the line and takes
+ * the message in our system instead; the caller never ends up in a personal voicemail.
  */
 export async function POST(req: Request) {
   if (!twilioConfigured()) return NextResponse.json({ error: 'Twilio not configured' }, { status: 503 });
@@ -20,13 +21,15 @@ export async function POST(req: Request) {
   if (!verifyTwilioSignature(req, p)) return NextResponse.json({ error: 'bad signature' }, { status: 401 });
 
   const db = adminClient();
-  const status = p.DialCallStatus || 'failed';
+  const dialStatus = p.DialCallStatus || 'failed';
   const duration = Number(p.DialCallDuration || 0) || 0;
   const { data: call } = await db.from('crm_call_log').select('id, business_unit, ai_meta').eq('source', 'voicebot').eq('external_id', p.CallSid).maybeSingle();
   if (!call) return twiml('<Hangup/>');
 
   const meta = { ...((call.ai_meta as Record<string, unknown>) || {}) };
   const prior = (meta.transfer as Record<string, unknown> | undefined) ?? {};
+  // "completed" without an accepted screen = the cell (or its voicemail) answered but nobody took the call.
+  const status = dialStatus === 'completed' && prior.screen !== 'accepted' ? 'no-answer' : dialStatus;
   meta.transfer = { ...prior, status, duration_sec: duration, ended_at: new Date().toISOString() };
   await db.from('crm_call_log').update({ ai_meta: meta, updated_at: new Date().toISOString() }).eq('id', call.id);
 
@@ -36,7 +39,9 @@ export async function POST(req: Request) {
   const lang = asLang(meta.lang);
   const multi = meta.stt === 'multi';
   const voice = meta.voice === 'new' ? 'new' as const : 'classic' as const;
-  const text = line('transferMissed', lang);
+  // Already have their name and number (Ava took them before connecting)? Don't ask again.
+  const known = Boolean(meta.caller_name && meta.callback_number);
+  const text = line(known ? 'transferMissedKnown' : 'transferMissed', lang);
   await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text, meta: { action: 'continue', lang, after_dial: status } });
   return twiml(gather(text, `${voiceOrigin()}/api/voice/turn`, { hints: await speechHints(call.business_unit), lang, multi, voice }));
 }

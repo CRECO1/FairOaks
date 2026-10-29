@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     let target = null as ReturnType<typeof pickTarget>;
     if (reply.action === 'transfer') {
       target = mayRingNow(reply.urgent === true) ? pickTarget(options, reply.transfer_to) : null;
-      if (target) dial = { name: target.name, number: target.number, callerId: settings.twilio_number };
+      if (target) dial = { name: target.name, number: target.number, callerId: settings.twilio_number, callSid: p.CallSid };
       else reply = { ...reply, say: line('noTransfer', reply.language ?? lang), action: 'continue' };
     }
     // The model says which language it answered in; keep the call there until it changes.

@@ -72,9 +72,9 @@ export async function POST(req: Request) {
   // Silent calls and robocalls are not call-backs: no queue entry, no email.
   if (junkKind({ intent: patch.intent as string | null, summary: patch.summary as string })) patch.needs_follow_up = false;
   // Rang an agent's cell: say so on the call, and keep it on the call-back list unless they actually talked.
-  const tr = meta.transfer as { to?: string; status?: string; duration_sec?: number } | undefined;
+  const tr = meta.transfer as { to?: string; status?: string; duration_sec?: number; screen?: string } | undefined;
   if (tr?.to) {
-    const note = describeDial({ name: tr.to, status: tr.status ?? 'unknown', durationSec: tr.duration_sec ?? null });
+    const note = describeDial({ name: tr.to, status: tr.status ?? 'unknown', durationSec: tr.duration_sec ?? null, screen: tr.screen ?? null });
     patch.summary = `${note} ${patch.summary}`;
     const talked = tr.status === 'completed' && (tr.duration_sec ?? 0) >= 45;
     patch.needs_follow_up = talked ? false : patch.needs_follow_up !== false;

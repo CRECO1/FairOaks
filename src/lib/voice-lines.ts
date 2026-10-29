@@ -32,6 +32,11 @@ const LINES = {
     en: "I'm sorry, I wasn't able to reach them just now. I'll make sure they get your message. Can I get your name and the best number to reach you?",
     es: 'Lo siento, no pude comunicarme con ellos en este momento. Me aseguraré de que reciban su mensaje. ¿Me da su nombre y el mejor número para llamarle?',
   },
+  // The ring went unanswered but Ava already has the caller's name and number.
+  transferMissedKnown: {
+    en: "I'm sorry, I wasn't able to reach them just now. I have your name and number, and I'll make sure they call you back as soon as possible. Is there anything else you'd like me to pass along?",
+    es: 'Lo siento, no pude comunicarme con ellos en este momento. Ya tengo su nombre y su número, y me aseguraré de que le devuelvan la llamada lo antes posible. ¿Hay algo más que quiera que les transmita?',
+  },
   // Transfer asked for but not possible right now (after hours / switched off).
   noTransfer: {
     en: "I'm not able to connect you right now, but I'll make sure they get your message. Can I get your name and the best number to reach you?",
