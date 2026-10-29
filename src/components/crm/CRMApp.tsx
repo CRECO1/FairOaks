@@ -1135,6 +1135,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callScriptEdit, setCallScriptEdit] = useState(false);
   const [callMyDay, setCallMyDay] = useState<{ calls: number; talked: number; voicemail: number; none: number; leads: number } | null>(null);
   const [callGoal, setCallGoal] = useState<number>(() => { try { return Number(localStorage.getItem('crm:callGoal')) || 25; } catch { return 25; } });
+  const [contactTextFor, setContactTextFor] = useState<string | null>(null);                        // contact card → office-line text box (contact id)
   const [dealTextOpen, setDealTextOpen] = useState(false);                                           // deal card → office-line text box
   const [callTextOpen, setCallTextOpen] = useState(false);                                          // Text → templates   // phone: campaign stats fold away by default
   const [callDialed, setCallDialed] = useState<{ taskId: string; at: number } | null>(null);
@@ -12955,9 +12956,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const base: React.CSSProperties = { flex: 1, minWidth: 0, minHeight: isMobile ? 48 : 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 14, fontWeight: 700, textDecoration: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: '0 8px', whiteSpace: 'nowrap' };
                 const off: React.CSSProperties = { opacity: 0.38, pointerEvents: 'none' };
                 return (
+                <>
                   <div style={{ display: 'flex', gap: 8, padding: isMobile ? '10px 14px' : '10px 28px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-f0f0f0)' }}>
                     <a href={ph ? `tel:${ph}` : undefined} aria-label={ph ? `Call ${phoneDisp(ph)}` : 'No phone on file'} style={{ ...base, ...(ph ? { background: '#c9922c', borderColor: '#c9922c', color: '#fff' } : off) }}>📞 Call</a>
-                    {isMobile && <a href={ph ? `sms:${ph}` : undefined} aria-label="Text" style={{ ...base, ...(ph ? {} : off) }}>💬 Text</a>}
+                    <button type="button" onClick={() => setContactTextFor(contactTextFor === c.id ? null : c.id)} aria-label="Text from the office line" title="Text from the office line"
+                      style={{ ...base, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", ...(contactTextFor === c.id ? { background: '#111', borderColor: '#111', color: '#fff' } : {}), ...(ph ? {} : off) }}>💬 Text</button>
                     <a href={c.email ? `mailto:${c.email}` : undefined} aria-label={c.email ? `Email ${c.email}` : 'No email on file'} style={{ ...base, ...(c.email ? {} : off) }}
                       onClick={e => {
                         // Gmail connected: write it here, in the CRM, instead of bouncing to a mail app.
@@ -12972,6 +12975,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       }}>✉ Email</a>
                     <button onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }} aria-label="Add a task" style={base}>✓ Task</button>
                   </div>
+                  {contactTextFor === c.id && ph && (
+                    <div style={{ padding: isMobile ? '10px 14px 0' : '12px 28px 0', background: 'var(--k-fff)' }}>
+                      <QuickText authToken={session?.access_token} businessUnit={businessUnit} contactId={c.id} phone={ph} name={`${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()}
+                        templates={[
+                          { label: 'Checking in', body: `${c.first_name ? `Hi ${c.first_name}, ` : 'Hi, '}${profile?.first_name || ''} with ${businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group'} — just checking in. Let me know if you have any questions.` },
+                          { label: 'Tried to reach you', body: `${c.first_name ? `Hi ${c.first_name}, ` : 'Hi, '}${profile?.first_name || ''} with ${businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group'} — I just tried to reach you. What's a good time to talk?` },
+                        ]}
+                        showToast={showToast}
+                        onSent={text => logActivity(c.id, 'note', `💬 Texted from the office line: ${text.slice(0, 300)}`)} />
+                      {isMobile && <a href={`sms:${ph}`} style={{ display: 'inline-block', fontSize: 12.5, color: 'var(--k-6b7280)', margin: '-4px 0 10px' }}>Text from my own phone instead</a>}
+                    </div>
+                  )}
+                </>
                 );
               })()}
 
