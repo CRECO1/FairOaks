@@ -36,6 +36,7 @@ type Props = {
   onLiveReply: (m: LiveMessage, threadId: string, all: boolean, account: string | null, draftHtml?: string) => void;
   onQuickReply: (m: LiveMessage, threadId: string, all: boolean, text: string) => Promise<boolean>;
   onCreateDeal: (contactId: string, subject: string) => void;
+  teammates: Array<{ id: string; name: string }>;
   onLiveForward: (m: LiveMessage, threadId: string, account: string | null) => void;
   onCompose: () => void;
   notify: (msg: string) => void;
@@ -96,7 +97,7 @@ export default function EmailsSection(p: Props) {
         <>
           {toggle('All mail', 'CRM replies')}
           {source === 'gmail'
-            ? <GmailMailbox box="inbox" isMobile={p.isMobile} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
+            ? <GmailMailbox box="inbox" isMobile={p.isMobile} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
             : <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />}
         </>
       )}
@@ -105,7 +106,7 @@ export default function EmailsSection(p: Props) {
         <>
           {toggle('All sent', 'Tracked opens')}
           {source === 'gmail'
-            ? <GmailMailbox box="sent" isMobile={p.isMobile} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
+            ? <GmailMailbox box="sent" isMobile={p.isMobile} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
             : <SentSection embedded isMobile={p.isMobile} myAddresses={p.myAddresses} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onFollowUp={p.onFollowUp} />}
         </>
       )}

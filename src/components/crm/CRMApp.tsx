@@ -11289,7 +11289,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {page === 'emails' && (
             <EmailsSection isMobile={isMobile} tab={emailsTab} setTab={setEmailsTab}
               unread={emailBadge} draftCount={draftCount} inbox={inbox}
-              contactFor={contactFor} searchPeople={searchPeople} onLiveReply={liveReply} onQuickReply={quickReply} onCreateDeal={startDealFromEmail} onLiveForward={liveForward} onCompose={() => openCompose()}
+              contactFor={contactFor} searchPeople={searchPeople} onLiveReply={liveReply} onQuickReply={quickReply} onCreateDeal={startDealFromEmail} teammates={profiles.filter(x => x.id !== profile?.id && !!x.first_name).map(x => ({ id: x.id, name: `${x.first_name} ${x.last_name}`.trim() }))} onLiveForward={liveForward} onCompose={() => openCompose()}
               notify={showToast} onAddContact={addContactFromMail}
               myAddresses={[...gmailAccounts.map(a => a.email), profile.email, session?.user?.email ?? ''].filter(Boolean)}
               nameFor={nameForEmail}

@@ -116,6 +116,7 @@ type Props = {
   onNewCompose: () => void;
   onQuickReply: (m: LiveMessage, threadId: string, all: boolean, text: string) => Promise<boolean>;
   onCreateDeal: (contactId: string, subject: string) => void;
+  teammates: Array<{ id: string; name: string }>;
   notify: (msg: string) => void;
   onAddContact: (email: string, name: string) => Promise<boolean>;
 };
@@ -557,7 +558,7 @@ export default function GmailMailbox(p: Props) {
 
   const reader = (embedded: boolean) => open && (
     <ThreadReader key={open.id} t={threads?.find(x => x.id === open.id) ?? open} box={p.box} canModify={canModify === true} onAct={readerAct} labels={labels} onLabel={(id, on) => void labelThread(open, id, on)} onCreateLabel={createLabel} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
-      onReply={p.onReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />
+      onReply={p.onReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />
   );
 
   // Phone / narrow: the conversation replaces the list.
@@ -914,7 +915,7 @@ function QuickReply({ last, me, isMobile, who, onSend, onFull }: { last: LiveMes
 function ThreadReader(p: {
   t: ThreadSummary; box: 'inbox' | 'sent'; canModify: boolean; onAct: (a: Act) => void; labels: GLabel[]; onLabel: (id: string, on: boolean) => void; onCreateLabel: (name: string) => Promise<GLabel | null>; account: string | null; self: string | null; isMobile: boolean; embedded: boolean; contactFor: (email: string) => ContactMatch;
   onOpenDeal: (id: string) => void; onOpenContact: (id: string) => void;
-  onReply: Props['onReply']; onQuickReply: Props['onQuickReply']; onCreateDeal: Props['onCreateDeal']; onForward: Props['onForward']; onBack: () => void;
+  onReply: Props['onReply']; onQuickReply: Props['onQuickReply']; onCreateDeal: Props['onCreateDeal']; teammates: Props['teammates']; onForward: Props['onForward']; onBack: () => void;
   notify: Props['notify']; onAddContact: Props['onAddContact'];
 }) {
   const [msgs, setMsgs] = useState<LiveMessage[] | null>(null);
@@ -945,6 +946,8 @@ function ThreadReader(p: {
   const [filed, setFiled] = useState<Set<string>>(() => new Set());
   const [savedAtt, setSavedAtt] = useState<Set<string>>(() => new Set());
   const [remindOpen, setRemindOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiBusy, setAiBusy] = useState<'summarize' | 'reply' | null>(null);
   const [aiNote, setAiNote] = useState('');
@@ -1009,8 +1012,8 @@ function ThreadReader(p: {
   };
   // File the whole conversation at once (every message; the route skips ones already on the card).
   const [filingAll, setFilingAll] = useState(false);
-  const fileAll = async (target: NonNullable<ContactMatch>) => {
-    if (!msgs?.length) return;
+  const fileAll = async (target: NonNullable<ContactMatch>): Promise<boolean> => {
+    if (!msgs?.length) return false;
     setFilingAll(true);
     let added = 0, already = 0, failed = 0;
     try {
@@ -1026,6 +1029,7 @@ function ThreadReader(p: {
     p.notify(failed ? `Filed ${added + already} of ${msgs.length} to ${target.label} — ${failed} failed, try again`
       : added ? `Filed ${added} message${added === 1 ? '' : 's'} to ${target.label}${already ? ` (${already} already there)` : ''}`
       : `All ${msgs.length} already on ${target.label}`);
+    return failed === 0;
   };
   // Save to Docs: put this attachment on the deal's Docs tab (the only place outgoing email can attach files from).
   const saveToDeal = async (m: LiveMessage, a: { part: string; name: string }, deal: NonNullable<ContactMatch>) => {
@@ -1099,6 +1103,18 @@ function ThreadReader(p: {
       p.onReply(l, p.t.id, false, p.account, html);
       p.notify('Draft ready — read it over, fill in any [brackets], then send.');
     } catch { p.notify('Could not reach the assistant — try again.'); } finally { setAiBusy(null); }
+  };
+
+  // 👥 Share: file the whole conversation on the contact/deal card (so they can read it) and tap a teammate on the shoulder.
+  const share = async (mate: { id: string; name: string }) => {
+    if (!threadTarget || sharing) return;
+    setShareOpen(false); setSharing(true);
+    try {
+      if (msgs?.length && !msgs.every(m => filed.has(m.id))) { const ok = await fileAll(threadTarget); if (!ok) { p.notify('Could not file every message, so nothing was shared — try again.'); return; } }
+      const r = await fetch('/api/crm/email-share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipientId: mate.id, subject: p.t.subject, ...(threadTarget.kind === 'deal' ? { dealId: threadTarget.id } : { contactId: threadTarget.id }) }) });
+      const j = await r.json().catch(() => ({}));
+      p.notify(r.ok ? `Shared with ${mate.name.split(' ')[0]} — they’ll see it on ${threadTarget.label}’s card` : (j.error ?? 'Could not share — try again.'));
+    } catch { p.notify('Could not share — try again.'); } finally { setSharing(false); }
   };
 
   // ⏰ Remind me: a real CRM follow-up task (shows on Tasks and your dashboard), linked to the contact/deal when we know them.
@@ -1236,6 +1252,20 @@ function ThreadReader(p: {
               {threadTarget.role && <span>{threadTarget.role}</span>}
               {threadTarget.touched && <span>Last contact {ago(threadTarget.touched)}</span>}
               {(threadTarget.tags ?? []).map(tg => <span key={tg} style={{ background: 'rgba(146,64,14,.1)', borderRadius: 10, padding: '0 8px', fontWeight: 600 }}>{tg}</span>)}
+            </div>
+          )}
+          {p.teammates.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <button type="button" style={btn} disabled={sharing} onClick={() => setShareOpen(v => !v)} aria-haspopup="menu" aria-expanded={shareOpen} title="File this conversation on the card and notify a teammate">{sharing ? 'Sharing…' : '👥 Share'}</button>
+              {shareOpen && (
+                <>
+                  <div onClick={() => setShareOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 29 }} />
+                  <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 30, minWidth: 210, maxHeight: 260, overflowY: 'auto', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.14)' }}>
+                    <div style={{ padding: '7px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)' }}>Share with…</div>
+                    {p.teammates.map(m => <button key={m.id} role="menuitem" type="button" onClick={() => void share(m)} style={{ display: 'block', width: '100%', padding: '9px 12px', border: 'none', borderTop: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>{m.name}</button>)}
+                  </div>
+                </>
+              )}
             </div>
           )}
           {threadTarget.kind === 'contact' && (
