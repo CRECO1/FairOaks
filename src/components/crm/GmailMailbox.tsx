@@ -433,6 +433,17 @@ export default function GmailMailbox(p: Props) {
   // Bulk select: tick several conversations (shift-click for a range), then one action for all of them.
   const [sel, setSel] = useState<Set<string>>(() => new Set());
   const lp = useRef<{ t?: ReturnType<typeof setTimeout>; fired: boolean }>({ fired: false }); // phone: long-press a row to start selecting
+  // phone: swipe a row — left archives (Sent: trash), right marks read / unread. Needs the Gmail "Allow" step like the buttons.
+  const [swipe, setSwipe] = useState<{ id: string; dx: number } | null>(null);
+  const sw = useRef<{ id: string; x: number; y: number; lock: 'h' | 'v' | null } | null>(null);
+  const swipeEnd = (t: ThreadSummary) => {
+    const s0 = sw.current; sw.current = null;
+    const dx = swipe?.id === t.id ? swipe.dx : 0;
+    setSwipe(null);
+    if (!s0 || s0.lock !== 'h' || Math.abs(dx) < 90) return;
+    lp.current.fired = true; setTimeout(() => { lp.current.fired = false; }, 80); // the lift of the finger must not also "open" the row
+    if (dx < 0) void act(t, p.box === 'inbox' ? 'archive' : 'trash'); else void act(t, isUnread(t) ? 'read' : 'unread');
+  };
   const lastTick = useRef<number>(-1);
   useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, who, noReply, waiting, trackF, labelId]);
   useEffect(() => { setAsThreads(false); }, [filter, p.box]);
@@ -690,14 +701,27 @@ export default function GmailMailbox(p: Props) {
             return (
               <React.Fragment key={t.id}>
                 {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div>}
+                <div style={{ position: 'relative', overflow: p.isMobile ? 'hidden' : undefined }}>
+                {p.isMobile && canModify && swipe?.id === t.id && swipe.dx !== 0 && (
+                  <div aria-hidden style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: swipe.dx < 0 ? 'flex-end' : 'flex-start', padding: '0 22px', background: swipe.dx < 0 ? (p.box === 'inbox' ? '#b45309' : '#b91c1c') : '#2563eb', color: '#fff', fontWeight: 800, fontSize: 14, opacity: Math.min(1, Math.abs(swipe.dx) / 90) }}>
+                    {swipe.dx < 0 ? (p.box === 'inbox' ? 'Archive' : 'Trash') : (isUnread(t) ? 'Mark read' : 'Mark unread')}
+                  </div>
+                )}
                 <div role="button" tabIndex={0} className="gm-row"
                   onClick={() => { if (lp.current.fired) { lp.current.fired = false; return; } if (p.isMobile && canModify && sel.size > 0) { tick(t.id, i, false); return; } openThread(t); }}
                   onKeyDown={e => { if (e.key === 'Enter') openThread(t); }}
-                  onTouchStart={() => { if (!p.isMobile || !canModify) return; lp.current.fired = false; clearTimeout(lp.current.t); lp.current.t = setTimeout(() => { lp.current.fired = true; tick(t.id, i, false); try { navigator.vibrate?.(15); } catch { /* not supported */ } }, 450); }}
-                  onTouchMove={() => clearTimeout(lp.current.t)} onTouchEnd={() => clearTimeout(lp.current.t)} onTouchCancel={() => clearTimeout(lp.current.t)}
+                  onTouchStart={e => { if (!p.isMobile || !canModify) return; sw.current = { id: t.id, x: e.touches[0].clientX, y: e.touches[0].clientY, lock: null }; lp.current.fired = false; clearTimeout(lp.current.t); lp.current.t = setTimeout(() => { lp.current.fired = true; tick(t.id, i, false); try { navigator.vibrate?.(15); } catch { /* not supported */ } }, 450); }}
+                  onTouchMove={e => {
+                    const s0 = sw.current;
+                    if (!s0 || !p.isMobile || !canModify) { clearTimeout(lp.current.t); return; }
+                    const tt = e.touches[0], dx = tt.clientX - s0.x, dy = tt.clientY - s0.y;
+                    if (!s0.lock && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) { s0.lock = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'; clearTimeout(lp.current.t); }
+                    if (s0.lock === 'h') setSwipe({ id: t.id, dx: Math.max(-160, Math.min(160, dx)) });
+                  }}
+                  onTouchEnd={() => { clearTimeout(lp.current.t); swipeEnd(t); }} onTouchCancel={() => { clearTimeout(lp.current.t); sw.current = null; setSwipe(null); }}
                   onContextMenu={e => { if (p.isMobile) e.preventDefault(); }}
                   onMouseEnter={() => { if (!p.isMobile) void loadThread(account, t.id, t.date); }}
-                  style={{ position: 'relative', WebkitTouchCallout: p.isMobile ? 'none' : undefined, userSelect: p.isMobile ? 'none' : undefined, display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: sel.has(t.id) ? 'var(--k-fdf6e8)' : selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
+                  style={{ transform: swipe?.id === t.id ? `translateX(${swipe.dx}px)` : undefined, transition: swipe?.id === t.id ? 'none' : 'transform .18s', touchAction: p.isMobile && canModify ? 'pan-y' : undefined, position: 'relative', WebkitTouchCallout: p.isMobile ? 'none' : undefined, userSelect: p.isMobile ? 'none' : undefined, display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: sel.has(t.id) ? 'var(--k-fdf6e8)' : selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
                   <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
                     <div className="gm-av"><Avatar name={name} email={a.email} warm={!!match} /></div>
                     {p.isMobile && sel.has(t.id) && <div aria-label="Selected" style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800 }}>✓</div>}
@@ -743,6 +767,7 @@ export default function GmailMailbox(p: Props) {
                       </div>
                     )}
                   </div>
+                </div>
                 </div>
               </React.Fragment>
             );
@@ -1091,7 +1116,14 @@ function ThreadReader(p: {
         ...(threadTarget ? (threadTarget.kind === 'deal' ? { deal_id: threadTarget.id } : { client_id: threadTarget.id }) : {}),
       }) });
       if (!r.ok) { p.notify('Could not set the reminder — try again.'); return; }
-      p.notify(`Reminder set for ${ymdLabel(due)} — it’s on your Tasks`);
+      // Like every other task in the CRM, it also goes on your Google Calendar (best effort — the task is saved either way).
+      let cal = '';
+      try {
+        const cr = await fetch('/api/calendar/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: uid, title: `Follow up: ${p.t.subject}`.slice(0, 140), due_date: due, notes: `Email conversation with ${who}`, client_name: threadTarget?.label ?? '', task_type: 'follow_up' }) });
+        const cj = await cr.json().catch(() => ({}));
+        cal = cj.success ? ' and your calendar' : cj.error === 'scope_missing' ? ' (reconnect Google in Settings to add it to your calendar too)' : '';
+      } catch { /* calendar is optional */ }
+      p.notify(`Reminder set for ${ymdLabel(due)} — it’s on your Tasks${cal.startsWith(' and') ? cal : ''}${cal.startsWith(' (') ? cal : ''}`);
     } catch { p.notify('Could not set the reminder — try again.'); }
   };
 
