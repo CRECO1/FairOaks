@@ -64,3 +64,28 @@ export async function senderName(db: SupabaseClient, userId: string): Promise<st
     return n || 'A teammate';
   } catch { return 'A teammate'; }
 }
+
+/**
+ * A phone alert for a real email reply (someone answering a conversation we started). Best effort, never throws.
+ * Devices that haven't switched on the "Email replies" alert simply don't get it (the bell row is the record either way).
+ */
+export async function pushEmailReply(
+  db: SupabaseClient,
+  n: { recipientIds: string[]; name: string; subject: string; tag: string },
+): Promise<void> {
+  try {
+    for (const id of n.recipientIds) {
+      const { data: who } = await db.from('crm_profiles').select('business_unit').eq('id', id).maybeSingle();
+      await sendPushToProfiles([id], {
+        title: `${n.name} replied`,
+        body: n.subject.slice(0, 120),
+        url: '/crm/commercial#emails',
+        tag: n.tag,
+        category: 'replies',
+        businessUnit: who?.business_unit ?? null,
+      }, { db });
+    }
+  } catch (e) {
+    console.error('[notify] reply push failed (the bell notification is unaffected):', e);
+  }
+}

@@ -15,6 +15,7 @@ import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { chicagoToday } from '@/lib/chicago-time';
 import { storeGmailAttachments } from '@/lib/email-attachments';
+import { pushEmailReply } from '@/lib/notify';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -240,6 +241,13 @@ export async function GET(req: NextRequest) {
           recipient_id: rid, sender_id: null, type: 'email_reply',
           message: `✉ ${name} replied: ${subject.slice(0, 90)}`, entity_type: 'contact', entity_id: contact.id,
         })));
+
+        // A real, fresh reply (it answers a thread — has In-Reply-To — and isn't an auto-responder or bulk mail) also taps the phone.
+        {
+          const autoish = /auto-(replied|generated)/i.test(hdr(msg, 'Auto-Submitted')) || /bulk|auto_reply|junk|list/i.test(hdr(msg, 'Precedence'));
+          const fresh = Date.now() - (Number(msg.internalDate) || 0) < 3 * 3_600_000;
+          if (hdr(msg, 'In-Reply-To') && !autoish && fresh) await pushEmailReply(db, { recipientIds: [...recipients], name, subject, tag: `reply-${contact.id}` });
+        }
 
         // They answered: settle the "remind me if no reply" tasks created before this message.
         if (!viaThread) {
