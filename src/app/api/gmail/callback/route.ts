@@ -9,7 +9,7 @@ const REDIRECT_URI = `${BASE_URL}/api/gmail/callback`;
 const CRM_URL      = `${BASE_URL}/crm`;
 
 const SCOPES = [
-  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.modify', // read + mark read/unread, archive, star, trash (supersedes gmail.readonly; cannot permanently delete)
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.settings.basic',
   'https://www.googleapis.com/auth/calendar.events',

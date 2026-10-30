@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { callerMailboxes } from '@/lib/gmail-mailbox';
-import { listThreads, unreadCounts } from '@/lib/gmail-live';
+import { listThreads, unreadCounts, hasModifyScope } from '@/lib/gmail-live';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -30,10 +30,13 @@ export async function GET(req: NextRequest) {
   if (kind === 'inbox' && filter === 'primary') parts.push('category:primary');
   if (filter === 'unread') parts.push('is:unread');
   if (filter === 'files') parts.push('has:attachment');
+  if (filter === 'starred') parts.push('is:starred');
   const q = (sp.get('q') ?? '').replace(/[\r\n]/g, ' ').slice(0, 200).trim();
   if (q) parts.push(q);
   const pageToken = sp.get('pageToken');
+  const canModify = await hasModifyScope(box.accessToken);
   const res = await listThreads(box.accessToken, { box: kind, q: parts.join(' ') || undefined, pageToken: pageToken && /^[\w-]{1,200}$/.test(pageToken) ? pageToken : undefined });
   if (!res.ok) return NextResponse.json({ error: res.status === 401 || res.status === 403 ? 'Gmail needs to be reconnected (Settings → reconnect Google).' : 'Gmail did not answer — try again.' }, { status: 502 });
-  return NextResponse.json({ connected: true, accounts, account: box.email, threads: res.threads, next: res.next });
+  const reconnect = `/api/gmail/auth?userId=${encodeURIComponent(ctx.userId)}${box.email ? `&hint=${encodeURIComponent(box.email)}` : ''}${ctx.businessUnit ? `&bu=${encodeURIComponent(ctx.businessUnit)}` : ''}`;
+  return NextResponse.json({ connected: true, accounts, account: box.email, threads: res.threads, next: res.next, canModify, reconnect });
 }

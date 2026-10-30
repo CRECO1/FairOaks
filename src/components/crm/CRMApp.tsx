@@ -1191,7 +1191,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     tick();
     const t = setInterval(tick, 3 * 60_000);
     window.addEventListener('focus', tick);
-    return () => { live = false; clearInterval(t); window.removeEventListener('focus', tick); };
+    window.addEventListener('crm-gmail-changed', tick); // the Emails page just marked something read / archived it
+    return () => { live = false; clearInterval(t); window.removeEventListener('focus', tick); window.removeEventListener('crm-gmail-changed', tick); };
   }, [gmailConnected]);
   const emailBadge = gmailUnread != null ? gmailUnread : inbox.unreadMine;
   // Anyone we know by email address → their deal (preferred) or contact card, for the live Gmail view.

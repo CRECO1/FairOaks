@@ -8,7 +8,7 @@ import { collectAttachmentParts } from '@/lib/email-attachments';
 
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
-export type ThreadSummary = { id: string; subject: string; snippet: string; from: string; to: string; date: number; unread: boolean; count: number; files: boolean };
+export type ThreadSummary = { id: string; subject: string; snippet: string; from: string; to: string; date: number; unread: boolean; count: number; files: boolean; starred: boolean };
 export type LiveAttachment = { part: string; name: string; size: number; mime: string };
 export type LiveMessage = {
   id: string; from: string; to: string; cc: string; subject: string; date: number; unread: boolean;
@@ -65,7 +65,7 @@ export async function listThreads(token: string, opts: { box: 'inbox' | 'sent'; 
     threads.push({
       id: t.id, subject: hdr(msgs[0], 'Subject') || '(no subject)', snippet: last.snippet ?? '',
       from: hdr(last, 'From'), to: hdr(last, 'To'), date: Number(last.internalDate) || 0,
-      unread: msgs.some(m => m.labelIds?.includes('UNREAD')), count: msgs.length,
+      unread: msgs.some(m => m.labelIds?.includes('UNREAD')), starred: msgs.some(m => m.labelIds?.includes('STARRED')), count: msgs.length,
       files: withFiles ? withFiles.has(t.id) : msgs.some(m => m.payload?.mimeType === 'multipart/mixed'),
     });
   }
@@ -138,4 +138,36 @@ export async function fetchAttachment(token: string, messageId: string, partId: 
   const a = await g(token, `/messages/${messageId}/attachments/${part.body.attachmentId}`);
   if (!a.ok || !a.json.data) return null;
   return { bytes: b64(a.json.data), name: part.filename ?? 'attachment', mime: part.mimeType ?? 'application/octet-stream' };
+}
+
+// ── Changing mail (needs the gmail.modify permission; the CRM first connected with read-only) ─────────────────────────
+export const THREAD_ACTIONS = ['read', 'unread', 'archive', 'unarchive', 'star', 'unstar', 'trash', 'untrash'] as const;
+export type ThreadAction = typeof THREAD_ACTIONS[number];
+const LABELS: Record<Exclude<ThreadAction, 'trash' | 'untrash'>, { add?: string[]; remove?: string[] }> = {
+  read: { remove: ['UNREAD'] }, unread: { add: ['UNREAD'] }, archive: { remove: ['INBOX'] }, unarchive: { add: ['INBOX'] },
+  star: { add: ['STARRED'] }, unstar: { remove: ['STARRED'] },
+};
+
+/** Apply one change to a whole conversation. Trash is recoverable in Gmail for 30 days; nothing here deletes permanently. */
+export async function modifyThread(token: string, id: string, action: ThreadAction): Promise<{ ok: boolean; status: number }> {
+  const url = action === 'trash' || action === 'untrash' ? `${API}/threads/${id}/${action}` : `${API}/threads/${id}/modify`;
+  const body = action === 'trash' || action === 'untrash' ? undefined : JSON.stringify({ addLabelIds: LABELS[action].add ?? [], removeLabelIds: LABELS[action].remove ?? [] });
+  const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body, cache: 'no-store' });
+  return { ok: res.ok, status: res.status };
+}
+
+// Does this token carry gmail.modify? (Tokens from before the permission was widened only read.) Cached briefly per token.
+const scopeCache = new Map<string, { at: number; modify: boolean }>();
+export async function hasModifyScope(token: string): Promise<boolean> {
+  const hit = scopeCache.get(token);
+  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.modify;
+  let modify = false;
+  try {
+    const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`, { cache: 'no-store' });
+    const j = await r.json().catch(() => ({}));
+    modify = r.ok && typeof j.scope === 'string' && /\/auth\/gmail\.modify\b|mail\.google\.com\//.test(j.scope);
+  } catch { /* unknown → treat as read-only; the buttons then offer to allow it */ }
+  if (scopeCache.size > 50) scopeCache.clear();
+  scopeCache.set(token, { at: Date.now(), modify });
+  return modify;
 }

@@ -13,7 +13,8 @@ type Track = { tracked: boolean; opens: number; opened: boolean };
 // right, so you never lose your place); on a phone the list and the conversation are separate screens. Mail is read live
 // from Gmail — nothing is copied — and Reply / Reply all / Forward open the CRM's Compose window, so what you send is
 // still logged and tracked here. Opening a conversation only dims it locally (marking it read IN Gmail needs a wider
-// Google permission we haven't asked for).
+// Google permission). With that permission (gmail.modify) you can also mark read/unread, archive, star and trash right
+// here — every change is applied to Gmail itself and can be undone.
 
 const CT: Intl.DateTimeFormatOptions = { timeZone: 'America/Chicago' };
 const dayKey = (ms: number) => new Date(ms).toLocaleDateString('en-US', CT);
@@ -70,6 +71,20 @@ async function loadThread(account: string | null, id: string, date: number): Pro
   })();
   inflight.set(key, job);
   return job;
+}
+
+type Act = 'read' | 'unread' | 'archive' | 'star' | 'unstar' | 'trash';
+const UNDO_OF: Record<Act, string> = { archive: 'unarchive', trash: 'untrash', star: 'unstar', unstar: 'star', read: 'unread', unread: 'read' };
+const DONE: Record<Act, string> = { archive: 'Archived', trash: 'Moved to Trash', star: 'Starred', unstar: 'Star removed', read: 'Marked read', unread: 'Marked unread' };
+const ICON: Record<string, React.ReactNode> = {
+  archive: <><rect x="3" y="4" width="18" height="4" rx="1" /><path d="M5 8v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4" /></>,
+  mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
+  open: <><path d="M3 10 12 4l9 6v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" /><path d="m3 10 9 6 9-6" /></>,
+  star: <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />,
+  trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></>,
+};
+function Ic({ n, size = 16, fill = false }: { n: keyof typeof ICON; size?: number; fill?: boolean }) {
+  return <svg aria-hidden width={size} height={size} viewBox="0 0 24 24" fill={fill ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>{ICON[n]}</svg>;
 }
 
 export type ContactMatch = { kind: 'deal' | 'contact'; id: string; label: string; sub?: string } | null;
@@ -165,7 +180,7 @@ function Avatar({ name, email, size = 36, warm = false }: { name: string; email:
 }
 
 export default function GmailMailbox(p: Props) {
-  const [filter, setFilter] = useState<'all' | 'unread' | 'files'>('all');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'files' | 'starred'>('all');
   const [contactsOnly, setContactsOnly] = useState(false);
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
@@ -180,8 +195,14 @@ export default function GmailMailbox(p: Props) {
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
   const [open, setOpenThread] = useState<ThreadSummary | null>(null);
   const [wide, setWide] = useState(false);
+  const [canModify, setCanModify] = useState<boolean | null>(null); // null = not known yet
+  const [reconnect, setReconnect] = useState<string | null>(null);
+  const [hideBanner, setHideBanner] = useState(true);
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setOpened(loadOpened()); }, []);
+  useEffect(() => { try { setHideBanner(Date.now() - Number(localStorage.getItem('crm-gmail-modify-banner') ?? 0) < 3 * 86_400_000); } catch { setHideBanner(false); } }, []);
   // Two panes only when there is room for both.
   useEffect(() => {
     const on = () => setWide(!p.isMobile && window.innerWidth >= 1180);
@@ -208,6 +229,7 @@ export default function GmailMailbox(p: Props) {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { if (!cached) { setErr(j.error ?? 'Could not load your mail.'); setThreads([]); } return; }
       setConnected(j.connected !== false); setAccounts(j.accounts ?? []); if (j.account) setSelf(j.account);
+      if (typeof j.canModify === 'boolean') setCanModify(j.canModify); if (j.reconnect) setReconnect(j.reconnect);
       const fresh = (j.threads ?? []) as ThreadSummary[];
       listCache.set(cacheKey, { threads: fresh, next: j.next ?? null, accounts: j.accounts ?? [], account: j.account ?? account });
       setThreads(fresh); setNext(j.next ?? null);
@@ -272,7 +294,33 @@ export default function GmailMailbox(p: Props) {
   const otherOf = useCallback((t: ThreadSummary) => parseAddr(p.box === 'sent' ? t.to : t.from), [p.box]);
   const openThread = (t: ThreadSummary) => {
     setOpenThread(t);
+    if (canModify && t.unread) void act(t, 'read', true); // also clears it in Gmail itself (and the sidebar badge)
     setOpened(prev => { const n = new Set(prev); n.add(keyOf(t)); try { localStorage.setItem(OPENED_KEY, JSON.stringify([...n].slice(-3000))); } catch { /* ignore */ } return n; });
+  };
+
+  const flash = (msg: string, undo?: () => void) => { setToast({ msg, undo }); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 7000); };
+  const send = async (id: string, action: string): Promise<boolean> => {
+    try {
+      const r = await fetch('/api/gmail/modify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action, account: account ?? self ?? undefined }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) { window.dispatchEvent(new Event('crm-gmail-changed')); return true; }
+      if (j.needsScope) setCanModify(false);
+      p.notify(j.error ?? 'Could not change that conversation.');
+    } catch { p.notify('Could not reach Gmail — try again.'); }
+    return false;
+  };
+  // Optimistic: the list changes at once, Gmail is updated behind it, and a failure puts everything back.
+  const act = async (t: ThreadSummary, action: Act, silent = false) => {
+    if (canModify === false) { p.notify('Allow the CRM to change your Gmail first — see the note above the list.'); return; }
+    const before = threads;
+    const removing = action === 'archive' || action === 'trash';
+    if (removing) setThreads(prev => (prev ?? []).filter(x => x.id !== t.id));
+    else setThreads(prev => (prev ?? []).map(x => x.id !== t.id ? x : { ...x, ...(action === 'read' ? { unread: false } : action === 'unread' ? { unread: true } : action === 'star' ? { starred: true } : { starred: false }) }));
+    if (action === 'unread') setOpened(prev => { const n = new Set(prev); n.delete(keyOf(t)); try { localStorage.setItem(OPENED_KEY, JSON.stringify([...n].slice(-3000))); } catch { /* ignore */ } return n; });
+    listCache.clear();
+    if (!(await send(t.id, action))) { setThreads(before); return; }
+    if (silent) return;
+    flash(DONE[action], removing ? () => { setThreads(before); listCache.clear(); void send(t.id, UNDO_OF[action]); setToast(null); } : undefined);
   };
 
   const visible = useMemo(() => {
@@ -298,6 +346,14 @@ export default function GmailMailbox(p: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide, open, visible]);
 
+  // From the reader: after archiving/trashing, move on to the next conversation (like Gmail) or back to the list.
+  const readerAct = (action: Act) => {
+    if (!open) return;
+    const i = visible.findIndex(x => x.id === open.id), nxt = visible[i + 1] ?? visible[i - 1];
+    void act(open, action);
+    if (action === 'archive' || action === 'trash') { if (wide && nxt) openThread(nxt); else setOpenThread(null); }
+  };
+
   const chip = (on: boolean): React.CSSProperties => ({
     padding: p.isMobile ? '8px 14px' : '6px 12px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer',
     border: `1px solid ${on ? '#111' : 'var(--k-e5e7eb)'}`, background: on ? '#111' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-374151)',
@@ -305,12 +361,12 @@ export default function GmailMailbox(p: Props) {
   });
 
   const reader = (embedded: boolean) => open && (
-    <ThreadReader key={open.id} t={open} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
+    <ThreadReader key={open.id} t={threads?.find(x => x.id === open.id) ?? open} box={p.box} canModify={canModify === true} onAct={readerAct} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
       onReply={p.onReply} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />
   );
 
   // Phone / narrow: the conversation replaces the list.
-  if (open && !wide) return <div>{reader(false)}</div>;
+  if (open && !wide) return <div>{reader(false)}{toast && <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: p.isMobile ? 84 : 24, zIndex: 80, display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', background: '#111', color: '#fff', borderRadius: 10, fontSize: 13.5, fontWeight: 600 }}>{toast.msg}{toast.undo && <button type="button" onClick={toast.undo} style={{ border: 'none', background: 'none', color: '#e8b563', fontWeight: 800, cursor: 'pointer', fontSize: 13.5 }}>Undo</button>}</div>}</div>;
 
   const toolbar = (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
@@ -318,6 +374,7 @@ export default function GmailMailbox(p: Props) {
         <button onClick={() => setFilter('all')} style={chip(filter === 'all')}>{p.box === 'inbox' ? 'All inbox' : 'All sent'}</button>
         {p.box === 'inbox' && <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>}
         <button onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 Files</button>
+        <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
         <button onClick={() => setContactsOnly(v => !v)} aria-pressed={contactsOnly} title="Only people who are in your CRM (of what is loaded)" style={chip(contactsOnly)}>👤 Contacts</button>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: p.isMobile || wide ? 0 : 'auto', flexWrap: 'wrap', width: p.isMobile || wide ? '100%' : undefined }}>
@@ -337,6 +394,15 @@ export default function GmailMailbox(p: Props) {
 
   const list = (
     <>
+      <style>{'.gm-acts{display:none}.gm-row:hover .gm-acts,.gm-row:focus-within .gm-acts{display:flex}@media (hover:none){.gm-acts{display:none!important}}'}</style>
+      {canModify === false && reconnect && !hideBanner && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10, padding: '10px 12px', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 10, fontSize: 13, color: 'var(--k-92400e)' }}>
+          <span style={{ flex: '1 1 220px', minWidth: 0 }}><b>Work your Gmail from here.</b> Mark read, archive, star and trash without leaving the CRM — it needs your OK once.</span>
+          <a href={reconnect} style={{ padding: '7px 14px', borderRadius: 8, background: '#c9922c', color: '#fff', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>Allow</a>
+          <button type="button" aria-label="Not now" onClick={() => { setHideBanner(true); try { localStorage.setItem('crm-gmail-modify-banner', String(Date.now())); } catch { /* ignore */ } }}
+            style={{ border: 'none', background: 'none', color: 'var(--k-92400e)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Not now</button>
+        </div>
+      )}
       {fresh > 0 && (
         <button type="button" onClick={() => void load(true)}
           style={{ width: '100%', marginBottom: 10, padding: '10px', border: '1px solid var(--k-fde68a)', background: 'var(--k-fdf6e8)', color: 'var(--k-92400e)', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -360,16 +426,25 @@ export default function GmailMailbox(p: Props) {
             return (
               <React.Fragment key={t.id}>
                 {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div>}
-                <div role="button" tabIndex={0} onClick={() => openThread(t)} onKeyDown={e => { if (e.key === 'Enter') openThread(t); }}
+                <div role="button" tabIndex={0} className="gm-row" onClick={() => openThread(t)} onKeyDown={e => { if (e.key === 'Enter') openThread(t); }}
                   onMouseEnter={() => { if (!p.isMobile) void loadThread(account, t.id, t.date); }}
-                  style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
+                  style={{ position: 'relative', display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
                   <Avatar name={name} email={a.email} warm={!!match} />
+                  {canModify && !p.isMobile && (
+                    <div className="gm-acts" onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 8, top: 6, gap: 2, padding: 2, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
+                      {([p.box === 'inbox' ? ['archive', 'Archive', 'archive'] : null, [unread ? 'read' : 'unread', unread ? 'Mark read' : 'Mark unread', unread ? 'open' : 'mail'], [t.starred ? 'unstar' : 'star', t.starred ? 'Remove star' : 'Star', 'star'], ['trash', 'Trash', 'trash']] as Array<[Act, string, string] | null>).filter((x): x is [Act, string, string] => !!x).map(([act2, label, icon]) => (
+                        <button key={act2} type="button" title={label} aria-label={label} onClick={() => void act(t, act2)}
+                          style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 6, background: 'none', cursor: 'pointer', color: icon === 'star' && t.starred ? '#c9922c' : 'var(--k-6b7280)' }}><Ic n={icon as keyof typeof ICON} fill={icon === 'star' && t.starred} /></button>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                       <span style={{ fontSize: 14, fontWeight: unread ? 800 : 600, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                         {unread && <span aria-label="Unread" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: '#c9922c', marginRight: 6, verticalAlign: 'middle' }} />}
                         {p.box === 'sent' ? <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}>To: </span> : null}{name}
                         {t.count > 1 && <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}> {t.count}</span>}
+                        {t.starred && <span aria-label="Starred" style={{ display: 'inline-block', marginLeft: 6, verticalAlign: 'middle', color: '#c9922c' }}><Ic n="star" size={13} fill /></span>}
                       </span>
                       <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(t.date)}>{t.files && <span aria-label="Has attachments" title="Has attachments" style={{ marginRight: 5 }}>📎</span>}{when(t.date)}</span>
                     </div>
@@ -399,7 +474,13 @@ export default function GmailMailbox(p: Props) {
     </>
   );
 
-  if (!wide) return <div>{toolbar}{list}</div>;
+  const toastEl = toast && (
+    <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: p.isMobile ? 84 : 24, zIndex: 80, display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', background: '#111', color: '#fff', borderRadius: 10, boxShadow: '0 6px 24px rgba(0,0,0,.25)', fontSize: 13.5, fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+      {toast.msg}
+      {toast.undo && <button type="button" onClick={toast.undo} style={{ border: 'none', background: 'none', color: '#e8b563', fontWeight: 800, cursor: 'pointer', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif" }}>Undo</button>}
+    </div>
+  );
+  if (!wide) return <div>{toolbar}{list}{toastEl}</div>;
 
   // Two panes: each scrolls on its own, like Gmail.
   const paneH = 'calc(100vh - 250px)';
@@ -413,11 +494,12 @@ export default function GmailMailbox(p: Props) {
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--k-9ca3af)', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 12, textAlign: 'center', padding: 24 }}>
               <div style={{ fontSize: 34 }} aria-hidden>✉️</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-374151)' }}>Select a conversation to read it</div>
-              <div style={{ fontSize: 12.5 }}>j / k to move · r reply · a reply all · f forward · / search</div>
+              <div style={{ fontSize: 12.5 }}>j / k to move · r reply · a reply all · f forward · e archive · s star · # trash · / search</div>
             </div>
           )}
         </div>
       </div>
+      {toastEl}
     </div>
   );
 }
@@ -451,7 +533,7 @@ function Empty({ title, sub }: { title: string; sub: string }) {
 }
 
 function ThreadReader(p: {
-  t: ThreadSummary; account: string | null; self: string | null; isMobile: boolean; embedded: boolean; contactFor: (email: string) => ContactMatch;
+  t: ThreadSummary; box: 'inbox' | 'sent'; canModify: boolean; onAct: (a: Act) => void; account: string | null; self: string | null; isMobile: boolean; embedded: boolean; contactFor: (email: string) => ContactMatch;
   onOpenDeal: (id: string) => void; onOpenContact: (id: string) => void;
   onReply: Props['onReply']; onForward: Props['onForward']; onBack: () => void;
   notify: Props['notify']; onAddContact: Props['onAddContact'];
@@ -572,6 +654,10 @@ function ThreadReader(p: {
       if (e.key === 'r') { e.preventDefault(); p.onReply(last, p.t.id, false, p.account); }
       else if (e.key === 'a') { e.preventDefault(); p.onReply(last, p.t.id, true, p.account); }
       else if (e.key === 'f') { e.preventDefault(); p.onForward(last, p.t.id, p.account); }
+      else if (p.canModify && e.key === 'e' && p.box === 'inbox') { e.preventDefault(); p.onAct('archive'); }
+      else if (p.canModify && (e.key === '#' || e.key === 'Delete')) { e.preventDefault(); p.onAct('trash'); }
+      else if (p.canModify && e.key === 's') { e.preventDefault(); p.onAct(p.t.starred ? 'unstar' : 'star'); }
+      else if (p.canModify && e.key === 'U') { e.preventDefault(); p.onAct('unread'); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -617,6 +703,14 @@ function ThreadReader(p: {
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, false, p.account)} title="Reply (r)">↩ Reply</button>
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, true, p.account)} title="Reply all (a)">↩↩ All</button>
             <button type="button" style={btn} onClick={() => p.onForward(last, p.t.id, p.account)} title="Forward (f)">↪</button>
+            {p.canModify && (
+              <div role="group" aria-label="Change this conversation" style={{ display: 'inline-flex', gap: 4 }}>
+                {p.box === 'inbox' && <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('archive')} title="Archive (e)" aria-label="Archive"><Ic n="archive" /></button>}
+                <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('unread')} title="Mark unread (Shift+U)" aria-label="Mark unread"><Ic n="mail" /></button>
+                <button type="button" style={{ ...btn, padding: '0 10px', color: p.t.starred ? '#c9922c' : undefined }} onClick={() => p.onAct(p.t.starred ? 'unstar' : 'star')} title={p.t.starred ? 'Remove star (s)' : 'Star (s)'} aria-label={p.t.starred ? 'Remove star' : 'Star'}><Ic n="star" fill={p.t.starred} /></button>
+                <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('trash')} title="Move to Trash (#)" aria-label="Move to Trash"><Ic n="trash" /></button>
+              </div>
+            )}
           </div>
         )}
       </div>
