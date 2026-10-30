@@ -16,13 +16,15 @@ interface Prospect {
   /** Built for this property but never emailed by its campaigns — a cold-call row. */
   notEmailed?: boolean;
 }
-type SortKey = 'who' | 'category' | 'emailsSent' | 'emailsOpened' | 'opens' | 'lastOpen' | 'clicks';
+type SortKey = 'who' | 'category' | 'emailsSent' | 'emailsOpened' | 'rate' | 'opens' | 'lastOpen' | 'clicks';
 
 const GOLD = '#c9922c';
 const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 const pct = (r: number) => `${Math.round(r * 100)}%`;
 const day = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Chicago' }) : '';
 const who = (p: Prospect) => p.business || p.name || p.email;
+// A prospect's own open rate: how many of the emails we sent them they opened.
+const rateOf = (p: Prospect) => (p.emailsSent ? p.emailsOpened / p.emailsSent : 0);
 const TH: React.CSSProperties = { textAlign: 'left', fontSize: 10.5, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 800, padding: '8px 10px', borderBottom: '1px solid var(--k-e5e7eb)', background: 'var(--k-fafafa)', whiteSpace: 'nowrap', position: 'sticky', top: 0 };
 const TD: React.CSSProperties = { fontSize: 12.5, color: 'var(--k-1f2937)', padding: '7px 10px', borderBottom: '1px solid var(--k-f3f4f6)', verticalAlign: 'top' };
 
@@ -34,7 +36,8 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
   const [segment, setSegment] = useState<'all' | Segment>('all');
   const onlyOpened = view === 'opened';
   const [q, setQ] = useState('');
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'lastOpen', dir: -1 });
+  // Default (Zack, 2026-10-30): highest open rate first, then most opens, then latest open.
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'rate', dir: -1 });
   const [showCamps, setShowCamps] = useState(false);
 
   useEffect(() => {
@@ -64,7 +67,9 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
       (!needle || [p.business, p.name, p.email, p.phone, p.category, p.askFor].some(v => v.toLowerCase().includes(needle))));
     const k = sort.key;
     // The cold list has no opens to sort by — keep the server's order (callable first, then A–Z) until a column is chosen.
-    if (view === 'cold' && k === 'lastOpen') return rows;
+    if (view === 'cold' && k === 'rate') return rows;
+    if (k === 'rate') return [...rows].sort((a, b) =>
+      (rateOf(b) - rateOf(a) || b.opens - a.opens || String(b.lastOpen ?? '').localeCompare(String(a.lastOpen ?? ''))) * -sort.dir);
     return [...rows].sort((a, b) => {
       const av = k === 'who' ? who(a) : a[k]; const bv = k === 'who' ? who(b) : b[k];
       if (av === bv) return 0;
@@ -160,10 +165,10 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
       </div>
 
       <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'auto', background: 'var(--k-fff)', maxHeight: 520 }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 760 }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 820 }}>
           <thead><tr>
             {th('Prospect', 'who')}{th('Category', 'category')}{th('Contact')}
-            {th('Sent', 'emailsSent', true)}{th('Opened', 'emailsOpened', true)}{th('Opens', 'opens', true)}{th('Last open', 'lastOpen')}{th('Clicks', 'clicks', true)}
+            {th('Sent', 'emailsSent', true)}{th('Opened', 'emailsOpened', true)}{th('Open rate', 'rate', true)}{th('Opens', 'opens', true)}{th('Last open', 'lastOpen')}{th('Clicks', 'clicks', true)}
           </tr></thead>
           <tbody>
             {visible.map(p => (
@@ -183,12 +188,13 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
                 </td>
                 <td style={{ ...TD, textAlign: 'right' }}>{p.emailsSent}</td>
                 <td style={{ ...TD, textAlign: 'right' }}>{p.emailsOpened}</td>
+                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: !p.emailsSent ? 'var(--k-9ca3af)' : rateOf(p) >= .5 ? 'var(--k-16a34a)' : rateOf(p) > 0 ? GOLD : 'var(--k-9ca3af)' }}>{p.emailsSent ? pct(rateOf(p)) : '—'}</td>
                 <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{p.opens || ''}</td>
                 <td style={{ ...TD, whiteSpace: 'nowrap' }}>{day(p.lastOpen)}</td>
                 <td style={{ ...TD, textAlign: 'right' }}>{p.clicks || ''}</td>
               </tr>
             ))}
-            {visible.length === 0 && <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 13 }}>{view === 'opened' ? 'No opens yet.' : view === 'cold' ? 'Everyone built for this property has been emailed.' : 'No one emailed yet.'}</td></tr>}
+            {visible.length === 0 && <tr><td colSpan={9} style={{ padding: 20, textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 13 }}>{view === 'opened' ? 'No opens yet.' : view === 'cold' ? 'Everyone built for this property has been emailed.' : 'No one emailed yet.'}</td></tr>}
           </tbody>
         </table>
       </div>

@@ -9175,7 +9175,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </button>
                               ) : null}
                               <div style={{ fontSize: (camp.engaged_count ?? 0) > 0 ? 11 : 12, color: 'var(--k-6b7280)', marginTop: (camp.engaged_count ?? 0) > 0 ? 3 : 0, whiteSpace: 'nowrap' }}>{sent} sent → {camp.engaged_count ?? 0} engaged</div>
-                              {camp.open_rate != null && <div title="Apple Mail opens every email it delivers, so opens overstate real reads" style={{ fontSize: 11, color: 'var(--k-b0b0b0)', whiteSpace: 'nowrap' }}>{camp.open_rate}% opened{camp.click_rate != null ? ` · ${camp.click_rate}% clicked` : ''}</div>}
+                              {/* Zack 2026-10-30: make sure the open rate shows. Colored like Action Plans' rate (green 40%+, gold 20%+, red below). */}
+                              {camp.open_rate != null && <div title="Apple Mail opens every email it delivers, so opens overstate real reads" style={{ fontSize: 12.5, fontWeight: 700, marginTop: 2, color: camp.open_rate >= 40 ? 'var(--k-16a34a)' : camp.open_rate >= 20 ? '#c9922c' : '#ef4444', whiteSpace: 'nowrap' }}>{camp.open_rate}% opened{camp.click_rate != null ? <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}> · {camp.click_rate}% clicked</span> : ''}</div>}
                             </div>
                           ) : (
                             <div style={{ fontSize: 12, color: '#c4c4c4' }}>Not sent yet</div>
