@@ -31,6 +31,7 @@ type Props = {
   onOpenDeal: (id: string) => void;
   onOpenContact: (id: string) => void;
   contactFor: (email: string) => ContactMatch;
+  searchPeople: (q: string) => Array<{ name: string; email: string; sub?: string }>;
   onLiveReply: (m: LiveMessage, threadId: string, all: boolean, account: string | null) => void;
   onLiveForward: (m: LiveMessage, threadId: string, account: string | null) => void;
   onCompose: () => void;
@@ -91,7 +92,7 @@ export default function EmailsSection(p: Props) {
         <>
           {toggle('All mail', 'CRM replies')}
           {source === 'gmail'
-            ? <GmailMailbox box="inbox" isMobile={p.isMobile} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
+            ? <GmailMailbox box="inbox" isMobile={p.isMobile} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
             : <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />}
         </>
       )}
@@ -100,7 +101,7 @@ export default function EmailsSection(p: Props) {
         <>
           {toggle('All sent', 'Tracked opens')}
           {source === 'gmail'
-            ? <GmailMailbox box="sent" isMobile={p.isMobile} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
+            ? <GmailMailbox box="sent" isMobile={p.isMobile} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
             : <SentSection embedded isMobile={p.isMobile} myAddresses={p.myAddresses} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} />}
         </>
       )}

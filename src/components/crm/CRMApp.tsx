@@ -1211,6 +1211,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return m;
   }, [clients, deals]);
   const contactFor = (email: string): ContactMatch => contactIndex.get(email.trim().toLowerCase()) ?? null;
+  // People suggestions for the Emails search box: type a name, pick the person, search everything to/from them.
+  const searchPeople = (q: string) => {
+    const n = q.trim().toLowerCase(); if (n.length < 2) return [];
+    return clients.filter(c => c.email && `${c.first_name} ${c.last_name} ${c.business_name} ${c.email}`.toLowerCase().includes(n)).slice(0, 6)
+      .map(c => ({ name: `${c.first_name} ${c.last_name}`.trim() || c.email, email: c.email, sub: c.business_name || c.type || '' }));
+  };
   // Group email as separate copies (per-person open tracking) vs one shared message.
   const [composeIndividual, setComposeIndividual] = useState(false);
   const [composeSending, setComposeSending] = useState(false);
@@ -11239,7 +11245,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {page === 'emails' && (
             <EmailsSection isMobile={isMobile} tab={emailsTab} setTab={setEmailsTab}
               unread={emailBadge} draftCount={draftCount} inbox={inbox}
-              contactFor={contactFor} onLiveReply={liveReply} onLiveForward={liveForward} onCompose={() => openCompose()}
+              contactFor={contactFor} searchPeople={searchPeople} onLiveReply={liveReply} onLiveForward={liveForward} onCompose={() => openCompose()}
               notify={showToast} onAddContact={addContactFromMail}
               myAddresses={[...gmailAccounts.map(a => a.email), profile.email, session?.user?.email ?? ''].filter(Boolean)}
               nameFor={nameForEmail}

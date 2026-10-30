@@ -48,6 +48,10 @@ const OPENED_KEY = 'crm-gmail-opened';
 const loadOpened = (): Set<string> => { try { return new Set(JSON.parse(localStorage.getItem(OPENED_KEY) ?? '[]') as string[]); } catch { return new Set(); } };
 const ageDays = (ms: number) => Math.floor((Date.now() - ms) / 86_400_000);
 const ago = (iso: string | undefined) => { if (!iso) return ''; const d = ageDays(new Date(iso.length <= 10 ? iso + 'T12:00:00' : iso).getTime()); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d < 60 ? `${d} days ago` : `${Math.round(d / 30)} months ago`; };
+// "YYYY-MM-DD" (Central time) for today + n days; nextMonday = the coming Monday.
+const ymdPlus = (n: number) => { const d = new Date(`${new Date().toLocaleDateString('en-CA', CT)}T12:00:00`); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
+const ymdNextMonday = () => { const d = new Date(`${new Date().toLocaleDateString('en-CA', CT)}T12:00:00`); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); return d.toLocaleDateString('en-CA'); };
+const ymdLabel = (ymd: string) => new Date(`${ymd}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const previewable = (mime: string) => /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(mime);
 
 // In-session caches (gone on a full reload, which is fine): the list paints instantly from the last visit while a quiet
@@ -95,6 +99,7 @@ type Props = {
   box: 'inbox' | 'sent';
   isMobile: boolean;
   contactFor: (email: string) => ContactMatch;
+  searchPeople: (q: string) => Array<{ name: string; email: string; sub?: string }>;
   onOpenDeal: (id: string) => void;
   onOpenContact: (id: string) => void;
   onReply: (m: LiveMessage, threadId: string, all: boolean, account: string | null) => void;
@@ -326,6 +331,9 @@ export default function GmailMailbox(p: Props) {
   };
 
   const [noReply, setNoReply] = useState(false);
+  const [sugOpen, setSugOpen] = useState(false);
+  const [help, setHelp] = useState(false);
+  const sugs = useMemo(() => (/[:"(]/.test(q) ? [] : p.searchPeople(q)), [q, p]);
   const visible = useMemo(() => {
     let list = threads ?? [];
     if (contactsOnly) list = list.filter(t => { const a = otherOf(t); return a.email && p.contactFor(a.email); });
@@ -360,6 +368,16 @@ export default function GmailMailbox(p: Props) {
     flash(`${DONE[action]} · ${okIds.length} conversation${okIds.length === 1 ? '' : 's'}`, removing ? () => { setThreads(before); listCache.clear(); okIds.forEach(id => void send(id, UNDO_OF[action], true)); setToast(null); } : undefined);
   };
   // A filter that only finds a few matches in what is loaded keeps reading older mail (a few pages at most) so it isn't empty by accident.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setHelp(false); return; }
+      if (e.key !== '?' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      e.preventDefault(); setHelp(v => !v);
+    };
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const autoPages = useRef(0);
   useEffect(() => { autoPages.current = 0; }, [p.box, filter, term, account, contactsOnly, noReply]);
   useEffect(() => {
@@ -423,8 +441,26 @@ export default function GmailMailbox(p: Props) {
         <button onClick={() => setContactsOnly(v => !v)} aria-pressed={contactsOnly} title="Only people who are in your CRM (of what is loaded)" style={chip(contactsOnly)}>👤 Contacts</button>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: p.isMobile || wide ? 0 : 'auto', flexWrap: 'wrap', width: p.isMobile || wide ? '100%' : undefined }}>
-        <input ref={searchRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Search mail (from:, to:, has:attachment…)  ·  press /" aria-label="Search Gmail"
-          style={{ flex: p.isMobile || wide ? '1 1 0' : '0 1 300px', minWidth: 0, height: p.isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
+        <div style={{ position: 'relative', flex: p.isMobile || wide ? '1 1 0' : '0 1 300px', minWidth: 0 }}>
+          <input ref={searchRef} value={q} onChange={e => { setQ(e.target.value); setSugOpen(true); }} onFocus={() => setSugOpen(true)} onBlur={() => setTimeout(() => setSugOpen(false), 150)}
+            placeholder="Search mail or type a name  ·  press /" aria-label="Search Gmail" aria-autocomplete="list"
+            style={{ width: '100%', boxSizing: 'border-box', height: p.isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
+          {sugOpen && sugs.length > 0 && (
+            <div role="listbox" aria-label="People in your CRM" style={{ position: 'absolute', left: 0, right: 0, top: 'calc(100% + 4px)', zIndex: 20, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.12)', overflow: 'hidden', minWidth: 240 }}>
+              <div style={{ padding: '6px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)' }}>Mail with…</div>
+              {sugs.map(g => (
+                <div key={g.email} role="option" aria-selected={false} onMouseDown={e => { e.preventDefault(); setQ(`(from:${g.email} OR to:${g.email})`); setSugOpen(false); }}
+                  style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 12px', cursor: 'pointer', borderTop: '1px solid var(--k-f0f0f0)' }}>
+                  <Avatar name={g.name} email={g.email} size={26} warm />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.email}{g.sub ? ` · ${g.sub}` : ''}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {accounts.length > 1 && (
           <select value={account ?? self ?? ''} onChange={e => setAccount(e.target.value)} aria-label="Gmail account"
             style={{ height: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px' }}>
@@ -433,6 +469,8 @@ export default function GmailMailbox(p: Props) {
         )}
         <button type="button" onClick={() => void refresh()} title="Refresh" aria-label="Refresh"
           style={{ height: p.isMobile ? 42 : 34, width: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 15, cursor: 'pointer', opacity: refreshing ? 0.5 : 1 }}>{refreshing ? '…' : '↻'}</button>
+        {!p.isMobile && <button type="button" onClick={() => setHelp(true)} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"
+          style={{ height: 34, width: 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 15, cursor: 'pointer' }}>⌨</button>}
       </div>
     </div>
   );
@@ -540,13 +578,29 @@ export default function GmailMailbox(p: Props) {
     </>
   );
 
+  const helpEl = help && (
+    <div role="dialog" aria-label="Keyboard shortcuts" onClick={() => setHelp(false)} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--k-fff)', borderRadius: 14, padding: '20px 24px', width: 'min(460px, 100%)', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--k-111)', flex: 1 }}>Keyboard shortcuts</div>
+          <button type="button" onClick={() => setHelp(false)} aria-label="Close" style={{ border: 'none', background: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--k-6b7280)' }}>✕</button>
+        </div>
+        {([['Move through the list', 'j / k'], ['Open the conversation', 'Enter'], ['Search', '/'], ['Compose a new email', 'c'], ['Reply', 'r'], ['Reply all', 'a'], ['Forward', 'f'], ['Archive', 'e'], ['Move to Trash', '#'], ['Star / unstar', 's'], ['Mark unread', 'Shift + U'], ['Back / clear selection / close', 'Esc'], ['This list', '?']] as Array<[string, string]>).map(([what, keys]) => (
+          <div key={what} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderTop: '1px solid var(--k-f0f0f0)', fontSize: 14, color: 'var(--k-374151)' }}>
+            <span>{what}</span><kbd style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12.5, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '1px 8px', color: 'var(--k-111)', whiteSpace: 'nowrap' }}>{keys}</kbd>
+          </div>
+        ))}
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--k-9ca3af)' }}>Archive, trash and star need the Gmail “Allow” step. Tip: type a contact’s name in the search box to see all your mail with them.</div>
+      </div>
+    </div>
+  );
   const toastEl = toast && (
     <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: p.isMobile ? 84 : 24, zIndex: 80, display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', background: '#111', color: '#fff', borderRadius: 10, boxShadow: '0 6px 24px rgba(0,0,0,.25)', fontSize: 13.5, fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
       {toast.msg}
       {toast.undo && <button type="button" onClick={toast.undo} style={{ border: 'none', background: 'none', color: '#e8b563', fontWeight: 800, cursor: 'pointer', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif" }}>Undo</button>}
     </div>
   );
-  if (!wide) return <div>{toolbar}{list}{toastEl}</div>;
+  if (!wide) return <div>{toolbar}{list}{toastEl}{helpEl}</div>;
 
   // Two panes: each scrolls on its own, like Gmail.
   const paneH = 'calc(100vh - 250px)';
@@ -565,7 +619,7 @@ export default function GmailMailbox(p: Props) {
           )}
         </div>
       </div>
-      {toastEl}
+      {toastEl}{helpEl}
     </div>
   );
 }
@@ -612,6 +666,7 @@ function ThreadReader(p: {
   const [working, setWorking] = useState<string | null>(null);
   const [filed, setFiled] = useState<Set<string>>(() => new Set());
   const [savedAtt, setSavedAtt] = useState<Set<string>>(() => new Set());
+  const [remindOpen, setRemindOpen] = useState(false);
   const [opens, setOpens] = useState<Map<string, { opened: boolean; n: number; last: string | null }>>(() => new Map());
   useEffect(() => {
     let live = true;
@@ -742,6 +797,25 @@ function ThreadReader(p: {
     return `to ${names.slice(0, 2).join(', ') || '—'}${names.length > 2 ? ` +${names.length - 2}` : ''}${cc ? ` · cc ${cc}` : ''}`;
   };
 
+  // ⏰ Remind me: a real CRM follow-up task (shows on Tasks and your dashboard), linked to the contact/deal when we know them.
+  const remind = async (due: string) => {
+    setRemindOpen(false);
+    try {
+      const uid = (await supabase.auth.getSession()).data.session?.user?.id;
+      const l = msgs && msgs.length ? msgs[msgs.length - 1] : null;
+      const other = l ? (me && parseAddr(l.from).email.toLowerCase() === me ? parseAddr(l.to) : parseAddr(l.from)) : { name: '', email: '' };
+      const who = threadTarget?.label ?? (other.name || other.email || 'this email');
+      const r = await fetch('/api/crm/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        title: `Follow up: ${p.t.subject}`.slice(0, 140),
+        description: `Email conversation with ${who}${l ? ` — last message ${whenLong(l.date)}` : ''}. Find it in Emails by searching “${p.t.subject.slice(0, 60)}”.`,
+        due_date: due, type: 'follow_up', priority: 'normal', assigned_to: uid || undefined,
+        ...(threadTarget ? (threadTarget.kind === 'deal' ? { deal_id: threadTarget.id } : { client_id: threadTarget.id }) : {}),
+      }) });
+      if (!r.ok) { p.notify('Could not set the reminder — try again.'); return; }
+      p.notify(`Reminder set for ${ymdLabel(due)} — it’s on your Tasks`);
+    } catch { p.notify('Could not set the reminder — try again.'); }
+  };
+
   // Who this conversation is with: the first outside party we know (a deal wins over a contact card).
   const threadTarget: NonNullable<ContactMatch> | null = (() => {
     let found: NonNullable<ContactMatch> | null = null;
@@ -769,6 +843,27 @@ function ThreadReader(p: {
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, false, p.account)} title="Reply (r)">↩ Reply</button>
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, true, p.account)} title="Reply all (a)">↩↩ All</button>
             <button type="button" style={btn} onClick={() => p.onForward(last, p.t.id, p.account)} title="Forward (f)">↪</button>
+            <div style={{ position: 'relative' }}>
+              <button type="button" style={btn} onClick={() => setRemindOpen(v => !v)} aria-haspopup="menu" aria-expanded={remindOpen} title="Create a follow-up task for this conversation">⏰ Remind me</button>
+              {remindOpen && (
+                <>
+                  <div onClick={() => setRemindOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 29 }} />
+                  <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 30, minWidth: 220, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.14)', overflow: 'hidden' }}>
+                    <div style={{ padding: '7px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)' }}>Follow up on…</div>
+                    {([['Tomorrow', ymdPlus(1)], ['In 3 days', ymdPlus(3)], ['Next Monday', ymdNextMonday()], ['In 2 weeks', ymdPlus(14)]] as Array<[string, string]>).map(([label, ymd]) => (
+                      <button key={label} role="menuitem" type="button" onClick={() => void remind(ymd)}
+                        style={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 12, padding: '9px 12px', border: 'none', borderTop: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', fontSize: 13.5, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif", textAlign: 'left' }}>
+                        <span style={{ fontWeight: 600 }}>{label}</span><span style={{ color: 'var(--k-9ca3af)' }}>{ymdLabel(ymd)}</span>
+                      </button>
+                    ))}
+                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 12px', borderTop: '1px solid var(--k-f0f0f0)', fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)' }}>
+                      Pick a date
+                      <input type="date" min={ymdPlus(1)} onChange={e => { if (e.target.value) void remind(e.target.value); }} style={{ fontSize: 13, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '3px 6px', background: 'var(--k-fff)', color: 'var(--k-111)' }} />
+                    </label>
+                  </div>
+                </>
+              )}
+            </div>
             {p.canModify && (
               <div role="group" aria-label="Change this conversation" style={{ display: 'inline-flex', gap: 4 }}>
                 {p.box === 'inbox' && <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('archive')} title="Archive (e)" aria-label="Archive"><Ic n="archive" /></button>}
