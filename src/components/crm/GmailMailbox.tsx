@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LiveMessage, ThreadSummary, GLabel } from '@/lib/gmail-live';
 import GmailFiles from './GmailFiles';
+import { confirmDialog } from '@/lib/confirm-dialog';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { createClient } from '@/lib/supabase/client';
 
@@ -1216,13 +1217,28 @@ function ThreadReader(p: {
           )}
         </div>
       )}
-      {!threadTarget && msgs && (() => { const u = [...msgs].reverse().find(m => m.unsubscribe)?.unsubscribe; return u ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12, padding: '9px 12px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10 }}>
-          <span style={{ flex: '1 1 220px', minWidth: 0, fontSize: 13, color: 'var(--k-374151)' }}>📰 This looks like a mailing list.</span>
-          <a href={u} target="_blank" rel="noopener noreferrer" style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }} title="Opens the sender’s own unsubscribe page in a new tab">Unsubscribe ↗</a>
-          {p.canModify && p.box === 'inbox' && <button type="button" style={btn} onClick={() => p.onAct('archive')}>Archive</button>}
-        </div>
-      ) : null; })()}
+      {!threadTarget && msgs && (() => {
+        const lastM = msgs[msgs.length - 1], u = [...msgs].reverse().find(m => m.unsubscribe)?.unsubscribe, f = parseAddr(lastM.from);
+        const bulk = !!u || /(^|[._-])(no-?reply|do-?not-?reply|newsletter|news|marketing|notifications?|mailer)([._-]|@)/i.test(f.email);
+        if (!bulk || !f.email || (me && f.email.toLowerCase() === me)) return null;
+        const skip = async () => {
+          if (!(await confirmDialog(`Make future mail from ${f.email} skip your inbox? It will still be in All Mail and searchable — nothing is deleted. You can undo this in Gmail’s settings → Filters.`, { confirmLabel: 'Skip inbox' }))) return;
+          try {
+            const r = await fetch('/api/gmail/filters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: f.email, account: p.account ?? undefined }) });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) { p.notify(j.error ?? 'Could not create the filter.'); return; }
+            p.notify(j.existed ? `Mail from ${f.email} already skips your inbox` : `Done — future mail from ${f.email} skips your inbox`);
+            if (p.canModify && p.box === 'inbox') p.onAct('archive');
+          } catch { p.notify('Could not reach Gmail — try again.'); }
+        };
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12, padding: '9px 12px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10 }}>
+            <span style={{ flex: '1 1 200px', minWidth: 0, fontSize: 13, color: 'var(--k-374151)' }}>📰 This looks like automated mail from <b>{f.email}</b>.</span>
+            {u && <a href={u} target="_blank" rel="noopener noreferrer" style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }} title="Opens the sender’s own unsubscribe page in a new tab">Unsubscribe ↗</a>}
+            <button type="button" style={btn} onClick={() => void skip()} title="Create a Gmail filter so this sender never lands in your inbox">Skip inbox from now on</button>
+          </div>
+        );
+      })()}
       {summary && (
         <div style={{ marginBottom: 12, padding: '12px 14px', background: 'var(--k-f5f3ff)', border: '1px solid var(--k-ddd6fe)', borderRadius: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>

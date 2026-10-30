@@ -226,3 +226,15 @@ export async function listAttachments(token: string, opts: { box: 'inbox' | 'sen
   files.sort((a, b) => b.date - a.date);
   return { ok: true as const, files, next: (list.json.nextPageToken as string | undefined) ?? null };
 }
+
+// ── Gmail filters (needs the gmail.settings.basic permission the CRM already holds) ────────────────────────────────
+/** "Mail from this address skips the inbox" — it stays in All Mail and is still searchable. Never creates a duplicate. */
+export async function createSkipInboxFilter(token: string, email: string): Promise<{ ok: true; existed: boolean } | { ok: false; status: number }> {
+  const list = await fetch(`${API}/settings/filters`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+  if (!list.ok) return { ok: false, status: list.status };
+  const have = ((await list.json().catch(() => ({}))).filter ?? []) as Array<{ criteria?: { from?: string }; action?: { removeLabelIds?: string[] } }>;
+  if (have.some(f => (f.criteria?.from ?? '').toLowerCase() === email.toLowerCase() && f.action?.removeLabelIds?.includes('INBOX'))) return { ok: true, existed: true };
+  const res = await fetch(`${API}/settings/filters`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, cache: 'no-store',
+    body: JSON.stringify({ criteria: { from: email }, action: { removeLabelIds: ['INBOX'] } }) });
+  return res.ok ? { ok: true, existed: false } : { ok: false, status: res.status };
+}
