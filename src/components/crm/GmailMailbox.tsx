@@ -403,6 +403,13 @@ export default function GmailMailbox(p: Props) {
   const [waiting, setWaiting] = useState(false); // Inbox: a person/deal in the CRM wrote last and you haven't answered
   const [trackF, setTrackF] = useState<'all' | 'opened' | 'unopened'>('all'); // Sent: did the recipient open it (CRM tracking)
   const [sugOpen, setSugOpen] = useState(false);
+  const [hist, setHist] = useState<{ saved: string[]; recent: string[] }>({ saved: [], recent: [] });
+  useEffect(() => { try { const v = JSON.parse(localStorage.getItem('crm-gmail-searches') ?? '{}'); setHist({ saved: Array.isArray(v.saved) ? v.saved.slice(0, 12) : [], recent: Array.isArray(v.recent) ? v.recent.slice(0, 6) : [] }); } catch { /* none yet */ } }, []);
+  const putHist = (next: { saved: string[]; recent: string[] }) => { setHist(next); try { localStorage.setItem('crm-gmail-searches', JSON.stringify(next)); } catch { /* ignore */ } };
+  useEffect(() => { // a search that has run (debounced) joins "Recent"
+    if (term.length < 3) return;
+    setHist(prev => { const next = { ...prev, recent: [term, ...prev.recent.filter(x => x !== term)].slice(0, 6) }; try { localStorage.setItem('crm-gmail-searches', JSON.stringify(next)); } catch { /* ignore */ } return next; });
+  }, [term]);
   const [help, setHelp] = useState(false);
   const sugs = useMemo(() => (/[:"(]/.test(q) ? [] : p.searchPeople(q)), [q, p]);
   const visible = useMemo(() => {
@@ -416,6 +423,7 @@ export default function GmailMailbox(p: Props) {
 
   // Bulk select: tick several conversations (shift-click for a range), then one action for all of them.
   const [sel, setSel] = useState<Set<string>>(() => new Set());
+  const lp = useRef<{ t?: ReturnType<typeof setTimeout>; fired: boolean }>({ fired: false }); // phone: long-press a row to start selecting
   const lastTick = useRef<number>(-1);
   useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, who, noReply, waiting, trackF, labelId]);
   const tick = (id: string, idx: number, range: boolean) => setSel(prev => {
@@ -480,6 +488,7 @@ export default function GmailMailbox(p: Props) {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); return; }
+      if (e.key === 'x' && open && canModify) { e.preventDefault(); tick(open.id, visible.findIndex(x => x.id === open.id), false); return; }
       if (e.key !== 'j' && e.key !== 'k') return;
       const i = open ? visible.findIndex(x => x.id === open.id) : -1;
       const n = visible[e.key === 'j' ? Math.min(visible.length - 1, i + 1) : Math.max(0, i - 1)];
@@ -488,7 +497,18 @@ export default function GmailMailbox(p: Props) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wide, open, visible]);
+  }, [wide, open, visible, canModify]);
+  // z undoes the last archive / trash (while its "Undo" toast is up), like Gmail.
+  useEffect(() => {
+    if (!toast?.undo) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'z' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      e.preventDefault(); toast.undo?.();
+    };
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+  }, [toast]);
 
   // Sent → Follow up in one click: reads the conversation, then opens Compose threaded onto it, addressed to who you wrote.
   const [following, setFollowing] = useState<string | null>(null);
@@ -549,6 +569,28 @@ export default function GmailMailbox(p: Props) {
           <input ref={searchRef} value={q} onChange={e => { setQ(e.target.value); setSugOpen(true); }} onFocus={() => setSugOpen(true)} onBlur={() => setTimeout(() => setSugOpen(false), 150)}
             placeholder="Search mail or type a name  ·  press /" aria-label="Search Gmail" aria-autocomplete="list"
             style={{ width: '100%', boxSizing: 'border-box', height: p.isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
+          {q.trim() && (
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => putHist({ ...hist, saved: hist.saved.includes(q.trim()) ? hist.saved.filter(x => x !== q.trim()) : [q.trim(), ...hist.saved].slice(0, 12) })}
+              title={hist.saved.includes(q.trim()) ? 'Remove from saved searches' : 'Save this search'} aria-label="Save this search"
+              style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 26, height: 26, border: 'none', background: 'none', cursor: 'pointer', color: hist.saved.includes(q.trim()) ? '#c9922c' : 'var(--k-9ca3af)' }}><Ic n="star" size={16} fill={hist.saved.includes(q.trim())} /></button>
+          )}
+          {sugOpen && !q.trim() && (hist.saved.length > 0 || hist.recent.length > 0) && (
+            <div role="listbox" aria-label="Saved and recent searches" style={{ position: 'absolute', left: 0, right: 0, top: 'calc(100% + 4px)', zIndex: 20, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.12)', overflow: 'hidden', minWidth: 240 }}>
+              {([['★ Saved searches', hist.saved, true], ['Recent', hist.recent.filter(x => !hist.saved.includes(x)), false]] as Array<[string, string[], boolean]>).filter(([, list]) => list.length > 0).map(([title, list, isSaved]) => (
+                <div key={title}>
+                  <div style={{ padding: '6px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)' }}>{title}</div>
+                  {list.map(x => (
+                    <div key={x} role="option" aria-selected={false} onMouseDown={e => { e.preventDefault(); setQ(x); setSugOpen(false); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', borderTop: '1px solid var(--k-f0f0f0)', fontSize: 13.5, color: 'var(--k-111)' }}>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(() => { const m = x.match(/^\(from:(\S+) OR to:\S+\)$/); return m ? `Mail with ${m[1]}` : x; })()}</span>
+                      <button type="button" aria-label={`Remove ${x}`} onMouseDown={e => { e.preventDefault(); e.stopPropagation(); putHist(isSaved ? { ...hist, saved: hist.saved.filter(y => y !== x) } : { ...hist, recent: hist.recent.filter(y => y !== x) }); }}
+                        style={{ border: 'none', background: 'none', color: 'var(--k-9ca3af)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
           {sugOpen && sugs.length > 0 && (
             <div role="listbox" aria-label="People in your CRM" style={{ position: 'absolute', left: 0, right: 0, top: 'calc(100% + 4px)', zIndex: 20, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.12)', overflow: 'hidden', minWidth: 240 }}>
               <div style={{ padding: '6px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)' }}>Mail with…</div>
@@ -638,11 +680,17 @@ export default function GmailMailbox(p: Props) {
             return (
               <React.Fragment key={t.id}>
                 {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div>}
-                <div role="button" tabIndex={0} className="gm-row" onClick={() => openThread(t)} onKeyDown={e => { if (e.key === 'Enter') openThread(t); }}
+                <div role="button" tabIndex={0} className="gm-row"
+                  onClick={() => { if (lp.current.fired) { lp.current.fired = false; return; } if (p.isMobile && canModify && sel.size > 0) { tick(t.id, i, false); return; } openThread(t); }}
+                  onKeyDown={e => { if (e.key === 'Enter') openThread(t); }}
+                  onTouchStart={() => { if (!p.isMobile || !canModify) return; lp.current.fired = false; clearTimeout(lp.current.t); lp.current.t = setTimeout(() => { lp.current.fired = true; tick(t.id, i, false); try { navigator.vibrate?.(15); } catch { /* not supported */ } }, 450); }}
+                  onTouchMove={() => clearTimeout(lp.current.t)} onTouchEnd={() => clearTimeout(lp.current.t)} onTouchCancel={() => clearTimeout(lp.current.t)}
+                  onContextMenu={e => { if (p.isMobile) e.preventDefault(); }}
                   onMouseEnter={() => { if (!p.isMobile) void loadThread(account, t.id, t.date); }}
-                  style={{ position: 'relative', display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: sel.has(t.id) ? 'var(--k-fdf6e8)' : selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
+                  style={{ position: 'relative', WebkitTouchCallout: p.isMobile ? 'none' : undefined, userSelect: p.isMobile ? 'none' : undefined, display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: sel.has(t.id) ? 'var(--k-fdf6e8)' : selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
                   <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
                     <div className="gm-av"><Avatar name={name} email={a.email} warm={!!match} /></div>
+                    {p.isMobile && sel.has(t.id) && <div aria-label="Selected" style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800 }}>✓</div>}
                     {canModify && !p.isMobile && (
                       <div className="gm-chk" onClick={e => { e.stopPropagation(); tick(t.id, i, e.shiftKey); }} title="Select (shift-click for a range)">
                         <input type="checkbox" aria-label={`Select ${name}`} checked={sel.has(t.id)} onChange={() => {}} style={{ width: 18, height: 18, accentColor: '#c9922c', cursor: 'pointer' }} />
@@ -707,7 +755,7 @@ export default function GmailMailbox(p: Props) {
           <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--k-111)', flex: 1 }}>Keyboard shortcuts</div>
           <button type="button" onClick={() => setHelp(false)} aria-label="Close" style={{ border: 'none', background: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--k-6b7280)' }}>✕</button>
         </div>
-        {([['Move through the list', 'j / k'], ['Open the conversation', 'Enter'], ['Search', '/'], ['Compose a new email', 'c'], ['Reply', 'r'], ['Reply all', 'a'], ['Forward', 'f'], ['Archive', 'e'], ['Move to Trash', '#'], ['Star / unstar', 's'], ['Mark unread', 'Shift + U'], ['Back / clear selection / close', 'Esc'], ['This list', '?']] as Array<[string, string]>).map(([what, keys]) => (
+        {([['Move through the list', 'j / k'], ['Open the conversation', 'Enter'], ['Search', '/'], ['Compose a new email', 'c'], ['Reply', 'r'], ['Reply all', 'a'], ['Forward', 'f'], ['Archive', 'e'], ['Move to Trash', '#'], ['Star / unstar', 's'], ['Mark unread', 'Shift + U'], ['Select / unselect', 'x'], ['Undo the last archive or trash', 'z'], ['Back to the list', 'u'], ['Back / clear selection / close', 'Esc'], ['This list', '?']] as Array<[string, string]>).map(([what, keys]) => (
           <div key={what} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderTop: '1px solid var(--k-f0f0f0)', fontSize: 14, color: 'var(--k-374151)' }}>
             <span>{what}</span><kbd style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12.5, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '1px 8px', color: 'var(--k-111)', whiteSpace: 'nowrap' }}>{keys}</kbd>
           </div>
@@ -945,7 +993,7 @@ function ThreadReader(p: {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;
-      if (e.key === 'Escape') { p.onBack(); return; }
+      if (e.key === 'Escape' || e.key === 'u') { p.onBack(); return; }
       if (!last) return;
       if (e.key === 'r') { e.preventDefault(); p.onReply(last, p.t.id, false, p.account); }
       else if (e.key === 'a') { e.preventDefault(); p.onReply(last, p.t.id, true, p.account); }
