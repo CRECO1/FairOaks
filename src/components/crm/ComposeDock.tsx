@@ -91,6 +91,44 @@ export default function ComposeDock(props: {
 
   const draftKey = request?.resumeKey ?? `dock:${(request?.to ?? 'new').toLowerCase()}${request?.subject ? ':' + request.subject.slice(0, 60) : ''}`;
 
+  // Send later: the very same request Send would make, stored and sent by a job when its time comes.
+  async function schedule(sendAtIso: string, label: string) {
+    const recipients = to.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+    if (!recipients.length) { props.notify('Add at least one recipient'); return; }
+    if (attachments.length) { props.notify('Files from your computer can’t be scheduled yet — attach from Deal docs, or send now.'); return; }
+    setSending(true);
+    try {
+      const messageHtml = bodyRef.current?.innerHTML ?? '';
+      const sig = props.signature ?? '';
+      const fullBody = sig ? `${messageHtml}${gmailSignatureBlock(sig)}` : messageHtml || '&nbsp;';
+      const res = await fetch('/api/crm/scheduled-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${props.accessToken}` },
+        body: JSON.stringify({
+          send_at: sendAtIso,
+          payload: {
+            userId: props.userId, toName: request?.name,
+            ...(request?.dealId || request?.clientId ? { dealId: request.dealId ?? undefined, clientId: request.clientId ?? undefined } : { resolveClient: true }),
+            ...(request?.threadId ? { threadId: request.threadId, inReplyTo: request.inReplyTo ?? undefined } : {}),
+            to: recipients.join(', '), cc, bcc, individual: individual && !bcc.trim(),
+            subject, body: fullBody, agentName: props.agentName, ccAgentIds: [], attachments: [], crmAttachments: crmFiles.map(f => ({ kind: f.kind, id: f.id })), followUpDays: followUp || undefined,
+          },
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { props.notify('Could not schedule it: ' + (json.error ?? res.status)); return; }
+      props.notify(`Scheduled for ${label} — see it under Emails → Drafts`);
+      window.dispatchEvent(new Event('crm-scheduled-changed'));
+      if (bodyRef.current) bodyRef.current.innerHTML = '';
+      setOpen(false); setAttachments([]); setCrmFiles([]);
+    } catch (err) {
+      console.error(err);
+      props.notify('Could not schedule it — check your connection and try again');
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function send() {
     const recipients = to.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
     if (!recipients.length) { props.notify('Add at least one recipient'); return; }
@@ -181,7 +219,7 @@ export default function ComposeDock(props: {
           bodyRef={bodyRef} attachments={attachments} setAttachments={setAttachments}
           crmFiles={{ ctx: { email: to.split(/[,;]+/).map(x => x.trim()).filter(Boolean).map(x => x.match(/<([^>]+)>/)?.[1] ?? x)[0], searchable: true }, items: crmFiles, setItems: setCrmFiles }}
           signature={props.signature} onSyncSignature={props.onSyncSignature}
-          sending={sending} onSend={send}
+          sending={sending} onSend={send} onSchedule={schedule}
           onDiscard={() => { setOpen(false); setAttachments([]); setCrmFiles([]); }}
         />
       </div>

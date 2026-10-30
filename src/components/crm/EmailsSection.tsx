@@ -5,6 +5,7 @@ import GmailMailbox, { type ContactMatch } from './GmailMailbox';
 import type { LiveMessage } from '@/lib/gmail-live';
 import InboxSection from './InboxSection';
 import DraftsSection from './DraftsSection';
+import ScheduledEmails from './ScheduledEmails';
 import SentSection from './SentSection';
 import type { EmailDraft } from '@/lib/email-drafts';
 import type { InboxRow } from '@/lib/use-inbox';
@@ -96,7 +97,7 @@ export default function EmailsSection(p: Props) {
             : <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />}
         </>
       )}
-      {p.tab === 'drafts' && <DraftsSection isMobile={p.isMobile} onResume={p.onResumeDraft} />}
+      {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} onResume={p.onResumeDraft} /></>)}
       {p.tab === 'sent' && (
         <>
           {toggle('All sent', 'Tracked opens')}

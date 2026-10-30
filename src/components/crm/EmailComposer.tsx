@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { confirmDialog } from '@/lib/confirm-dialog';
 import { getDraft, saveDraft, deleteDraft, type DraftContext } from '@/lib/email-drafts';
+import { chicagoLocalToUTC, chicagoToday } from '@/lib/chicago-time';
 
 // One composer for every "write an email" surface (deal Emails tab, contact card, inline thread
 // reply, and the docked global Compose window). State and sending stay with the caller — this is
@@ -21,7 +22,7 @@ const chipLabel = (a: string) => {
   return m ? (m[1].trim().replace(/^"|"$/g, '') || m[2].trim()) : a;
 };
 
-type Tpl = { name: string; subject: string; body: string };
+type Tpl = { name: string; subject: string; body: string; id?: string; shared?: boolean; by?: string };
 // Starters use {first_name} and {property}; the signature is added on send, so none end with a sign-off.
 const STARTERS: Tpl[] = [
   { name: 'Quick follow-up', subject: 'Following up', body: 'Hi {first_name},<br><br>Just following up on my last note. Do you have a few minutes this week to talk through next steps?<br><br>Happy to work around your schedule.' },
@@ -160,6 +161,8 @@ export type EmailComposerProps = {
   sending: boolean;
   sendLabel?: string;
   onSend: () => void | Promise<void>;
+  // "Send later": hand back the chosen moment (ISO) and how to describe it. Omit to hide the button.
+  onSchedule?: (whenIso: string, label: string) => void | Promise<void>;
   onDiscard: () => void;
 };
 
@@ -182,7 +185,31 @@ export default function EmailComposer(p: EmailComposerProps) {
   const [showBcc, setShowBcc] = useState(() => (p.bcc ?? '').trim().length > 0);
   const [showMore, setShowMore] = useState(false);
   const [showTpl, setShowTpl] = useState(false);
-  const [mine, setMine] = useState<Tpl[]>(() => loadMine());
+  const [schedOpen, setSchedOpen] = useState(false);
+  const [mine, setMine] = useState<Tpl[]>(() => loadMine()); // until the server answers (or if it can't), what this browser has
+  const [team, setTeam] = useState<Tpl[]>([]);               // templates teammates chose to share
+  // Templates now live on the server (so they follow you to your phone and can be shared). Anything that only lived in this
+  // browser is imported once, then kept aside rather than deleted.
+  useEffect(() => {
+    let live = true;
+    const get = async () => { const r = await fetch('/api/crm/email-snippets'); if (!r.ok) throw new Error(String(r.status)); return (await r.json()).snippets as Array<{ id: string; name: string; subject: string; body_html: string; shared: boolean; mine: boolean; by: string }>; };
+    (async () => {
+      try {
+        let list = await get();
+        const local = loadMine();
+        if (local.length) {
+          const have = new Set(list.filter(x => x.mine).map(x => x.name));
+          const fresh = local.filter(t => !have.has(t.name));
+          if (fresh.length) { await fetch('/api/crm/email-snippets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ import: fresh }) }); list = await get(); }
+          try { localStorage.setItem(TPL_KEY + '_imported', localStorage.getItem(TPL_KEY) ?? ''); localStorage.removeItem(TPL_KEY); } catch { /* ignore */ }
+        }
+        if (!live) return;
+        const toTpl = (x: (typeof list)[number]): Tpl => ({ id: x.id, name: x.name, subject: x.subject, body: x.body_html, shared: x.shared, by: x.by });
+        setMine(list.filter(x => x.mine).map(toTpl)); setTeam(list.filter(x => !x.mine).map(toTpl));
+      } catch { /* offline or not signed in: keep this browser's own templates */ }
+    })();
+    return () => { live = false; };
+  }, []);
   const [count, setCount] = useState<number | null>(null);
   const [draftNote, setDraftNote] = useState('');
   const attachRef = useRef<HTMLInputElement>(null);
@@ -284,6 +311,31 @@ export default function EmailComposer(p: EmailComposerProps) {
     setCount(UNDO_SECONDS);
   };
 
+  // Send later — everything is Central time, like the rest of the CRM.
+  const trySchedule = async (iso: string, label: string) => {
+    setSchedOpen(false);
+    if (!p.onSchedule || p.sending || count !== null) return;
+    const text = (p.bodyRef.current?.innerText ?? '').trim();
+    if (!hasTo && !p.moreTo.trim()) { p.notify?.('Add at least one recipient'); return; }
+    if (!p.subjectReadOnly && !p.subject.trim()) { p.notify?.('Add a subject first'); subjRef.current?.focus(); return; }
+    if (!text) { p.notify?.('Write a message first'); p.bodyRef.current?.focus(); return; }
+    saveNow();
+    firing.current = true;
+    try { await p.onSchedule(iso, label); } finally {
+      const el = p.bodyRef.current;
+      firing.current = false;
+      if (!el || !(el.innerText ?? '').trim()) clearDraft(); else saveNow();
+    }
+  };
+  const schedPresets = (): Array<[string, string, string]> => {
+    const today = chicagoToday();
+    const plus = (n: number) => { const d = new Date(`${today}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+    const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
+    const monday = plus(((8 - dow) % 7) || 7);
+    const fmt = (ymd: string, hm: string) => new Date(chicagoLocalToUTC(ymd, hm)).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return ([[plus(1), '08:00', 'Tomorrow morning'], [plus(1), '13:00', 'Tomorrow afternoon'], [monday, '08:00', 'Monday morning']] as const).map(([ymd, hm, name]) => [name, chicagoLocalToUTC(ymd, hm), fmt(ymd, hm)]);
+  };
+
   const discard = async () => {
     const typed = (p.bodyRef.current?.innerText ?? '').trim().length > 0 || attachCount > 0 || (!p.subjectReadOnly && p.subject.trim().length > 0);
     if (typed && !(await confirmDialog('Discard this draft?', { confirmLabel: 'Discard', danger: true }))) return;
@@ -310,7 +362,7 @@ export default function EmailComposer(p: EmailComposerProps) {
     if (!body) return;
     if (!p.subjectReadOnly && !p.subject.trim()) p.setSubject(fill(t.subject, false));
     body.focus();
-    const html = fill(t.body, true);
+    const html = t.by ? sanitizeHtml(fill(t.body, true)) : fill(t.body, true); // a teammate's template is cleaned before it goes in
     if (!(body.innerText ?? '').trim()) body.innerHTML = html;
     else document.execCommand('insertHTML', false, '<br><br>' + html);
     setShowTpl(false);
@@ -322,8 +374,25 @@ export default function EmailComposer(p: EmailComposerProps) {
     if (!(p.bodyRef.current?.innerText ?? '').trim()) { window.alert('Write the email first, then save it as a template.'); return; }
     const name = window.prompt('Name this template', p.subject.trim() || 'My template');
     if (!name) return;
-    const next = [...mine.filter(m => m.name !== name.trim()), { name: name.trim(), subject: p.subject, body: bodyHtml }];
-    setMine(next); saveMine(next);
+    const nm = name.trim();
+    const local = { name: nm, subject: p.subject, body: bodyHtml };
+    void (async () => {
+      try {
+        const r = await fetch('/api/crm/email-snippets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: nm, subject: p.subject, body_html: bodyHtml }) });
+        if (!r.ok) throw new Error(String(r.status));
+        const s0 = (await r.json()).snippets[0] as { id: string; shared: boolean };
+        setMine(prev => [...prev.filter(m => m.name !== nm), { ...local, id: s0.id, shared: s0.shared }]);
+        p.notify?.('Template saved — it will be on your phone too');
+      } catch { const next = [...mine.filter(m => m.name !== nm), local]; setMine(next); saveMine(next); p.notify?.('Saved on this device only (could not reach the server)'); }
+    })();
+  };
+  const toggleShare = async (t: Tpl) => {
+    if (!t.id) return;
+    const on = !t.shared;
+    setMine(prev => prev.map(m => (m.id === t.id ? { ...m, shared: on } : m)));
+    const r = await fetch('/api/crm/email-snippets', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, shared: on }) }).catch(() => null);
+    if (!r || !r.ok) { setMine(prev => prev.map(m => (m.id === t.id ? { ...m, shared: !on } : m))); p.notify?.('Could not change sharing — try again'); }
+    else p.notify?.(on ? `“${t.name}” is now shared with your team` : `“${t.name}” is private again`);
   };
   const addLink = () => {
     const url = window.prompt('Link address', 'https://');
@@ -456,9 +525,22 @@ export default function EmailComposer(p: EmailComposerProps) {
                   {mine.map(t => (
                     <span key={t.name} style={{ display: 'inline-flex', alignItems: 'center', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 16 }}>
                       <button type="button" onClick={() => applyTpl(t)} style={{ padding: '0 6px 0 12px', height: p.isMobile ? 44 : 32, background: 'none', border: 'none', fontSize: 13, color: 'var(--k-92400e)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{t.name}</button>
-                      <button type="button" aria-label={`Delete template ${t.name}`} onClick={async () => { if (!(await confirmDialog(`Delete template “${t.name}”?`, { confirmLabel: 'Delete', danger: true }))) return; const next = mine.filter(m => m.name !== t.name); setMine(next); saveMine(next); }}
+                      {t.id && <button type="button" aria-label={t.shared ? `Stop sharing ${t.name}` : `Share ${t.name} with the team`} title={t.shared ? 'Shared with your team — click to make private' : 'Share with your team'} onClick={() => void toggleShare(t)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, padding: '0 4px', minWidth: 0, opacity: t.shared ? 1 : 0.35 }}>👥</button>}
+                      <button type="button" aria-label={`Delete template ${t.name}`} onClick={async () => { if (!(await confirmDialog(`Delete template “${t.name}”?`, { confirmLabel: 'Delete', danger: true }))) return; const next = mine.filter(m => m.name !== t.name); setMine(next); if (t.id) void fetch(`/api/crm/email-snippets?id=${encodeURIComponent(t.id)}`, { method: 'DELETE' }); else saveMine(next); }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 15, padding: '0 10px 0 2px', minWidth: 0 }}>×</button>
                     </span>
+                  ))}
+                </div>
+              </>
+            )}
+            {team.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', margin: '10px 0 6px' }}>From your team</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {team.map(t => (
+                    <button key={t.id} type="button" onClick={() => applyTpl(t)} title={`Shared by ${t.by}`}
+                      style={{ padding: '0 12px', height: p.isMobile ? 44 : 32, background: 'var(--k-fff)', border: '1px dashed var(--k-d1d5db)', borderRadius: 16, fontSize: 13, color: 'var(--k-374151)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{t.name} <span style={{ color: 'var(--k-9ca3af)', fontSize: 11.5 }}>· {t.by}</span></button>
                   ))}
                 </div>
               </>
@@ -585,6 +667,37 @@ export default function EmailComposer(p: EmailComposerProps) {
               style={{ flex: p.isMobile ? 1 : undefined, minWidth: 120, height: p.isMobile ? 48 : 40, padding: '0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: p.sending ? 'default' : 'pointer', opacity: p.sending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif" }}>
               {p.sending ? 'Sending…' : (p.sendLabel ?? 'Send')}
             </button>
+            {p.onSchedule && (
+              <div style={{ position: 'relative' }}>
+                <button type="button" onClick={() => setSchedOpen(v => !v)} aria-haspopup="menu" aria-expanded={schedOpen} title="Pick a time and it sends by itself"
+                  style={{ height: p.isMobile ? 48 : 40, padding: '0 14px', background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+                  🕐{p.isMobile ? '' : ' Send later'}
+                </button>
+                {schedOpen && (
+                  <>
+                    <div onClick={() => setSchedOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                    <div role="menu" style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 8px)', zIndex: 41, width: 270, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.2)', overflow: 'hidden' }}>
+                      <div style={{ padding: '8px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)' }}>Send this email…</div>
+                      {schedPresets().map(([name, iso, label]) => (
+                        <button key={name} role="menuitem" type="button" onClick={() => void trySchedule(iso, label)}
+                          style={{ display: 'block', width: '100%', padding: '10px 12px', border: 'none', borderTop: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                          <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{name}</span>
+                          <span style={{ display: 'block', fontSize: 12.5, color: 'var(--k-9ca3af)' }}>{label}</span>
+                        </button>
+                      ))}
+                      <label style={{ display: 'block', padding: '10px 12px', borderTop: '1px solid var(--k-f0f0f0)', fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)' }}>
+                        Pick a date and time (Central)
+                        <input type="datetime-local" min={`${chicagoToday()}T00:00`} onChange={e => {
+                          const v = e.target.value; if (!v) return;
+                          const [d, t] = v.split('T'); const iso = chicagoLocalToUTC(d, t);
+                          void trySchedule(iso, new Date(iso).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }));
+                        }} style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, height: 34, border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '0 8px', fontSize: 13.5, background: 'var(--k-fff)', color: 'var(--k-111)' }} />
+                      </label>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             {p.draftKey && (
               <button type="button" onClick={saveForLater} title="Keep it in Saved drafts to send later"
                 style={{ height: p.isMobile ? 48 : 40, padding: '0 14px', background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>

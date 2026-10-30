@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { LiveMessage, ThreadSummary } from '@/lib/gmail-live';
+import type { LiveMessage, ThreadSummary, GLabel } from '@/lib/gmail-live';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { createClient } from '@/lib/supabase/client';
 
@@ -87,6 +87,7 @@ const ICON: Record<string, React.ReactNode> = {
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
   open: <><path d="M3 10 12 4l9 6v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" /><path d="m3 10 9 6 9-6" /></>,
   star: <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />,
+  tag: <><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z" /><circle cx="8" cy="8" r="1.4" /></>,
   trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></>,
 };
 function Ic({ n, size = 16, fill = false }: { n: keyof typeof ICON; size?: number; fill?: boolean }) {
@@ -186,9 +187,56 @@ function Avatar({ name, email, size = 36, warm = false }: { name: string; email:
   return <div aria-hidden style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.36, fontWeight: 700, color: '#fff', background: warm ? '#c9922c' : colorFor(email || name) }}>{initials(name || email)}</div>;
 }
 
+// Pick (or create) Gmail labels for a conversation — or for everything you've ticked.
+function LabelMenu({ labels, current, onToggle, onCreate, buttonStyle, align = 'right', text }: {
+  labels: GLabel[]; current: Set<string>; onToggle: (id: string, on: boolean) => void; onCreate: (name: string) => Promise<GLabel | null>;
+  buttonStyle: React.CSSProperties; align?: 'left' | 'right'; text?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const add = async () => {
+    const n = name.trim(); if (!n || busy) return;
+    setBusy(true);
+    try { const l = await onCreate(n); if (l) { setName(''); onToggle(l.id, true); } } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ position: 'relative' }}>
+      <button type="button" title="Label" aria-label="Label" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(v => !v)} style={buttonStyle}><Ic n="tag" />{text}</button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 29 }} />
+          <div role="menu" style={{ position: 'absolute', [align]: 0, top: 'calc(100% + 4px)', zIndex: 30, width: 250, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.16)', overflow: 'hidden', color: 'var(--k-111)' }}>
+            <div style={{ padding: '7px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)' }}>Label as…</div>
+            <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+              {labels.length === 0 && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--k-9ca3af)' }}>No labels yet — make one below.</div>}
+              {labels.map(l => (
+                <button key={l.id} type="button" role="menuitemcheckbox" aria-checked={current.has(l.id)} onClick={() => onToggle(l.id, !current.has(l.id))}
+                  style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '8px 12px', border: 'none', borderTop: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', fontSize: 13.5, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif", textAlign: 'left' }}>
+                  <span aria-hidden style={{ width: 10, height: 10, borderRadius: 3, flexShrink: 0, background: l.bg ?? '#9ca3af' }} />
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: current.has(l.id) ? 700 : 500 }}>{l.name}</span>
+                  {current.has(l.id) && <span aria-hidden style={{ color: '#c9922c', fontWeight: 800 }}>✓</span>}
+                </button>
+              ))}
+            </div>
+            <form onSubmit={e => { e.preventDefault(); void add(); }} style={{ display: 'flex', gap: 6, padding: 8, borderTop: '1px solid var(--k-e5e7eb)', background: 'var(--k-fafafa)' }}>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="New label" aria-label="New label name" maxLength={60}
+                style={{ flex: 1, minWidth: 0, height: 30, padding: '0 8px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 13 }} />
+              <button type="submit" disabled={busy || !name.trim()} style={{ padding: '0 10px', borderRadius: 6, border: 'none', background: '#c9922c', color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', opacity: busy || !name.trim() ? 0.5 : 1 }}>Add</button>
+            </form>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function GmailMailbox(p: Props) {
   const [filter, setFilter] = useState<'all' | 'unread' | 'files' | 'starred'>('all');
-  const [contactsOnly, setContactsOnly] = useState(false);
+  const [who, setWho] = useState<'all' | 'deals' | 'contacts' | 'other'>('all'); // triage by who it is from / to
+  const contactsOnly = who !== 'all';
+  const [labels, setLabels] = useState<GLabel[]>([]);
+  const [labelId, setLabelId] = useState('');
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
@@ -221,11 +269,12 @@ export default function GmailMailbox(p: Props) {
     if (filter !== 'all') sp.set('filter', filter);
     if (term) sp.set('q', term);
     if (account) sp.set('account', account);
+    if (labelId) sp.set('labelId', labelId);
     if (pageToken) sp.set('pageToken', pageToken);
     return `/api/gmail/mailbox?${sp}`;
-  }, [p.box, filter, term, account]);
+  }, [p.box, filter, term, account, labelId]);
 
-  const cacheKey = `${p.box}|${filter}|${term}|${account ?? ''}`;
+  const cacheKey = `${p.box}|${filter}|${term}|${account ?? ''}|${labelId}`;
   const load = useCallback(async (silent = false) => {
     setErr('');
     const cached = listCache.get(cacheKey);
@@ -236,6 +285,7 @@ export default function GmailMailbox(p: Props) {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { if (!cached) { setErr(j.error ?? 'Could not load your mail.'); setThreads([]); } return; }
       setConnected(j.connected !== false); setAccounts(j.accounts ?? []); if (j.account) setSelf(j.account);
+      if (Array.isArray(j.labels)) setLabels(j.labels as GLabel[]);
       if (typeof j.canModify === 'boolean') setCanModify(j.canModify); if (j.reconnect) setReconnect(j.reconnect);
       const fresh = (j.threads ?? []) as ThreadSummary[];
       listCache.set(cacheKey, { threads: fresh, next: j.next ?? null, accounts: j.accounts ?? [], account: j.account ?? account });
@@ -330,21 +380,38 @@ export default function GmailMailbox(p: Props) {
     flash(DONE[action], removing ? () => { setThreads(before); listCache.clear(); void send(t.id, UNDO_OF[action]); setToast(null); } : undefined);
   };
 
+  // Labels: optimistic toggle on one conversation, create a new one, or add one to everything ticked.
+  const labelThread = async (t: ThreadSummary, id: string, on: boolean) => {
+    if (canModify === false) { p.notify('Allow the CRM to change your Gmail first — see the note above the list.'); return; }
+    const before = threads;
+    setThreads(prev => (prev ?? []).map(x => x.id !== t.id ? x : { ...x, labels: on ? [...new Set([...(x.labels ?? []), id])] : (x.labels ?? []).filter(l => l !== id) }));
+    listCache.clear();
+    if (!(await send(t.id, `${on ? 'label' : 'unlabel'}:${id}`))) setThreads(before);
+  };
+  const createLabel = async (name: string): Promise<GLabel | null> => {
+    try {
+      const r = await fetch('/api/gmail/labels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, account: account ?? self ?? undefined }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { if (j.needsScope) setCanModify(false); p.notify(j.error ?? 'Could not create the label.'); return null; }
+      setLabels(prev => [...prev.filter(x => x.id !== j.label.id), j.label as GLabel].sort((a, b) => a.name.localeCompare(b.name)));
+      return j.label as GLabel;
+    } catch { p.notify('Could not reach Gmail — try again.'); return null; }
+  };
   const [noReply, setNoReply] = useState(false);
   const [sugOpen, setSugOpen] = useState(false);
   const [help, setHelp] = useState(false);
   const sugs = useMemo(() => (/[:"(]/.test(q) ? [] : p.searchPeople(q)), [q, p]);
   const visible = useMemo(() => {
     let list = threads ?? [];
-    if (contactsOnly) list = list.filter(t => { const a = otherOf(t); return a.email && p.contactFor(a.email); });
+    if (who !== 'all') list = list.filter(t => { const a = otherOf(t), m = a.email ? p.contactFor(a.email) : null; return who === 'deals' ? m?.kind === 'deal' : who === 'contacts' ? !!m : !m; });
     if (noReply) list = list.filter(t => t.lastMine && ageDays(t.date) >= 3);
     return list;
-  }, [threads, contactsOnly, noReply, otherOf, p]);
+  }, [threads, who, noReply, otherOf, p]);
 
   // Bulk select: tick several conversations (shift-click for a range), then one action for all of them.
   const [sel, setSel] = useState<Set<string>>(() => new Set());
   const lastTick = useRef<number>(-1);
-  useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, contactsOnly, noReply]);
+  useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, who, noReply, labelId]);
   const tick = (id: string, idx: number, range: boolean) => setSel(prev => {
     const n = new Set(prev);
     if (range && lastTick.current >= 0) { const [a, b] = [Math.min(lastTick.current, idx), Math.max(lastTick.current, idx)]; const on = !prev.has(id); for (const x of visible.slice(a, b + 1)) { if (on) n.add(x.id); else n.delete(x.id); } }
@@ -367,6 +434,15 @@ export default function GmailMailbox(p: Props) {
     if (!okIds.length) return;
     flash(`${DONE[action]} · ${okIds.length} conversation${okIds.length === 1 ? '' : 's'}`, removing ? () => { setThreads(before); listCache.clear(); okIds.forEach(id => void send(id, UNDO_OF[action], true)); setToast(null); } : undefined);
   };
+  const bulkLabel = async (id: string) => {
+    const ids = [...sel], idSet = new Set(ids), name = labels.find(l => l.id === id)?.name ?? 'label';
+    setThreads(prev => (prev ?? []).map(x => !idSet.has(x.id) ? x : { ...x, labels: [...new Set([...(x.labels ?? []), id])] }));
+    listCache.clear();
+    const failed: string[] = []; let i = 0;
+    await Promise.all(Array.from({ length: Math.min(4, ids.length) }, async () => { while (i < ids.length) { const t = ids[i++]; if (!(await send(t, `label:${id}`, true))) failed.push(t); } }));
+    if (failed.length) { void load(true); p.notify(`${failed.length} of ${ids.length} could not be labeled.`); }
+    else flash(`Labeled “${name}” · ${ids.length} conversation${ids.length === 1 ? '' : 's'}`);
+  };
   // A filter that only finds a few matches in what is loaded keeps reading older mail (a few pages at most) so it isn't empty by accident.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -379,12 +455,12 @@ export default function GmailMailbox(p: Props) {
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, []);
   const autoPages = useRef(0);
-  useEffect(() => { autoPages.current = 0; }, [p.box, filter, term, account, contactsOnly, noReply]);
+  useEffect(() => { autoPages.current = 0; }, [p.box, filter, term, account, who, noReply, labelId]);
   useEffect(() => {
     if (!(contactsOnly || noReply) || !next || loadingMore || visible.length >= 8 || autoPages.current >= 6) return;
     autoPages.current += 1; void more();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactsOnly, noReply, next, loadingMore, visible.length]);
+  }, [who, noReply, next, loadingMore, visible.length]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && sel.size) setSel(new Set()); };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
@@ -423,7 +499,7 @@ export default function GmailMailbox(p: Props) {
   });
 
   const reader = (embedded: boolean) => open && (
-    <ThreadReader key={open.id} t={threads?.find(x => x.id === open.id) ?? open} box={p.box} canModify={canModify === true} onAct={readerAct} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
+    <ThreadReader key={open.id} t={threads?.find(x => x.id === open.id) ?? open} box={p.box} canModify={canModify === true} onAct={readerAct} labels={labels} onLabel={(id, on) => void labelThread(open, id, on)} onCreateLabel={createLabel} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
       onReply={p.onReply} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />
   );
 
@@ -438,7 +514,16 @@ export default function GmailMailbox(p: Props) {
         <button onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 Files</button>
         <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
         {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
-        <button onClick={() => setContactsOnly(v => !v)} aria-pressed={contactsOnly} title="Only people who are in your CRM (of what is loaded)" style={chip(contactsOnly)}>👤 Contacts</button>
+        <button onClick={() => setWho(v => (v === 'deals' ? 'all' : 'deals'))} aria-pressed={who === 'deals'} title="People with a deal (of what is loaded)" style={chip(who === 'deals')}>💼 Deals</button>
+        <button onClick={() => setWho(v => (v === 'contacts' ? 'all' : 'contacts'))} aria-pressed={who === 'contacts'} title="Anyone who is in your CRM (of what is loaded)" style={chip(who === 'contacts')}>👤 Contacts</button>
+        <button onClick={() => setWho(v => (v === 'other' ? 'all' : 'other'))} aria-pressed={who === 'other'} title="People who are NOT in your CRM — newsletters, notices, strangers (of what is loaded)" style={chip(who === 'other')}>📭 Not in CRM</button>
+        {labels.length > 0 && (
+          <select value={labelId} onChange={e => setLabelId(e.target.value)} aria-label="Show one Gmail label"
+            style={{ height: p.isMobile ? 38 : 32, borderRadius: 999, border: `1px solid ${labelId ? '#111' : 'var(--k-e5e7eb)'}`, background: labelId ? '#111' : 'var(--k-fff)', color: labelId ? '#fff' : 'var(--k-374151)', fontSize: 13, fontWeight: 600, padding: '0 10px', fontFamily: "'DM Sans',sans-serif" }}>
+            <option value="">🏷 All labels</option>
+            {labels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: p.isMobile || wide ? 0 : 'auto', flexWrap: 'wrap', width: p.isMobile || wide ? '100%' : undefined }}>
         <div style={{ position: 'relative', flex: p.isMobile || wide ? '1 1 0' : '0 1 300px', minWidth: 0 }}>
@@ -501,6 +586,8 @@ export default function GmailMailbox(p: Props) {
             <button key={a2} type="button" onClick={() => void bulk(a2)} title={label} aria-label={label}
               style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 32, padding: 0, border: '1px solid #3a3a3f', borderRadius: 8, background: '#1c1c1f', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}><Ic n={icon as keyof typeof ICON} size={16} /></button>
           ))}
+          <LabelMenu labels={labels} current={new Set()} onToggle={(id, on) => { if (on) void bulkLabel(id); }} onCreate={createLabel}
+            buttonStyle={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 32, padding: 0, border: '1px solid #3a3a3f', borderRadius: 8, background: '#1c1c1f', color: '#fff', cursor: 'pointer' }} />
           <button type="button" onClick={() => setSel(new Set())} aria-label="Clear selection" title="Clear (Esc)" style={{ width: 32, height: 32, border: 'none', borderRadius: 8, background: 'none', color: '#bbb', cursor: 'pointer', fontSize: 16 }}>✕</button>
         </div>
       )}
@@ -553,9 +640,11 @@ export default function GmailMailbox(p: Props) {
                     </div>
                     <div style={{ fontSize: 13.5, color: 'var(--k-111)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 500 }}>{t.subject}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decodeSnippet(t.snippet)}</div>
-                    {(match || tracking.get(t.id)?.tracked || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3)) && (
+                    {(match || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3)) && (
                       <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
-                        {match && <span style={{ color: 'var(--k-a06a12)' }}>{match.kind === 'deal' ? '💼 Deal' : '👤 Contact'} · {match.label}</span>}
+                        {match && <span style={{ color: 'var(--k-a06a12)' }}>{match.kind === 'deal' ? '💼 Deal' : `👤 ${match.role || 'Contact'}`} · {match.label}</span>}
+                        {(t.labels ?? []).slice(0, 2).map(id => { const l = labels.find(x => x.id === id); return l ? <span key={id} style={{ background: l.bg ?? '#e5e7eb', color: l.fg ?? '#374151', borderRadius: 4, padding: '0 6px', fontWeight: 600, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name.split('/').pop()}</span> : null; })}
+                        {(t.labels?.length ?? 0) > 2 && <span style={{ color: 'var(--k-9ca3af)' }}>+{(t.labels?.length ?? 0) - 2}</span>}
                         {p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3 && <span title="You sent the last message and nobody has answered" style={{ color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '0 7px' }}>⏳ No reply · {ageDays(t.date)}d</span>}
                         {tracking.get(t.id)?.tracked && (tracking.get(t.id)!.opened
                           ? <span title="Opened by the recipient (CRM open tracking)" style={{ color: 'var(--k-065f46)', background: 'var(--k-d1fae5)', borderRadius: 10, padding: '0 7px' }}>👁 Opened{tracking.get(t.id)!.opens > 1 ? ` ${tracking.get(t.id)!.opens}×` : ''}</span>
@@ -653,7 +742,7 @@ function Empty({ title, sub }: { title: string; sub: string }) {
 }
 
 function ThreadReader(p: {
-  t: ThreadSummary; box: 'inbox' | 'sent'; canModify: boolean; onAct: (a: Act) => void; account: string | null; self: string | null; isMobile: boolean; embedded: boolean; contactFor: (email: string) => ContactMatch;
+  t: ThreadSummary; box: 'inbox' | 'sent'; canModify: boolean; onAct: (a: Act) => void; labels: GLabel[]; onLabel: (id: string, on: boolean) => void; onCreateLabel: (name: string) => Promise<GLabel | null>; account: string | null; self: string | null; isMobile: boolean; embedded: boolean; contactFor: (email: string) => ContactMatch;
   onOpenDeal: (id: string) => void; onOpenContact: (id: string) => void;
   onReply: Props['onReply']; onForward: Props['onForward']; onBack: () => void;
   notify: Props['notify']; onAddContact: Props['onAddContact'];
@@ -869,6 +958,7 @@ function ThreadReader(p: {
                 {p.box === 'inbox' && <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('archive')} title="Archive (e)" aria-label="Archive"><Ic n="archive" /></button>}
                 <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('unread')} title="Mark unread (Shift+U)" aria-label="Mark unread"><Ic n="mail" /></button>
                 <button type="button" style={{ ...btn, padding: '0 10px', color: p.t.starred ? '#c9922c' : undefined }} onClick={() => p.onAct(p.t.starred ? 'unstar' : 'star')} title={p.t.starred ? 'Remove star (s)' : 'Star (s)'} aria-label={p.t.starred ? 'Remove star' : 'Star'}><Ic n="star" fill={p.t.starred} /></button>
+                <LabelMenu labels={p.labels} current={new Set(p.t.labels ?? [])} onToggle={p.onLabel} onCreate={p.onCreateLabel} buttonStyle={{ ...btn, padding: '0 10px', display: 'inline-flex', alignItems: 'center' }} />
                 <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('trash')} title="Move to Trash (#)" aria-label="Move to Trash"><Ic n="trash" /></button>
               </div>
             )}

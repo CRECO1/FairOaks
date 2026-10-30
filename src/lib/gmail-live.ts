@@ -8,7 +8,7 @@ import { collectAttachmentParts } from '@/lib/email-attachments';
 
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
-export type ThreadSummary = { id: string; subject: string; snippet: string; from: string; to: string; date: number; unread: boolean; count: number; files: boolean; starred: boolean; lastMine: boolean };
+export type ThreadSummary = { id: string; subject: string; snippet: string; from: string; to: string; date: number; unread: boolean; count: number; files: boolean; starred: boolean; lastMine: boolean; labels: string[] };
 export type LiveAttachment = { part: string; name: string; size: number; mime: string };
 export type LiveMessage = {
   id: string; from: string; to: string; cc: string; subject: string; date: number; unread: boolean;
@@ -37,13 +37,15 @@ async function pool<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): 
 }
 
 /** One page of the inbox or sent folder, newest first. */
-export async function listThreads(token: string, opts: { box: 'inbox' | 'sent'; q?: string; pageToken?: string }) {
+export async function listThreads(token: string, opts: { box: 'inbox' | 'sent'; q?: string; pageToken?: string; labelId?: string }) {
   const params = new URLSearchParams({ maxResults: '25', labelIds: opts.box === 'sent' ? 'SENT' : 'INBOX' });
+  if (opts.labelId) params.append('labelIds', opts.labelId); // threads.list ANDs repeated labelIds
   if (opts.q) params.set('q', opts.q);
   if (opts.pageToken) params.set('pageToken', opts.pageToken);
   // Which of these have files? On the first page Gmail can say exactly (the same search plus has:attachment lists the
   // newest attachment threads, a superset of this page's); on older pages we fall back to the message's MIME shape.
   const filesParams = new URLSearchParams({ maxResults: '100', labelIds: params.get('labelIds')! });
+  if (opts.labelId) filesParams.append('labelIds', opts.labelId);
   filesParams.set('q', `${opts.q ?? ''} has:attachment`.trim());
   const [list, filesList] = await Promise.all([
     g(token, `/threads?${params}`),
@@ -66,6 +68,7 @@ export async function listThreads(token: string, opts: { box: 'inbox' | 'sent'; 
       id: t.id, subject: hdr(msgs[0], 'Subject') || '(no subject)', snippet: last.snippet ?? '',
       from: hdr(last, 'From'), to: hdr(last, 'To'), date: Number(last.internalDate) || 0,
       // The newest real message (not a draft) was sent by the user, to someone else: nobody has answered yet.
+      labels: [...new Set(msgs.flatMap(m => (m.labelIds ?? []).filter(l => /^Label_\d+$/.test(l))))],
       lastMine: (() => { const real = msgs.filter(m => !m.labelIds?.includes('DRAFT')), l = real[real.length - 1]; return !!l && !!l.labelIds?.includes('SENT') && !l.labelIds.includes('INBOX'); })(),
       unread: msgs.some(m => m.labelIds?.includes('UNREAD')), starred: msgs.some(m => m.labelIds?.includes('STARRED')), count: msgs.length,
       files: withFiles ? withFiles.has(t.id) : msgs.some(m => m.payload?.mimeType === 'multipart/mixed'),
@@ -151,9 +154,14 @@ const LABELS: Record<Exclude<ThreadAction, 'trash' | 'untrash'>, { add?: string[
 };
 
 /** Apply one change to a whole conversation. Trash is recoverable in Gmail for 30 days; nothing here deletes permanently. */
-export async function modifyThread(token: string, id: string, action: ThreadAction): Promise<{ ok: boolean; status: number }> {
-  const url = action === 'trash' || action === 'untrash' ? `${API}/threads/${id}/${action}` : `${API}/threads/${id}/modify`;
-  const body = action === 'trash' || action === 'untrash' ? undefined : JSON.stringify({ addLabelIds: LABELS[action].add ?? [], removeLabelIds: LABELS[action].remove ?? [] });
+export const LABEL_ACTION = /^(label|unlabel):(Label_\d+)$/; // add or remove one of the user's own labels
+export async function modifyThread(token: string, id: string, action: ThreadAction | string): Promise<{ ok: boolean; status: number }> {
+  const lab = LABEL_ACTION.exec(action);
+  const plain = action === 'trash' || action === 'untrash';
+  const url = plain ? `${API}/threads/${id}/${action}` : `${API}/threads/${id}/modify`;
+  const body = plain ? undefined : lab
+    ? JSON.stringify(lab[1] === 'label' ? { addLabelIds: [lab[2]], removeLabelIds: [] } : { addLabelIds: [], removeLabelIds: [lab[2]] })
+    : JSON.stringify({ addLabelIds: LABELS[action as keyof typeof LABELS].add ?? [], removeLabelIds: LABELS[action as keyof typeof LABELS].remove ?? [] });
   const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body, cache: 'no-store' });
   return { ok: res.ok, status: res.status };
 }
@@ -172,4 +180,22 @@ export async function hasModifyScope(token: string): Promise<boolean> {
   if (scopeCache.size > 50) scopeCache.clear();
   scopeCache.set(token, { at: Date.now(), modify });
   return modify;
+}
+
+// ── The user's own labels (system labels like INBOX/STARRED are handled by the actions above) ───────────────────────
+export type GLabel = { id: string; name: string; bg: string | null; fg: string | null };
+export async function listLabels(token: string): Promise<GLabel[]> {
+  const r = await g(token, '/labels');
+  if (!r.ok) return [];
+  return ((r.json.labels ?? []) as Array<{ id: string; name: string; type?: string; color?: { backgroundColor?: string; textColor?: string } }>)
+    .filter(l => l.type === 'user' && /^Label_\d+$/.test(l.id))
+    .map(l => ({ id: l.id, name: l.name, bg: l.color?.backgroundColor ?? null, fg: l.color?.textColor ?? null }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+export async function createLabel(token: string, name: string): Promise<{ ok: true; label: GLabel } | { ok: false; status: number }> {
+  const res = await fetch(`${API}/labels`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, cache: 'no-store',
+    body: JSON.stringify({ name, labelListVisibility: 'labelShow', messageListVisibility: 'show' }) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || !j.id) return { ok: false, status: res.status };
+  return { ok: true, label: { id: j.id as string, name: j.name as string, bg: j.color?.backgroundColor ?? null, fg: j.color?.textColor ?? null } };
 }

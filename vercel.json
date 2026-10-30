@@ -114,6 +114,10 @@
     {
       "path": "/api/cron/reply-scan",
       "schedule": "*/15 11-23,0-3 * * *"
+    },
+    {
+      "path": "/api/cron/scheduled-emails",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
