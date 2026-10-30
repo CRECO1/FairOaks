@@ -46,6 +46,8 @@ const colorFor = (s: string) => { let h = 0; for (const ch of s.toLowerCase()) h
 const decodeSnippet = (t: string) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 const OPENED_KEY = 'crm-gmail-opened';
 const loadOpened = (): Set<string> => { try { return new Set(JSON.parse(localStorage.getItem(OPENED_KEY) ?? '[]') as string[]); } catch { return new Set(); } };
+const ageDays = (ms: number) => Math.floor((Date.now() - ms) / 86_400_000);
+const ago = (iso: string | undefined) => { if (!iso) return ''; const d = ageDays(new Date(iso.length <= 10 ? iso + 'T12:00:00' : iso).getTime()); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d < 60 ? `${d} days ago` : `${Math.round(d / 30)} months ago`; };
 const previewable = (mime: string) => /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(mime);
 
 // In-session caches (gone on a full reload, which is fine): the list paints instantly from the last visit while a quiet
@@ -87,7 +89,7 @@ function Ic({ n, size = 16, fill = false }: { n: keyof typeof ICON; size?: numbe
   return <svg aria-hidden width={size} height={size} viewBox="0 0 24 24" fill={fill ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>{ICON[n]}</svg>;
 }
 
-export type ContactMatch = { kind: 'deal' | 'contact'; id: string; label: string; sub?: string } | null;
+export type ContactMatch = { kind: 'deal' | 'contact'; id: string; label: string; sub?: string; phone?: string; company?: string; role?: string; tags?: string[]; touched?: string } | null;
 
 type Props = {
   box: 'inbox' | 'sent';
@@ -299,14 +301,14 @@ export default function GmailMailbox(p: Props) {
   };
 
   const flash = (msg: string, undo?: () => void) => { setToast({ msg, undo }); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 7000); };
-  const send = async (id: string, action: string): Promise<boolean> => {
+  const send = async (id: string, action: string, quiet = false): Promise<boolean> => {
     try {
       const r = await fetch('/api/gmail/modify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action, account: account ?? self ?? undefined }) });
       const j = await r.json().catch(() => ({}));
       if (r.ok) { window.dispatchEvent(new Event('crm-gmail-changed')); return true; }
       if (j.needsScope) setCanModify(false);
-      p.notify(j.error ?? 'Could not change that conversation.');
-    } catch { p.notify('Could not reach Gmail — try again.'); }
+      if (!quiet) p.notify(j.error ?? 'Could not change that conversation.');
+    } catch { if (!quiet) p.notify('Could not reach Gmail — try again.'); }
     return false;
   };
   // Optimistic: the list changes at once, Gmail is updated behind it, and a failure puts everything back.
@@ -323,10 +325,44 @@ export default function GmailMailbox(p: Props) {
     flash(DONE[action], removing ? () => { setThreads(before); listCache.clear(); void send(t.id, UNDO_OF[action]); setToast(null); } : undefined);
   };
 
+  const [noReply, setNoReply] = useState(false);
   const visible = useMemo(() => {
-    const list = threads ?? [];
-    return contactsOnly ? list.filter(t => { const a = otherOf(t); return a.email && p.contactFor(a.email); }) : list;
-  }, [threads, contactsOnly, otherOf, p]);
+    let list = threads ?? [];
+    if (contactsOnly) list = list.filter(t => { const a = otherOf(t); return a.email && p.contactFor(a.email); });
+    if (noReply) list = list.filter(t => t.lastMine && ageDays(t.date) >= 2);
+    return list;
+  }, [threads, contactsOnly, noReply, otherOf, p]);
+
+  // Bulk select: tick several conversations (shift-click for a range), then one action for all of them.
+  const [sel, setSel] = useState<Set<string>>(() => new Set());
+  const lastTick = useRef<number>(-1);
+  useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, contactsOnly, noReply]);
+  const tick = (id: string, idx: number, range: boolean) => setSel(prev => {
+    const n = new Set(prev);
+    if (range && lastTick.current >= 0) { const [a, b] = [Math.min(lastTick.current, idx), Math.max(lastTick.current, idx)]; const on = !prev.has(id); for (const x of visible.slice(a, b + 1)) { if (on) n.add(x.id); else n.delete(x.id); } }
+    else if (n.has(id)) n.delete(id); else n.add(id);
+    lastTick.current = idx; return n;
+  });
+  const bulk = async (action: Act) => {
+    if (canModify === false) { p.notify('Allow the CRM to change your Gmail first — see the note above the list.'); return; }
+    const ids = [...sel], idSet = new Set(ids), before = threads, removing = action === 'archive' || action === 'trash';
+    setSel(new Set());
+    if (removing) setThreads(prev => (prev ?? []).filter(x => !idSet.has(x.id)));
+    else setThreads(prev => (prev ?? []).map(x => !idSet.has(x.id) ? x : { ...x, ...(action === 'read' ? { unread: false } : action === 'unread' ? { unread: true } : action === 'star' ? { starred: true } : { starred: false }) }));
+    if (action === 'unread') setOpened(prev => { const n = new Set(prev); for (const x of before ?? []) if (idSet.has(x.id)) n.delete(keyOf(x)); try { localStorage.setItem(OPENED_KEY, JSON.stringify([...n].slice(-3000))); } catch { /* ignore */ } return n; });
+    listCache.clear();
+    const failed: string[] = []; let i = 0;
+    await Promise.all(Array.from({ length: Math.min(4, ids.length) }, async () => { while (i < ids.length) { const id = ids[i++]; if (!(await send(id, action, true))) failed.push(id); } }));
+    window.dispatchEvent(new Event('crm-gmail-changed'));
+    const okIds = ids.filter(x => !failed.includes(x));
+    if (failed.length) { void load(true); p.notify(`${failed.length} of ${ids.length} could not be changed — they are back in the list.`); }
+    if (!okIds.length) return;
+    flash(`${DONE[action]} · ${okIds.length} conversation${okIds.length === 1 ? '' : 's'}`, removing ? () => { setThreads(before); listCache.clear(); okIds.forEach(id => void send(id, UNDO_OF[action], true)); setToast(null); } : undefined);
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && sel.size) setSel(new Set()); };
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+  }, [sel.size]);
 
   // j / k step through the list, / jumps to search (two-pane only; the reader has its own r / a / f / Esc).
   useEffect(() => {
@@ -375,6 +411,7 @@ export default function GmailMailbox(p: Props) {
         {p.box === 'inbox' && <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>}
         <button onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 Files</button>
         <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
+        {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 2+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
         <button onClick={() => setContactsOnly(v => !v)} aria-pressed={contactsOnly} title="Only people who are in your CRM (of what is loaded)" style={chip(contactsOnly)}>👤 Contacts</button>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: p.isMobile || wide ? 0 : 'auto', flexWrap: 'wrap', width: p.isMobile || wide ? '100%' : undefined }}>
@@ -394,7 +431,7 @@ export default function GmailMailbox(p: Props) {
 
   const list = (
     <>
-      <style>{'.gm-acts{display:none}.gm-row:hover .gm-acts,.gm-row:focus-within .gm-acts{display:flex}@media (hover:none){.gm-acts{display:none!important}}'}</style>
+      <style>{'.gm-chk{display:none;position:absolute;inset:0;align-items:center;justify-content:center}.gm-row:hover .gm-av,.gm-sel .gm-av{display:none}.gm-row:hover .gm-chk,.gm-sel .gm-chk{display:flex}.gm-acts{display:none}.gm-row:hover .gm-acts,.gm-row:focus-within .gm-acts{display:flex}@media (hover:none){.gm-acts{display:none!important}}'}</style>
       {canModify === false && reconnect && !hideBanner && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10, padding: '10px 12px', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 10, fontSize: 13, color: 'var(--k-92400e)' }}>
           <span style={{ flex: '1 1 220px', minWidth: 0 }}><b>Work your Gmail from here.</b> Mark read, archive, star and trash without leaving the CRM — it needs your OK once.</span>
@@ -409,12 +446,24 @@ export default function GmailMailbox(p: Props) {
           ↑ {fresh} new {fresh === 1 ? 'conversation' : 'conversations'} — show
         </button>
       )}
+      {sel.size > 0 && (
+        <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8, padding: '8px 10px', background: '#111', color: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600 }}>
+          <span style={{ marginRight: 4 }}>{sel.size} selected</span>
+          {sel.size < visible.length && <button type="button" onClick={() => setSel(new Set(visible.map(x => x.id)))} style={{ border: 'none', background: 'none', color: '#e8b563', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Select all {visible.length}</button>}
+          <span style={{ flex: 1 }} />
+          {([p.box === 'inbox' ? ['archive', 'Archive', 'archive'] : null, ['read', 'Mark read', 'open'], ['unread', 'Mark unread', 'mail'], ['star', 'Star', 'star'], ['trash', 'Trash', 'trash']] as Array<[Act, string, string] | null>).filter((x): x is [Act, string, string] => !!x).map(([a2, label, icon]) => (
+            <button key={a2} type="button" onClick={() => void bulk(a2)} title={label} aria-label={label}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px', border: '1px solid #3a3a3f', borderRadius: 8, background: '#1c1c1f', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}><Ic n={icon as keyof typeof ICON} size={15} />{!p.isMobile && label}</button>
+          ))}
+          <button type="button" onClick={() => setSel(new Set())} aria-label="Clear selection" title="Clear (Esc)" style={{ width: 32, height: 32, border: 'none', borderRadius: 8, background: 'none', color: '#bbb', cursor: 'pointer', fontSize: 16 }}>✕</button>
+        </div>
+      )}
       {threads === null ? <ListSkeleton />
       : !connected ? <Empty title="Gmail isn’t connected" sub="Connect your Google account (bottom of the sidebar) and your mail shows up here." />
       : err ? <Empty title="Couldn’t load your mail" sub={err} />
       : visible.length === 0 ? <Empty title={term || contactsOnly || filter !== 'all' ? 'Nothing matches' : p.box === 'inbox' ? 'You’re all caught up' : 'Nothing here yet'} sub={contactsOnly && threads.length ? 'None of the loaded conversations are with people in your CRM — try “Load older mail”.' : term ? 'Try different words.' : 'Nothing to show.'} />
       : (
-        <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
+        <div className={sel.size ? 'gm-sel' : undefined} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
           {visible.map((t, i) => {
             const a = otherOf(t);
             const name = a.name || a.email || '(unknown)';
@@ -428,8 +477,16 @@ export default function GmailMailbox(p: Props) {
                 {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div>}
                 <div role="button" tabIndex={0} className="gm-row" onClick={() => openThread(t)} onKeyDown={e => { if (e.key === 'Enter') openThread(t); }}
                   onMouseEnter={() => { if (!p.isMobile) void loadThread(account, t.id, t.date); }}
-                  style={{ position: 'relative', display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
-                  <Avatar name={name} email={a.email} warm={!!match} />
+                  style={{ position: 'relative', display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: sel.has(t.id) ? 'var(--k-fdf6e8)' : selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
+                  <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
+                    <div className="gm-av"><Avatar name={name} email={a.email} warm={!!match} /></div>
+                    {canModify && !p.isMobile && (
+                      <div className="gm-chk" onClick={e => { e.stopPropagation(); tick(t.id, i, e.shiftKey); }} title="Select (shift-click for a range)">
+                        <input type="checkbox" aria-label={`Select ${name}`} checked={sel.has(t.id)} onChange={() => {}} style={{ width: 18, height: 18, accentColor: '#c9922c', cursor: 'pointer' }} />
+                      </div>
+                    )}
+                    {(!canModify || p.isMobile) && <style>{'.gm-row .gm-av{display:block!important}'}</style>}
+                  </div>
                   {canModify && !p.isMobile && (
                     <div className="gm-acts" onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 8, top: 6, gap: 2, padding: 2, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
                       {([p.box === 'inbox' ? ['archive', 'Archive', 'archive'] : null, [unread ? 'read' : 'unread', unread ? 'Mark read' : 'Mark unread', unread ? 'open' : 'mail'], [t.starred ? 'unstar' : 'star', t.starred ? 'Remove star' : 'Star', 'star'], ['trash', 'Trash', 'trash']] as Array<[Act, string, string] | null>).filter((x): x is [Act, string, string] => !!x).map(([act2, label, icon]) => (
@@ -450,9 +507,10 @@ export default function GmailMailbox(p: Props) {
                     </div>
                     <div style={{ fontSize: 13.5, color: 'var(--k-111)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 500 }}>{t.subject}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decodeSnippet(t.snippet)}</div>
-                    {(match || tracking.get(t.id)?.tracked) && (
+                    {(match || tracking.get(t.id)?.tracked || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3)) && (
                       <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
                         {match && <span style={{ color: 'var(--k-a06a12)' }}>{match.kind === 'deal' ? '💼 Deal' : '👤 Contact'} · {match.label}</span>}
+                        {p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3 && <span title="You sent the last message and nobody has answered" style={{ color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '0 7px' }}>⏳ No reply · {ageDays(t.date)}d</span>}
                         {tracking.get(t.id)?.tracked && (tracking.get(t.id)!.opened
                           ? <span title="Opened by the recipient (CRM open tracking)" style={{ color: 'var(--k-065f46)', background: 'var(--k-d1fae5)', borderRadius: 10, padding: '0 7px' }}>👁 Opened{tracking.get(t.id)!.opens > 1 ? ` ${tracking.get(t.id)!.opens}×` : ''}</span>
                           : <span title="Not opened yet" style={{ color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '0 7px', fontWeight: 600 }}>Not opened</span>)}
@@ -720,12 +778,27 @@ function ThreadReader(p: {
             style={{ flex: '1 1 200px', minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, color: 'var(--k-92400e)', fontWeight: 700, fontFamily: "'DM Sans',sans-serif", overflowWrap: 'anywhere' }}>
             {threadTarget.kind === 'deal' ? '💼' : '👤'} {threadTarget.label}{threadTarget.sub ? <span style={{ fontWeight: 500 }}> · {threadTarget.sub}</span> : null} →
           </button>
+          {(threadTarget.phone || threadTarget.company || threadTarget.role || threadTarget.touched || (threadTarget.tags && threadTarget.tags.length > 0)) && (
+            <div style={{ flexBasis: '100%', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', fontSize: 12.5, color: 'var(--k-92400e)' }}>
+              {threadTarget.phone && <a href={`tel:${threadTarget.phone.replace(/[^\d+]/g, '')}`} style={{ color: 'inherit', fontWeight: 700, textDecoration: 'none' }}>📞 {threadTarget.phone}</a>}
+              {threadTarget.company && <span>🏢 {threadTarget.company}</span>}
+              {threadTarget.role && <span>{threadTarget.role}</span>}
+              {threadTarget.touched && <span>Last contact {ago(threadTarget.touched)}</span>}
+              {(threadTarget.tags ?? []).map(tg => <span key={tg} style={{ background: 'rgba(146,64,14,.1)', borderRadius: 10, padding: '0 8px', fontWeight: 600 }}>{tg}</span>)}
+            </div>
+          )}
           {msgs && msgs.length > 1 && (
             <button type="button" disabled={filingAll || (msgs.length > 0 && msgs.every(m => filed.has(m.id)))} onClick={() => void fileAll(threadTarget)} style={btn}
               title="Copy every message in this conversation onto the card so the team sees the whole thread">
               {filingAll ? 'Filing…' : msgs.every(m => filed.has(m.id)) ? '✓ All filed' : `📁 File all ${msgs.length}`}
             </button>
           )}
+        </div>
+      )}
+      {last && me && parseAddr(last.from).email.toLowerCase() === me && ageDays(last.date) >= 3 && !parseAddr(last.to).email.toLowerCase().includes(me) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12, padding: '9px 12px', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 10 }}>
+          <span style={{ flex: '1 1 220px', minWidth: 0, fontSize: 13, color: 'var(--k-92400e)', fontWeight: 600 }}>⏳ No reply yet — you sent the last message {ageDays(last.date)} days ago.</span>
+          <button type="button" style={{ ...btn, background: '#c9922c', color: '#fff', border: 'none' }} onClick={() => p.onReply(last, p.t.id, false, p.account)}>↩ Follow up</button>
         </div>
       )}
       {msgs === null && <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Opening conversation…</div>}

@@ -8,7 +8,7 @@ import { collectAttachmentParts } from '@/lib/email-attachments';
 
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
-export type ThreadSummary = { id: string; subject: string; snippet: string; from: string; to: string; date: number; unread: boolean; count: number; files: boolean; starred: boolean };
+export type ThreadSummary = { id: string; subject: string; snippet: string; from: string; to: string; date: number; unread: boolean; count: number; files: boolean; starred: boolean; lastMine: boolean };
 export type LiveAttachment = { part: string; name: string; size: number; mime: string };
 export type LiveMessage = {
   id: string; from: string; to: string; cc: string; subject: string; date: number; unread: boolean;
@@ -65,6 +65,8 @@ export async function listThreads(token: string, opts: { box: 'inbox' | 'sent'; 
     threads.push({
       id: t.id, subject: hdr(msgs[0], 'Subject') || '(no subject)', snippet: last.snippet ?? '',
       from: hdr(last, 'From'), to: hdr(last, 'To'), date: Number(last.internalDate) || 0,
+      // The newest real message (not a draft) was sent by the user, to someone else: nobody has answered yet.
+      lastMine: (() => { const real = msgs.filter(m => !m.labelIds?.includes('DRAFT')), l = real[real.length - 1]; return !!l && !!l.labelIds?.includes('SENT') && !l.labelIds.includes('INBOX'); })(),
       unread: msgs.some(m => m.labelIds?.includes('UNREAD')), starred: msgs.some(m => m.labelIds?.includes('STARRED')), count: msgs.length,
       files: withFiles ? withFiles.has(t.id) : msgs.some(m => m.payload?.mimeType === 'multipart/mixed'),
     });
