@@ -107,6 +107,7 @@ type Props = {
   onReply: (m: LiveMessage, threadId: string, all: boolean, account: string | null, draftHtml?: string) => void;
   onForward: (m: LiveMessage, threadId: string, account: string | null) => void;
   onNewCompose: () => void;
+  onQuickReply: (m: LiveMessage, threadId: string, all: boolean, text: string) => Promise<boolean>;
   notify: (msg: string) => void;
   onAddContact: (email: string, name: string) => Promise<boolean>;
 };
@@ -399,6 +400,7 @@ export default function GmailMailbox(p: Props) {
     } catch { p.notify('Could not reach Gmail — try again.'); return null; }
   };
   const [noReply, setNoReply] = useState(false);
+  const [waiting, setWaiting] = useState(false); // Inbox: a person/deal in the CRM wrote last and you haven't answered
   const [trackF, setTrackF] = useState<'all' | 'opened' | 'unopened'>('all'); // Sent: did the recipient open it (CRM tracking)
   const [sugOpen, setSugOpen] = useState(false);
   const [help, setHelp] = useState(false);
@@ -407,14 +409,15 @@ export default function GmailMailbox(p: Props) {
     let list = threads ?? [];
     if (who !== 'all') list = list.filter(t => { const a = otherOf(t), m = a.email ? p.contactFor(a.email) : null; return who === 'deals' ? m?.kind === 'deal' : who === 'contacts' ? !!m : !m; });
     if (noReply) list = list.filter(t => t.lastMine && ageDays(t.date) >= 3);
+    if (waiting) list = list.filter(t => { const a = otherOf(t); return !t.lastMine && ageDays(t.date) >= 1 && !!(a.email && p.contactFor(a.email)); });
     if (p.box === 'sent' && trackF !== 'all') list = list.filter(t => { const tr = tracking.get(t.id); return trackF === 'opened' ? !!tr?.opened : !!tr?.tracked && !tr.opened; });
     return list;
-  }, [threads, who, noReply, trackF, tracking, otherOf, p]);
+  }, [threads, who, noReply, waiting, trackF, tracking, otherOf, p]);
 
   // Bulk select: tick several conversations (shift-click for a range), then one action for all of them.
   const [sel, setSel] = useState<Set<string>>(() => new Set());
   const lastTick = useRef<number>(-1);
-  useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, who, noReply, trackF, labelId]);
+  useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, who, noReply, waiting, trackF, labelId]);
   const tick = (id: string, idx: number, range: boolean) => setSel(prev => {
     const n = new Set(prev);
     if (range && lastTick.current >= 0) { const [a, b] = [Math.min(lastTick.current, idx), Math.max(lastTick.current, idx)]; const on = !prev.has(id); for (const x of visible.slice(a, b + 1)) { if (on) n.add(x.id); else n.delete(x.id); } }
@@ -460,10 +463,10 @@ export default function GmailMailbox(p: Props) {
   const autoPages = useRef(0);
   useEffect(() => { autoPages.current = 0; }, [p.box, filter, term, account, who, noReply, labelId]);
   useEffect(() => {
-    if (!(contactsOnly || noReply) || !next || loadingMore || visible.length >= 8 || autoPages.current >= 6) return;
+    if (!(contactsOnly || noReply || waiting) || !next || loadingMore || visible.length >= 8 || autoPages.current >= 6) return;
     autoPages.current += 1; void more();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [who, noReply, next, loadingMore, visible.length]);
+  }, [who, noReply, waiting, next, loadingMore, visible.length]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && sel.size) setSel(new Set()); };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
@@ -513,7 +516,7 @@ export default function GmailMailbox(p: Props) {
 
   const reader = (embedded: boolean) => open && (
     <ThreadReader key={open.id} t={threads?.find(x => x.id === open.id) ?? open} box={p.box} canModify={canModify === true} onAct={readerAct} labels={labels} onLabel={(id, on) => void labelThread(open, id, on)} onCreateLabel={createLabel} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
-      onReply={p.onReply} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />
+      onReply={p.onReply} onQuickReply={p.onQuickReply} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />
   );
 
   // Phone / narrow: the conversation replaces the list.
@@ -529,6 +532,7 @@ export default function GmailMailbox(p: Props) {
         {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'opened' ? 'all' : 'opened'))} aria-pressed={trackF === 'opened'} title="Sent from the CRM and the recipient opened it (of what is loaded)" style={chip(trackF === 'opened')}>👁 Opened</button>}
         {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'unopened' ? 'all' : 'unopened'))} aria-pressed={trackF === 'unopened'} title="Sent from the CRM and not opened yet (of what is loaded)" style={chip(trackF === 'unopened')}>Not opened</button>}
         {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
+        {p.box === 'inbox' && <button onClick={() => setWaiting(v => !v)} aria-pressed={waiting} title="People in your CRM who wrote last 1+ days ago and haven’t had an answer from you (of what is loaded)" style={chip(waiting)}>↩ Waiting on you</button>}
         <button onClick={() => setWho(v => (v === 'deals' ? 'all' : 'deals'))} aria-pressed={who === 'deals'} title="People with a deal (of what is loaded)" style={chip(who === 'deals')}>💼 Deals</button>
         <button onClick={() => setWho(v => (v === 'contacts' ? 'all' : 'contacts'))} aria-pressed={who === 'contacts'} title="Anyone who is in your CRM (of what is loaded)" style={chip(who === 'contacts')}>👤 Contacts</button>
         <button onClick={() => setWho(v => (v === 'other' ? 'all' : 'other'))} aria-pressed={who === 'other'} title="People who are NOT in your CRM — newsletters, notices, strangers (of what is loaded)" style={chip(who === 'other')}>📭 Not in CRM</button>
@@ -666,11 +670,12 @@ export default function GmailMailbox(p: Props) {
                     </div>
                     <div style={{ fontSize: 13.5, color: 'var(--k-111)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 500 }}>{t.subject}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decodeSnippet(t.snippet)}</div>
-                    {(match || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3)) && (
+                    {(match || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2)) && (
                       <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
                         {match && <span style={{ color: 'var(--k-a06a12)' }}>{match.kind === 'deal' ? '💼 Deal' : `👤 ${match.role || 'Contact'}`} · {match.label}</span>}
                         {(t.labels ?? []).slice(0, 2).map(id => { const l = labels.find(x => x.id === id); return l ? <span key={id} style={{ background: l.bg ?? '#e5e7eb', color: l.fg ?? '#374151', borderRadius: 4, padding: '0 6px', fontWeight: 600, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name.split('/').pop()}</span> : null; })}
                         {(t.labels?.length ?? 0) > 2 && <span style={{ color: 'var(--k-9ca3af)' }}>+{(t.labels?.length ?? 0) - 2}</span>}
+                        {p.box === 'inbox' && !t.lastMine && match && ageDays(t.date) >= 2 && <span title="They wrote last and you haven't answered" style={{ color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '0 7px' }}>↩ Waiting on you · {ageDays(t.date)}d</span>}
                         {p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3 && <span title="You sent the last message and nobody has answered" style={{ color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '0 7px' }}>⏳ No reply · {ageDays(t.date)}d</span>}
                         {p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3 && <button type="button" disabled={following === t.id} onClick={e => { e.stopPropagation(); void followUp(t); }} title="Write a follow-up on this conversation"
                           style={{ border: '1px solid var(--k-d1d5db)', background: 'var(--k-fff)', color: 'var(--k-374151)', borderRadius: 10, padding: '0 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ic n="reply" size={12} />{following === t.id ? 'Opening…' : 'Follow up'}</button>}
@@ -769,10 +774,59 @@ function Empty({ title, sub }: { title: string; sub: string }) {
   );
 }
 
+// A reply box under the conversation: type a short answer, Send (or ⌘/Ctrl+Enter). It waits 5 seconds so you can Undo.
+function QuickReply({ last, me, isMobile, who, onSend, onFull }: { last: LiveMessage; me: string; isMobile: boolean; who: string; onSend: (all: boolean, text: string) => Promise<boolean>; onFull: (text: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [all, setAll] = useState(false);
+  const [count, setCount] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const others = addrCount(last.to) + addrCount(last.cc) > 1 || (!!me && parseAddr(last.from).email.toLowerCase() !== me && addrCount(last.to) + addrCount(last.cc) > 1);
+  useEffect(() => { if (open) ref.current?.focus(); }, [open]);
+  useEffect(() => {
+    if (count === null) return;
+    if (count > 0) { const t = setTimeout(() => setCount(c => (c === null ? null : c - 1)), 1000); return () => clearTimeout(t); }
+    setCount(null); setBusy(true);
+    void onSend(all, text.trim()).then(ok => { if (ok) { setText(''); setOpen(false); setAll(false); } }).finally(() => setBusy(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [count]);
+  if (!open) return (
+    <button type="button" onClick={() => setOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', marginTop: 10, padding: '12px 16px', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, color: 'var(--k-9ca3af)', fontSize: 14, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+      <Ic n="reply" size={16} /> Reply to {who}…
+    </button>
+  );
+  const counting = count !== null;
+  return (
+    <div style={{ marginTop: 10, background: 'var(--k-fff)', border: '1px solid var(--k-c9922c, #c9922c)', borderRadius: 12, padding: 12 }}>
+      <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginBottom: 6 }}>Replying to <b style={{ color: 'var(--k-111)' }}>{all ? 'everyone' : who}</b> · your signature is added</div>
+      <textarea ref={ref} value={text} onChange={e => setText(e.target.value)} disabled={counting || busy} rows={isMobile ? 5 : 4} aria-label="Your reply" placeholder="Write a quick reply…"
+        onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && text.trim() && !counting) { e.preventDefault(); setCount(5); } if (e.key === 'Escape' && !text.trim()) setOpen(false); }}
+        style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14.5, lineHeight: 1.55, fontFamily: "'DM Sans',sans-serif" }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+        {counting ? (
+          <>
+            <span role="status" aria-live="polite" style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--k-374151)' }}>Sending in {count}…</span>
+            <button type="button" onClick={() => setCount(null)} style={{ height: 38, padding: '0 18px', background: 'var(--k-111)', color: '#fff', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer' }}>Undo</button>
+          </>
+        ) : (
+          <>
+            <button type="button" disabled={!text.trim() || busy} onClick={() => setCount(5)} style={{ height: isMobile ? 44 : 38, padding: '0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 9, fontSize: 14.5, fontWeight: 700, cursor: 'pointer', opacity: !text.trim() || busy ? 0.5 : 1 }}>{busy ? 'Sending…' : 'Send'}</button>
+            {others && <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--k-374151)', cursor: 'pointer' }}><input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} style={{ accentColor: '#c9922c' }} /> Reply all</label>}
+            <span style={{ flex: 1 }} />
+            <button type="button" onClick={() => onFull(text)} title="Move this to the full Compose window" style={{ border: 'none', background: 'none', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Open in Compose ↗</button>
+            <button type="button" onClick={() => { setOpen(false); setText(''); }} aria-label="Discard reply" style={{ border: 'none', background: 'none', color: 'var(--k-9ca3af)', fontSize: 16, cursor: 'pointer' }}>✕</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ThreadReader(p: {
   t: ThreadSummary; box: 'inbox' | 'sent'; canModify: boolean; onAct: (a: Act) => void; labels: GLabel[]; onLabel: (id: string, on: boolean) => void; onCreateLabel: (name: string) => Promise<GLabel | null>; account: string | null; self: string | null; isMobile: boolean; embedded: boolean; contactFor: (email: string) => ContactMatch;
   onOpenDeal: (id: string) => void; onOpenContact: (id: string) => void;
-  onReply: Props['onReply']; onForward: Props['onForward']; onBack: () => void;
+  onReply: Props['onReply']; onQuickReply: Props['onQuickReply']; onForward: Props['onForward']; onBack: () => void;
   notify: Props['notify']; onAddContact: Props['onAddContact'];
 }) {
   const [msgs, setMsgs] = useState<LiveMessage[] | null>(null);
@@ -978,7 +1032,7 @@ function ThreadReader(p: {
           {msgs && msgs.length > 1 && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{msgs.length} messages</span>}
         </h2>
         {last && (
-          <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', maxWidth: '100%' }}>
             <a href={`https://mail.google.com/mail/${p.account ? `?authuser=${encodeURIComponent(p.account)}` : ''}#all/${p.t.id}`} target="_blank" rel="noopener noreferrer" title="Open this conversation in Gmail (labels, trash…)"
               style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>Gmail ↗</a>
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, false, p.account)} title="Reply (r)">↩ Reply</button>
@@ -1187,6 +1241,15 @@ function ThreadReader(p: {
           );
         })}
       </div>
+      {last && (
+        <QuickReply key={last.id} last={last} me={me} isMobile={p.isMobile} who={(me && parseAddr(last.from).email.toLowerCase() === me ? parseAddr(last.to) : parseAddr(last.from)).name || parseAddr(last.from).email || 'them'}
+          onSend={async (all, text) => {
+            const ok = await p.onQuickReply(last, p.t.id, all, text);
+            if (ok) { threadCache.clear(); setTimeout(() => { void loadThread(p.account, p.t.id, p.t.date).then(l => { if (l) { setMsgs(l); setFolded(new Set(l.slice(0, -1).map(m => m.id))); } }); }, 1800); }
+            return ok;
+          }}
+          onFull={text => p.onReply(last, p.t.id, false, p.account, text.trim() ? text.trim().split(/\n{2,}/).map(par => `<p>${par.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</p>`).join('') : undefined)} />
+      )}
     </div>
   );
 }

@@ -4482,6 +4482,36 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       ...(match ? (match.kind === 'deal' ? { dealId: match.id } : { clientId: match.id }) : {}),
     });
   }
+  // Quick reply from the Emails reader: the same send pipeline as Compose (signature, tracking, filing, threading) — no window.
+  async function quickReply(m: LiveMessage, threadId: string, all: boolean, text: string): Promise<boolean> {
+    const e = liveAsEmail(m);
+    const ra = replyAllRecipients(e, [], undefined, selfAddrs());
+    const target = e.direction === 'sent' ? (parseAddressList(m.to)[0]?.email ?? '') : (parseAddressList(m.from)[0]?.email ?? m.from);
+    const to = all ? ra.also || target : target;
+    if (!to || !session?.access_token || !profile) { showToast('Could not work out who to reply to — use the full reply.'); return false; }
+    const match = contactFor(target);
+    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const typed = text.split(/\n{2,}/).map(par => `<p>${esc(par.trim()).replace(/\n/g, '<br>')}</p>`).join('');
+    const sig = profile.email_signature ? gmailSignatureBlock(profile.email_signature) : '';
+    try {
+      const res = await fetch('/api/gmail/send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          userId: session.user.id, toName: parseAddressList(e.direction === 'sent' ? m.to : m.from)[0]?.name,
+          ...(match ? (match.kind === 'deal' ? { dealId: match.id } : { clientId: match.id }) : { resolveClient: true }),
+          threadId, inReplyTo: `${m.refs} ${m.rfcId}`.trim() || undefined,
+          to, cc: all ? ra.cc : '', bcc: '', individual: false,
+          subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`,
+          body: `${typed}${quotedReplyHtml(e)}${sig}`, agentName: `${profile.first_name} ${profile.last_name}`, ccAgentIds: [], attachments: [], crmAttachments: [],
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast('Send failed: ' + (json.error ?? res.status)); return false; }
+      showToast('Reply sent');
+      void loadClients(undefined, 0, true); void loadAllTasks();
+      return true;
+    } catch { showToast('Send error — check your connection and try again'); return false; }
+  }
   function liveForward(m: LiveMessage) {
     const e = liveAsEmail(m);
     openCompose({
@@ -11248,7 +11278,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {page === 'emails' && (
             <EmailsSection isMobile={isMobile} tab={emailsTab} setTab={setEmailsTab}
               unread={emailBadge} draftCount={draftCount} inbox={inbox}
-              contactFor={contactFor} searchPeople={searchPeople} onLiveReply={liveReply} onLiveForward={liveForward} onCompose={() => openCompose()}
+              contactFor={contactFor} searchPeople={searchPeople} onLiveReply={liveReply} onQuickReply={quickReply} onLiveForward={liveForward} onCompose={() => openCompose()}
               notify={showToast} onAddContact={addContactFromMail}
               myAddresses={[...gmailAccounts.map(a => a.email), profile.email, session?.user?.email ?? ''].filter(Boolean)}
               nameFor={nameForEmail}
