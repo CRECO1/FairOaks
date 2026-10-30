@@ -9122,7 +9122,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       const sender = camp.sender_agent_id ? profiles.find(p => p.id === camp.sender_agent_id) : null;
                       const sent = camp.send_count ?? 0;
                       return (
-                      <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: isMobile ? 10 : 14, padding: '12px 16px', background: selectedCampaignIds.has(camp.id) ? 'var(--k-fffdf5)' : 'var(--k-fff)', borderRadius: 12, border: selectedCampaignIds.has(camp.id) ? '1px solid #e6c866' : '1px solid var(--k-f0f0f0)' }}>
+                      <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: isMobile ? 10 : 14, padding: '12px 16px', background: selectedCampaignIds.has(camp.id) ? 'var(--k-fffdf5)' : 'var(--k-fff)', borderRadius: 12, border: selectedCampaignIds.has(camp.id) ? '1px solid #e6c866' : '1px solid var(--k-f0f0f0)' }}>
                         {isAdmin && (
                           <input type="checkbox" checked={selectedCampaignIds.has(camp.id)} onChange={() => setSelectedCampaignIds(prev => { const n = new Set(prev); n.has(camp.id) ? n.delete(camp.id) : n.add(camp.id); return n; })} aria-label={`Select ${camp.name}`} style={{ width: 16, height: 16, flexShrink: 0, cursor: 'pointer', accentColor: '#c9922c' }} />
                         )}
@@ -9132,7 +9132,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {/* Name + status + schedule — takes the rest of row 1 on a phone
                             so the metric columns wrap onto a second line instead of
                             squeezing the campaign name down to a few characters. */}
-                        <div style={{ flex: isMobile ? '1 1 calc(100% - 50px)' : 1, minWidth: 0 }}>
+                        {/* 200px floor on desktop: in a narrower window the 322px of buttons used to squeeze the
+                            name to one letter per line; now the buttons drop to a second line instead. */}
+                        <div style={{ flex: isMobile ? '1 1 calc(100% - 50px)' : 1, minWidth: isMobile ? 0 : 200 }}>
                           <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 7, marginBottom: 3, flexWrap: 'wrap' }}>
                             {/* These names differ only in their tail ("… Medical A2",
                                 "… A3"), so ellipsing on a phone hides the one part that
@@ -9183,7 +9185,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           )}
                         </div>
                         {/* Actions: Activate/Pause · Manage · overflow menu */}
-                        <div style={{ display: 'flex', gap: isMobile ? 8 : 6, flexShrink: 0, alignItems: 'center', position: 'relative', ...(isMobile ? { width: '100%' } : { minWidth: 322, justifyContent: 'flex-end' }) }}>
+                        <div style={{ display: 'flex', gap: isMobile ? 8 : 6, flexShrink: 0, alignItems: 'center', position: 'relative', ...(isMobile ? { width: '100%' } : { minWidth: 322, justifyContent: 'flex-end', marginLeft: 'auto' }) }}>
                           {isSuperAdmin && camp.status === 'draft' && (
                             <button className="crm-btn crm-btn-sm" disabled={busyCampaignId === camp.id} title="Activate — schedules real sends to enrolled contacts" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 13, cursor: busyCampaignId === camp.id ? 'default' : 'pointer', whiteSpace: 'nowrap', ...(isMobile ? { flex: 1, minHeight: 44, padding: '5px 8px' } : {}) }} onClick={() => setCampaignStatusFromList(camp.id, 'active', camp.name)}>{busyCampaignId === camp.id ? '…' : '▶ Activate'}</button>
                           )}
