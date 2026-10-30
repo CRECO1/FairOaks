@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { chicagoLocalToUTC, chicagoToday } from '@/lib/chicago-time';
 
 // Emails you scheduled with "Send later" (and any that failed). Sits above the saved drafts on the Emails → Drafts tab.
 
@@ -11,6 +12,7 @@ const whenLabel = (iso: string) => new Date(iso).toLocaleString('en-US', { ...CT
 export default function ScheduledEmails({ isMobile, notify }: { isMobile: boolean; notify: (m: string) => void }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null); // the one whose time is being changed
   const load = useCallback(async () => {
     try { const r = await fetch('/api/crm/scheduled-emails', { cache: 'no-store' }); if (r.ok) setItems((await r.json()).items as Item[]); else setItems([]); } catch { setItems([]); }
   }, []);
@@ -31,6 +33,17 @@ export default function ScheduledEmails({ isMobile, notify }: { isMobile: boolea
     } finally { setBusy(null); void load(); }
   };
 
+  const resched = async (it: Item, localValue: string) => {
+    if (!localValue) return;
+    const [d, t] = localValue.split('T');
+    setBusy(it.id);
+    try {
+      const r = await fetch('/api/crm/scheduled-emails', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: it.id, action: 'reschedule', send_at: chicagoLocalToUTC(d, t) }) });
+      const j = await r.json().catch(() => ({}));
+      notify(r.ok ? 'Time changed.' : (j.error ?? 'Could not change the time.'));
+    } finally { setBusy(null); setEditing(null); void load(); }
+  };
+
   if (!items || items.length === 0) return null;
   const btn: React.CSSProperties = { minHeight: isMobile ? 40 : 30, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' };
   return (
@@ -49,6 +62,9 @@ export default function ScheduledEmails({ isMobile, notify }: { isMobile: boolea
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
+                {!failed && it.status === 'pending' && (editing === it.id
+                  ? <input type="datetime-local" autoFocus min={`${chicagoToday()}T00:00`} aria-label="New send time (Central)" onChange={e => void resched(it, e.target.value)} onBlur={() => setEditing(null)} style={{ ...btn, padding: '0 6px', fontWeight: 500 }} />
+                  : <button type="button" style={btn} disabled={busy === it.id} onClick={() => setEditing(it.id)} title="Pick a new time (Central)">🕐 Change time</button>)}
                 <button type="button" style={btn} disabled={busy === it.id || it.status === 'sending'} onClick={() => void act(it, 'send_now')}>{failed ? 'Try again' : 'Send now'}</button>
                 <button type="button" style={btn} disabled={busy === it.id || it.status === 'sending'} onClick={() => void act(it, 'cancel')}>{failed ? 'Dismiss' : 'Cancel'}</button>
               </div>

@@ -4358,8 +4358,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setSyncing(false);
   }
 
-  async function sendGmailEmailToContact(client: Client) {
+  async function sendGmailEmailToContact(client: Client, schedule?: { iso: string; label: string }) {
     if (!composeSubject.trim()) { showToast('Subject is required'); return; }
+    if (schedule && composeAttachments.length) { showToast('Files from your computer can’t be scheduled yet — attach from Deal docs, or send now.'); return; }
     setComposeSending(true);
     try {
       const messageHtml = contactComposeBodyRef.current?.innerHTML ?? '';
@@ -4378,15 +4379,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           reader.readAsDataURL(file);
         }))
       );
-      const res = await fetch('/api/gmail/send', {
+      const sendPayload = { crmAttachments: composeCrmFiles.map(f => ({ kind: f.kind, id: f.id })), userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, followUpDays: composeFollowUp || undefined, ...threadingParams };
+      const res = await fetch(schedule ? '/api/crm/scheduled-emails' : '/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ crmAttachments: composeCrmFiles.map(f => ({ kind: f.kind, id: f.id })), userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, followUpDays: composeFollowUp || undefined, ...threadingParams }),
+        body: JSON.stringify(schedule ? { send_at: schedule.iso, payload: sendPayload } : sendPayload),
       });
       const json = await res.json();
       if (!res.ok) { showToast('Send failed: ' + (json.error ?? res.status)); }
       else {
-        showToast(json.followUp?.due ? `Email sent · reminder set for ${json.followUp.label}` : 'Email sent');
+        showToast(schedule ? `Scheduled for ${schedule.label} — see it under Emails → Drafts` : json.followUp?.due ? `Email sent · reminder set for ${json.followUp.label}` : 'Email sent');
+        if (schedule) window.dispatchEvent(new Event('crm-scheduled-changed'));
         if (json.followUp) loadAllTasks();
         setShowContactCompose(false);
         setReplyToContactEmail(null);
@@ -4394,8 +4397,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         clearContactComposeBody();
         setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
         resetComposeFiles();
-        loadContactEmails(client.id);
-        logActivity(client.id, 'email', `Sent email: ${composeSubject}`);
+        if (!schedule) { loadContactEmails(client.id); logActivity(client.id, 'email', `Sent email: ${composeSubject}`); }
       }
     } catch (err) {
       showToast('Send error — check console');
@@ -4521,7 +4523,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Gmail compose & send ─────────────────────────────────────────────────────
-  async function sendGmailEmail(deal: Deal) {
+  async function sendGmailEmail(deal: Deal, schedule?: { iso: string; label: string }) {
+    if (schedule && composeAttachments.length) { showToast('Files from your computer can’t be scheduled yet — attach from Deal docs, or send now.'); return; }
     if (!composeSubject.trim()) { showToast('Subject is required'); return; }
     setComposeSending(true);
     try {
@@ -4546,25 +4549,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         }))
       );
 
-      const res = await fetch('/api/gmail/send', {
+      const sendPayload = { crmAttachments: composeCrmFiles.map(f => ({ kind: f.kind, id: f.id })), userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, followUpDays: composeFollowUp || undefined, ...threadingParams };
+      const res = await fetch(schedule ? '/api/crm/scheduled-emails' : '/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ crmAttachments: composeCrmFiles.map(f => ({ kind: f.kind, id: f.id })), userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, bcc: composeBcc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, followUpDays: composeFollowUp || undefined, ...threadingParams }),
+        body: JSON.stringify(schedule ? { send_at: schedule.iso, payload: sendPayload } : sendPayload),
       });
       let j: any = {};
       try { j = await res.json(); } catch {}
       if (!res.ok) {
         showToast('Send failed: ' + (j.error || `HTTP ${res.status}`));
       } else {
-        showToast(j.followUp?.due ? `✉️ Email sent · reminder set for ${j.followUp.label}` : '✉️ Email sent via Gmail');
+        showToast(schedule ? `Scheduled for ${schedule.label} — see it under Emails → Drafts` : j.followUp?.due ? `✉️ Email sent · reminder set for ${j.followUp.label}` : '✉️ Email sent via Gmail');
+        if (schedule) window.dispatchEvent(new Event('crm-scheduled-changed'));
         if (j.followUp) loadAllTasks();
         setShowCompose(false);
         setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
         clearComposeBody();
         setReplyToEmail(null);
         resetComposeFiles();
-        loadDealEmails(deal.id);
-        if (deal.client_id) logActivity(deal.client_id, 'email', `Sent email: ${composeSubject}`);
+        if (!schedule) { loadDealEmails(deal.id); if (deal.client_id) logActivity(deal.client_id, 'email', `Sent email: ${composeSubject}`); }
       }
     } catch (err) {
       showToast('Send failed: ' + String(err));
@@ -11724,7 +11728,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       autoCcLabel={(activeDeal.assigned_agent_ids ?? []).filter(id => id !== session!.user.id).map(id => agentName(id)).join(', ') || undefined}
                       bodyRef={composeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments} crmFiles={{ ctx: { dealId: activeDeal.id }, items: composeCrmFiles, setItems: setComposeCrmFiles }}
                       signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
-                      sending={composeSending} onSend={() => sendGmailEmail(activeDeal)}
+                      sending={composeSending} onSend={() => sendGmailEmail(activeDeal)} onSchedule={(iso, label) => sendGmailEmail(activeDeal, { iso, label })}
                       onDiscard={() => { setShowCompose(false); setReplyToEmail(null); resetComposeFiles(); clearComposeBody(); }} />
                     </div>
                   )}
@@ -13693,7 +13697,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         subject={composeSubject} setSubject={setComposeSubject}
                         bodyRef={contactComposeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments} crmFiles={{ ctx: { clientId: activeClient.id }, items: composeCrmFiles, setItems: setComposeCrmFiles }}
                         signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
-                        sending={composeSending} onSend={() => sendGmailEmailToContact(c)}
+                        sending={composeSending} onSend={() => sendGmailEmailToContact(c)} onSchedule={(iso, label) => sendGmailEmailToContact(c, { iso, label })}
                         onDiscard={() => { setShowContactCompose(false); setReplyToContactEmail(null); clearContactComposeBody(); resetComposeFiles(); }} />
                     )}
 
@@ -13793,7 +13797,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         subject={composeSubject} setSubject={setComposeSubject} subjectReadOnly
                                         bodyRef={contactComposeBodyRef} attachments={composeAttachments} setAttachments={setComposeAttachments} crmFiles={{ ctx: { clientId: activeClient.id }, items: composeCrmFiles, setItems: setComposeCrmFiles }}
                                         signature={profile?.email_signature} onSyncSignature={syncGmailSignature}
-                                        sending={composeSending} sendLabel="Send reply" onSend={() => sendGmailEmailToContact(c)}
+                                        sending={composeSending} sendLabel="Send reply" onSend={() => sendGmailEmailToContact(c)} onSchedule={(iso, label) => sendGmailEmailToContact(c, { iso, label })}
                                         onDiscard={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); clearContactComposeBody(); resetComposeFiles(); }} />
                                     </div>
                                   ) : (

@@ -1233,7 +1233,7 @@ function ThreadReader(p: {
       {msgs === null && <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Opening conversation…</div>}
       {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
       {chrono.length > 1 && (
-        <div style={{ position: p.embedded ? 'sticky' : 'static', top: 0, zIndex: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 10px', padding: '8px 10px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10 }}>
+        <div style={{ position: p.isMobile ? 'static' : 'sticky', top: p.embedded ? 0 : 58, zIndex: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 10px', padding: '8px 10px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10 }}>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', marginRight: 2 }}>{chrono.length} messages</span>
           {chrono.length <= 14 ? (
             <div role="group" aria-label="Jump to a message" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -1273,7 +1273,7 @@ function ThreadReader(p: {
               <div key={m.id} id={`gm-msg-${m.id}`} role="button" tabIndex={0} aria-expanded={false} aria-label={`Message ${num} of ${chrono.length} from ${mine ? 'me' : name} — open`}
                 onClick={() => { setFolded(prev => { const n = new Set(prev); n.delete(m.id); return n; }); setCur(ordered.findIndex(x => x.id === m.id)); }}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFolded(prev => { const n = new Set(prev); n.delete(m.id); return n; }); } }}
-                style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, cursor: 'pointer', scrollMarginTop: p.embedded ? 64 : 12 }}>
+                style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, cursor: 'pointer', scrollMarginTop: p.isMobile ? 12 : p.embedded ? 64 : 122 }}>
                 <span aria-hidden style={{ fontSize: 11, color: 'var(--k-6b7280)', width: 12, flexShrink: 0 }}>▸</span>
                 <span aria-hidden title={`Message ${num} of ${chrono.length}`} style={{ minWidth: 20, height: 20, borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{num}</span>
                 <Avatar name={name} email={from.email} size={26} />
@@ -1288,7 +1288,7 @@ function ThreadReader(p: {
           const other = mine ? parseAddr(m.to) : from;
           const target = other.email ? p.contactFor(other.email) : null;
           return (
-            <div key={m.id} id={`gm-msg-${m.id}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: p.isMobile ? '12px' : '16px 18px', scrollMarginTop: p.embedded ? 64 : 12 }}>
+            <div key={m.id} id={`gm-msg-${m.id}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: p.isMobile ? '12px' : '16px 18px', scrollMarginTop: p.isMobile ? 12 : p.embedded ? 64 : 122 }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
                 <Avatar name={name} email={from.email} size={40} warm={!!match} />
                 <div style={{ flex: 1, minWidth: 0 }}>

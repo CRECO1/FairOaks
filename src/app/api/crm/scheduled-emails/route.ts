@@ -9,7 +9,7 @@ export const maxDuration = 60;
 // Your scheduled ("send later") emails. Personal: you only ever see and change your own.
 // GET                          → { items: [...] }  pending + failed ones
 // POST { send_at, payload }    → schedule (payload = what Compose would POST to /api/gmail/send)
-// PATCH { id, action: 'cancel' | 'send_now' }
+// PATCH { id, action: 'cancel' | 'send_now' | 'reschedule', send_at? }
 const MAX_PENDING = 50;
 const MAX_PAYLOAD = 400_000; // characters of JSON — scheduled mail carries CRM-file references, never uploaded files
 
@@ -51,14 +51,21 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
-  const b = await req.json().catch(() => ({})) as { id?: string; action?: string };
-  if (!b.id || !['cancel', 'send_now'].includes(b.action ?? '')) return NextResponse.json({ error: 'id and action required' }, { status: 400 });
+  const b = await req.json().catch(() => ({})) as { id?: string; action?: string; send_at?: string };
+  if (!b.id || !['cancel', 'send_now', 'reschedule'].includes(b.action ?? '')) return NextResponse.json({ error: 'id and action required' }, { status: 400 });
   const db = adminClient();
   const { data: row } = await db.from('crm_scheduled_emails').select('id, user_id, status').eq('id', b.id).maybeSingle();
   if (!row || row.user_id !== ctx.userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (b.action === 'cancel') {
     const { data } = await db.from('crm_scheduled_emails').update({ status: 'cancelled' }).eq('id', b.id).in('status', ['pending', 'failed']).select('id').maybeSingle();
     return data ? NextResponse.json({ ok: true }) : NextResponse.json({ error: 'It was already sent or is sending right now.' }, { status: 409 });
+  }
+  if (b.action === 'reschedule') {
+    const when = b.send_at ? new Date(b.send_at) : null;
+    if (!when || isNaN(when.getTime()) || when.getTime() < Date.now() + 60_000) return NextResponse.json({ error: 'Pick a time at least a minute from now.' }, { status: 400 });
+    if (when.getTime() > Date.now() + 90 * 86_400_000) return NextResponse.json({ error: 'You can schedule up to 90 days ahead.' }, { status: 400 });
+    const { data } = await db.from('crm_scheduled_emails').update({ send_at: when.toISOString(), last_error: null }).eq('id', b.id).eq('status', 'pending').select('id').maybeSingle();
+    return data ? NextResponse.json({ ok: true }) : NextResponse.json({ error: 'It is already sending or was sent.' }, { status: 409 });
   }
   // send_now: a failed one gets another try; the claim inside makes sure it can only ever go out once.
   if (row.status === 'failed') await db.from('crm_scheduled_emails').update({ status: 'pending', attempts: 0, last_error: null }).eq('id', b.id).eq('status', 'failed');
