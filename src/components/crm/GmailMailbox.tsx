@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LiveMessage, ThreadSummary, GLabel } from '@/lib/gmail-live';
+import GmailFiles from './GmailFiles';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { createClient } from '@/lib/supabase/client';
 
@@ -399,6 +400,7 @@ export default function GmailMailbox(p: Props) {
       return j.label as GLabel;
     } catch { p.notify('Could not reach Gmail — try again.'); return null; }
   };
+  const [asThreads, setAsThreads] = useState(false); // Files chip: show conversations that have files instead of the file list
   const [noReply, setNoReply] = useState(false);
   const [waiting, setWaiting] = useState(false); // Inbox: a person/deal in the CRM wrote last and you haven't answered
   const [trackF, setTrackF] = useState<'all' | 'opened' | 'unopened'>('all'); // Sent: did the recipient open it (CRM tracking)
@@ -426,6 +428,7 @@ export default function GmailMailbox(p: Props) {
   const lp = useRef<{ t?: ReturnType<typeof setTimeout>; fired: boolean }>({ fired: false }); // phone: long-press a row to start selecting
   const lastTick = useRef<number>(-1);
   useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, who, noReply, waiting, trackF, labelId]);
+  useEffect(() => { setAsThreads(false); }, [filter, p.box]);
   const tick = (id: string, idx: number, range: boolean) => setSel(prev => {
     const n = new Set(prev);
     if (range && lastTick.current >= 0) { const [a, b] = [Math.min(lastTick.current, idx), Math.max(lastTick.current, idx)]; const on = !prev.has(id); for (const x of visible.slice(a, b + 1)) { if (on) n.add(x.id); else n.delete(x.id); } }
@@ -770,7 +773,12 @@ export default function GmailMailbox(p: Props) {
       {toast.undo && <button type="button" onClick={toast.undo} style={{ border: 'none', background: 'none', color: '#e8b563', fontWeight: 800, cursor: 'pointer', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif" }}>Undo</button>}
     </div>
   );
-  if (!wide) return <div>{toolbar}{list}{toastEl}{helpEl}</div>;
+  const filesMode = filter === 'files' && !asThreads;
+  const body = filesMode ? (
+    <GmailFiles box={p.box} isMobile={p.isMobile} account={account} q={term} notify={p.notify} onShowThreads={() => setAsThreads(true)}
+      onOpenThread={f => openThread({ id: f.threadId, subject: f.subject, snippet: '', from: f.from, to: '', date: f.date, unread: false, count: 1, files: true, starred: false, lastMine: false, labels: [] })} />
+  ) : list;
+  if (!wide) return <div>{toolbar}{body}{toastEl}{helpEl}</div>;
 
   // Two panes: each scrolls on its own, like Gmail.
   const paneH = 'calc(100vh - 250px)';
@@ -778,7 +786,7 @@ export default function GmailMailbox(p: Props) {
     <div>
       {toolbar}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 400px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
-        <div style={{ height: paneH, minHeight: 480, overflowY: 'auto', paddingRight: 2 }}>{list}</div>
+        <div style={{ height: paneH, minHeight: 480, overflowY: 'auto', paddingRight: 2 }}>{body}</div>
         <div style={{ height: paneH, minHeight: 480, overflowY: 'auto' }}>
           {open ? reader(true) : (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--k-9ca3af)', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 12, textAlign: 'center', padding: 24 }}>

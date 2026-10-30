@@ -199,3 +199,28 @@ export async function createLabel(token: string, name: string): Promise<{ ok: tr
   if (!res.ok || !j.id) return { ok: false, status: res.status };
   return { ok: true, label: { id: j.id as string, name: j.name as string, bg: j.color?.backgroundColor ?? null, fg: j.color?.textColor ?? null } };
 }
+
+// ── Files across your mail: every attachment (not inline pictures), newest first ───────────────────────────────────
+export type FileRow = { threadId: string; messageId: string; part: string; name: string; size: number; mime: string; from: string; subject: string; date: number };
+/** One page of attachment-bearing conversations, flattened to one row per file. Tiny signature images are dropped. */
+export async function listAttachments(token: string, opts: { box: 'inbox' | 'sent'; q?: string; pageToken?: string }) {
+  const params = new URLSearchParams({ maxResults: '15', labelIds: opts.box === 'sent' ? 'SENT' : 'INBOX', q: `${opts.q ?? ''} has:attachment`.trim() });
+  if (opts.pageToken) params.set('pageToken', opts.pageToken);
+  const list = await g(token, `/threads?${params}`);
+  if (!list.ok) return { ok: false as const, status: list.status };
+  const ids: string[] = (list.json.threads ?? []).map((t: { id: string }) => t.id);
+  const got = await pool(ids, 6, async id => { const r = await g(token, `/threads/${id}?format=full`); return r.ok ? (r.json as { id: string; messages?: GMsg[] }) : null; });
+  const files: FileRow[] = [];
+  for (const t of got) {
+    for (const m of t?.messages ?? []) {
+      if (m.labelIds?.includes('DRAFT')) continue;
+      for (const a of collectAttachmentParts(m.payload)) {
+        const size = a.body?.size ?? 0, mime = a.mimeType ?? 'application/octet-stream', name = a.filename ?? 'attachment';
+        if (/^image\//i.test(mime) && (size < 20_000 || /^(image\d*|outlook-|~WRD|logo|signature)/i.test(name))) continue; // signature logos, tracking dots
+        files.push({ threadId: t!.id, messageId: m.id, part: a.partId ?? '', name, size, mime, from: hdr(m, 'From'), subject: hdr(m, 'Subject') || '(no subject)', date: Number(m.internalDate) || 0 });
+      }
+    }
+  }
+  files.sort((a, b) => b.date - a.date);
+  return { ok: true as const, files, next: (list.json.nextPageToken as string | undefined) ?? null };
+}
