@@ -4484,6 +4484,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       ...(match ? (match.kind === 'deal' ? { dealId: match.id } : { clientId: match.id }) : {}),
     });
   }
+  // Emails → "＋ Deal": opens the New Deal form for the person you're emailing, with the contact and a note pointing back at the email.
+  function startDealFromEmail(contactId: string, subject: string) {
+    const c = clients.find(x => x.id === contactId);
+    if (!c) { showToast('That contact is not loaded in this workspace'); return; }
+    setNd({ client_id: c.id, client: `${c.first_name} ${c.last_name}`.trim() || c.email, client_email: c.email, client_phone: c.cell_phone || c.phone || '', type: CLIENT_TYPE_TO_DEAL[c.type] ?? 'Buyer Purchase', property: '', value: 0, notes: `From email: ${subject}` });
+    setShowAddDeal(true);
+  }
   // Quick reply from the Emails reader: the same send pipeline as Compose (signature, tracking, filing, threading) — no window.
   async function quickReply(m: LiveMessage, threadId: string, all: boolean, text: string): Promise<boolean> {
     const e = liveAsEmail(m);
@@ -11282,7 +11289,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {page === 'emails' && (
             <EmailsSection isMobile={isMobile} tab={emailsTab} setTab={setEmailsTab}
               unread={emailBadge} draftCount={draftCount} inbox={inbox}
-              contactFor={contactFor} searchPeople={searchPeople} onLiveReply={liveReply} onQuickReply={quickReply} onLiveForward={liveForward} onCompose={() => openCompose()}
+              contactFor={contactFor} searchPeople={searchPeople} onLiveReply={liveReply} onQuickReply={quickReply} onCreateDeal={startDealFromEmail} onLiveForward={liveForward} onCompose={() => openCompose()}
               notify={showToast} onAddContact={addContactFromMail}
               myAddresses={[...gmailAccounts.map(a => a.email), profile.email, session?.user?.email ?? ''].filter(Boolean)}
               nameFor={nameForEmail}

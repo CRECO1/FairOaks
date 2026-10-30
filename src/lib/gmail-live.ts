@@ -13,6 +13,7 @@ export type LiveAttachment = { part: string; name: string; size: number; mime: s
 export type LiveMessage = {
   id: string; from: string; to: string; cc: string; subject: string; date: number; unread: boolean;
   rfcId: string; refs: string; html: string; text: string; attachments: LiveAttachment[];
+  unsubscribe: string | null; // the https link from the sender's List-Unsubscribe header (mailing lists / newsletters), if any
 };
 
 type GPart = { partId?: string; mimeType?: string; filename?: string; headers?: { name: string; value: string }[]; body?: { attachmentId?: string; size?: number; data?: string }; parts?: GPart[] };
@@ -96,6 +97,7 @@ export async function readThread(token: string, id: string): Promise<{ ok: false
       date: Number(m.internalDate) || 0, unread: !!m.labelIds?.includes('UNREAD'),
       rfcId: hdr(m, 'Message-ID'), refs: hdr(m, 'References'),
       html, text: extractEmailText(m.payload).slice(0, 30000), attachments: atts,
+      unsubscribe: (() => { const u = /<(https?:\/\/[^>\s]+)>/i.exec(hdr(m, 'List-Unsubscribe'))?.[1]; try { return u && /^https?:$/.test(new URL(u).protocol) ? u : null; } catch { return null; } })(),
     });
   }
   return { ok: true, messages: out };

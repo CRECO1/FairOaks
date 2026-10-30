@@ -114,6 +114,7 @@ type Props = {
   onForward: (m: LiveMessage, threadId: string, account: string | null) => void;
   onNewCompose: () => void;
   onQuickReply: (m: LiveMessage, threadId: string, all: boolean, text: string) => Promise<boolean>;
+  onCreateDeal: (contactId: string, subject: string) => void;
   notify: (msg: string) => void;
   onAddContact: (email: string, name: string) => Promise<boolean>;
 };
@@ -544,7 +545,7 @@ export default function GmailMailbox(p: Props) {
 
   const reader = (embedded: boolean) => open && (
     <ThreadReader key={open.id} t={threads?.find(x => x.id === open.id) ?? open} box={p.box} canModify={canModify === true} onAct={readerAct} labels={labels} onLabel={(id, on) => void labelThread(open, id, on)} onCreateLabel={createLabel} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
-      onReply={p.onReply} onQuickReply={p.onQuickReply} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />
+      onReply={p.onReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />
   );
 
   // Phone / narrow: the conversation replaces the list.
@@ -887,7 +888,7 @@ function QuickReply({ last, me, isMobile, who, onSend, onFull }: { last: LiveMes
 function ThreadReader(p: {
   t: ThreadSummary; box: 'inbox' | 'sent'; canModify: boolean; onAct: (a: Act) => void; labels: GLabel[]; onLabel: (id: string, on: boolean) => void; onCreateLabel: (name: string) => Promise<GLabel | null>; account: string | null; self: string | null; isMobile: boolean; embedded: boolean; contactFor: (email: string) => ContactMatch;
   onOpenDeal: (id: string) => void; onOpenContact: (id: string) => void;
-  onReply: Props['onReply']; onQuickReply: Props['onQuickReply']; onForward: Props['onForward']; onBack: () => void;
+  onReply: Props['onReply']; onQuickReply: Props['onQuickReply']; onCreateDeal: Props['onCreateDeal']; onForward: Props['onForward']; onBack: () => void;
   notify: Props['notify']; onAddContact: Props['onAddContact'];
 }) {
   const [msgs, setMsgs] = useState<LiveMessage[] | null>(null);
@@ -1204,6 +1205,9 @@ function ThreadReader(p: {
               {(threadTarget.tags ?? []).map(tg => <span key={tg} style={{ background: 'rgba(146,64,14,.1)', borderRadius: 10, padding: '0 8px', fontWeight: 600 }}>{tg}</span>)}
             </div>
           )}
+          {threadTarget.kind === 'contact' && (
+            <button type="button" style={btn} onClick={() => p.onCreateDeal(threadTarget.id, p.t.subject)} title="Start a deal for this person — the contact is filled in">＋ Deal</button>
+          )}
           {msgs && msgs.length > 1 && (
             <button type="button" disabled={filingAll || (msgs.length > 0 && msgs.every(m => filed.has(m.id)))} onClick={() => void fileAll(threadTarget)} style={btn}
               title="Copy every message in this conversation onto the card so the team sees the whole thread">
@@ -1212,6 +1216,13 @@ function ThreadReader(p: {
           )}
         </div>
       )}
+      {!threadTarget && msgs && (() => { const u = [...msgs].reverse().find(m => m.unsubscribe)?.unsubscribe; return u ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12, padding: '9px 12px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10 }}>
+          <span style={{ flex: '1 1 220px', minWidth: 0, fontSize: 13, color: 'var(--k-374151)' }}>📰 This looks like a mailing list.</span>
+          <a href={u} target="_blank" rel="noopener noreferrer" style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }} title="Opens the sender’s own unsubscribe page in a new tab">Unsubscribe ↗</a>
+          {p.canModify && p.box === 'inbox' && <button type="button" style={btn} onClick={() => p.onAct('archive')}>Archive</button>}
+        </div>
+      ) : null; })()}
       {summary && (
         <div style={{ marginBottom: 12, padding: '12px 14px', background: 'var(--k-f5f3ff)', border: '1px solid var(--k-ddd6fe)', borderRadius: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
