@@ -12,7 +12,7 @@ type SentRow = {
   id: string; deal_id: string | null; client_id: string | null; from_email: string; to_email: string;
   cc_emails: string | null; subject: string; body: string | null; created_at: string;
   opened_at: string | null; last_opened_at: string | null; open_count: number | null;
-  attachments: Array<{ name: string }> | null;
+  attachments: Array<{ name: string }> | null; gmail_thread_id: string | null; rfc_message_id: string | null;
 };
 
 const CT: Intl.DateTimeFormatOptions = { timeZone: 'America/Chicago' };
@@ -33,6 +33,15 @@ const firstAddr = (raw: string | null | undefined) => {
 // Logged bodies are plain text but can still carry entities (&nbsp; from the editor).
 const snippet = (body: string) => body.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').slice(0, 120);
 const opens = (r: SentRow) => r.open_count ?? (r.opened_at ? 1 : 0);
+const DAY_MS = 86_400_000;
+const rel = (iso: string) => { const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000)); if (s < 60) return 'just now'; const m = Math.round(s / 60); if (m < 60) return `${m} min ago`; const h = Math.round(m / 60); if (h < 24) return `${h} hr ago`; const d = Math.round(h / 24); return `${d} day${d === 1 ? '' : 's'} ago`; };
+const dayLabel = (iso: string) => {
+  const ms = new Date(iso).getTime(), key = (x: number) => new Date(x).toLocaleDateString('en-US', CT), now = Date.now();
+  if (key(ms) === key(now)) return 'Today';
+  if (key(ms) === key(now - DAY_MS)) return 'Yesterday';
+  if (now - ms < 7 * DAY_MS) return 'Earlier this week';
+  return new Date(ms).toLocaleDateString('en-US', { ...CT, month: 'long', year: 'numeric' });
+};
 const initials = (s: string) => s.replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '✉';
 
 type Props = {
@@ -43,6 +52,8 @@ type Props = {
   clientLabel: (id: string) => string | null;
   onOpenDeal: (id: string) => void;
   onOpenContact: (id: string) => void;
+  // Write a follow-up to this recipient (threaded onto the original when we have its Gmail ids).
+  onFollowUp?: (o: { to: string; name: string; subject: string; dealId: string | null; clientId: string | null; threadId: string | null; inReplyTo: string | null }) => void;
 };
 
 export default function SentSection(p: Props & { embedded?: boolean }) {
@@ -50,13 +61,14 @@ export default function SentSection(p: Props & { embedded?: boolean }) {
   const [sent, setSent] = useState<SentRow[] | null>(null);
   const [filter, setFilter] = useState<'all' | 'opened' | 'unopened' | 'hot'>('all');
   const [sort, setSort] = useState<'sent' | 'opened' | 'opens'>('sent');
+  const [range, setRange] = useState<'7' | '30' | '90' | 'all'>('all');
   const [q, setQ] = useState('');
   const addrKey = p.myAddresses.map(a => a.toLowerCase()).filter(Boolean).sort().join(',');
   useEffect(() => {
     let live = true;
     setSent(null);
     let query = supabase.from('crm_deal_emails')
-      .select('id,deal_id,client_id,from_email,to_email,cc_emails,subject,body,created_at,opened_at,last_opened_at,open_count,attachments')
+      .select('id,deal_id,client_id,from_email,to_email,cc_emails,subject,body,created_at,opened_at,last_opened_at,open_count,attachments,gmail_thread_id,rfc_message_id')
       .eq('direction', 'sent').eq('tracked', true)
       .order('created_at', { ascending: false }).limit(300);
     const addrs = addrKey.split(',').filter(Boolean);
@@ -70,12 +82,13 @@ export default function SentSection(p: Props & { embedded?: boolean }) {
     if (filter === 'opened') rows = rows.filter(r => r.opened_at);
     if (filter === 'unopened') rows = rows.filter(r => !r.opened_at);
     if (filter === 'hot') rows = rows.filter(r => opens(r) >= 3);
+    if (range !== 'all') { const cut = Date.now() - Number(range) * DAY_MS; rows = rows.filter(r => new Date(r.created_at).getTime() >= cut); }
     const needle = q.trim().toLowerCase();
     if (needle) rows = rows.filter(r => `${r.to_email} ${r.cc_emails ?? ''} ${r.subject} ${p.nameFor(firstAddr(r.to_email).email) ?? ''}`.toLowerCase().includes(needle));
     if (sort === 'opened') rows = [...rows].sort((a, b) => (b.last_opened_at ?? b.opened_at ?? '').localeCompare(a.last_opened_at ?? a.opened_at ?? ''));
     if (sort === 'opens') rows = [...rows].sort((a, b) => opens(b) - opens(a));
     return rows;
-  }, [sent, filter, sort, q, p]);
+  }, [sent, filter, sort, range, q, p]);
 
   const stats = useMemo(() => {
     const rows = sent ?? [];
@@ -148,6 +161,13 @@ export default function SentSection(p: Props & { embedded?: boolean }) {
             <option value="opened">Latest opened</option>
             <option value="opens">Most opens</option>
           </select>
+          <select value={range} onChange={e => setRange(e.target.value as typeof range)} aria-label="How far back"
+            style={{ height: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px', flex: p.isMobile ? 1 : undefined }}>
+            <option value="all">Any time</option>
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
           <select value={scope} onChange={e => setScope(e.target.value as typeof scope)} aria-label="Whose email"
             style={{ height: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px', flex: p.isMobile ? 1 : undefined }}>
             <option value="mine">Sent by me</option>
@@ -165,9 +185,13 @@ export default function SentSection(p: Props & { embedded?: boolean }) {
             const name = a.name || p.nameFor(a.email) || a.email;
             const n = opens(r);
             const more = (r.to_email.split(',').length - 1) + (r.cc_emails ? r.cc_emails.split(',').length : 0);
+            const g = dayLabel(r.created_at), showHeader = sort === 'sent' && (i === 0 || dayLabel(shown[i - 1].created_at) !== g);
+            const waitDays = Math.floor((Date.now() - new Date(r.created_at).getTime()) / DAY_MS);
             return (
-              <div key={r.id} onClick={() => { if (r.deal_id && p.dealLabel(r.deal_id)) p.onOpenDeal(r.deal_id); else if (r.client_id) p.onOpenContact(r.client_id); }}
-                style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: r.deal_id || r.client_id ? 'pointer' : 'default' }}>
+              <React.Fragment key={r.id}>
+              {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{g}</div>}
+              <div onClick={() => { if (r.deal_id && p.dealLabel(r.deal_id)) p.onOpenDeal(r.deal_id); else if (r.client_id) p.onOpenContact(r.client_id); }}
+                style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px', borderTop: i && !showHeader ? '1px solid var(--k-f0f0f0)' : 'none', cursor: r.deal_id || r.client_id ? 'pointer' : 'default' }}>
                 {avatar(name)}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
@@ -183,19 +207,24 @@ export default function SentSection(p: Props & { embedded?: boolean }) {
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 5, flexWrap: 'wrap' }}>
                     {r.opened_at ? (
                       <span title={`First opened ${whenLong(r.opened_at)}`} style={{ fontSize: 12, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: n >= 3 ? 'var(--k-fef3c7)' : 'var(--k-ecfdf5)', color: n >= 3 ? 'var(--k-92400e)' : 'var(--k-065f46)' }}>
-                        {n >= 3 ? '🔥' : '👁'} Opened{n > 1 ? ` ${n}×` : ''} · {whenLong(r.last_opened_at ?? r.opened_at)}
+                        {n >= 3 ? '🔥' : '👁'} Opened{n > 1 ? ` ${n}×` : ''} · {rel(r.last_opened_at ?? r.opened_at)}
                       </span>
                     ) : (
-                      <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>
+                      <span title="No open recorded yet" style={{ fontSize: 12, padding: '2px 8px', borderRadius: 10, background: waitDays >= 3 ? 'var(--k-fdf6e8)' : 'var(--k-f3f4f6)', color: waitDays >= 3 ? 'var(--k-92400e)' : 'var(--k-9ca3af)', fontWeight: waitDays >= 3 ? 600 : 400 }}>{waitDays >= 3 ? `⏳ Not opened · ${waitDays} days` : 'Not opened'}</span>
                     )}
                     {r.attachments && r.attachments.length > 0 && (
                       <span title={r.attachments.map(x => x.name).join('\n')} style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>📎 {r.attachments.length === 1 ? r.attachments[0].name.slice(0, 40) : `${r.attachments.length} attachments`}</span>
                     )}
                     {context(r.deal_id, r.client_id)}
                     {scope === 'team' && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>from {r.from_email}</span>}
+                    {p.onFollowUp && a.email && (
+                      <button type="button" onClick={e => { e.stopPropagation(); p.onFollowUp!({ to: a.email, name: a.name || name, subject: /^re:/i.test(r.subject) ? r.subject : `Re: ${r.subject}`, dealId: r.deal_id, clientId: r.client_id, threadId: r.gmail_thread_id, inReplyTo: r.rfc_message_id }); }}
+                        title="Write a follow-up to this person" style={{ marginLeft: 'auto', border: '1px solid var(--k-d1d5db)', background: 'var(--k-fff)', color: 'var(--k-374151)', borderRadius: 10, padding: '2px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>↩ Follow up</button>
+                    )}
                   </div>
                 </div>
               </div>
+              </React.Fragment>
             );
           })}
         </div>

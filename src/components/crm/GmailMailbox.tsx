@@ -87,6 +87,7 @@ const ICON: Record<string, React.ReactNode> = {
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
   open: <><path d="M3 10 12 4l9 6v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" /><path d="m3 10 9 6 9-6" /></>,
   star: <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />,
+  reply: <><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 6 6v3" /></>,
   tag: <><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z" /><circle cx="8" cy="8" r="1.4" /></>,
   trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></>,
 };
@@ -398,6 +399,7 @@ export default function GmailMailbox(p: Props) {
     } catch { p.notify('Could not reach Gmail — try again.'); return null; }
   };
   const [noReply, setNoReply] = useState(false);
+  const [trackF, setTrackF] = useState<'all' | 'opened' | 'unopened'>('all'); // Sent: did the recipient open it (CRM tracking)
   const [sugOpen, setSugOpen] = useState(false);
   const [help, setHelp] = useState(false);
   const sugs = useMemo(() => (/[:"(]/.test(q) ? [] : p.searchPeople(q)), [q, p]);
@@ -405,13 +407,14 @@ export default function GmailMailbox(p: Props) {
     let list = threads ?? [];
     if (who !== 'all') list = list.filter(t => { const a = otherOf(t), m = a.email ? p.contactFor(a.email) : null; return who === 'deals' ? m?.kind === 'deal' : who === 'contacts' ? !!m : !m; });
     if (noReply) list = list.filter(t => t.lastMine && ageDays(t.date) >= 3);
+    if (p.box === 'sent' && trackF !== 'all') list = list.filter(t => { const tr = tracking.get(t.id); return trackF === 'opened' ? !!tr?.opened : !!tr?.tracked && !tr.opened; });
     return list;
-  }, [threads, who, noReply, otherOf, p]);
+  }, [threads, who, noReply, trackF, tracking, otherOf, p]);
 
   // Bulk select: tick several conversations (shift-click for a range), then one action for all of them.
   const [sel, setSel] = useState<Set<string>>(() => new Set());
   const lastTick = useRef<number>(-1);
-  useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, who, noReply, labelId]);
+  useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, who, noReply, trackF, labelId]);
   const tick = (id: string, idx: number, range: boolean) => setSel(prev => {
     const n = new Set(prev);
     if (range && lastTick.current >= 0) { const [a, b] = [Math.min(lastTick.current, idx), Math.max(lastTick.current, idx)]; const on = !prev.has(id); for (const x of visible.slice(a, b + 1)) { if (on) n.add(x.id); else n.delete(x.id); } }
@@ -484,6 +487,16 @@ export default function GmailMailbox(p: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide, open, visible]);
 
+  // Sent → Follow up in one click: reads the conversation, then opens Compose threaded onto it, addressed to who you wrote.
+  const [following, setFollowing] = useState<string | null>(null);
+  const followUp = async (t: ThreadSummary) => {
+    setFollowing(t.id);
+    try {
+      const msgs = await loadThread(account, t.id, t.date);
+      if (!msgs?.length) { p.notify('Could not open that conversation — try again.'); return; }
+      p.onReply(msgs[msgs.length - 1], t.id, false, account);
+    } finally { setFollowing(null); }
+  };
   // From the reader: after archiving/trashing, move on to the next conversation (like Gmail) or back to the list.
   const readerAct = (action: Act) => {
     if (!open) return;
@@ -513,6 +526,8 @@ export default function GmailMailbox(p: Props) {
         {p.box === 'inbox' && <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>}
         <button onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 Files</button>
         <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
+        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'opened' ? 'all' : 'opened'))} aria-pressed={trackF === 'opened'} title="Sent from the CRM and the recipient opened it (of what is loaded)" style={chip(trackF === 'opened')}>👁 Opened</button>}
+        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'unopened' ? 'all' : 'unopened'))} aria-pressed={trackF === 'unopened'} title="Sent from the CRM and not opened yet (of what is loaded)" style={chip(trackF === 'unopened')}>Not opened</button>}
         {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
         <button onClick={() => setWho(v => (v === 'deals' ? 'all' : 'deals'))} aria-pressed={who === 'deals'} title="People with a deal (of what is loaded)" style={chip(who === 'deals')}>💼 Deals</button>
         <button onClick={() => setWho(v => (v === 'contacts' ? 'all' : 'contacts'))} aria-pressed={who === 'contacts'} title="Anyone who is in your CRM (of what is loaded)" style={chip(who === 'contacts')}>👤 Contacts</button>
@@ -591,6 +606,17 @@ export default function GmailMailbox(p: Props) {
           <button type="button" onClick={() => setSel(new Set())} aria-label="Clear selection" title="Clear (Esc)" style={{ width: 32, height: 32, border: 'none', borderRadius: 8, background: 'none', color: '#bbb', cursor: 'pointer', fontSize: 16 }}>✕</button>
         </div>
       )}
+      {p.box === 'sent' && threads && threads.length > 0 && (() => {
+        const tr = threads.map(t => tracking.get(t.id)), tracked = tr.filter(x => x?.tracked).length, opened = tr.filter(x => x?.opened).length;
+        const waiting = threads.filter(t => t.lastMine && ageDays(t.date) >= 3).length;
+        return (
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', margin: '0 2px 10px', fontSize: 12.5, color: 'var(--k-6b7280)' }}>
+            <span><b style={{ color: 'var(--k-111)' }}>{threads.length}</b> conversations loaded</span>
+            {tracked > 0 && <span><b style={{ color: 'var(--k-065f46)' }}>{opened}</b> of {tracked} tracked opened ({Math.round((opened / tracked) * 100)}%)</span>}
+            {waiting > 0 && <span><b style={{ color: 'var(--k-b45309)' }}>{waiting}</b> waiting on a reply</span>}
+          </div>
+        );
+      })()}
       {threads === null ? <ListSkeleton />
       : !connected ? <Empty title="Gmail isn’t connected" sub="Connect your Google account (bottom of the sidebar) and your mail shows up here." />
       : err ? <Empty title="Couldn’t load your mail" sub={err} />
@@ -646,6 +672,8 @@ export default function GmailMailbox(p: Props) {
                         {(t.labels ?? []).slice(0, 2).map(id => { const l = labels.find(x => x.id === id); return l ? <span key={id} style={{ background: l.bg ?? '#e5e7eb', color: l.fg ?? '#374151', borderRadius: 4, padding: '0 6px', fontWeight: 600, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name.split('/').pop()}</span> : null; })}
                         {(t.labels?.length ?? 0) > 2 && <span style={{ color: 'var(--k-9ca3af)' }}>+{(t.labels?.length ?? 0) - 2}</span>}
                         {p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3 && <span title="You sent the last message and nobody has answered" style={{ color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '0 7px' }}>⏳ No reply · {ageDays(t.date)}d</span>}
+                        {p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3 && <button type="button" disabled={following === t.id} onClick={e => { e.stopPropagation(); void followUp(t); }} title="Write a follow-up on this conversation"
+                          style={{ border: '1px solid var(--k-d1d5db)', background: 'var(--k-fff)', color: 'var(--k-374151)', borderRadius: 10, padding: '0 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ic n="reply" size={12} />{following === t.id ? 'Opening…' : 'Follow up'}</button>}
                         {tracking.get(t.id)?.tracked && (tracking.get(t.id)!.opened
                           ? <span title="Opened by the recipient (CRM open tracking)" style={{ color: 'var(--k-065f46)', background: 'var(--k-d1fae5)', borderRadius: 10, padding: '0 7px' }}>👁 Opened{tracking.get(t.id)!.opens > 1 ? ` ${tracking.get(t.id)!.opens}×` : ''}</span>
                           : <span title="Not opened yet" style={{ color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '0 7px', fontWeight: 600 }}>Not opened</span>)}

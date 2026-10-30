@@ -41,6 +41,7 @@ type Props = {
   onInboxReply: (r: InboxRow, all: boolean) => void;
   canInboxReplyAll: (r: InboxRow) => boolean;
   onResumeDraft: (d: EmailDraft) => void;
+  onFollowUp: (o: { to: string; name: string; subject: string; dealId: string | null; clientId: string | null; threadId: string | null; inReplyTo: string | null }) => void;
 };
 
 export default function EmailsSection(p: Props) {
@@ -97,13 +98,13 @@ export default function EmailsSection(p: Props) {
             : <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />}
         </>
       )}
-      {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} onResume={p.onResumeDraft} /></>)}
+      {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} onResume={p.onResumeDraft} nameFor={p.nameFor} /></>)}
       {p.tab === 'sent' && (
         <>
           {toggle('All sent', 'Tracked opens')}
           {source === 'gmail'
             ? <GmailMailbox box="sent" isMobile={p.isMobile} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
-            : <SentSection embedded isMobile={p.isMobile} myAddresses={p.myAddresses} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} />}
+            : <SentSection embedded isMobile={p.isMobile} myAddresses={p.myAddresses} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onFollowUp={p.onFollowUp} />}
         </>
       )}
     </div>

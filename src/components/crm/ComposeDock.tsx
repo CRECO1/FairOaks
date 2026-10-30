@@ -203,7 +203,7 @@ export default function ComposeDock(props: {
       </div>
       {view === 'drafts' && !minimized && (
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobile ? '12px 12px 24px' : '14px 16px 20px', background: 'var(--k-f9fafb)' }}>
-          <DraftsSection isMobile={isMobile} onResume={d => { setOpen(false); props.onResumeDraft(d); }} />
+          <DraftsSection isMobile={isMobile} nameFor={props.nameFor} onResume={d => { setOpen(false); props.onResumeDraft(d); }} />
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: minimized || view === 'drafts' ? 'none' : 'flex', flexDirection: 'column' }}>

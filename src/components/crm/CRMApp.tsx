@@ -11255,6 +11255,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               onOpenDeal={id => { const d = deals.find(x => x.id === id); if (d) { openDeal(d); setTimeout(() => setDealTab('emails'), 0); } }}
               onOpenContact={id => { const c = clients.find(x => x.id === id); if (c) setActiveClient(c); else showToast('That contact is not loaded in this workspace'); }}
               onInboxReply={inboxReply} canInboxReplyAll={inboxCanReplyAll}
+              onFollowUp={o => openCompose({ to: o.to, name: o.name, subject: o.subject, threadId: o.threadId ?? undefined, inReplyTo: o.inReplyTo ?? undefined, ...(o.dealId ? { dealId: o.dealId } : o.clientId ? { clientId: o.clientId } : {}) })}
               onResumeDraft={resumeDraft}
               />
           )}
