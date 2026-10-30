@@ -1260,7 +1260,7 @@ function ThreadReader(p: {
               {shareOpen && (
                 <>
                   <div onClick={() => setShareOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 29 }} />
-                  <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 30, minWidth: 210, maxHeight: 260, overflowY: 'auto', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.14)' }}>
+                  <div role="menu" style={{ position: 'absolute', left: 0, top: 'calc(100% + 4px)', zIndex: 30, minWidth: 210, maxHeight: 260, overflowY: 'auto', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.14)' }}>
                     <div style={{ padding: '7px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)' }}>Share with…</div>
                     {p.teammates.map(m => <button key={m.id} role="menuitem" type="button" onClick={() => void share(m)} style={{ display: 'block', width: '100%', padding: '9px 12px', border: 'none', borderTop: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>{m.name}</button>)}
                   </div>
