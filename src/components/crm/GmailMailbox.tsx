@@ -329,7 +329,7 @@ export default function GmailMailbox(p: Props) {
   const visible = useMemo(() => {
     let list = threads ?? [];
     if (contactsOnly) list = list.filter(t => { const a = otherOf(t); return a.email && p.contactFor(a.email); });
-    if (noReply) list = list.filter(t => t.lastMine && ageDays(t.date) >= 2);
+    if (noReply) list = list.filter(t => t.lastMine && ageDays(t.date) >= 3);
     return list;
   }, [threads, contactsOnly, noReply, otherOf, p]);
 
@@ -359,6 +359,14 @@ export default function GmailMailbox(p: Props) {
     if (!okIds.length) return;
     flash(`${DONE[action]} · ${okIds.length} conversation${okIds.length === 1 ? '' : 's'}`, removing ? () => { setThreads(before); listCache.clear(); okIds.forEach(id => void send(id, UNDO_OF[action], true)); setToast(null); } : undefined);
   };
+  // A filter that only finds a few matches in what is loaded keeps reading older mail (a few pages at most) so it isn't empty by accident.
+  const autoPages = useRef(0);
+  useEffect(() => { autoPages.current = 0; }, [p.box, filter, term, account, contactsOnly, noReply]);
+  useEffect(() => {
+    if (!(contactsOnly || noReply) || !next || loadingMore || visible.length >= 8 || autoPages.current >= 6) return;
+    autoPages.current += 1; void more();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactsOnly, noReply, next, loadingMore, visible.length]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && sel.size) setSel(new Set()); };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
@@ -411,7 +419,7 @@ export default function GmailMailbox(p: Props) {
         {p.box === 'inbox' && <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>}
         <button onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 Files</button>
         <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
-        {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 2+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
+        {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
         <button onClick={() => setContactsOnly(v => !v)} aria-pressed={contactsOnly} title="Only people who are in your CRM (of what is loaded)" style={chip(contactsOnly)}>👤 Contacts</button>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: p.isMobile || wide ? 0 : 'auto', flexWrap: 'wrap', width: p.isMobile || wide ? '100%' : undefined }}>
@@ -449,11 +457,11 @@ export default function GmailMailbox(p: Props) {
       {sel.size > 0 && (
         <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8, padding: '8px 10px', background: '#111', color: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600 }}>
           <span style={{ marginRight: 4 }}>{sel.size} selected</span>
-          {sel.size < visible.length && <button type="button" onClick={() => setSel(new Set(visible.map(x => x.id)))} style={{ border: 'none', background: 'none', color: '#e8b563', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Select all {visible.length}</button>}
+          {sel.size < visible.length && <button type="button" onClick={() => setSel(new Set(visible.map(x => x.id)))} style={{ border: 'none', background: 'none', color: '#e8b563', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>All {visible.length}</button>}
           <span style={{ flex: 1 }} />
           {([p.box === 'inbox' ? ['archive', 'Archive', 'archive'] : null, ['read', 'Mark read', 'open'], ['unread', 'Mark unread', 'mail'], ['star', 'Star', 'star'], ['trash', 'Trash', 'trash']] as Array<[Act, string, string] | null>).filter((x): x is [Act, string, string] => !!x).map(([a2, label, icon]) => (
             <button key={a2} type="button" onClick={() => void bulk(a2)} title={label} aria-label={label}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px', border: '1px solid #3a3a3f', borderRadius: 8, background: '#1c1c1f', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}><Ic n={icon as keyof typeof ICON} size={15} />{!p.isMobile && label}</button>
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 32, padding: 0, border: '1px solid #3a3a3f', borderRadius: 8, background: '#1c1c1f', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}><Ic n={icon as keyof typeof ICON} size={16} /></button>
           ))}
           <button type="button" onClick={() => setSel(new Set())} aria-label="Clear selection" title="Clear (Esc)" style={{ width: 32, height: 32, border: 'none', borderRadius: 8, background: 'none', color: '#bbb', cursor: 'pointer', fontSize: 16 }}>✕</button>
         </div>
