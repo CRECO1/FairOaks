@@ -4470,7 +4470,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const mine = !!fromA && selfAddrs().some(x => (x ?? '').toLowerCase() === fromA.email.toLowerCase());
     return { id: m.id, deal_id: null, direction: mine ? 'sent' : 'received', from_email: m.from, to_email: m.to, cc_emails: m.cc || null, subject: m.subject, body: m.text, email_date: new Date(m.date).toISOString() } as unknown as DealEmail;
   };
-  function liveReply(m: LiveMessage, threadId: string, all: boolean) {
+  function liveReply(m: LiveMessage, threadId: string, all: boolean, _account?: string | null, draftHtml?: string) {
     const e = liveAsEmail(m);
     const ra = replyAllRecipients(e, [], undefined, selfAddrs());
     const target = e.direction === 'sent' ? (parseAddressList(m.to)[0]?.email ?? '') : (parseAddressList(m.from)[0]?.email ?? m.from);
@@ -4478,7 +4478,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     openCompose({
       to: all ? ra.also : target, cc: all ? ra.cc : '', name: parseAddressList(e.direction === 'sent' ? m.to : m.from)[0]?.name,
       subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`,
-      body: quotedReplyHtml(e), threadId, inReplyTo: `${m.refs} ${m.rfcId}`.trim() || null,
+      body: draftHtml ? `${draftHtml}<br>${quotedReplyHtml(e)}` : quotedReplyHtml(e), threadId, inReplyTo: `${m.refs} ${m.rfcId}`.trim() || null,
       ...(match ? (match.kind === 'deal' ? { dealId: match.id } : { clientId: match.id }) : {}),
     });
   }

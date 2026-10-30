@@ -52,6 +52,8 @@ const LIMITS = {
   // well above real use (a busy agent runs a handful of turns an hour) and is
   // there to bound a runaway client or a stolen session, not to ration anyone.
   copilot:       { requests: 30, window: '10 m' },
+  // Email AI help (summarize a thread / draft a reply) — signed-in only; one Claude call per click. 60 per IP per hour.
+  'email-assist': { requests: 60, window: '1 h' },
   // E-sign link — 120 per IP per minute. Generous on purpose: several signers
   // at one company share a NAT address, and each page view makes a handful of
   // calls. Used with failOpen, see rateLimitFailOpen below.

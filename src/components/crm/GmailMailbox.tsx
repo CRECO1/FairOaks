@@ -104,7 +104,7 @@ type Props = {
   searchPeople: (q: string) => Array<{ name: string; email: string; sub?: string }>;
   onOpenDeal: (id: string) => void;
   onOpenContact: (id: string) => void;
-  onReply: (m: LiveMessage, threadId: string, all: boolean, account: string | null) => void;
+  onReply: (m: LiveMessage, threadId: string, all: boolean, account: string | null, draftHtml?: string) => void;
   onForward: (m: LiveMessage, threadId: string, account: string | null) => void;
   onNewCompose: () => void;
   notify: (msg: string) => void;
@@ -784,6 +784,10 @@ function ThreadReader(p: {
   const [filed, setFiled] = useState<Set<string>>(() => new Set());
   const [savedAtt, setSavedAtt] = useState<Set<string>>(() => new Set());
   const [remindOpen, setRemindOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiBusy, setAiBusy] = useState<'summarize' | 'reply' | null>(null);
+  const [aiNote, setAiNote] = useState('');
+  const [summary, setSummary] = useState<string | null>(null);
   const [opens, setOpens] = useState<Map<string, { opened: boolean; n: number; last: string | null }>>(() => new Map());
   useEffect(() => {
     let live = true;
@@ -914,6 +918,26 @@ function ThreadReader(p: {
     return `to ${names.slice(0, 2).join(', ') || '—'}${names.length > 2 ? ` +${names.length - 2}` : ''}${cc ? ` · cc ${cc}` : ''}`;
   };
 
+  // ✨ AI help: summarize the conversation, or draft a reply that opens in Compose for you to read and change. Nothing is ever sent.
+  const ai = async (action: 'summarize' | 'reply', instruction?: string) => {
+    if (!msgs?.length || aiBusy) return;
+    setAiBusy(action); setAiOpen(false); setErr('');
+    try {
+      const r = await fetch('/api/crm/email-assist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        action, instruction,
+        messages: msgs.map(m => ({ from: m.from, date: whenLong(m.date), text: m.text })),
+        contact: threadTarget ? { label: threadTarget.label, role: threadTarget.role, sub: threadTarget.sub } : undefined,
+      }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.text) { p.notify(j.error ?? 'The assistant could not do that — try again.'); return; }
+      if (action === 'summarize') { setSummary(String(j.text)); return; }
+      const html = String(j.text).split(/\n{2,}/).map(par => `<p>${par.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</p>`).join('');
+      const l = msgs[msgs.length - 1];
+      p.onReply(l, p.t.id, false, p.account, html);
+      p.notify('Draft ready — read it over, fill in any [brackets], then send.');
+    } catch { p.notify('Could not reach the assistant — try again.'); } finally { setAiBusy(null); }
+  };
+
   // ⏰ Remind me: a real CRM follow-up task (shows on Tasks and your dashboard), linked to the contact/deal when we know them.
   const remind = async (due: string) => {
     setRemindOpen(false);
@@ -960,6 +984,31 @@ function ThreadReader(p: {
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, false, p.account)} title="Reply (r)">↩ Reply</button>
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, true, p.account)} title="Reply all (a)">↩↩ All</button>
             <button type="button" style={btn} onClick={() => p.onForward(last, p.t.id, p.account)} title="Forward (f)">↪</button>
+            <div style={{ position: 'relative' }}>
+              <button type="button" style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy || !msgs?.length} onClick={() => setAiOpen(v => !v)} aria-haspopup="menu" aria-expanded={aiOpen} title="AI help with this conversation">{aiBusy ? (aiBusy === 'summarize' ? '✨ Reading…' : '✨ Writing…') : '✨ AI'}</button>
+              {aiOpen && (
+                <>
+                  <div onClick={() => setAiOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 29 }} />
+                  <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 30, width: 290, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.14)', overflow: 'hidden' }}>
+                    <button role="menuitem" type="button" onClick={() => void ai('summarize')} style={{ display: 'block', width: '100%', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: 'var(--k-111)' }}>Summarize this conversation</span>
+                      <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)' }}>What they want, key facts, next step</span>
+                    </button>
+                    <div style={{ padding: '8px 12px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>Draft a reply that…</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 12px 4px', background: 'var(--k-fafafa)' }}>
+                      {([['Says yes, suggests a call', 'Say yes and suggest a quick call this week'], ['Asks for details', 'Ask for the details I still need to move forward'], ['Politely passes', 'Politely decline and keep the door open'], ['Sends next steps', 'Thank them and lay out the next steps']] as Array<[string, string]>).map(([label, ins]) => (
+                        <button key={label} type="button" onClick={() => void ai('reply', ins)} style={{ padding: '0 10px', height: 28, border: '1px solid var(--k-d1d5db)', borderRadius: 14, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{label}</button>
+                      ))}
+                    </div>
+                    <form onSubmit={e => { e.preventDefault(); void ai('reply', aiNote.trim() || undefined); setAiNote(''); }} style={{ display: 'flex', gap: 6, padding: 8, background: 'var(--k-fafafa)' }}>
+                      <input value={aiNote} onChange={e => setAiNote(e.target.value)} placeholder="…or tell me what to say" aria-label="What the reply should say" maxLength={300}
+                        style={{ flex: 1, minWidth: 0, height: 30, padding: '0 8px', borderRadius: 6, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 13 }} />
+                      <button type="submit" style={{ padding: '0 10px', borderRadius: 6, border: 'none', background: '#c9922c', color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>Draft</button>
+                    </form>
+                  </div>
+                </>
+              )}
+            </div>
             <div style={{ position: 'relative' }}>
               <button type="button" style={btn} onClick={() => setRemindOpen(v => !v)} aria-haspopup="menu" aria-expanded={remindOpen} title="Create a follow-up task for this conversation">⏰ Remind me</button>
               {remindOpen && (
@@ -1014,6 +1063,18 @@ function ThreadReader(p: {
               {filingAll ? 'Filing…' : msgs.every(m => filed.has(m.id)) ? '✓ All filed' : `📁 File all ${msgs.length}`}
             </button>
           )}
+        </div>
+      )}
+      {summary && (
+        <div style={{ marginBottom: 12, padding: '12px 14px', background: 'var(--k-f5f3ff)', border: '1px solid var(--k-ddd6fe)', borderRadius: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6d28d9)' }}>✨ Summary</span>
+            <span style={{ flex: 1 }} />
+            <button type="button" onClick={() => { void navigator.clipboard?.writeText(summary).then(() => p.notify('Summary copied')).catch(() => {}); }} style={{ border: 'none', background: 'none', color: 'var(--k-6d28d9)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Copy</button>
+            <button type="button" aria-label="Close summary" onClick={() => setSummary(null)} style={{ border: 'none', background: 'none', color: 'var(--k-6b7280)', fontSize: 15, cursor: 'pointer' }}>✕</button>
+          </div>
+          <div style={{ fontSize: 13.5, lineHeight: 1.6, color: 'var(--k-111)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{summary}</div>
+          <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 6 }}>AI-written from this conversation — check the details before you rely on them.</div>
         </div>
       )}
       {last && me && parseAddr(last.from).email.toLowerCase() === me && ageDays(last.date) >= 3 && !parseAddr(last.to).email.toLowerCase().includes(me) && (
