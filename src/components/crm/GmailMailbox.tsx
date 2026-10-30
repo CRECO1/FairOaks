@@ -53,6 +53,11 @@ const ago = (iso: string | undefined) => { if (!iso) return ''; const d = ageDay
 const ymdPlus = (n: number) => { const d = new Date(`${new Date().toLocaleDateString('en-CA', CT)}T12:00:00`); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
 const ymdNextMonday = () => { const d = new Date(`${new Date().toLocaleDateString('en-CA', CT)}T12:00:00`); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); return d.toLocaleDateString('en-CA'); };
 const ymdLabel = (ymd: string) => new Date(`${ymd}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+// A conversation always reads oldest → newest (the order never changes when you open or fold things); the newest message and any
+// you haven't read are open, the rest start folded.
+const sortMsgs = (l: LiveMessage[]) => [...l].sort((a, b) => a.date - b.date);
+const initialFolds = (l: LiveMessage[]) => new Set(l.filter((m, i) => i < l.length - 1 && !m.unread).map(m => m.id));
+const ORDER_KEY = 'crm-gmail-thread-order';
 const previewable = (mime: string) => /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(mime);
 
 // In-session caches (gone on a full reload, which is fine): the list paints instantly from the last visit while a quiet
@@ -418,7 +423,7 @@ export default function GmailMailbox(p: Props) {
     let list = threads ?? [];
     if (who !== 'all') list = list.filter(t => { const a = otherOf(t), m = a.email ? p.contactFor(a.email) : null; return who === 'deals' ? m?.kind === 'deal' : who === 'contacts' ? !!m : !m; });
     if (noReply) list = list.filter(t => t.lastMine && ageDays(t.date) >= 3);
-    if (waiting) list = list.filter(t => { const a = otherOf(t); return !t.lastMine && ageDays(t.date) >= 1 && !!(a.email && p.contactFor(a.email)); });
+    if (waiting) list = list.filter(t => { const a = otherOf(t); return !t.lastMine && ageDays(t.date) >= 1 && ageDays(t.date) <= 30 && !!(a.email && p.contactFor(a.email)); });
     if (p.box === 'sent' && trackF !== 'all') list = list.filter(t => { const tr = tracking.get(t.id); return trackF === 'opened' ? !!tr?.opened : !!tr?.tracked && !tr.opened; });
     return list;
   }, [threads, who, noReply, waiting, trackF, tracking, otherOf, p]);
@@ -555,7 +560,7 @@ export default function GmailMailbox(p: Props) {
         {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'opened' ? 'all' : 'opened'))} aria-pressed={trackF === 'opened'} title="Sent from the CRM and the recipient opened it (of what is loaded)" style={chip(trackF === 'opened')}>👁 Opened</button>}
         {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'unopened' ? 'all' : 'unopened'))} aria-pressed={trackF === 'unopened'} title="Sent from the CRM and not opened yet (of what is loaded)" style={chip(trackF === 'unopened')}>Not opened</button>}
         {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
-        {p.box === 'inbox' && <button onClick={() => setWaiting(v => !v)} aria-pressed={waiting} title="People in your CRM who wrote last 1+ days ago and haven’t had an answer from you (of what is loaded)" style={chip(waiting)}>↩ Waiting on you</button>}
+        {p.box === 'inbox' && <button onClick={() => setWaiting(v => !v)} aria-pressed={waiting} title="People in your CRM who wrote in the last 30 days and haven’t had an answer from you (of what is loaded)" style={chip(waiting)}>↩ Waiting on you</button>}
         <button onClick={() => setWho(v => (v === 'deals' ? 'all' : 'deals'))} aria-pressed={who === 'deals'} title="People with a deal (of what is loaded)" style={chip(who === 'deals')}>💼 Deals</button>
         <button onClick={() => setWho(v => (v === 'contacts' ? 'all' : 'contacts'))} aria-pressed={who === 'contacts'} title="Anyone who is in your CRM (of what is loaded)" style={chip(who === 'contacts')}>👤 Contacts</button>
         <button onClick={() => setWho(v => (v === 'other' ? 'all' : 'other'))} aria-pressed={who === 'other'} title="People who are NOT in your CRM — newsletters, notices, strangers (of what is loaded)" style={chip(who === 'other')}>📭 Not in CRM</button>
@@ -721,12 +726,12 @@ export default function GmailMailbox(p: Props) {
                     </div>
                     <div style={{ fontSize: 13.5, color: 'var(--k-111)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 500 }}>{t.subject}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decodeSnippet(t.snippet)}</div>
-                    {(match || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2)) && (
+                    {(match || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30)) && (
                       <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
                         {match && <span style={{ color: 'var(--k-a06a12)' }}>{match.kind === 'deal' ? '💼 Deal' : `👤 ${match.role || 'Contact'}`} · {match.label}</span>}
                         {(t.labels ?? []).slice(0, 2).map(id => { const l = labels.find(x => x.id === id); return l ? <span key={id} style={{ background: l.bg ?? '#e5e7eb', color: l.fg ?? '#374151', borderRadius: 4, padding: '0 6px', fontWeight: 600, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name.split('/').pop()}</span> : null; })}
                         {(t.labels?.length ?? 0) > 2 && <span style={{ color: 'var(--k-9ca3af)' }}>+{(t.labels?.length ?? 0) - 2}</span>}
-                        {p.box === 'inbox' && !t.lastMine && match && ageDays(t.date) >= 2 && <span title="They wrote last and you haven't answered" style={{ color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '0 7px' }}>↩ Waiting on you · {ageDays(t.date)}d</span>}
+                        {p.box === 'inbox' && !t.lastMine && match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30 && <span title="They wrote last and you haven't answered" style={{ color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '0 7px' }}>↩ Waiting on you · {ageDays(t.date)}d</span>}
                         {p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3 && <span title="You sent the last message and nobody has answered" style={{ color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '0 7px' }}>⏳ No reply · {ageDays(t.date)}d</span>}
                         {p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3 && <button type="button" disabled={following === t.id} onClick={e => { e.stopPropagation(); void followUp(t); }} title="Write a follow-up on this conversation"
                           style={{ border: '1px solid var(--k-d1d5db)', background: 'var(--k-fff)', color: 'var(--k-374151)', borderRadius: 10, padding: '0 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ic n="reply" size={12} />{following === t.id ? 'Opening…' : 'Follow up'}</button>}
@@ -758,7 +763,7 @@ export default function GmailMailbox(p: Props) {
           <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--k-111)', flex: 1 }}>Keyboard shortcuts</div>
           <button type="button" onClick={() => setHelp(false)} aria-label="Close" style={{ border: 'none', background: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--k-6b7280)' }}>✕</button>
         </div>
-        {([['Move through the list', 'j / k'], ['Open the conversation', 'Enter'], ['Search', '/'], ['Compose a new email', 'c'], ['Reply', 'r'], ['Reply all', 'a'], ['Forward', 'f'], ['Archive', 'e'], ['Move to Trash', '#'], ['Star / unstar', 's'], ['Mark unread', 'Shift + U'], ['Select / unselect', 'x'], ['Undo the last archive or trash', 'z'], ['Back to the list', 'u'], ['Back / clear selection / close', 'Esc'], ['This list', '?']] as Array<[string, string]>).map(([what, keys]) => (
+        {([['Move through the list', 'j / k'], ['Open the conversation', 'Enter'], ['Search', '/'], ['Compose a new email', 'c'], ['Reply', 'r'], ['Reply all', 'a'], ['Forward', 'f'], ['Archive', 'e'], ['Move to Trash', '#'], ['Star / unstar', 's'], ['Mark unread', 'Shift + U'], ['Next / previous message in a conversation', 'n / p'], ['Expand / collapse all messages', 'o'], ['Select / unselect', 'x'], ['Undo the last archive or trash', 'z'], ['Back to the list', 'u'], ['Back / clear selection / close', 'Esc'], ['This list', '?']] as Array<[string, string]>).map(([what, keys]) => (
           <div key={what} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderTop: '1px solid var(--k-f0f0f0)', fontSize: 14, color: 'var(--k-374151)' }}>
             <span>{what}</span><kbd style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12.5, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '1px 8px', color: 'var(--k-111)', whiteSpace: 'nowrap' }}>{keys}</kbd>
           </div>
@@ -888,6 +893,25 @@ function ThreadReader(p: {
   const [msgs, setMsgs] = useState<LiveMessage[] | null>(null);
   const [err, setErr] = useState('');
   const [folded, setFolded] = useState<Set<string>>(() => new Set());
+  const [newestFirst, setNewestFirst] = useState(false);
+  const [cur, setCur] = useState<number | null>(null); // the message n / p / the jump strip last landed on (index in reading order)
+  useEffect(() => { try { setNewestFirst(localStorage.getItem(ORDER_KEY) === 'newest'); } catch { /* default */ } }, []);
+  const ordered = useMemo(() => { const base = sortMsgs(msgs ?? []); return newestFirst ? base.reverse() : base; }, [msgs, newestFirst]);
+  const chrono = useMemo(() => sortMsgs(msgs ?? []), [msgs]);
+  const goTo = (id: string) => {
+    setFolded(prev => { const n = new Set(prev); n.delete(id); return n; });
+    setCur(ordered.findIndex(m => m.id === id));
+    setTimeout(() => document.getElementById(`gm-msg-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  };
+  const step = (dir: 1 | -1) => {
+    if (!ordered.length) return;
+    const base = cur ?? (newestFirst ? 0 : ordered.length - 1);
+    const next = Math.max(0, Math.min(ordered.length - 1, base + dir));
+    goTo(ordered[next].id);
+  };
+  const allOpen = ordered.length > 0 && ordered.every(m => !folded.has(m.id));
+  const toggleAll = () => setFolded(allOpen ? new Set(ordered.map(m => m.id)) : new Set());
+  const flip = () => setNewestFirst(v => { const n = !v; try { localStorage.setItem(ORDER_KEY, n ? 'newest' : 'oldest'); } catch { /* ignore */ } return n; });
   const [details, setDetails] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
@@ -916,7 +940,7 @@ function ThreadReader(p: {
     let live = true;
     setErr('');
     const cached = threadCache.get(threadKey(p.account, p.t.id, p.t.date));
-    const show = (list: LiveMessage[]) => { setMsgs(list); setFolded(new Set(list.slice(0, -1).map(m => m.id))); }; // older messages fold like Gmail
+    const show = (raw: LiveMessage[]) => { const list = sortMsgs(raw); setMsgs(list); setFolded(initialFolds(list)); setCur(null); }; // older, already-read messages fold like Gmail
     if (cached) { show(cached); return () => { live = false; }; }
     setMsgs(null);
     loadThread(p.account, p.t.id, p.t.date).then(list => {
@@ -1002,6 +1026,8 @@ function ThreadReader(p: {
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;
       if (e.key === 'Escape' || e.key === 'u') { p.onBack(); return; }
+      if (e.key === 'o') { e.preventDefault(); toggleAll(); return; }
+      if (e.key === 'n' || e.key === 'p') { e.preventDefault(); step(e.key === 'n' ? 1 : -1); return; }
       if (!last) return;
       if (e.key === 'r') { e.preventDefault(); p.onReply(last, p.t.id, false, p.account); }
       else if (e.key === 'a') { e.preventDefault(); p.onReply(last, p.t.id, true, p.account); }
@@ -1078,6 +1104,17 @@ function ThreadReader(p: {
     }
     return found;
   })();
+
+  // The reply box sits next to the NEWEST message: under the list when reading oldest-first, above it when newest-first.
+  const quickEl = last ? (
+        <QuickReply key={last.id} last={last} me={me} isMobile={p.isMobile} who={(me && parseAddr(last.from).email.toLowerCase() === me ? parseAddr(last.to) : parseAddr(last.from)).name || parseAddr(last.from).email || 'them'}
+          onSend={async (all, text) => {
+            const ok = await p.onQuickReply(last, p.t.id, all, text);
+            if (ok) { threadCache.clear(); setTimeout(() => { void loadThread(p.account, p.t.id, p.t.date).then(l => { if (l) { const sorted = sortMsgs(l); setMsgs(sorted); setFolded(initialFolds(sorted)); } }); }, 1800); }
+            return ok;
+          }}
+          onFull={text => p.onReply(last, p.t.id, false, p.account, text.trim() ? text.trim().split(/\n{2,}/).map(par => `<p>${par.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</p>`).join('') : undefined)} />
+  ) : null;
 
   return (
     <div>
@@ -1195,8 +1232,37 @@ function ThreadReader(p: {
       )}
       {msgs === null && <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Opening conversation…</div>}
       {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+      {chrono.length > 1 && (
+        <div style={{ position: p.embedded ? 'sticky' : 'static', top: 0, zIndex: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 10px', padding: '8px 10px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', marginRight: 2 }}>{chrono.length} messages</span>
+          {chrono.length <= 14 ? (
+            <div role="group" aria-label="Jump to a message" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {ordered.map(m => {
+                const n = chrono.findIndex(x => x.id === m.id) + 1, open = !folded.has(m.id), isCur = cur !== null && ordered[cur]?.id === m.id, f = parseAddr(m.from);
+                return (
+                  <button key={m.id} type="button" onClick={() => goTo(m.id)} title={`${n}. ${(me && f.email.toLowerCase() === me) ? 'Me' : (f.name || f.email)} · ${when(m.date)}`} aria-label={`Go to message ${n}`}
+                    style={{ position: 'relative', minWidth: 28, height: 28, padding: '0 6px', borderRadius: 14, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                      border: `1px solid ${isCur ? '#c9922c' : 'var(--k-e5e7eb)'}`, background: open ? 'var(--k-111)' : 'var(--k-fff)', color: open ? '#fff' : 'var(--k-374151)', boxShadow: isCur ? '0 0 0 2px rgba(201,146,44,.35)' : 'none' }}>
+                    {n}{m.unread && <span aria-label="Unread" style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: 4, background: '#c9922c', border: '1.5px solid var(--k-fff)' }} />}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <select aria-label="Jump to a message" value="" onChange={e => { if (e.target.value) goTo(e.target.value); }} style={{ height: 30, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px', maxWidth: 220 }}>
+              <option value="">Jump to…</option>
+              {ordered.map(m => { const n = chrono.findIndex(x => x.id === m.id) + 1, f = parseAddr(m.from); return <option key={m.id} value={m.id}>{n}. {(me && f.email.toLowerCase() === me) ? 'Me' : (f.name || f.email)} · {when(m.date)}</option>; })}
+            </select>
+          )}
+          <span style={{ flex: 1 }} />
+          <button type="button" onClick={toggleAll} title="Open or fold every message (o)" style={{ height: 30, padding: '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{allOpen ? '▴ Collapse all' : '▾ Expand all'}</button>
+          <button type="button" onClick={flip} title="Which end of the conversation comes first" style={{ height: 30, padding: '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{newestFirst ? '↑ Newest first' : '↓ Oldest first'}</button>
+        </div>
+      )}
+      {newestFirst && quickEl && <div style={{ marginBottom: 10 }}>{quickEl}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {(msgs ?? []).map(m => {
+        {ordered.map(m => {
+          const num = chrono.findIndex(x => x.id === m.id) + 1; // its place in the conversation (1 = first)
           const from = parseAddr(m.from);
           const name = from.name || from.email;
           const mine = !!me && from.email.toLowerCase() === me;
@@ -1204,8 +1270,12 @@ function ThreadReader(p: {
           const match = from.email ? p.contactFor(from.email) : null;
           if (isFolded) {
             return (
-              <div key={m.id} role="button" tabIndex={0} onClick={() => setFolded(prev => { const n = new Set(prev); n.delete(m.id); return n; })}
-                style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, cursor: 'pointer' }}>
+              <div key={m.id} id={`gm-msg-${m.id}`} role="button" tabIndex={0} aria-expanded={false} aria-label={`Message ${num} of ${chrono.length} from ${mine ? 'me' : name} — open`}
+                onClick={() => { setFolded(prev => { const n = new Set(prev); n.delete(m.id); return n; }); setCur(ordered.findIndex(x => x.id === m.id)); }}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFolded(prev => { const n = new Set(prev); n.delete(m.id); return n; }); } }}
+                style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, cursor: 'pointer', scrollMarginTop: p.embedded ? 64 : 12 }}>
+                <span aria-hidden style={{ fontSize: 11, color: 'var(--k-6b7280)', width: 12, flexShrink: 0 }}>▸</span>
+                <span aria-hidden title={`Message ${num} of ${chrono.length}`} style={{ minWidth: 20, height: 20, borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{num}</span>
                 <Avatar name={name} email={from.email} size={26} />
                 <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0 }}>{mine ? 'Me' : name}</span>
                 <span style={{ fontSize: 13, color: 'var(--k-9ca3af)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.text.replace(/\s+/g, ' ').slice(0, 140)}</span>
@@ -1218,7 +1288,7 @@ function ThreadReader(p: {
           const other = mine ? parseAddr(m.to) : from;
           const target = other.email ? p.contactFor(other.email) : null;
           return (
-            <div key={m.id} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: p.isMobile ? '12px' : '16px 18px' }}>
+            <div key={m.id} id={`gm-msg-${m.id}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: p.isMobile ? '12px' : '16px 18px', scrollMarginTop: p.embedded ? 64 : 12 }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
                 <Avatar name={name} email={from.email} size={40} warm={!!match} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1246,7 +1316,12 @@ function ThreadReader(p: {
                   )}
                 </div>
                 <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                  <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }} title={whenLong(m.date)}>{p.isMobile ? when(m.date) : whenLong(m.date)}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {chrono.length > 1 && <span title={`Message ${num} of ${chrono.length}`} style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-6b7280)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '0 7px' }}>{num}/{chrono.length}</span>}
+                    <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }} title={whenLong(m.date)}>{p.isMobile ? when(m.date) : whenLong(m.date)}</span>
+                    {chrono.length > 1 && <button type="button" aria-expanded aria-label="Collapse this message" title="Collapse this message" onClick={() => setFolded(prev => new Set(prev).add(m.id))}
+                      style={{ width: 26, height: 26, border: '1px solid var(--k-e5e7eb)', borderRadius: 7, background: 'var(--k-fff)', color: 'var(--k-6b7280)', cursor: 'pointer', fontSize: 12, padding: 0 }}>▴</button>}
+                  </span>
                   {opens.has(m.id) && (opens.get(m.id)!.opened
                     ? <span title={opens.get(m.id)!.last ? `Last opened ${whenLong(new Date(opens.get(m.id)!.last!).getTime())}` : 'Opened'} style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-065f46)', background: 'var(--k-d1fae5)', borderRadius: 10, padding: '1px 8px' }}>👁 Opened{opens.get(m.id)!.n > 1 ? ` ${opens.get(m.id)!.n}×` : ''}{opens.get(m.id)!.last ? ` · ${when(new Date(opens.get(m.id)!.last!).getTime())}` : ''}</span>
                     : <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px' }}>Not opened</span>)}
@@ -1297,15 +1372,7 @@ function ThreadReader(p: {
           );
         })}
       </div>
-      {last && (
-        <QuickReply key={last.id} last={last} me={me} isMobile={p.isMobile} who={(me && parseAddr(last.from).email.toLowerCase() === me ? parseAddr(last.to) : parseAddr(last.from)).name || parseAddr(last.from).email || 'them'}
-          onSend={async (all, text) => {
-            const ok = await p.onQuickReply(last, p.t.id, all, text);
-            if (ok) { threadCache.clear(); setTimeout(() => { void loadThread(p.account, p.t.id, p.t.date).then(l => { if (l) { setMsgs(l); setFolded(new Set(l.slice(0, -1).map(m => m.id))); } }); }, 1800); }
-            return ok;
-          }}
-          onFull={text => p.onReply(last, p.t.id, false, p.account, text.trim() ? text.trim().split(/\n{2,}/).map(par => `<p>${par.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</p>`).join('') : undefined)} />
-      )}
+      {!newestFirst && quickEl}
     </div>
   );
 }
