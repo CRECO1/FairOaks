@@ -1093,6 +1093,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
   const [activeClient, setActiveClient] = useState<Client | null>(null);
+  const [dealCompact, setDealCompact] = useState(false); // phones: the deal card's second header row folds away once its content is scrolled
+  useEffect(() => { setDealCompact(false); }, [activeDeal?.id]);
   const [cardCompact, setCardCompact] = useState(false); // phones: the contact card's header folds away once its content is scrolled
   useEffect(() => { setCardCompact(false); }, [activeClient?.id]);
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -11432,8 +11434,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {activeDeal && (
         <div className="overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: 12, borderRadius: '12px 12px 0 0' }}>
-              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1, minWidth: 0 }}>{activeDeal.client}</h3>
+            <div style={{ padding: isMobile ? (dealCompact ? '10px 14px' : '14px 14px 12px 18px') : '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flexWrap: isMobile ? 'wrap' : 'nowrap', borderRadius: '12px 12px 0 0' }}>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile && dealCompact ? 19 : 22, fontWeight: 600, flex: 1, minWidth: 0, ...(isMobile ? { order: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>{activeDeal.client}</h3>
+              {isMobile && !dealCompact && <div aria-hidden style={{ order: 2, flexBasis: '100%', height: 0 }} />}
               {gmailConnected && activeDeal.client_email && (
                 <button type="button" aria-label={`Email ${activeDeal.client}`} title={`Email ${activeDeal.client_email}`}
                   onClick={() => {
@@ -11443,16 +11446,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     setShowCompose(true);
                     setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
                   }}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✉ Email</button>
+                  style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', order: isMobile ? 3 : undefined, alignItems: 'center', gap: 6, height: isMobile ? 40 : 34, padding: '0 14px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✉ Email</button>
               )}
               {(activeDeal.client_phone || clients.find(x => x.id === activeDeal.client_id)?.phone) && (
                 <button type="button" aria-label={`Text ${activeDeal.client}`} title="Text from the office line" onClick={() => setDealTextOpen(o => !o)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', background: dealTextOpen ? '#fff' : 'transparent', color: dealTextOpen ? '#111' : '#fff', border: '1px solid rgba(255,255,255,.55)', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>💬 Text</button>
+                  style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', order: isMobile ? 3 : undefined, alignItems: 'center', gap: 6, height: isMobile ? 40 : 34, padding: '0 14px', background: dealTextOpen ? '#fff' : 'transparent', color: dealTextOpen ? '#111' : '#fff', border: '1px solid rgba(255,255,255,.55)', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>💬 Text</button>
               )}
-              <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>
-              <button className="crm-icon-btn" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: isMobile && dealCompact ? 'none' : 'inline-block', ...(isMobile ? { order: 3 } : {}), padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>
+              <button className="crm-icon-btn" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, ...(isMobile ? { order: 1, minWidth: 44, minHeight: 44 } : {}) }}>✕</button>
             </div>
-            <div style={{ padding: isMobile ? '16px 18px' : '20px 26px', overflowY: 'auto', flex: 1 }}>
+            <div style={{ padding: isMobile ? '16px 18px' : '20px 26px', overflowY: 'auto', flex: 1 }}
+              onScroll={isMobile ? (e => {
+                // Phones: once you scroll a long deal, fold the Email / Text / type row away so the content gets the screen.
+                const el = e.currentTarget, long = el.scrollHeight - el.clientHeight > 300;
+                setDealCompact(prev => (!long ? false : prev ? el.scrollTop > 4 : el.scrollTop > 60));
+              }) : undefined}>
               {dealTextOpen && (() => {
                 const dc = clients.find(x => x.id === activeDeal.client_id);
                 const first = (dc?.first_name || activeDeal.client.split(' ')[0] || '').trim();
@@ -11474,11 +11482,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {STAGES.map((s, i) => {
                   const ci = STAGES.indexOf(activeDeal.stage);
                   const cls = i < ci ? { background: '#1a1a1a', color: 'rgba(255,255,255,.75)' } : i === ci ? { background: '#c9922c', color: 'var(--k-111)', fontWeight: 700 } : { background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' };
-                  return <div key={s} onClick={() => setStage(activeDeal, s)} style={{ flex: 1, textAlign: 'center', padding: '9px 4px', fontSize: 12, fontWeight: 500, cursor: 'pointer', borderRight: i < STAGES.length - 1 ? '1px solid var(--k-e5e7eb)' : 'none', ...cls }}>{s}</div>;
+                  return <div key={s} onClick={() => setStage(activeDeal, s)} style={{ flex: 1, textAlign: 'center', padding: isMobile ? '12px 2px' : '9px 4px', whiteSpace: 'nowrap', fontSize: isMobile ? 11.5 : 12, fontWeight: 500, cursor: 'pointer', borderRight: i < STAGES.length - 1 ? '1px solid var(--k-e5e7eb)' : 'none', ...cls }}>{isMobile && s === 'In Contract' ? 'Contract' : s}</div>;
                 })}
               </div>
               {/* Tabs */}
-              <div className="crm-tabs-scroll" style={{ display: 'flex', borderBottom: '2px solid var(--k-f0ebe0)', marginBottom: 18 }}>
+              <div className="crm-tabs-scroll" style={{ display: 'flex', borderBottom: '2px solid var(--k-f0ebe0)', marginBottom: 18, ...(isMobile ? { position: 'sticky', top: -16, zIndex: 3, background: 'var(--k-fff)' } : {}) }}>
                 {(['overview', 'client', 'emails', 'docs', 'esign', 'intel', 'commission'] as const).map(t => (
                   <button key={t} onClick={() => { setDealTab(t); if (t === 'docs' && activeDeal) loadDealDocs(activeDeal.id); }}
                     style={{ padding: isMobile ? '11px 14px' : '8px 18px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? 'var(--k-111)' : 'var(--k-6b7280)', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
