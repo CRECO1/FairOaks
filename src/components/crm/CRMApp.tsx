@@ -337,7 +337,7 @@ function EmailRecipients({ to, cc, bcc }: { to?: string | null; cc?: string | nu
   return (
     <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 1 }}>
       <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
-        style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: total > 1 ? 'var(--k-6b7280)' : 'var(--k-9ca3af)', cursor: 'pointer' }}>
+        style={{ background: 'none', border: 'none', padding: '4px 0', font: 'inherit', color: total > 1 ? 'var(--k-6b7280)' : 'var(--k-9ca3af)', cursor: 'pointer', minHeight: 32 }}>
         {summary} <span style={{ fontSize: 10 }}>{open ? '▾' : '▸'}</span>
       </button>
       {open && <div style={{ marginTop: 4, padding: '6px 9px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-eef0f2)', borderRadius: 8 }}>{row('To', tos)}{row('Cc', ccs)}{row('Bcc', bccs)}</div>}
@@ -1093,6 +1093,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
   const [activeClient, setActiveClient] = useState<Client | null>(null);
+  const [activityMore, setActivityMore] = useState(false); // phones: the contact card's activity log shows the latest few until you ask for the rest
+  useEffect(() => { setActivityMore(false); }, [activeClient?.id]);
   const [dealCompact, setDealCompact] = useState(false); // phones: the deal card's second header row folds away once its content is scrolled
   useEffect(() => { setDealCompact(false); }, [activeDeal?.id]);
   const [cardCompact, setCardCompact] = useState(false); // phones: the contact card's header folds away once its content is scrolled
@@ -13217,7 +13219,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     })() : (
                       <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px', gridColumn: '1/-1', border: '1px dashed var(--k-e5e7eb)' }}>
                         <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>🗓 LXP — Lease Expiration</div>
-                        <span style={{ fontSize: 13, color: '#d1d5db' }}>Not set — <button onClick={() => openEditClient(c)} style={{ background: 'none', border: 'none', color: '#c9922c', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: 0, fontFamily: "'DM Sans',sans-serif" }}>Add date</button></span>
+                        <span style={{ fontSize: 13, color: '#d1d5db' }}>Not set — <button onClick={() => openEditClient(c)} style={{ background: 'none', border: 'none', color: '#c9922c', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: isMobile ? '0 10px' : 0, ...(isMobile ? { minHeight: 40 } : {}), fontFamily: "'DM Sans',sans-serif" }}>Add date</button></span>
                       </div>
                     ))}
                     {/* Birthday */}
@@ -13240,7 +13242,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     })() : isMobile ? null : (
                       <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px', border: '1px dashed var(--k-e5e7eb)' }}>
                         <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>🎂 Birthday</div>
-                        <span style={{ fontSize: 13, color: '#d1d5db' }}>Not set — <button onClick={() => openEditClient(c)} style={{ background: 'none', border: 'none', color: '#c9922c', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: 0, fontFamily: "'DM Sans',sans-serif" }}>Add date</button></span>
+                        <span style={{ fontSize: 13, color: '#d1d5db' }}>Not set — <button onClick={() => openEditClient(c)} style={{ background: 'none', border: 'none', color: '#c9922c', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: isMobile ? '0 10px' : 0, ...(isMobile ? { minHeight: 40 } : {}), fontFamily: "'DM Sans',sans-serif" }}>Add date</button></span>
                       </div>
                     )}
                   </div>
@@ -13342,7 +13344,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 }}>Notes</div>
                     {!editingNotes && (
                       <button onClick={() => { setNotesDraft(c.notes || ''); setEditingNotes(true); }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c9922c', fontSize: 12, fontWeight: 700, padding: 0 }}>
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c9922c', fontSize: 12, fontWeight: 700, padding: isMobile ? '0 10px' : 0, ...(isMobile ? { minHeight: 40 } : {}) }}>
                         {c.notes ? '✎ Edit' : '＋ Add a note'}
                       </button>
                     )}
@@ -13684,13 +13686,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     if (allItems.length === 0) return (
                       <div style={{ textAlign: 'center', padding: '16px 0', color: '#d1d5db', fontSize: 13 }}>No activity logged yet</div>
                     );
+                    const ACT_SHOWN = 6;
+                    const shown = isMobile && !activityMore && allItems.length > ACT_SHOWN + 2 ? allItems.slice(0, ACT_SHOWN) : allItems;
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
-                        {allItems.map((item, i) => {
+                        {shown.map((item, i) => {
                           const ta = timeAgo(item.date);
                           const stamp = activityStamp(item.date);
                           const stampFull = activityStampFull(item.date);
-                          const isLast = i === allItems.length - 1;
+                          const isLast = i === shown.length - 1;
 
                           if (item.kind === 'activity') {
                             const act = item.act;
@@ -13747,6 +13751,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             );
                           }
                         })}
+                        {shown.length < allItems.length && (
+                          <button type="button" onClick={() => setActivityMore(true)}
+                            style={{ marginTop: 4, minHeight: 44, border: '1px solid var(--k-e5e7eb)', borderRadius: 10, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                            Show {allItems.length - shown.length} older
+                          </button>
+                        )}
                       </div>
                     );
                   })()}

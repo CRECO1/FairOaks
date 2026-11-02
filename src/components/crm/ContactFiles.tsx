@@ -68,7 +68,7 @@ export default function ContactFiles({ clientId, authToken, userId, isAdmin, sho
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={label}>Files{list.length ? ` (${list.length})` : ''}</div>
         <button type="button" onClick={() => setAdding(a => !a)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c9922c', fontSize: 12, fontWeight: 700, padding: 0 }}>
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c9922c', fontSize: 12, fontWeight: 700, padding: 0, ...(typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches ? { minHeight: 40, padding: '0 10px' } : {}) }}>
           {adding ? 'Done' : '＋ Add a file'}
         </button>
       </div>
