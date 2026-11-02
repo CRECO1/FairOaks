@@ -924,7 +924,12 @@ function GlanceStrip(p: { clientId: string; onOpenDeal: (id: string) => void }) 
   }, [p.clientId]);
   if (!g || (!g.deals.length && !g.tasks.length && !g.last)) return null;
   const stageStyle = (st: string | null): React.CSSProperties => (st === 'Lost' ? { background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)' } : st === 'Closed' ? { background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' } : { background: 'rgba(146,64,14,.12)', color: 'var(--k-92400e)' });
-  const due = (d: string | null) => { if (!d) return ''; const days = Math.floor((new Date(d.slice(0, 10) + 'T12:00:00').getTime() - Date.now()) / 86_400_000) + 1; return days < 0 ? `${-days}d overdue` : days === 0 ? 'due today' : days === 1 ? 'due tomorrow' : `due ${new Date(d.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`; };
+  const due = (d: string | null) => {
+    if (!d) return '';
+    const [y, mo, da] = d.slice(0, 10).split('-').map(Number), now = new Date();
+    const days = Math.round((Date.UTC(y, mo - 1, da) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 86_400_000);
+    return days < 0 ? `${-days}d overdue` : days === 0 ? 'due today' : days === 1 ? 'due tomorrow' : `due ${new Date(y, mo - 1, da).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  };
   return (
     <div style={{ flexBasis: '100%', display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12.5, color: 'var(--k-92400e)' }}>
       {g.deals.length > 0 && (
@@ -940,9 +945,9 @@ function GlanceStrip(p: { clientId: string; onOpenDeal: (id: string) => void }) 
         </div>
       )}
       {g.tasks.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
-          <span style={{ fontWeight: 700 }}>✓ Open</span>
-          {g.tasks.slice(0, 3).map(t => <span key={t.id} style={{ overflowWrap: 'anywhere' }}>{t.title}{t.due ? <span style={{ opacity: 0.75 }}> ({due(t.due)})</span> : null}</span>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, <span key={`s${i}`} aria-hidden>·</span>, x] : [x]), [])}
+        <div style={{ overflowWrap: 'anywhere' }}>
+          <span style={{ fontWeight: 700 }}>✓ Open</span>{' '}
+          {g.tasks.slice(0, 3).map((t, i) => <React.Fragment key={t.id}>{i > 0 && ' · '}{t.title}{t.due ? <span style={{ opacity: 0.75 }}> ({due(t.due)})</span> : null}</React.Fragment>)}
         </div>
       )}
       {g.last && (
