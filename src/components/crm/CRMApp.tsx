@@ -1188,14 +1188,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   useEffect(() => {
     if (!gmailConnected) { setGmailUnread(null); return; }
     let live = true;
-    const tick = () => { if (document.visibilityState !== 'visible') return; fetch('/api/gmail/mailbox?counts=1').then(r => r.json()).then(j => { if (live && j && j.connected) setGmailUnread(j.unreadInbox ?? 0); }).catch(() => {}); };
+    // Show last time's number straight away: until Gmail answers, the badge used to fall back to the CRM's own (much smaller) count and then jump.
+    try { const c = Number(localStorage.getItem('crm-gmail-unread')); if (Number.isFinite(c) && localStorage.getItem('crm-gmail-unread') !== null) setGmailUnread(prev => prev ?? c); } catch { /* ignore */ }
+    const tick = () => { if (document.visibilityState !== 'visible') return; fetch('/api/gmail/mailbox?counts=1').then(r => r.json()).then(j => { if (live && j && j.connected) { setGmailUnread(j.unreadInbox ?? 0); try { localStorage.setItem('crm-gmail-unread', String(j.unreadInbox ?? 0)); } catch { /* ignore */ } } }).catch(() => {}); };
     tick();
     const t = setInterval(tick, 3 * 60_000);
     window.addEventListener('focus', tick);
     window.addEventListener('crm-gmail-changed', tick); // the Emails page just marked something read / archived it
     return () => { live = false; clearInterval(t); window.removeEventListener('focus', tick); window.removeEventListener('crm-gmail-changed', tick); };
   }, [gmailConnected]);
-  const emailBadge = gmailUnread != null ? gmailUnread : inbox.unreadMine;
+  const emailBadge = gmailConnected ? (gmailUnread ?? 0) : inbox.unreadMine;
   // Anyone we know by email address → their deal (preferred) or contact card, for the live Gmail view.
   const contactIndex = useMemo(() => {
     const m = new Map<string, ContactMatch>();
