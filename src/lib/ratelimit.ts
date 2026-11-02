@@ -54,6 +54,8 @@ const LIMITS = {
   copilot:       { requests: 30, window: '10 m' },
   // Email AI help (summarize a thread / draft a reply) — signed-in only; one Claude call per click. 60 per IP per hour.
   'email-assist': { requests: 60, window: '1 h' },
+  // Inbox sort (one Claude call per click, up to 40 conversations) — 12 per IP per hour.
+  'email-triage': { requests: 12, window: '1 h' },
   // E-sign link — 120 per IP per minute. Generous on purpose: several signers
   // at one company share a NAT address, and each page view makes a handful of
   // calls. Used with failOpen, see rateLimitFailOpen below.

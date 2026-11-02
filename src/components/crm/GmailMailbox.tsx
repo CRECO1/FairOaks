@@ -413,6 +413,34 @@ export default function GmailMailbox(p: Props) {
   const [asThreads, setAsThreads] = useState(false); // Files chip: show conversations that have files instead of the file list
   const [noReply, setNoReply] = useState(false);
   const [waiting, setWaiting] = useState(false); // Inbox: a person/deal in the CRM wrote last and you haven't answered
+  // AI inbox sort: each conversation gets reply / fyi / junk (kept per conversation + latest message, so a new message re-sorts it).
+  const TRIAGE_KEY = 'crm-gmail-triage';
+  type Tri = { c: 'reply' | 'fyi' | 'junk'; why: string };
+  const [triage, setTriage] = useState<Map<string, Tri>>(() => { try { return new Map(Object.entries(JSON.parse(localStorage.getItem('crm-gmail-triage') ?? '{}') as Record<string, Tri>)); } catch { return new Map(); } });
+  const [sorting, setSorting] = useState(false);
+  const [triF, setTriF] = useState(false); // show only "needs a reply"
+  const triKey = (t: ThreadSummary) => `${t.id}:${t.date}`;
+  const sortInbox = async () => {
+    const todo = (threads ?? []).filter(t => !t.lastMine && !triage.has(triKey(t))).slice(0, 40);
+    if (!todo.length) { p.notify((threads ?? []).length ? 'Everything loaded is already sorted.' : 'Nothing to sort yet.'); return; }
+    setSorting(true);
+    try {
+      const r = await fetch('/api/crm/email-triage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ threads: todo.map(t => {
+        const a = otherOf(t), m = a.email ? p.contactFor(a.email) : null;
+        return { id: t.id, from: a.name ? `${a.name} <${a.email}>` : a.email, subject: t.subject, snippet: decodeSnippet(t.snippet), ageDays: ageDays(t.date), unread: t.unread, known: m ? [m.role || (m.kind === 'deal' ? 'Deal' : 'Contact'), m.label].filter(Boolean).join(' · ') : undefined };
+      }) }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { p.notify(j.error ?? 'Could not sort your inbox — try again.'); return; }
+      const byId = new Map(todo.map(t => [t.id, t] as const));
+      const next = new Map(triage);
+      for (const x of (j.results ?? []) as Array<{ id: string; c: Tri['c']; why: string }>) { const t = byId.get(x.id); if (t) next.set(triKey(t), { c: x.c, why: x.why }); }
+      setTriage(next);
+      try { localStorage.setItem(TRIAGE_KEY, JSON.stringify(Object.fromEntries([...next].slice(-400)))); } catch { /* ignore */ }
+      const n = (c: Tri['c']) => todo.filter(t => next.get(triKey(t))?.c === c).length;
+      p.notify(`Sorted ${todo.length}: ${n('reply')} need a reply, ${n('fyi')} FYI, ${n('junk')} likely junk`);
+    } catch { p.notify('Could not reach the assistant — try again.'); }
+    finally { setSorting(false); }
+  };
   const [trackF, setTrackF] = useState<'all' | 'opened' | 'unopened'>('all'); // Sent: did the recipient open it (CRM tracking)
   const [sugOpen, setSugOpen] = useState(false);
   const [hist, setHist] = useState<{ saved: string[]; recent: string[] }>({ saved: [], recent: [] });
@@ -428,10 +456,11 @@ export default function GmailMailbox(p: Props) {
     let list = threads ?? [];
     if (who !== 'all') list = list.filter(t => { const a = otherOf(t), m = a.email ? p.contactFor(a.email) : null; return who === 'deals' ? m?.kind === 'deal' : who === 'contacts' ? !!m : !m; });
     if (noReply) list = list.filter(t => t.lastMine && ageDays(t.date) >= 3);
+    if (triF) list = list.filter(t => triage.get(triKey(t))?.c === 'reply');
     if (waiting) list = list.filter(t => { const a = otherOf(t); return !t.lastMine && ageDays(t.date) >= 1 && ageDays(t.date) <= 30 && !!(a.email && p.contactFor(a.email)); });
     if (p.box === 'sent' && trackF !== 'all') list = list.filter(t => { const tr = tracking.get(t.id); return trackF === 'opened' ? !!tr?.opened : !!tr?.tracked && !tr.opened; });
     return list;
-  }, [threads, who, noReply, waiting, trackF, tracking, otherOf, p]);
+  }, [threads, who, noReply, waiting, triF, triage, trackF, tracking, otherOf, p]);
 
   // Bulk select: tick several conversations (shift-click for a range), then one action for all of them.
   const [sel, setSel] = useState<Set<string>>(() => new Set());
@@ -580,6 +609,15 @@ export default function GmailMailbox(p: Props) {
         <button onClick={() => setWho(v => (v === 'deals' ? 'all' : 'deals'))} aria-pressed={who === 'deals'} title="People with a deal (of what is loaded)" style={chip(who === 'deals')}>💼 Deals</button>
         <button onClick={() => setWho(v => (v === 'contacts' ? 'all' : 'contacts'))} aria-pressed={who === 'contacts'} title="Anyone who is in your CRM (of what is loaded)" style={chip(who === 'contacts')}>👤 Contacts</button>
         <button onClick={() => setWho(v => (v === 'other' ? 'all' : 'other'))} aria-pressed={who === 'other'} title="People who are NOT in your CRM — newsletters, notices, strangers (of what is loaded)" style={chip(who === 'other')}>📭 Not in CRM</button>
+        {p.box === 'inbox' && (() => {
+          const need = (threads ?? []).filter(t => triage.get(triKey(t))?.c === 'reply').length;
+          return (
+            <>
+              <button type="button" disabled={sorting || !threads?.length} onClick={() => void sortInbox()} title="Let the assistant sort what is loaded into: needs a reply, FYI, likely junk. It only labels — nothing is archived or changed." style={chip(false)}>{sorting ? '✨ Sorting…' : '✨ Sort inbox'}</button>
+              {need > 0 && <button type="button" onClick={() => setTriF(v => !v)} aria-pressed={triF} title="Conversations the assistant thinks are waiting on an answer from you" style={chip(triF)}>↩ Needs reply<span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{need}</span></button>}
+            </>
+          );
+        })()}
         {labels.length > 0 && (
           <select value={labelId} onChange={e => setLabelId(e.target.value)} aria-label="Show one Gmail label"
             style={{ height: p.isMobile ? 38 : 32, borderRadius: 999, border: `1px solid ${labelId ? '#111' : 'var(--k-e5e7eb)'}`, background: labelId ? '#111' : 'var(--k-fff)', color: labelId ? '#fff' : 'var(--k-374151)', fontSize: 13, fontWeight: 600, padding: '0 10px', fontFamily: "'DM Sans',sans-serif" }}>
@@ -687,6 +725,20 @@ export default function GmailMailbox(p: Props) {
           </div>
         );
       })()}
+      {p.box === 'inbox' && threads && threads.length > 0 && (() => {
+        const rows = threads.map(t => triage.get(triKey(t))).filter((x): x is Tri => !!x);
+        if (!rows.length) return null;
+        const c = (k: Tri['c']) => rows.filter(x => x.c === k).length, junkIds = threads.filter(t => triage.get(triKey(t))?.c === 'junk').map(t => t.id);
+        return (
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', margin: '0 2px 10px', fontSize: 12.5, color: 'var(--k-6b7280)' }}>
+            <span>✨ <b style={{ color: 'var(--k-92400e)' }}>{c('reply')}</b> need a reply</span>
+            <span><b style={{ color: 'var(--k-374151)' }}>{c('fyi')}</b> FYI</span>
+            <span><b style={{ color: 'var(--k-991b1b)' }}>{c('junk')}</b> likely junk</span>
+            {junkIds.length > 0 && canModify !== false && <button type="button" onClick={() => { setSel(new Set(junkIds)); setTriF(false); }} title="Tick every conversation marked likely junk — you then choose Archive or leave them" style={{ border: '1px solid var(--k-d1d5db)', background: 'var(--k-fff)', color: 'var(--k-374151)', borderRadius: 10, padding: '2px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Select likely junk</button>}
+            <button type="button" onClick={() => { setTriage(new Map()); setTriF(false); try { localStorage.removeItem(TRIAGE_KEY); } catch { /* ignore */ } }} style={{ border: 'none', background: 'none', color: 'var(--k-9ca3af)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>Clear</button>
+          </div>
+        );
+      })()}
       {threads === null ? <ListSkeleton />
       : !connected ? <Empty title="Gmail isn’t connected" sub="Connect your Google account (bottom of the sidebar) and your mail shows up here." />
       : err ? <Empty title="Couldn’t load your mail" sub={err} />
@@ -755,9 +807,12 @@ export default function GmailMailbox(p: Props) {
                     </div>
                     <div style={{ fontSize: 13.5, color: 'var(--k-111)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 500 }}>{t.subject}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decodeSnippet(t.snippet)}</div>
-                    {(match || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30)) && (
+                    {(match || triage.has(triKey(t)) || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30)) && (
                       <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
                         {match && <span style={{ color: 'var(--k-a06a12)' }}>{match.kind === 'deal' ? '💼 Deal' : `👤 ${match.role || 'Contact'}`} · {match.label}</span>}
+                        {(() => { const tri = p.box === 'inbox' ? triage.get(triKey(t)) : undefined; if (!tri) return null;
+                          const st = tri.c === 'reply' ? { color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)' } : tri.c === 'junk' ? { color: 'var(--k-991b1b)', background: 'var(--k-fef2f2)', border: '1px solid var(--k-fecaca)' } : { color: 'var(--k-6b7280)', background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)' };
+                          return <span title={`Assistant: ${tri.why || tri.c}`} style={{ ...st, borderRadius: 10, padding: '0 7px', fontWeight: 600 }}>{tri.c === 'reply' ? '↩ Needs reply' : tri.c === 'junk' ? '🗑 Likely junk' : 'FYI'}{tri.why ? <span style={{ fontWeight: 500, opacity: 0.8 }}> · {tri.why}</span> : null}</span>; })()}
                         {(t.labels ?? []).slice(0, 2).map(id => { const l = labels.find(x => x.id === id); return l ? <span key={id} style={{ background: l.bg ?? '#e5e7eb', color: l.fg ?? '#374151', borderRadius: 4, padding: '0 6px', fontWeight: 600, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name.split('/').pop()}</span> : null; })}
                         {(t.labels?.length ?? 0) > 2 && <span style={{ color: 'var(--k-9ca3af)' }}>+{(t.labels?.length ?? 0) - 2}</span>}
                         {p.box === 'inbox' && !t.lastMine && match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30 && <span title="They wrote last and you haven't answered" style={{ color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', borderRadius: 10, padding: '0 7px' }}>↩ Waiting on you · {ageDays(t.date)}d</span>}
