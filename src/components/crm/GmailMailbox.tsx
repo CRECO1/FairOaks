@@ -269,8 +269,36 @@ export default function GmailMailbox(p: Props) {
       } catch { /* try again next time */ }
     };
     const t = setInterval(tick, 2 * 60_000);
-    return () => clearInterval(t);
+    // Coming back to the app (a phone is backgrounded all day) checks at once instead of waiting out the timer.
+    const back = () => { if (document.visibilityState === 'visible') void tick(); };
+    document.addEventListener('visibilitychange', back); window.addEventListener('pageshow', back);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', back); window.removeEventListener('pageshow', back); };
   }, [build]);
+
+  // Phones: pull the list down from the top to refresh it (the home-screen app has no browser pull-to-refresh).
+  const [pull, setPull] = useState(0);
+  const refreshRef = useRef(refresh); refreshRef.current = refresh;
+  useEffect(() => {
+    if (!p.isMobile) return;
+    let y0 = 0, scroller: HTMLElement | null = null, live = false, dist = 0;
+    const scrollerOf = (el: HTMLElement | null) => { for (let n = el; n; n = n.parentElement) { const oy = getComputedStyle(n).overflowY; if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n; } return document.scrollingElement as HTMLElement | null; };
+    const start = (e: TouchEvent) => {
+      const el = e.target as HTMLElement | null; dist = 0; live = false;
+      if (e.touches.length !== 1 || !el?.closest?.('.gm-list')) return;
+      scroller = scrollerOf(el); if (!scroller || scroller.scrollTop > 0) return;
+      y0 = e.touches[0].clientY; live = true;
+    };
+    const move = (e: TouchEvent) => {
+      if (!live) return;
+      const dy = e.touches[0].clientY - y0;
+      if (dy <= 0 || (scroller && scroller.scrollTop > 0)) { dist = 0; setPull(0); return; }
+      dist = dy; setPull(Math.min(dy, 110));
+    };
+    const end = () => { if (live && dist > 80) void refreshRef.current(); live = false; dist = 0; setPull(0); };
+    document.addEventListener('touchstart', start, { passive: true }); document.addEventListener('touchmove', move, { passive: true });
+    document.addEventListener('touchend', end); document.addEventListener('touchcancel', end);
+    return () => { document.removeEventListener('touchstart', start); document.removeEventListener('touchmove', move); document.removeEventListener('touchend', end); document.removeEventListener('touchcancel', end); };
+  }, [p.isMobile]);
 
   const [tracking, setTracking] = useState<Map<string, Track>>(() => new Map());
   useEffect(() => {
@@ -714,7 +742,7 @@ export default function GmailMailbox(p: Props) {
       : err ? <Empty title="Couldn’t load your mail" sub={err} />
       : visible.length === 0 ? <Empty title={term || contactsOnly || filter !== 'all' ? 'Nothing matches' : p.box === 'inbox' ? 'You’re all caught up' : 'Nothing here yet'} sub={contactsOnly && threads.length ? 'None of the loaded conversations are with people in your CRM — try “Load older mail”.' : term ? 'Try different words.' : 'Nothing to show.'} />
       : (
-        <div className={sel.size ? 'gm-sel' : undefined} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
+        <div className={`gm-list${sel.size ? ' gm-sel' : ''}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
           {visible.map((t, i) => {
             const a = otherOf(t);
             const name = a.name || a.email || '(unknown)';
@@ -870,7 +898,12 @@ export default function GmailMailbox(p: Props) {
     <GmailFiles box={p.box} isMobile={p.isMobile} account={account} q={term} notify={p.notify} onShowThreads={() => setAsThreads(true)}
       onOpenThread={f => openThread({ id: f.threadId, subject: f.subject, snippet: '', from: f.from, to: '', date: f.date, unread: false, count: 1, files: true, starred: false, lastMine: false, labels: [] })} />
   ) : list;
-  if (!wide) return <div>{toolbar}{body}{toastEl}{helpEl}</div>;
+  const pullEl = p.isMobile && (pull > 16 || refreshing) ? (
+    <div role="status" aria-live="polite" style={{ position: 'fixed', top: 'calc(64px + env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: '#111', color: '#fff', borderRadius: 999, padding: '7px 16px', fontSize: 13, fontWeight: 600, boxShadow: '0 4px 14px rgba(0,0,0,.25)', opacity: refreshing ? 1 : Math.min(1, pull / 80) }}>
+      {refreshing ? 'Refreshing…' : pull > 80 ? '↓ Release to refresh' : '↓ Pull to refresh'}
+    </div>
+  ) : null;
+  if (!wide) return <div>{toolbar}{body}{toastEl}{helpEl}{pullEl}</div>;
 
   // Two panes: each scrolls on its own, like Gmail.
   const paneH = 'calc(100vh - 250px)';
