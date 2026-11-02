@@ -1243,6 +1243,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { live = false; clearInterval(t); window.removeEventListener('focus', tick); window.removeEventListener('crm-gmail-changed', tick); };
   }, [gmailConnected]);
   const emailBadge = gmailConnected ? (gmailUnread ?? 0) : inbox.unreadMine;
+  // The home-screen icon of the installed app shows the unread count (iOS 16.4+ / Android / desktop PWAs; a no-op elsewhere).
+  useEffect(() => {
+    const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+    try { void (emailBadge > 0 ? nav.setAppBadge?.(Math.min(emailBadge, 9999)) : nav.clearAppBadge?.())?.catch(() => {}); } catch { /* unsupported */ }
+  }, [emailBadge]);
   // Anyone we know by email address → their deal (preferred) or contact card, for the live Gmail view.
   const contactIndex = useMemo(() => {
     const m = new Map<string, ContactMatch>();

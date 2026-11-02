@@ -77,6 +77,7 @@ function AddressField({ value, onChange, placeholder, autoFocus, leading, sugges
   const q = draft.trim();
   const sugg = focused && suggest && q.length >= 1 ? suggest(q).filter(s => !chips.some(c => c.toLowerCase() === s.email.toLowerCase())).slice(0, 6) : [];
   const bad = q.length > 0 && !ADDR_VALID.test(q) && sugg.length === 0;
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 768; // phones: the field is squeezed beside Cc/Bcc, so stack name over address
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, padding: '6px 0' }}>
@@ -119,9 +120,9 @@ function AddressField({ value, onChange, placeholder, autoFocus, leading, sugges
               // mousedown (not click) so the input doesn't blur — and commit a half-typed draft — first
               onMouseDown={e => { e.preventDefault(); addChip(s.email); }}
               onMouseEnter={() => setSel(i)}
-              style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '9px 12px', minHeight: 40, cursor: 'pointer', background: i === sel ? 'var(--k-fdf6e8)' : 'transparent' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', whiteSpace: 'nowrap' }}>{s.name}</span>
-              <span style={{ fontSize: 13, color: 'var(--k-6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.email}</span>
+              style={{ display: 'flex', ...(narrow ? { flexDirection: 'column' as const, alignItems: 'flex-start', gap: 1, padding: '8px 12px', minHeight: 48, justifyContent: 'center' } : { alignItems: 'baseline', gap: 8, padding: '9px 12px', minHeight: 40 }), cursor: 'pointer', background: i === sel ? 'var(--k-fdf6e8)' : 'transparent' }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', whiteSpace: 'nowrap', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+              <span style={{ fontSize: 13, color: 'var(--k-6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{s.email}</span>
             </div>
           ))}
         </div>
