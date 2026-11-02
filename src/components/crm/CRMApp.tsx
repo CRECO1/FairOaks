@@ -13124,8 +13124,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     const missing = [!c.email && 'Email', !c.phone && 'Phone', !c.cell_phone && 'Cell', (c.type === 'Agent' || c.type === 'Broker') && !c.brokerage && 'Brokerage', (c.type === 'Agent' || c.type === 'Broker') && !c.license && 'License #'].filter(Boolean) as string[];
                     return missing.length ? <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span>Not on file: {missing.join(' · ')}</span><button onClick={() => openEditClient(c)} style={{ background: 'none', border: 'none', color: '#c9922c', fontSize: 12, fontWeight: 700, padding: '10px 4px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Add</button></div> : null;
                   })()}
-                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    {(!isMobile || c.email) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px', gridColumn: (c.extra_emails?.length > 0) ? '1/-1' : undefined }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? 8 : 12 }}>
+                    {(!isMobile || c.email) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px', gridColumn: (isMobile || c.extra_emails?.length > 0) ? '1/-1' : undefined }}>
                       <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 6 }}>
                         Email{(c.extra_emails?.length ?? 0) > 0 ? 's' : ''}
                       </div>
@@ -13141,20 +13141,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
                     </div>}
-                    {(!isMobile || c.phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px' }}>
+                    {(!isMobile || c.phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px' }}>
                       <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Phone</div>
                       {c.phone ? (
                         <a href={`tel:${c.phone}`} style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)', textDecoration: 'none' }}>{phoneDisp(c.phone)}</a>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
                     </div>}
-                    {(!isMobile || c.cell_phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px' }}>
+                    {(!isMobile || c.cell_phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px' }}>
                       <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Cell Phone</div>
                       {c.cell_phone ? (
                         <a href={`tel:${c.cell_phone}`} style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)', textDecoration: 'none' }}>{phoneDisp(c.cell_phone)}</a>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
                     </div>}
                     {(c.address || c.city || c.state || c.zip) && (
-                      <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px', gridColumn: '1/-1' }}>
+                      <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px', gridColumn: '1/-1' }}>
                         <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Address</div>
                         <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)' }}>
                           {c.address && <div>{c.address}</div>}
@@ -13163,7 +13163,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     )}
                     {(c.brokerage || (!isMobile && (c.type === 'Agent' || c.type === 'Broker'))) && (
-                      <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: '12px 14px' }}>
+                      <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px' }}>
                         <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Brokerage</div>
                         <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)' }}>{c.brokerage || <span style={{ color: '#d1d5db' }}>Not provided</span>}</div>
                       </div>
