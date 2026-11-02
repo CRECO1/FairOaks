@@ -209,6 +209,10 @@ export async function assertOwnsResource(
   // Restricted deals: visible only to the owner, assigned agents and super_admin (mirrors crm_deal_visible()).
   if (table === 'crm_deals' && row.is_restricted && ctx.role !== 'super_admin'
     && row.agent_id !== ctx.userId && !((row.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return null;
+  // An ordinary agent sees a deal only if they are on it (owner or added as an agent) — the same rule the database
+  // applies to crm_deals itself. Being in the same workspace is not enough to reach a colleague's deal, its files or its forms.
+  if (table === 'crm_deals' && !isAdminRole(ctx.role)
+    && row.agent_id !== ctx.userId && !((row.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return null;
   if (isAdminRole(ctx.role)) return row;
   if (row.business_unit !== ctx.businessUnit) return null;
   if (requireOwner && !ownerColumns.some(col => row[col] === ctx.userId)) return null;
@@ -217,13 +221,18 @@ export async function assertOwnsResource(
 
 
 /**
- * Restricted ("private") deals the caller may NOT see: flagged is_restricted and the caller is
- * neither the owning agent nor in assigned_agent_ids. super_admin sees everything. Server routes use
- * the service key (bypassing RLS), so each deal-linked list must apply this itself.
+ * Deals the caller may NOT see, so server routes (which use the service key and bypass RLS) can leave their rows out.
+ *  - super_admin: none.
+ *  - admin: Restricted ("private") deals that are not theirs.
+ *  - agent: every deal they are not on (not the owner, not in assigned_agent_ids) — Restricted or not. Zack's rule: other
+ *    agents do not see a deal unless they are added to it. Mirrors the crm_deals SELECT policy.
+ * NOTE for agents this list grows with the number of deals held by everyone else; excludeHiddenDeals puts it in a URL, so
+ * if the company ever holds several hundred deals, switch agent lists to an allow-list (deal_id in <their deals>).
  */
 export async function hiddenDealIds(ctx: CrmContext): Promise<string[]> {
   if (ctx.role === 'super_admin') return [];
-  const { data } = await adminClient().from('crm_deals').select('id, agent_id, assigned_agent_ids').eq('is_restricted', true);
+  const q = adminClient().from('crm_deals').select('id, agent_id, assigned_agent_ids');
+  const { data } = await (isAdminRole(ctx.role) ? q.eq('is_restricted', true) : q).limit(5000);
   return (data ?? [])
     .filter(d => d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId))
     .map(d => d.id as string);
