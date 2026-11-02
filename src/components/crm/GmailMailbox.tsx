@@ -1049,9 +1049,10 @@ function ThreadReader(p: {
   const addInvite = async (m: LiveMessage, a: { part: string; name: string; mime: string }) => {
     setBusy(`${m.id}:${a.part}`); setErr('');
     try {
-      const url = await fetchFile(m, a);
-      const text = await (await fetch(url)).text(); URL.revokeObjectURL(url);
-      const ev = parseIcs(text);
+      // Read the text straight off the response — the page's security policy does not allow fetching a blob: address.
+      const r0 = await fetch(`/api/gmail/mailbox-attachment?messageId=${m.id}&part=${encodeURIComponent(a.part)}${p.account ? `&account=${encodeURIComponent(p.account)}` : ''}`);
+      if (!r0.ok) throw new Error(String(r0.status));
+      const ev = parseIcs(await r0.text());
       if (!ev) { p.notify('Could not read a meeting out of that invite.'); return; }
       if (ev.method === 'CANCEL') { p.notify(`“${ev.title}” was cancelled by the organizer — nothing to add.`); return; }
       const ok = await confirmDialog(`Add “${ev.title}” — ${describeWhen(ev)}${ev.location ? ` · ${ev.location}` : ''} — to your Google Calendar?${ev.recurrence ? ' It repeats, so the whole series is added.' : ''}`, { confirmLabel: 'Add to calendar' });
