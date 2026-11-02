@@ -113,7 +113,7 @@ interface ActionPlan { id: string; created_by: string; name: string; description
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; representation_side?: string | null; is_restricted?: boolean; created_at: string; last_touch: string; emails?: DealEmail[]; }
-interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; gmail_message_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; bcc_emails?: string | null; email_at?: string | null; created_at?: string; attachments?: Array<{ name: string; size: number; mime: string; path: string | null }> | null; }
+interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; body_html?: string | null; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; gmail_message_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; bcc_emails?: string | null; email_at?: string | null; created_at?: string; attachments?: Array<{ name: string; size: number; mime: string; path: string | null }> | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
@@ -534,7 +534,9 @@ function useMessageHtml(threadId?: string | null, messageId?: string | null): st
 function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onReplyAll, dealId, onNote }: { e: DealEmail; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void; onReplyAll?: () => void; dealId?: string; onNote?: (msg: string) => void }) {
   const [open, setOpen] = useState(defaultOpen);
   const [plain, setPlain] = useState(false);
-  const html = useMessageHtml(open ? e.gmail_thread_id : null, e.gmail_message_id);
+  // The HTML saved with the email (everyone sees it); older rows fall back to the viewer's own Gmail, then to plain text.
+  const liveHtml = useMessageHtml(open && !e.body_html ? e.gmail_thread_id : null, e.gmail_message_id);
+  const html = e.body_html || liveHtml;
   const bodyText = cleanEmailBody(e.body ?? '');
   const bg = striped ? 'var(--k-fafafa)' : 'var(--k-fff)';
   const border = last ? 'none' : '1px solid var(--k-f0f0f0)';

@@ -3,7 +3,7 @@ import { getCrmContext, assertOwnsResource, unauthorized, forbidden } from '@/li
 import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { chicagoToday } from '@/lib/chicago-time';
-import { extractEmailText } from '@/lib/gmail-body';
+import { extractEmailText, extractEmailHtml } from '@/lib/gmail-body';
 import { storeGmailAttachments } from '@/lib/email-attachments';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -289,6 +289,7 @@ export async function POST(req: NextRequest) {
           ...(get('Bcc').trim() ? { bcc_emails: get('Bcc').trim() } : {}),
           subject,
           body: cleanBody(body).slice(0, 4000),
+          ...(extractEmailHtml(msgData.payload) ? { body_html: extractEmailHtml(msgData.payload) } : {}),
           email_date: emailDate,
           ...(Number(msgData.internalDate) ? { email_at: new Date(Number(msgData.internalDate)).toISOString() } : {}),
           gmail_thread_id: msgData.threadId ?? null,

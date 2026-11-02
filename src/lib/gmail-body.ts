@@ -20,3 +20,16 @@ export function extractEmailText(payload: any): string {
   if (payload.body?.data) { const raw = b64(payload.body.data); return /<[a-z][\s\S]*>/i.test(raw) ? htmlToText(raw) : raw; }
   return '';
 }
+
+/**
+ * The message's HTML part as it was sent, for showing the email the way the recipient saw it. Empty for plain-text-only
+ * messages; capped so one huge newsletter can't bloat the row. The reader sanitizes it and blocks trackers before display.
+ */
+export function extractEmailHtml(payload: any): string {
+  const walk = (p: any): string => {
+    if (p?.mimeType === 'text/html' && p.body?.data) return b64(p.body.data);
+    for (const part of p?.parts ?? []) { const got = walk(part); if (got) return got; }
+    return '';
+  };
+  return walk(payload).slice(0, 200_000);
+}

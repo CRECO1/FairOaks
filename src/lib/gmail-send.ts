@@ -361,6 +361,8 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
           to_email: opts.toHeader,
           subject: finalSubject,
           body: plainBody,
+          // The email exactly as sent (no tracking pixel) so every teammate who can open this row sees what the recipient got.
+          body_html: `${opts.note ?? ''}${outBody}`.slice(0, 200_000),
           email_date: emailDate,
           email_at: new Date().toISOString(),
           gmail_message_id: sendData.id,

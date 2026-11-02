@@ -10,7 +10,7 @@
  * thread), which is filed with it so the whole team sees it and can reply all.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { extractEmailText } from '@/lib/gmail-body';
+import { extractEmailText, extractEmailHtml } from '@/lib/gmail-body';
 import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { chicagoToday } from '@/lib/chicago-time';
@@ -222,6 +222,7 @@ export async function GET(req: NextRequest) {
           ...(hdr(msg, 'Cc').trim() ? { cc_emails: hdr(msg, 'Cc').trim() } : {}),
           subject,
           body: cleanBody(extractBody(msg.payload)).slice(0, 4000),
+          ...(extractEmailHtml(msg.payload) ? { body_html: extractEmailHtml(msg.payload) } : {}),
           email_date: chicagoToday(dateStr ? new Date(dateStr) : new Date()),
           ...(Number(msg.internalDate) ? { email_at: new Date(Number(msg.internalDate)).toISOString() } : {}),
           gmail_thread_id: threadId,
