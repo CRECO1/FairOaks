@@ -13055,7 +13055,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ background: bg, padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color, borderBottom: `1px solid ${color}22` }}>
                       <span>🟢 {openDeals.length > 1 ? `${openDeals.length} active deals — ` : 'Active — '}{activeDeal.type}</span>
                       <span style={{ background: `${color}22`, color, padding: '1px 8px', borderRadius: 10, fontSize: 12 }}>{activeDeal.stage}</span>
-                      <button onClick={() => { setActiveClient(null); if (openDeals.length > 1) setPage('deals'); else openDeal(activeDeal); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 12, color, cursor: 'pointer', fontWeight: 700, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>{openDeals.length > 1 ? 'View deals →' : 'View deal →'}</button>
+                      <button onClick={() => { setActiveClient(null); if (openDeals.length > 1) setPage('deals'); else openDeal(activeDeal); }} style={{ whiteSpace: 'nowrap', flexShrink: 0, marginLeft: 'auto', background: 'none', border: 'none', fontSize: 12, color, cursor: 'pointer', fontWeight: 700, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>{openDeals.length > 1 ? 'View deals →' : 'View deal →'}</button>
                     </div>
                   );
                 }
@@ -13152,13 +13152,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
                     </div>}
-                    {(!isMobile || c.phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px' }}>
+                    {(!isMobile || c.phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px', gridColumn: isMobile && !c.cell_phone ? '1/-1' : undefined }}>
                       <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Phone</div>
                       {c.phone ? (
                         <a href={`tel:${c.phone}`} style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)', textDecoration: 'none', ...(isMobile ? { display: 'inline-block', padding: '8px 0' } : {}) }}>{phoneDisp(c.phone)}</a>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
                     </div>}
-                    {(!isMobile || c.cell_phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px' }}>
+                    {(!isMobile || c.cell_phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px', gridColumn: isMobile && !c.phone ? '1/-1' : undefined }}>
                       <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Cell Phone</div>
                       {c.cell_phone ? (
                         <a href={`tel:${c.cell_phone}`} style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)', textDecoration: 'none', ...(isMobile ? { display: 'inline-block', padding: '8px 0' } : {}) }}>{phoneDisp(c.cell_phone)}</a>
