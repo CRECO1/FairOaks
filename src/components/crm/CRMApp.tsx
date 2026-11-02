@@ -13154,13 +13154,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {(!isMobile || c.phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px' }}>
                       <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Phone</div>
                       {c.phone ? (
-                        <a href={`tel:${c.phone}`} style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)', textDecoration: 'none' }}>{phoneDisp(c.phone)}</a>
+                        <a href={`tel:${c.phone}`} style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)', textDecoration: 'none', ...(isMobile ? { display: 'inline-block', padding: '8px 0' } : {}) }}>{phoneDisp(c.phone)}</a>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
                     </div>}
                     {(!isMobile || c.cell_phone) && <div style={{ background: 'var(--k-f9fafb)', borderRadius: 8, padding: isMobile ? '9px 12px' : '12px 14px' }}>
                       <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginBottom: 3 }}>Cell Phone</div>
                       {c.cell_phone ? (
-                        <a href={`tel:${c.cell_phone}`} style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)', textDecoration: 'none' }}>{phoneDisp(c.cell_phone)}</a>
+                        <a href={`tel:${c.cell_phone}`} style={{ fontSize: 14, fontWeight: 500, color: 'var(--k-374151)', textDecoration: 'none', ...(isMobile ? { display: 'inline-block', padding: '8px 0' } : {}) }}>{phoneDisp(c.cell_phone)}</a>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
                     </div>}
                     {(c.address || c.city || c.state || c.zip) && (
