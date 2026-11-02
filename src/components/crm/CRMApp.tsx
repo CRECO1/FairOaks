@@ -33,6 +33,7 @@ import { chicagoFormat } from '@/lib/chicago-time';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import ContactFiles from '@/components/crm/ContactFiles';
 import ContactJumpBar from '@/components/crm/ContactJumpBar';
+import PhoneFold from '@/components/crm/PhoneFold';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
 import DeletedItems from '@/components/crm/DeletedItems';
@@ -13265,6 +13266,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {/* Email Campaigns — which marketing campaigns this contact is enrolled in,
                     so you can tell at a glance whether they're on our email marketing. The
                     activity timeline above shows the individual sends. */}
+                <PhoneFold label="Email Campaigns" hint={clientEnrollments.length ? `${clientEnrollments.filter(e => e.active !== false).length} active` : 'none'} isMobile={isMobile}>
                 <div style={{ marginBottom: 22 }}>
                   <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 8 }}>
                     Email Campaigns{clientEnrollments.length ? ` (${clientEnrollments.filter(e => e.active !== false).length} active)` : ''}
@@ -13290,15 +13292,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   )}
                 </div>
+                </PhoneFold>
 
                 {/* Website activity — everything this person has done on our sites (first touch, visits,
                     pages, phone/email taps, downloads, time + scroll), from the first-party tracker.
                     Account owner only (visitor-privacy.ts); the API 403s anyone else. */}
                 {isSuperAdmin && (
+                  <PhoneFold label="Website activity" isMobile={isMobile}>
                   <div style={{ marginBottom: 22 }}>
                     <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 8 }}>Website activity</div>
                     <SiteActivity clientId={c.id} authToken={session?.access_token ?? null} compact />
                   </div>
+                  </PhoneFold>
                 )}
 
                 {/* Files — anything uploaded onto this person, plus the files on their deals' Docs tabs. */}
@@ -13386,6 +13391,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
 
                 {/* Tagged Agents */}
+                <PhoneFold label="Tagged Agents" hint={taggedAgents.length ? taggedAgents.map(a => a.first_name).join(', ') : 'none'} isMobile={isMobile}>
                 <div>
                   <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 8 }}>Tagged Agents</div>
                   {taggedAgents.length === 0 ? (
@@ -13403,6 +13409,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   )}
                 </div>
+                </PhoneFold>
 
                 {/* Deals — a contact can carry any number of deals */}
                 <div>
