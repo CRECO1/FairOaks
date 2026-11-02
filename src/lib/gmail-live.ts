@@ -89,8 +89,23 @@ export async function readThread(token: string, id: string): Promise<{ ok: false
   if (!r.ok) return { ok: false, status: r.status };
   const msgs: GMsg[] = (r.json.messages ?? []).filter((m: GMsg) => !m.labelIds?.includes('DRAFT'));
   const out: LiveMessage[] = [];
-  for (const m of msgs) {
-    const html = await renderHtml(token, m);
+  // Embedded pictures cost one Gmail call each and bloat the response (a long thread with a logo in every message once
+  // took 12 s and 1.4 MB, which is a bad wait on a phone): embed only a small budget per thread, newest messages first,
+  // and render the messages side by side instead of one after another.
+  let budget = 500_000;
+  const plan = new Map<string, GPart[]>();
+  for (const m of [...msgs].reverse()) {
+    const picks: GPart[] = [];
+    for (const p of inlineImages(m.payload)) {
+      const sz = p.body?.size ?? 0;
+      if (sz <= 250_000 && sz <= budget && picks.length < 8) { picks.push(p); budget -= sz; }
+    }
+    plan.set(m.id, picks);
+  }
+  const htmls = await pool(msgs, 5, m => renderHtml(token, m, plan.get(m.id) ?? []));
+  for (let mi = 0; mi < msgs.length; mi++) {
+    const m = msgs[mi];
+    const html = htmls[mi];
     const atts = collectAttachmentParts(m.payload).map(p => ({ part: p.partId ?? '', name: p.filename ?? 'attachment', size: p.body?.size ?? 0, mime: p.mimeType ?? 'application/octet-stream' }));
     out.push({
       id: m.id, from: hdr(m, 'From'), to: hdr(m, 'To'), cc: hdr(m, 'Cc'), subject: hdr(m, 'Subject') || '(no subject)',
@@ -117,7 +132,7 @@ function inlineImages(p: GPart | undefined, out: GPart[] = []): GPart[] {
   return out;
 }
 
-async function renderHtml(token: string, m: GMsg): Promise<string> {
+async function renderHtml(token: string, m: GMsg, imgs: GPart[]): Promise<string> {
   const htmlPart = findPart(m.payload, 'text/html');
   if (!htmlPart) {
     const plain = findPart(m.payload, 'text/plain') ?? (m.payload?.body?.data ? m.payload : null);
@@ -125,15 +140,15 @@ async function renderHtml(token: string, m: GMsg): Promise<string> {
     return `<div style="white-space:pre-wrap">${esc(text.replace(/\r\n?/g, '\n'))}</div>`;
   }
   let raw = b64(htmlPart.body!.data!).toString('utf-8');
-  // Pictures embedded in the message (cid:) → small data URIs so they show; capped so a big newsletter stays fast.
-  const imgs = inlineImages(m.payload).filter(p => (p.body?.size ?? 0) <= 250_000).slice(0, 8);
+  // Pictures embedded in the message (cid:) → small data URIs so they show (which ones is decided per thread, see readThread).
   await pool(imgs, 4, async p => {
     const cid = (p.headers!.find(h => h.name.toLowerCase() === 'content-id')!.value).replace(/^<|>$/g, '');
     if (!raw.includes(`cid:${cid}`)) return;
     const a = await g(token, `/messages/${m.id}/attachments/${p.body!.attachmentId}`);
     if (a.ok && a.json.data) raw = raw.split(`cid:${cid}`).join(`data:${p.mimeType};base64,${b64(a.json.data).toString('base64')}`);
   });
-  return raw;
+  // Any picture we didn't embed would show as a broken-image box, so drop those tags.
+  return raw.replace(/<img\b[^>]*\bsrc\s*=\s*["']cid:[^"']*["'][^>]*>/gi, '');
 }
 
 /** The bytes of one attachment of one message, or null. Identified by partId, like the rest of the CRM. */

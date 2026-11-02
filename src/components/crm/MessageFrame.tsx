@@ -61,8 +61,14 @@ export function MessageFrame({ html }: { html: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [h, setH] = useState(120);
   const fit = useCallback(() => {
-    const d = ref.current?.contentDocument;
-    if (d?.documentElement) setH(Math.min(30000, Math.max(40, d.documentElement.scrollHeight)));
+    const f = ref.current, d = f?.contentDocument;
+    if (!f || !d?.documentElement || !d.body) return;
+    // A wide email (a table-based signature, a fixed 600px newsletter) would be cut off at the right edge on a phone and
+    // this frame can't scroll sideways, so shrink it to fit — what Gmail's phone app does — down to a still-readable 50%.
+    d.body.style.zoom = '1';
+    const avail = f.clientWidth, need = d.documentElement.scrollWidth;
+    if (avail > 0 && need > avail + 2) d.body.style.zoom = String(Math.max(0.5, avail / need));
+    setH(Math.min(30000, Math.max(40, d.documentElement.scrollHeight)));
   }, []);
   // No scripts or event handlers survive; links open in a new tab, never inside the frame.
   const safe = useMemo(() => collapseQuotes(sanitizeHtml(stripTrackers(html)).replace(/<a\s/gi, '<a target="_blank" rel="noopener noreferrer" ')), [html]);

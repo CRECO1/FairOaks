@@ -1035,6 +1035,7 @@ function ThreadReader(p: {
   const [filed, setFiled] = useState<Set<string>>(() => new Set());
   const [savedAtt, setSavedAtt] = useState<Set<string>>(() => new Set());
   const [remindOpen, setRemindOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false); // phones: the contact's phone, tags and recent activity sit behind "Details"
   const [shareOpen, setShareOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -1353,7 +1354,10 @@ function ThreadReader(p: {
             style={{ flex: '1 1 200px', minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, color: 'var(--k-92400e)', fontWeight: 700, fontFamily: "'DM Sans',sans-serif", overflowWrap: 'anywhere' }}>
             {threadTarget.kind === 'deal' ? '💼' : '👤'} {threadTarget.label}{threadTarget.sub ? <span style={{ fontWeight: 500 }}> · {threadTarget.sub}</span> : null} →
           </button>
-          {(threadTarget.phone || threadTarget.company || threadTarget.role || threadTarget.touched || (threadTarget.tags && threadTarget.tags.length > 0)) && (
+          {p.isMobile && (
+            <button type="button" onClick={() => setDetailsOpen(v => !v)} aria-expanded={detailsOpen} style={{ ...btn, flexShrink: 0 }}>{detailsOpen ? 'Hide ▴' : 'Details ▾'}</button>
+          )}
+          {(!p.isMobile || detailsOpen) && (threadTarget.phone || threadTarget.company || threadTarget.role || threadTarget.touched || (threadTarget.tags && threadTarget.tags.length > 0)) && (
             <div style={{ flexBasis: '100%', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', fontSize: 12.5, color: 'var(--k-92400e)' }}>
               {threadTarget.phone && <a href={`tel:${threadTarget.phone.replace(/[^\d+]/g, '')}`} style={{ color: 'inherit', fontWeight: 700, textDecoration: 'none' }}>📞 {threadTarget.phone}</a>}
               {threadTarget.company && <span>🏢 {threadTarget.company}</span>}
@@ -1362,7 +1366,7 @@ function ThreadReader(p: {
               {(threadTarget.tags ?? []).map(tg => <span key={tg} style={{ background: 'rgba(146,64,14,.1)', borderRadius: 10, padding: '0 8px', fontWeight: 600 }}>{tg}</span>)}
             </div>
           )}
-          {threadTarget.kind === 'contact' && <GlanceStrip clientId={threadTarget.id} onOpenDeal={p.onOpenDeal} />}
+          {threadTarget.kind === 'contact' && (!p.isMobile || detailsOpen) && <GlanceStrip clientId={threadTarget.id} onOpenDeal={p.onOpenDeal} />}
           {p.teammates.length > 0 && (
             <div style={{ position: 'relative' }}>
               <button type="button" style={btn} disabled={sharing} onClick={() => setShareOpen(v => !v)} aria-haspopup="menu" aria-expanded={shareOpen} title="File this conversation on the card and notify a teammate">{sharing ? 'Sharing…' : '👥 Share'}</button>
