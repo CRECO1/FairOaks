@@ -29,6 +29,7 @@ import { agentTitle } from '@/lib/agent-title';
 import { recallView, rememberView, useRememberedSelection, useRememberedState } from '@/lib/view-memory';
 import { chicagoFormat } from '@/lib/chicago-time';
 import DealDocUpload from '@/components/crm/DealDocUpload';
+import ContactFiles from '@/components/crm/ContactFiles';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
 import DeletedItems from '@/components/crm/DeletedItems';
@@ -13219,6 +13220,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <SiteActivity clientId={c.id} authToken={session?.access_token ?? null} compact />
                   </div>
                 )}
+
+                {/* Files — anything uploaded onto this person, plus the files on their deals' Docs tabs. */}
+                <ContactFiles clientId={c.id} authToken={session?.access_token} userId={profile?.id}
+                  isAdmin={isSuperAdmin || profile?.role === 'admin'} showToast={showToast} onPreview={setPreviewFile} />
 
                 {/* Documents — leases and forms tied to this person, whether they were
                     filed on the contact or on one of their deals. */}

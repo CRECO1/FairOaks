@@ -24,8 +24,10 @@ const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
 
 export interface UploadedDealDoc { id: string; name: string }
 
-export default function DealDocUpload({ dealId, authToken, showToast, onUploaded }: {
-  dealId: string;
+// Also serves a contact's Files (pass `clientId`): same flow, /api/crm/client-docs.
+export default function DealDocUpload({ dealId, clientId, authToken, showToast, onUploaded }: {
+  dealId?: string;
+  clientId?: string;
   authToken?: string;
   showToast: (m: string) => void;
   onUploaded: (doc: UploadedDealDoc) => void;
@@ -34,6 +36,9 @@ export default function DealDocUpload({ dealId, authToken, showToast, onUploaded
   const [dragging, setDragging] = useState(false);
   const [touch, setTouch] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const endpoint = clientId ? '/api/crm/client-docs' : '/api/crm/docs';
+  const owner = clientId ? { clientId } : { dealId };
+  const noun = clientId ? 'contact' : 'deal';
   useEffect(() => { setTouch(window.matchMedia('(pointer: coarse)').matches); }, []);
 
   const headers = (json: boolean): Record<string, string> => ({
@@ -44,9 +49,9 @@ export default function DealDocUpload({ dealId, authToken, showToast, onUploaded
   // Returns an error message, { dup } when the deal already has this exact file, or null once the file is stored and recorded.
   async function uploadOne(file: File): Promise<string | { dup: string } | null> {
     if (file.size > MAX_BYTES) return `${file.name} is ${mb(file.size)} MB — the limit is 25 MB`;
-    const pre = await fetch('/api/crm/docs', {
+    const pre = await fetch(endpoint, {
       method: 'POST', headers: headers(true),
-      body: JSON.stringify({ action: 'presign', dealId, filename: file.name, file_size: file.size }),
+      body: JSON.stringify({ action: 'presign', ...owner, filename: file.name, file_size: file.size }),
     });
     const pj = await pre.json().catch(() => ({}));
     if (!pre.ok) return pj.error || `Couldn't start the upload (${pre.status})`;
@@ -57,12 +62,12 @@ export default function DealDocUpload({ dealId, authToken, showToast, onUploaded
       return `Storage refused ${file.name} (${put.status}${detail ? `: ${detail}` : ''})`;
     }
 
-    const conf = await fetch('/api/crm/docs', {
+    const conf = await fetch(endpoint, {
       method: 'POST', headers: headers(true),
-      body: JSON.stringify({ action: 'confirm', dealId, storagePath: pj.storagePath, filename: file.name }),
+      body: JSON.stringify({ action: 'confirm', ...owner, storagePath: pj.storagePath, filename: file.name }),
     });
     const cj = await conf.json().catch(() => ({}));
-    if (!conf.ok) return cj.error || `Couldn't save ${file.name} to the deal (${conf.status})`;
+    if (!conf.ok) return cj.error || `Couldn't save ${file.name} to the ${noun} (${conf.status})`;
     if (cj.duplicate) return { dup: cj.doc?.name ?? 'an existing file' };   // already attached: nothing was added
     onUploaded(cj.doc);
     return null;
@@ -76,7 +81,7 @@ export default function DealDocUpload({ dealId, authToken, showToast, onUploaded
       for (let i = 0; i < files.length; i++) {
         setStatus(files.length > 1 ? `Uploading ${i + 1} of ${files.length}…` : `Uploading ${files[i].name}…`);
         const err = await uploadOne(files[i]).catch(() => 'Upload failed — check your connection and try again');
-        if (err && typeof err === 'object') { skipped++; showToast(`${files[i].name} is already on this deal as “${err.dup}” — not added again`); }
+        if (err && typeof err === 'object') { skipped++; showToast(`${files[i].name} is already on this ${noun} as “${err.dup}” — not added again`); }
         else if (err) showToast(err); else ok++;
       }
       if (ok) showToast(ok === 1 && files.length === 1 ? `${files[0].name} uploaded ✓` : `${ok} of ${files.length - skipped} new files uploaded ✓`);
@@ -96,7 +101,7 @@ export default function DealDocUpload({ dealId, authToken, showToast, onUploaded
       style={{ display: 'block', position: 'relative', border: `2px dashed ${dragging ? '#c9922c' : '#d1d5db'}`, borderRadius: 10, padding: '26px 20px', minHeight: 44,
         textAlign: 'center', cursor: status ? 'default' : 'pointer', background: dragging ? '#fef9f0' : '#f9fafb', marginBottom: 16, transition: 'all .15s' }}>
       <input ref={inputRef} type="file" multiple accept={DEAL_DOC_ACCEPT} disabled={!!status}
-        aria-label="Upload files to this deal"
+        aria-label={`Upload files to this ${noun}`}
         onChange={e => uploadAll(e.target.files)}
         style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0, opacity: 0 }} />
       {status ? (
