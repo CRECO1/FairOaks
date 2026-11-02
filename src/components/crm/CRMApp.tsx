@@ -11366,9 +11366,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
       </div>
 
-      {/* ── Deal Modal ── */}
+      {/* ── Deal Modal ── (backdrop clicks deliberately don't close it: a stray click beside it, or a drag ending outside, lost the open deal; close with the X) */}
       {activeDeal && (
-        <div className="overlay" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }}>
+        <div className="overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: 12, borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1, minWidth: 0 }}>{activeDeal.client}</h3>
