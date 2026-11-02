@@ -563,7 +563,7 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div onClick={() => setOpen(false)} title="Fold this message" style={{ cursor: 'pointer', minWidth: 0 }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{emailDisplayName(e.from_email)}</span>
-              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: 5, wordBreak: 'break-all' }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
+              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', ...(isMobile ? { display: 'block' } : { marginLeft: 5 }), overflowWrap: 'anywhere' }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
