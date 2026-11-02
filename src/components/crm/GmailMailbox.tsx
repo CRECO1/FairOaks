@@ -586,7 +586,7 @@ export default function GmailMailbox(p: Props) {
 
   const chip = (on: boolean): React.CSSProperties => ({
     padding: p.isMobile ? '8px 14px' : '6px 12px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    border: `1px solid ${on ? '#111' : 'var(--k-e5e7eb)'}`, background: on ? '#111' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-374151)',
+    border: `1px solid ${on ? 'var(--chip-on-line, #111)' : 'var(--k-e5e7eb)'}`, background: on ? 'var(--chip-on-bg, #111)' : 'var(--k-fff)', color: on ? 'var(--chip-on-fg, #fff)' : 'var(--k-374151)',
     fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap',
   });
 
@@ -1333,10 +1333,22 @@ function ThreadReader(p: {
           onFull={text => p.onReply(last, p.t.id, false, p.account, text.trim() ? text.trim().split(/\n{2,}/).map(par => `<p>${par.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</p>`).join('') : undefined)} />
   ) : null;
 
+  // Archive / unread / star / label / trash. On a phone they sit beside ← Back (like Gmail's top bar) so the message starts sooner.
+  const changeGroup = p.canModify ? (
+    <div role="group" aria-label="Change this conversation" style={{ display: 'inline-flex', gap: 4, ...(p.isMobile ? { marginLeft: 'auto' } : {}) }}>
+                {p.box === 'inbox' && <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('archive')} title="Archive (e)" aria-label="Archive"><Ic n="archive" /></button>}
+                <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('unread')} title="Mark unread (Shift+U)" aria-label="Mark unread"><Ic n="mail" /></button>
+                <button type="button" style={{ ...btn, padding: '0 10px', color: p.t.starred ? '#c9922c' : undefined }} onClick={() => p.onAct(p.t.starred ? 'unstar' : 'star')} title={p.t.starred ? 'Remove star (s)' : 'Star (s)'} aria-label={p.t.starred ? 'Remove star' : 'Star'}><Ic n="star" fill={p.t.starred} /></button>
+                <LabelMenu labels={p.labels} current={new Set(p.t.labels ?? [])} onToggle={p.onLabel} onCreate={p.onCreateLabel} buttonStyle={{ ...btn, padding: '0 10px', display: 'inline-flex', alignItems: 'center' }} />
+                <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('trash')} title="Move to Trash (#)" aria-label="Move to Trash"><Ic n="trash" /></button>
+              </div>
+  ) : null;
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         {!p.embedded && <button type="button" onClick={p.onBack} title="Back to the list (Esc)" style={btn}>← Back</button>}
+        {p.isMobile && changeGroup}
         <h2 style={{ margin: 0, flex: '1 1 240px', minWidth: 0, fontSize: p.isMobile ? 18 : 21, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
           {p.t.subject}
           {msgs && msgs.length > 1 && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{msgs.length} messages</span>}
@@ -1394,15 +1406,7 @@ function ThreadReader(p: {
                 </>
               )}
             </div>
-            {p.canModify && (
-              <div role="group" aria-label="Change this conversation" style={{ display: 'inline-flex', gap: 4 }}>
-                {p.box === 'inbox' && <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('archive')} title="Archive (e)" aria-label="Archive"><Ic n="archive" /></button>}
-                <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('unread')} title="Mark unread (Shift+U)" aria-label="Mark unread"><Ic n="mail" /></button>
-                <button type="button" style={{ ...btn, padding: '0 10px', color: p.t.starred ? '#c9922c' : undefined }} onClick={() => p.onAct(p.t.starred ? 'unstar' : 'star')} title={p.t.starred ? 'Remove star (s)' : 'Star (s)'} aria-label={p.t.starred ? 'Remove star' : 'Star'}><Ic n="star" fill={p.t.starred} /></button>
-                <LabelMenu labels={p.labels} current={new Set(p.t.labels ?? [])} onToggle={p.onLabel} onCreate={p.onCreateLabel} buttonStyle={{ ...btn, padding: '0 10px', display: 'inline-flex', alignItems: 'center' }} />
-                <button type="button" style={{ ...btn, padding: '0 10px' }} onClick={() => p.onAct('trash')} title="Move to Trash (#)" aria-label="Move to Trash"><Ic n="trash" /></button>
-              </div>
-            )}
+            {!p.isMobile && changeGroup}
           </div>
         )}
       </div>

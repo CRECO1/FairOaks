@@ -169,7 +169,7 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
 
   const chip = (on: boolean): React.CSSProperties => ({
     padding: isMobile ? '8px 14px' : '6px 12px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    border: `1px solid ${on ? '#111' : 'var(--k-e5e7eb)'}`, background: on ? '#111' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-374151)',
+    border: `1px solid ${on ? 'var(--chip-on-line, #111)' : 'var(--k-e5e7eb)'}`, background: on ? 'var(--chip-on-bg, #111)' : 'var(--k-fff)', color: on ? 'var(--chip-on-fg, #fff)' : 'var(--k-374151)',
     fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap',
   });
   const n = (c: number) => (c ? <span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{c}</span> : null);

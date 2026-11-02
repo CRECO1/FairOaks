@@ -69,7 +69,7 @@ export default function GmailFiles(p: {
 
   const counts = useMemo(() => { const c = { all: 0, pdf: 0, doc: 0, sheet: 0, image: 0 }; for (const f of files ?? []) { c.all++; const k = kindOf(f); if (k !== 'other') c[k]++; } return c; }, [files]);
   const shown = useMemo(() => (files ?? []).filter(f => type === 'all' || kindOf(f) === type), [files, type]);
-  const chip = (on: boolean): React.CSSProperties => ({ padding: p.isMobile ? '8px 14px' : '6px 12px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: `1px solid ${on ? '#111' : 'var(--k-e5e7eb)'}`, background: on ? '#111' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' });
+  const chip = (on: boolean): React.CSSProperties => ({ padding: p.isMobile ? '8px 14px' : '6px 12px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: `1px solid ${on ? 'var(--chip-on-line, #111)' : 'var(--k-e5e7eb)'}`, background: on ? 'var(--chip-on-bg, #111)' : 'var(--k-fff)', color: on ? 'var(--chip-on-fg, #fff)' : 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' });
   const dim = 'var(--k-9ca3af)';
 
   return (

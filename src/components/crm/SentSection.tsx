@@ -104,7 +104,7 @@ export default function SentSection(p: Props & { embedded?: boolean }) {
   // ── bits ──
   const chip = (on: boolean): React.CSSProperties => ({
     padding: p.isMobile ? '8px 14px' : '6px 12px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    border: `1px solid ${on ? '#111' : 'var(--k-e5e7eb)'}`, background: on ? '#111' : 'var(--k-fff)', color: on ? '#fff' : 'var(--k-374151)',
+    border: `1px solid ${on ? 'var(--chip-on-line, #111)' : 'var(--k-e5e7eb)'}`, background: on ? 'var(--chip-on-bg, #111)' : 'var(--k-fff)', color: on ? 'var(--chip-on-fg, #fff)' : 'var(--k-374151)',
     fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap',
   });
   const stat = (label: string, value: string, tone?: string) => (
