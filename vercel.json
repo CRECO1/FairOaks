@@ -118,6 +118,10 @@
     {
       "path": "/api/cron/scheduled-emails",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/prune-uploads",
+      "schedule": "30 10 * * *"
     }
   ]
 }
