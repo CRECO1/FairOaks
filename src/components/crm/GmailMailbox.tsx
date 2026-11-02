@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LiveMessage, ThreadSummary, GLabel } from '@/lib/gmail-live';
 import GmailFiles from './GmailFiles';
 import { confirmDialog } from '@/lib/confirm-dialog';
+import { parseIcs, describeWhen } from '@/lib/ics';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { createClient } from '@/lib/supabase/client';
 
@@ -59,6 +60,7 @@ const ymdLabel = (ymd: string) => new Date(`${ymd}T12:00:00`).toLocaleDateString
 const sortMsgs = (l: LiveMessage[]) => [...l].sort((a, b) => a.date - b.date);
 const initialFolds = (l: LiveMessage[]) => new Set(l.filter((m, i) => i < l.length - 1 && !m.unread).map(m => m.id));
 const ORDER_KEY = 'crm-gmail-thread-order';
+const isInvite = (a: { name: string; mime: string }) => /\.ics$/i.test(a.name) || /^(text\/calendar|application\/ics)/i.test(a.mime);
 const previewable = (mime: string) => /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(mime);
 
 // In-session caches (gone on a full reload, which is fine): the list paints instantly from the last visit while a quiet
@@ -1043,6 +1045,24 @@ function ThreadReader(p: {
     finally { setBusy(null); }
   };
 
+  // A meeting invite in the mail → your Google Calendar (the same event Outlook or Google would have added), after a confirm.
+  const addInvite = async (m: LiveMessage, a: { part: string; name: string; mime: string }) => {
+    setBusy(`${m.id}:${a.part}`); setErr('');
+    try {
+      const url = await fetchFile(m, a);
+      const text = await (await fetch(url)).text(); URL.revokeObjectURL(url);
+      const ev = parseIcs(text);
+      if (!ev) { p.notify('Could not read a meeting out of that invite.'); return; }
+      if (ev.method === 'CANCEL') { p.notify(`“${ev.title}” was cancelled by the organizer — nothing to add.`); return; }
+      const ok = await confirmDialog(`Add “${ev.title}” — ${describeWhen(ev)}${ev.location ? ` · ${ev.location}` : ''} — to your Google Calendar?${ev.recurrence ? ' It repeats, so the whole series is added.' : ''}`, { confirmLabel: 'Add to calendar' });
+      if (!ok) return;
+      const r = await fetch('/api/calendar/import-invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ev) });
+      const j = await r.json().catch(() => ({}));
+      p.notify(r.ok ? `Added to your calendar: ${ev.title}` : (j.message ?? j.error ?? 'Could not add it to your calendar.'));
+    } catch { p.notify('Could not reach your calendar — try again.'); }
+    finally { setBusy(null); }
+  };
+
   // File to CRM: copy this one message onto the deal/contact card (attachments included) — the whole team sees it there.
   const fileTo = async (m: LiveMessage, target: NonNullable<ContactMatch>) => {
     setWorking(m.id);
@@ -1473,10 +1493,14 @@ function ThreadReader(p: {
                         <div key={a.part} style={{ display: 'inline-flex', alignItems: 'stretch', maxWidth: '100%', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-f9fafb)', overflow: 'hidden' }}>
                           <button type="button" onClick={() => void openAtt(m, a)} disabled={busy === key} title={previewable(a.mime) ? `Open ${a.name}` : `Download ${a.name}`}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: p.isMobile ? 44 : 34, padding: '0 11px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", minWidth: 0 }}>
-                            <span aria-hidden>{busy === key ? '⏳' : /pdf/i.test(a.mime) ? '📕' : /^image\//i.test(a.mime) ? '🖼️' : /sheet|excel|csv/i.test(a.mime) ? '📊' : /word|document/i.test(a.mime) ? '📃' : '📎'}</span>
+                            <span aria-hidden>{busy === key ? '⏳' : isInvite(a) ? '📅' : /pdf/i.test(a.mime) ? '📕' : /^image\//i.test(a.mime) ? '🖼️' : /sheet|excel|csv/i.test(a.mime) ? '📊' : /word|document/i.test(a.mime) ? '📃' : '📎'}</span>
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, fontWeight: 600 }}>{a.name}</span>
                             <span style={{ color: 'var(--k-9ca3af)', flexShrink: 0 }}>{fmtBytes(a.size)}</span>
                           </button>
+                          {isInvite(a) && (
+                            <button type="button" disabled={busy === key} onClick={() => void addInvite(m, a)} title="Add this meeting to your Google Calendar"
+                              style={{ padding: '0 11px', border: 'none', borderLeft: '1px solid var(--k-e5e7eb)', background: 'var(--k-fffbeb)', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: 'var(--k-92400e)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', minHeight: p.isMobile ? 44 : 34 }}>📅 Add to calendar</button>
+                          )}
                           {target?.kind === 'deal' && /\.(pdf|docx?|jpe?g|png|webp)$/i.test(a.name) && (
                             <button type="button" disabled={busy === key || savedAtt.has(key)} onClick={() => void saveToDeal(m, a, target)} aria-label={`Save ${a.name} to ${target.label}’s Docs`} title={`Save to ${target.label}’s Docs`}
                               style={{ minWidth: p.isMobile ? 44 : 34, padding: '0 9px', border: 'none', borderLeft: '1px solid var(--k-e5e7eb)', background: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: savedAtt.has(key) ? 'var(--k-065f46)' : 'var(--k-a06a12)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>{savedAtt.has(key) ? '✓ Saved' : '📁 Docs'}</button>
