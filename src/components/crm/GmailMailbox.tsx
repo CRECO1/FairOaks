@@ -608,15 +608,6 @@ export default function GmailMailbox(p: Props) {
       <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%' }}>
         <button onClick={() => setFilter('all')} style={chip(filter === 'all')}>{p.box === 'inbox' ? 'All inbox' : 'All sent'}</button>
         {p.box === 'inbox' && <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>}
-        <button onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 Files</button>
-        <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
-        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'opened' ? 'all' : 'opened'))} aria-pressed={trackF === 'opened'} title="Sent from the CRM and the recipient opened it (of what is loaded)" style={chip(trackF === 'opened')}>👁 Opened</button>}
-        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'unopened' ? 'all' : 'unopened'))} aria-pressed={trackF === 'unopened'} title="Sent from the CRM and not opened yet (of what is loaded)" style={chip(trackF === 'unopened')}>Not opened</button>}
-        {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
-        {p.box === 'inbox' && <button onClick={() => setWaiting(v => !v)} aria-pressed={waiting} title="People in your CRM who wrote in the last 30 days and haven’t had an answer from you (of what is loaded)" style={chip(waiting)}>↩ Waiting on you</button>}
-        <button onClick={() => setWho(v => (v === 'deals' ? 'all' : 'deals'))} aria-pressed={who === 'deals'} title="People with a deal (of what is loaded)" style={chip(who === 'deals')}>💼 Deals</button>
-        <button onClick={() => setWho(v => (v === 'contacts' ? 'all' : 'contacts'))} aria-pressed={who === 'contacts'} title="Anyone who is in your CRM (of what is loaded)" style={chip(who === 'contacts')}>👤 Contacts</button>
-        <button onClick={() => setWho(v => (v === 'other' ? 'all' : 'other'))} aria-pressed={who === 'other'} title="People who are NOT in your CRM — newsletters, notices, strangers (of what is loaded)" style={chip(who === 'other')}>📭 Not in CRM</button>
         {p.box === 'inbox' && (() => {
           const need = (threads ?? []).filter(t => triOf(t)?.c === 'reply').length;
           return (
@@ -626,6 +617,15 @@ export default function GmailMailbox(p: Props) {
             </>
           );
         })()}
+        <button onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 Files</button>
+        <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
+        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'opened' ? 'all' : 'opened'))} aria-pressed={trackF === 'opened'} title="Sent from the CRM and the recipient opened it (of what is loaded)" style={chip(trackF === 'opened')}>👁 Opened</button>}
+        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'unopened' ? 'all' : 'unopened'))} aria-pressed={trackF === 'unopened'} title="Sent from the CRM and not opened yet (of what is loaded)" style={chip(trackF === 'unopened')}>Not opened</button>}
+        {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
+        {p.box === 'inbox' && <button onClick={() => setWaiting(v => !v)} aria-pressed={waiting} title="People in your CRM who wrote in the last 30 days and haven’t had an answer from you (of what is loaded)" style={chip(waiting)}>↩ Waiting on you</button>}
+        <button onClick={() => setWho(v => (v === 'deals' ? 'all' : 'deals'))} aria-pressed={who === 'deals'} title="People with a deal (of what is loaded)" style={chip(who === 'deals')}>💼 Deals</button>
+        <button onClick={() => setWho(v => (v === 'contacts' ? 'all' : 'contacts'))} aria-pressed={who === 'contacts'} title="Anyone who is in your CRM (of what is loaded)" style={chip(who === 'contacts')}>👤 Contacts</button>
+        <button onClick={() => setWho(v => (v === 'other' ? 'all' : 'other'))} aria-pressed={who === 'other'} title="People who are NOT in your CRM — newsletters, notices, strangers (of what is loaded)" style={chip(who === 'other')}>📭 Not in CRM</button>
         {labels.length > 0 && (
           <select value={labelId} onChange={e => setLabelId(e.target.value)} aria-label="Show one Gmail label"
             style={{ height: p.isMobile ? 38 : 32, borderRadius: 999, border: `1px solid ${labelId ? '#111' : 'var(--k-e5e7eb)'}`, background: labelId ? '#111' : 'var(--k-fff)', color: labelId ? '#fff' : 'var(--k-374151)', fontSize: 13, fontWeight: 600, padding: '0 10px', fontFamily: "'DM Sans',sans-serif" }}>
