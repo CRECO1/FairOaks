@@ -730,11 +730,11 @@ export default function GmailMailbox(p: Props) {
         if (!rows.length) return null;
         const c = (k: Tri['c']) => rows.filter(x => x.c === k).length, junkIds = threads.filter(t => triage.get(triKey(t))?.c === 'junk').map(t => t.id);
         return (
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', margin: '0 2px 10px', fontSize: 12.5, color: 'var(--k-6b7280)' }}>
-            <span>✨ <b style={{ color: 'var(--k-92400e)' }}>{c('reply')}</b> need a reply</span>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', margin: '0 2px 10px', fontSize: 12.5, color: 'var(--k-6b7280)' }}>
+            <span>✨ <b style={{ color: 'var(--k-92400e)' }}>{c('reply')}</b> reply</span>
             <span><b style={{ color: 'var(--k-374151)' }}>{c('fyi')}</b> FYI</span>
-            <span><b style={{ color: 'var(--k-991b1b)' }}>{c('junk')}</b> likely junk</span>
-            {junkIds.length > 0 && canModify !== false && <button type="button" onClick={() => { setSel(new Set(junkIds)); setTriF(false); }} title="Tick every conversation marked likely junk — you then choose Archive or leave them" style={{ border: '1px solid var(--k-d1d5db)', background: 'var(--k-fff)', color: 'var(--k-374151)', borderRadius: 10, padding: '2px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Select likely junk</button>}
+            <span><b style={{ color: 'var(--k-991b1b)' }}>{c('junk')}</b> junk</span>
+            {junkIds.length > 0 && canModify !== false && <button type="button" onClick={() => { setSel(new Set(junkIds)); setTriF(false); }} title="Tick every conversation marked likely junk — you then choose Archive or leave them" style={{ border: '1px solid var(--k-d1d5db)', background: 'var(--k-fff)', color: 'var(--k-374151)', borderRadius: 10, padding: '2px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Select junk</button>}
             <button type="button" onClick={() => { setTriage(new Map()); setTriF(false); try { localStorage.removeItem(TRIAGE_KEY); } catch { /* ignore */ } }} style={{ border: 'none', background: 'none', color: 'var(--k-9ca3af)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>Clear</button>
           </div>
         );
