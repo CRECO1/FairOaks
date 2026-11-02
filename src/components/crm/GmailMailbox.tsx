@@ -234,6 +234,21 @@ export default function GmailMailbox(p: Props) {
   }, [build, account, cacheKey]);
 
   useEffect(() => { setOpenThread(null); setFilter(f => (p.box === 'sent' && f === 'unread' ? 'all' : f)); }, [p.box]);
+
+  // Phones: the back swipe / back button closes the open conversation and returns to the list instead of leaving the CRM.
+  // The history entry keeps Next.js's own state (it reloads the page on a back step it doesn't recognise).
+  const readerPushed = useRef(false);
+  useEffect(() => {
+    if (!p.isMobile) return;
+    if (open && !readerPushed.current) { readerPushed.current = true; window.history.pushState({ ...(window.history.state ?? {}), crmMail: open.id }, ''); }
+    else if (!open && readerPushed.current) { readerPushed.current = false; if (window.history.state?.crmMail) window.history.back(); }
+  }, [open, p.isMobile]);
+  useEffect(() => {
+    if (!p.isMobile) return;
+    const onPop = () => { if (readerPushed.current) { readerPushed.current = false; setOpenThread(null); } };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [p.isMobile]);
   useEffect(() => { const t = setTimeout(() => setTerm(q.trim()), 350); return () => clearTimeout(t); }, [q]);
   useEffect(() => { void load(); }, [load]);
   const [refreshing, setRefreshing] = useState(false);
@@ -1077,14 +1092,19 @@ function ThreadReader(p: {
     return URL.createObjectURL(new Blob([await r.blob()], { type: a.mime }));
   };
   const openAtt = async (m: LiveMessage, a: { part: string; name: string; mime: string }, asDownload = false) => {
+    // A PDF or picture opens straight from the server in the browser's own viewer: no popup-then-blob dance, which phones
+    // (and the home-screen app) block. Downloads still go through a blob so the file keeps its name.
+    if (!asDownload && previewable(a.mime)) {
+      const href = `/api/gmail/mailbox-attachment?messageId=${m.id}&part=${encodeURIComponent(a.part)}&inline=1${p.account ? `&account=${encodeURIComponent(p.account)}` : ''}`;
+      window.open(href, '_blank', 'noopener');
+      return;
+    }
     setBusy(`${m.id}:${a.part}`); setErr('');
-    const tab = !asDownload && previewable(a.mime) ? window.open('', '_blank') : null; // must open inside the click
     try {
       const url = await fetchFile(m, a);
-      if (tab) tab.location.href = url;
-      else { const link = document.createElement('a'); link.href = url; link.download = a.name; document.body.appendChild(link); link.click(); link.remove(); }
+      const link = document.createElement('a'); link.href = url; link.download = a.name; document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 120_000);
-    } catch { tab?.close(); setErr(`Couldn’t open ${a.name} — try again.`); }
+    } catch { setErr(`Couldn’t open ${a.name} — try again.`); }
     finally { setBusy(null); }
   };
 

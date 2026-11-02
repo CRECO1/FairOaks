@@ -469,15 +469,15 @@ function MessageAttachments({ emailId, isMobile, none, dealId, onNote }: { email
     return URL.createObjectURL(new Blob([await res.blob()], { type: a.mime }));
   };
   const download = async (a: MailAttachment, preview = false) => {
+    // A PDF or picture opens straight from the server in the browser's own viewer — no popup-then-blob dance, which phones
+    // (and the home-screen app) block. Downloads still go through a blob so the file keeps its name.
+    if (preview && previewable(a)) { window.open(`/api/gmail/attachments?emailId=${emailId}&part=${encodeURIComponent(a.part)}&inline=1`, '_blank', 'noopener'); return; }
     setBusy(a.part); setErr('');
-    // The tab must open inside the click (before the await) or popup blockers stop it.
-    const tab = preview && previewable(a) ? window.open('', '_blank') : null;
     try {
       const url = await fetchFile(a);
-      if (tab) { tab.location.href = url; }
-      else { const link = document.createElement('a'); link.href = url; link.download = a.name; document.body.appendChild(link); link.click(); link.remove(); }
+      const link = document.createElement('a'); link.href = url; link.download = a.name; document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 120_000);
-    } catch { tab?.close(); setErr(`Couldn’t open ${a.name} — try again, or open it in Gmail.`); }
+    } catch { setErr(`Couldn’t open ${a.name} — try again, or open it in Gmail.`); }
     finally { setBusy(null); }
   };
   return (

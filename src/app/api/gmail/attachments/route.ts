@@ -22,6 +22,22 @@ function collect(part: Part | undefined, out: Part[]) {
   for (const p of part.parts ?? []) collect(p, out);
 }
 
+// A file as a download — or, with ?inline=1 and only for a PDF or picture, shown in the browser's own viewer (phones can't
+// rely on a popup + blob: address). `sandbox` keeps even a mislabelled file from running as our page; never HTML.
+function fileResponse(bytes: Uint8Array, rawName: string, mime: string | undefined, inline: boolean) {
+  const name = rawName.replace(/[\r\n"]/g, '_');
+  const show = inline && !!mime && /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(mime);
+  return new NextResponse(bytes as unknown as BodyInit, {
+    headers: {
+      'Content-Type': show ? mime!.toLowerCase() : 'application/octet-stream',
+      'Content-Disposition': `${show ? 'inline' : 'attachment'}; filename="${name.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'X-Content-Type-Options': 'nosniff',
+      ...(show ? { 'Content-Security-Policy': 'sandbox' } : {}),
+      'Cache-Control': 'private, no-store',
+    },
+  });
+}
+
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
@@ -46,15 +62,7 @@ export async function GET(req: NextRequest) {
       const { data: file } = await adminClient().storage.from(EMAIL_ATTACH_BUCKET).download(item.path);
       if (!file) return NextResponse.json({ error: 'That file could not be read' }, { status: 502 });
       const bytes = Buffer.from(await file.arrayBuffer());
-      const name = (item.name || 'attachment').replace(/[\r\n"]/g, '_');
-      return new NextResponse(bytes, {
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          'Content-Disposition': `attachment; filename="${name.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
-          'X-Content-Type-Options': 'nosniff',
-          'Cache-Control': 'private, no-store',
-        },
-      });
+      return fileResponse(bytes, item.name || 'attachment', item.mime, req.nextUrl.searchParams.get('inline') === '1');
     }
     if (partId !== null) return notFound('Attachment not found');
   }
@@ -79,16 +87,8 @@ export async function GET(req: NextRequest) {
     if (!a.ok) return NextResponse.json({ error: 'Gmail would not return that file' }, { status: 502 });
     const data = (await a.json()).data as string;
     const bytes = Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
-    const name = (part.filename ?? 'attachment').replace(/[\r\n"]/g, '_');
-    // octet-stream + nosniff: never let a hostile attachment render as a page on our origin.
-    return new NextResponse(bytes, {
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${name.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
-        'X-Content-Type-Options': 'nosniff',
-        'Cache-Control': 'private, no-store',
-      },
-    });
+    // octet-stream + nosniff unless it is an explicit inline view of a PDF/picture: never let a hostile attachment render as a page on our origin.
+    return fileResponse(bytes, part.filename ?? 'attachment', part.mimeType, req.nextUrl.searchParams.get('inline') === '1');
   }
   // The message isn't in any mailbox this person has connected (it was filed from a teammate's inbox).
   return NextResponse.json({ attachments: [], unavailable: true });
