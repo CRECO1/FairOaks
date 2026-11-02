@@ -912,6 +912,46 @@ function QuickReply({ last, me, isMobile, who, onSend, onFull }: { last: LiveMes
   );
 }
 
+// The relationship at a glance, under the contact bar of a conversation: their deals (with stage), what is still open
+// for them, and the last thing logged on their card. Fetched once per contact; shows nothing if there is nothing to say.
+type Glance = { deals: Array<{ id: string; property: string | null; stage: string | null; type: string | null }>; tasks: Array<{ id: string; title: string; due: string | null }>; last: { type: string; note: string; at: string } | null };
+function GlanceStrip(p: { clientId: string; onOpenDeal: (id: string) => void }) {
+  const [g, setG] = useState<Glance | null>(null);
+  useEffect(() => {
+    let live = true; setG(null);
+    fetch(`/api/crm/contact-glance?clientId=${p.clientId}`).then(r => (r.ok ? r.json() : null)).then(j => { if (live && j) setG(j as Glance); }).catch(() => {});
+    return () => { live = false; };
+  }, [p.clientId]);
+  if (!g || (!g.deals.length && !g.tasks.length && !g.last)) return null;
+  const stageStyle = (st: string | null): React.CSSProperties => (st === 'Lost' ? { background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)' } : st === 'Closed' ? { background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' } : { background: 'rgba(146,64,14,.12)', color: 'var(--k-92400e)' });
+  const due = (d: string | null) => { if (!d) return ''; const days = Math.floor((new Date(d.slice(0, 10) + 'T12:00:00').getTime() - Date.now()) / 86_400_000) + 1; return days < 0 ? `${-days}d overdue` : days === 0 ? 'due today' : days === 1 ? 'due tomorrow' : `due ${new Date(d.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`; };
+  return (
+    <div style={{ flexBasis: '100%', display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12.5, color: 'var(--k-92400e)' }}>
+      {g.deals.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontWeight: 700 }}>💼 {g.deals.length === 1 ? 'Deal' : `${g.deals.length} deals`}</span>
+          {g.deals.slice(0, 4).map(d => (
+            <button key={d.id} type="button" onClick={() => p.onOpenDeal(d.id)} title="Open this deal"
+              style={{ ...stageStyle(d.stage), border: 'none', borderRadius: 10, padding: '2px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {[d.stage, d.property].filter(Boolean).join(' · ') || 'Deal'}
+            </button>
+          ))}
+          {g.deals.length > 4 && <span>+{g.deals.length - 4} more</span>}
+        </div>
+      )}
+      {g.tasks.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
+          <span style={{ fontWeight: 700 }}>✓ Open</span>
+          {g.tasks.slice(0, 3).map(t => <span key={t.id} style={{ overflowWrap: 'anywhere' }}>{t.title}{t.due ? <span style={{ opacity: 0.75 }}> ({due(t.due)})</span> : null}</span>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, <span key={`s${i}`} aria-hidden>·</span>, x] : [x]), [])}
+        </div>
+      )}
+      {g.last && (
+        <div style={{ overflowWrap: 'anywhere' }}><span style={{ fontWeight: 700 }}>Last logged</span> {ago(g.last.at)}: {g.last.type}{g.last.note ? <span style={{ opacity: 0.85 }}> — {g.last.note}</span> : null}</div>
+      )}
+    </div>
+  );
+}
+
 function ThreadReader(p: {
   t: ThreadSummary; box: 'inbox' | 'sent'; canModify: boolean; onAct: (a: Act) => void; labels: GLabel[]; onLabel: (id: string, on: boolean) => void; onCreateLabel: (name: string) => Promise<GLabel | null>; account: string | null; self: string | null; isMobile: boolean; embedded: boolean; contactFor: (email: string) => ContactMatch;
   onOpenDeal: (id: string) => void; onOpenContact: (id: string) => void;
@@ -1254,6 +1294,7 @@ function ThreadReader(p: {
               {(threadTarget.tags ?? []).map(tg => <span key={tg} style={{ background: 'rgba(146,64,14,.1)', borderRadius: 10, padding: '0 8px', fontWeight: 600 }}>{tg}</span>)}
             </div>
           )}
+          {threadTarget.kind === 'contact' && <GlanceStrip clientId={threadTarget.id} onOpenDeal={p.onOpenDeal} />}
           {p.teammates.length > 0 && (
             <div style={{ position: 'relative' }}>
               <button type="button" style={btn} disabled={sharing} onClick={() => setShareOpen(v => !v)} aria-haspopup="menu" aria-expanded={shareOpen} title="File this conversation on the card and notify a teammate">{sharing ? 'Sharing…' : '👥 Share'}</button>
