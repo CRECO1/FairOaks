@@ -571,9 +571,12 @@ export default function EmailComposer(p: EmailComposerProps) {
           </div>
         )}
 
-        {/* Body */}
+        {/* Body. The app's global reset strips paragraph spacing, list bullets and quote styling, so an email with paragraphs or a
+            list ran together as one crammed block in the editor (the recipient's Gmail showed it fine). Restore normal email typography here. */}
+        <style>{'.crm-email-body p{margin:0 0 .85em}.crm-email-body ul{list-style:disc;margin:0 0 .85em;padding-left:1.6em}.crm-email-body ol{list-style:decimal;margin:0 0 .85em;padding-left:1.6em}.crm-email-body li{margin:0 0 .3em}.crm-email-body blockquote{margin:.6em 0 .6em .8ex;padding-left:1.2ex;border-left:2px solid var(--k-d1d5db,#d1d5db);color:var(--k-6b7280,#6b7280)}.crm-email-body h1,.crm-email-body h2,.crm-email-body h3{margin:0 0 .6em;font-weight:700}.crm-email-body a{color:var(--k-1d4ed8,#1d4ed8);text-decoration:underline}.crm-email-body>:last-child{margin-bottom:0}'}</style>
         <div
           ref={p.bodyRef}
+          className="crm-email-body"
           contentEditable
           suppressContentEditableWarning
           role="textbox"
