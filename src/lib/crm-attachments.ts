@@ -14,8 +14,11 @@ import { EMAIL_ATTACH_BUCKET, type StoredAttachment } from '@/lib/email-attachme
 import { callerMailboxes } from '@/lib/gmail-mailbox';
 import { fetchAttachment } from '@/lib/gmail-live';
 
-export type CrmAttachKind = 'deal_doc' | 'form' | 'signed' | 'email_att' | 'gmail_att';
-export const CRM_ATTACH_KINDS: CrmAttachKind[] = ['deal_doc', 'form', 'signed', 'email_att', 'gmail_att'];
+export type CrmAttachKind = 'deal_doc' | 'form' | 'signed' | 'email_att' | 'gmail_att' | 'upload';
+export const CRM_ATTACH_KINDS: CrmAttachKind[] = ['deal_doc', 'form', 'signed', 'email_att', 'gmail_att', 'upload'];
+/** An 'upload' id is the storage path `pending/<uploader's id>/<uuid>/<file name>` of a big file the sender put in storage straight from the browser. */
+export const UPLOAD_ID = /^pending\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[^/\\]{1,150}$/i;
+const MIME_BY_EXT: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', csv: 'text/csv', txt: 'text/plain', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', zip: 'application/zip' };
 /** An 'email_att' id is `<crm_deal_emails.id>:<index into its attachments list>` (Forward carries an email's files). */
 /** A 'gmail_att' id is `<gmail message id>:<part id>` — a file on a message in the sender's OWN Gmail (Forward from the live mailbox). */
 export const GMAIL_ATT_ID = /^[0-9a-f]{8,32}:[\d.]{1,20}$/i;
@@ -120,6 +123,12 @@ export async function resolveCrmAttachments(refs: CrmAttachRef[], ctx: CrmContex
         || !(await canAccessLinked(ctx, s as { business_unit?: string | null; deal_id?: string | null; listing_id?: string | null }))) return { ok: false, status: 404, error: 'A form you picked is no longer available' };
       name = `${clean(String(s.title ?? ''), 'Form')}.pdf`;
       bytes = await fetchBytes(FORMS, s.filled_path as string);
+    } else if (ref.kind === 'upload') {
+      // A big file the sender uploaded straight to storage: only its uploader can attach it (their id is in the path).
+      const [, uploader, , fileName] = ref.id.split('/');
+      if (!UPLOAD_ID.test(ref.id) || uploader !== ctx.userId) return { ok: false, status: 404, error: 'A file you uploaded is no longer available — attach it again' };
+      name = fileName; mimeType = MIME_BY_EXT[(fileName.split('.').pop() ?? '').toLowerCase()] ?? 'application/octet-stream';
+      bytes = await fetchBytes(EMAIL_ATTACH_BUCKET, ref.id);
     } else if (ref.kind === 'gmail_att') {
       // Only the caller's own mailbox can supply it.
       const [messageId, partId] = ref.id.split(':');

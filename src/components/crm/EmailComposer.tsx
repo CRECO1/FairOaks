@@ -41,6 +41,7 @@ const LABEL: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(
 const ROW: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 6, padding: '2px 12px', borderBottom: '1px solid var(--k-f3f4f6)' };
 const CHIP: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%', padding: '3px 4px 3px 9px', background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, fontSize: 13, color: 'var(--k-374151)' };
 
+const BIG_FILE_MAX = 15 * 1024 * 1024; // the most a single emailed file may be (uploaded straight to storage when it won't fit in the request)
 const UPLOAD_BUDGET = 3_200_000; // bytes of files per email sent from this window (request limit ~4.5 MB, base64 adds a third)
 
 /** Big pictures (phone photos) → a normal-sized JPEG, so they fit. Anything else, or a failure, comes back unchanged. */
@@ -438,11 +439,29 @@ export default function EmailComposer(p: EmailComposerProps) {
   // files in total. Phone photos are bigger than that, so pictures are shrunk to a normal size first; anything else that would
   // push the message over is refused HERE with a reason, instead of failing at Send with a bare "413".
   const attachRoom = useRef(0); attachRoom.current = UPLOAD_BUDGET - p.attachments.reduce((n, f) => n + f.size, 0);
+  const uploadBig = async (file: File): Promise<boolean> => {
+    p.notify?.(`Uploading “${file.name}” (${(file.size / 1048576).toFixed(1)} MB)…`);
+    try {
+      const r = await fetch('/api/crm/attach-upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: file.name, size: file.size }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.uploadUrl) { p.notify?.(j.error ?? `Couldn’t upload “${file.name}” — try again.`); return false; }
+      const put = await fetch(j.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+      if (!put.ok) { p.notify?.(`Couldn’t upload “${file.name}” — try again.`); return false; }
+      p.crmFiles!.setItems(prev => [...prev, { kind: 'upload', id: j.path as string, name: (j.name as string) || file.name, size: file.size, type: file.type || 'application/octet-stream', sub: 'Uploaded from this device' }]);
+      p.notify?.(`“${file.name}” is attached.`);
+      return true;
+    } catch { p.notify?.(`Couldn’t upload “${file.name}” — check your connection and try again.`); return false; }
+  };
   const addFiles = async (incoming: File[]) => {
     const taken: File[] = []; let room = attachRoom.current;
     for (const f of incoming) {
       const small = await shrinkImage(f);
-      if (small.size > room) { p.notify?.(`“${f.name}” is ${(f.size / 1048576).toFixed(1)} MB — the CRM can send about 3 MB of files per email. Attach it from Deal docs, or send it from Gmail.`); continue; }
+      if (small.size > room) {
+        // Too big to travel inside the Send request: put it in storage straight from the browser and attach it by reference.
+        if (p.crmFiles && small.size <= BIG_FILE_MAX) { if (await uploadBig(small)) continue; }
+        else p.notify?.(small.size > BIG_FILE_MAX ? `“${f.name}” is ${(f.size / 1048576).toFixed(1)} MB — files over 15 MB are too large to email. Share a link instead.` : `“${f.name}” is ${(f.size / 1048576).toFixed(1)} MB — attach it from Deal docs, or send it from Gmail.`);
+        continue;
+      }
       room -= small.size; taken.push(small);
     }
     if (taken.length) p.setAttachments(prev => [...prev, ...taken]);

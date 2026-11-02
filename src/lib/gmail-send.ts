@@ -1,6 +1,6 @@
 import { htmlToText } from '@/lib/html-text';
-import { storeOutgoingAttachments } from '@/lib/email-attachments';
-import { resolveCrmAttachments, CRM_ATTACH_KINDS, EMAIL_ATT_ID, GMAIL_ATT_ID, type CrmAttachKind } from '@/lib/crm-attachments';
+import { storeOutgoingAttachments, EMAIL_ATTACH_BUCKET } from '@/lib/email-attachments';
+import { resolveCrmAttachments, CRM_ATTACH_KINDS, EMAIL_ATT_ID, GMAIL_ATT_ID, UPLOAD_ID, type CrmAttachKind } from '@/lib/crm-attachments';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, forbidden, notFound, type CrmContext } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
@@ -226,6 +226,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
     if (attachments !== undefined && attachments !== null && !Array.isArray(attachments)) return NextResponse.json({ error: 'attachments is invalid' }, { status: 400 });
     if (Array.isArray(attachments) && attachments.length > MAX_ATTACHMENTS) return NextResponse.json({ error: `Too many attachments (${MAX_ATTACHMENTS} max)` }, { status: 400 });
     const attList: Attachment[] = [];
+    const uploadPaths: string[] = []; // big files uploaded straight to storage for this email: cleared once it has gone out
     let totalB64 = 0;
     for (const a of (Array.isArray(attachments) ? attachments : []) as Partial<Attachment>[]) {
       const data = typeof a?.data === 'string' ? a.data.replace(/\s+/g, '') : '';
@@ -244,10 +245,11 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
     if (crmAttachments !== undefined && crmAttachments !== null) {
       if (!Array.isArray(crmAttachments)) return NextResponse.json({ error: 'crmAttachments is invalid' }, { status: 400 });
       const refs = (crmAttachments as Array<{ kind?: unknown; id?: unknown }>)
-        .filter(r => typeof r?.id === 'string' && (CRM_ATTACH_KINDS as string[]).includes(String(r?.kind)) && (r.kind === 'email_att' ? EMAIL_ATT_ID.test(r.id) : r.kind === 'gmail_att' ? GMAIL_ATT_ID.test(r.id) : UUID_RE.test(r.id)))
+        .filter(r => typeof r?.id === 'string' && (CRM_ATTACH_KINDS as string[]).includes(String(r?.kind)) && (r.kind === 'email_att' ? EMAIL_ATT_ID.test(r.id) : r.kind === 'gmail_att' ? GMAIL_ATT_ID.test(r.id) : r.kind === 'upload' ? UPLOAD_ID.test(r.id) : UUID_RE.test(r.id)))
         .map(r => ({ kind: r.kind as CrmAttachKind, id: r.id as string }));
       if (refs.length !== crmAttachments.length) return NextResponse.json({ error: 'crmAttachments is invalid' }, { status: 400 });
       if (attList.length + refs.length > MAX_ATTACHMENTS) return NextResponse.json({ error: `Too many attachments (${MAX_ATTACHMENTS} max)` }, { status: 400 });
+      for (const r of refs) if (r.kind === 'upload') uploadPaths.push(r.id);
       if (refs.length) {
         const got = await resolveCrmAttachments(refs, ctx);
         if (!got.ok) return NextResponse.json({ error: got.error }, { status: got.status });
@@ -479,6 +481,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
       } catch (e) { console.error('Follow-up task failed:', e); }
     }
 
+    if (uploadPaths.length) await adminClient().storage.from(EMAIL_ATTACH_BUCKET).remove(uploadPaths).catch(() => {});
     return NextResponse.json({ success: true, emailId, clientId, followUp, copies: individual ? everyone.length : 1 });
   } catch (err) {
     console.error('Gmail send error:', err);
