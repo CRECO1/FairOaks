@@ -75,7 +75,11 @@ export async function POST(req: NextRequest) {
     }
 
     // A time of day ("13:30" or "1:30 PM") makes this a real timed event in Central time; without one it stays all-day.
-    const timeMatch = typeof start_time === 'string' ? start_time.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)?$/i) : null;
+    // Safety net: if nobody passed a time but the title or notes name one ("tour at 1:30 PM", "11:30am"), use it — a
+    // specific time must never end up as an all-day entry. Only an explicit am/pm or a colon time counts (not "at 3 people").
+    const written = `${title ?? ''} ${notes ?? ''}`.match(/\b(\d{1,2}:\d{2}\s*(?:[ap]\.?m\.?)?|\d{1,2}\s*[ap]\.?m\.?)(?![a-z0-9])/i)?.[1];
+    const wantedTime: string | null = typeof start_time === 'string' && start_time.trim() ? start_time : (written ?? null);
+    const timeMatch = typeof wantedTime === 'string' ? wantedTime.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)?$/i) : null;
     let startHm: string | null = null;
     if (timeMatch) {
       let h = Number(timeMatch[1]); const m = Number(timeMatch[2] ?? 0); const ap = timeMatch[3]?.toLowerCase();

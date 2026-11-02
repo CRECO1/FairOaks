@@ -1112,7 +1112,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [clientDocs, setClientDocs] = useState<{ id: string; form_id?: string; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskClientId, setTaskClientId] = useState<string | null>(null);
-  const [taskForm, setTaskForm] = useState<{ type: 'call'|'email'|'follow_up'; title: string; due_date: string; notes: string }>({ type: 'follow_up', title: '', due_date: '', notes: '' });
+  const [taskForm, setTaskForm] = useState<{ type: 'call'|'email'|'follow_up'; title: string; due_date: string; notes: string; time?: string }>({ type: 'follow_up', title: '', due_date: '', notes: '' });
   // Today's Calls work-queue (now a sub-tab inside the Tasks page)
   const [callSkippedIds, setCallSkippedIds] = useState<Set<string>>(new Set());
   const [callUpcomingOpen, setCallUpcomingOpen] = useState(false);
@@ -2976,6 +2976,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         notes: taskForm.notes.trim(),
         client_name: client ? `${client.first_name} ${client.last_name}` : '',
         task_type: taskForm.type,
+        ...(taskForm.time ? { start_time: taskForm.time } : {}),
       }),
     }).then(r => r.json()).then(res => {
       if (res.error === 'scope_missing') {
@@ -14889,6 +14890,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <input type="date" className="crm-input" style={{ marginTop: 0 }}
                     value={taskForm.due_date}
                     onChange={e => setTaskForm(f => ({ ...f, due_date: e.target.value }))}
+                  />
+                </div>
+
+                {/* Time — only for the Google Calendar entry (tasks themselves are due by day) */}
+                <div>
+                  <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 600, display: 'block', marginBottom: 6 }}>Time <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional — puts it on your calendar at that time instead of all day)</span></label>
+                  <input type="time" className="crm-input" style={{ marginTop: 0 }}
+                    value={taskForm.time ?? ''}
+                    onChange={e => setTaskForm(f => ({ ...f, time: e.target.value }))}
                   />
                 </div>
 
