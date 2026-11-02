@@ -182,7 +182,7 @@ export default function ComposeDock(props: {
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) { props.notify('Send failed: ' + (json.error ?? res.status)); return; }
+      if (!res.ok) { props.notify('Send failed: ' + (json.error ?? (res.status === 413 ? 'the attachments are too big for one email (about 3 MB in total) — remove one, or attach it from Deal docs' : res.status))); return; }
       props.notify(json.followUp?.due ? `Message sent · reminder set for ${json.followUp.label}` : 'Message sent');
       if (bodyRef.current) bodyRef.current.innerHTML = '';
       setOpen(false); setAttachments([]); setCrmFiles([]);

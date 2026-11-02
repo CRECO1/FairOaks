@@ -41,6 +41,22 @@ const LABEL: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(
 const ROW: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 6, padding: '2px 12px', borderBottom: '1px solid var(--k-f3f4f6)' };
 const CHIP: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%', padding: '3px 4px 3px 9px', background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, fontSize: 13, color: 'var(--k-374151)' };
 
+const UPLOAD_BUDGET = 3_200_000; // bytes of files per email sent from this window (request limit ~4.5 MB, base64 adds a third)
+
+/** Big pictures (phone photos) → a normal-sized JPEG, so they fit. Anything else, or a failure, comes back unchanged. */
+async function shrinkImage(file: File): Promise<File> {
+  if (!/^image\/(jpeg|png|webp|heic|heif)$/i.test(file.type) || file.size < 900_000 || typeof createImageBitmap === 'undefined') return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(bmp.width * scale)); c.height = Math.max(1, Math.round(bmp.height * scale));
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height); bmp.close?.();
+    const blob = await new Promise<Blob | null>(r => c.toBlob(r, 'image/jpeg', 0.82));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch { return file; }
+}
+
 // Chips + a free-typing tail with contact suggestions. The parent only ever sees one comma-separated
 // string of plain emails, and anything still being typed is included in it, so a pending address is
 // never silently dropped.
@@ -418,7 +434,19 @@ export default function EmailComposer(p: EmailComposerProps) {
     if (url && url !== 'https://') cmd('createLink', url);
   };
 
-  const addFiles = (files: File[]) => { if (files.length) p.setAttachments(prev => [...prev, ...files]); };
+  // The server can only take a request of about 4.5 MB, and files travel inside it as base64 (a third bigger), so about 3.2 MB of
+  // files in total. Phone photos are bigger than that, so pictures are shrunk to a normal size first; anything else that would
+  // push the message over is refused HERE with a reason, instead of failing at Send with a bare "413".
+  const attachRoom = useRef(0); attachRoom.current = UPLOAD_BUDGET - p.attachments.reduce((n, f) => n + f.size, 0);
+  const addFiles = async (incoming: File[]) => {
+    const taken: File[] = []; let room = attachRoom.current;
+    for (const f of incoming) {
+      const small = await shrinkImage(f);
+      if (small.size > room) { p.notify?.(`“${f.name}” is ${(f.size / 1048576).toFixed(1)} MB — the CRM can send about 3 MB of files per email. Attach it from Deal docs, or send it from Gmail.`); continue; }
+      room -= small.size; taken.push(small);
+    }
+    if (taken.length) p.setAttachments(prev => [...prev, ...taken]);
+  };
   const busy = count !== null;
 
   const frame: React.CSSProperties = dock
