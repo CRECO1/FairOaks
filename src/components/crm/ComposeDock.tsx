@@ -87,6 +87,33 @@ export default function ComposeDock(props: {
     return () => { document.body.style.overflow = prev; };
   }, [open, isMobile, minimized]);
 
+  // Phones: the back swipe folds the full-screen compose sheet down to its pill (the draft is kept) instead of leaving the CRM.
+  // The entry keeps Next.js's own history state, which it needs to recognise the step.
+  const sheetUp = open && isMobile && !minimized;
+  const sheetPushed = useRef(false);
+  useEffect(() => {
+    if (sheetUp && !sheetPushed.current) { sheetPushed.current = true; window.history.pushState({ ...(window.history.state ?? {}), crmCompose: 1 }, ''); }
+    else if (!sheetUp && sheetPushed.current) { sheetPushed.current = false; if (window.history.state?.crmCompose) window.history.back(); }
+  }, [sheetUp]);
+  useEffect(() => {
+    if (!isMobile) return;
+    const onPop = () => { if (sheetPushed.current && !window.history.state?.crmCompose) { sheetPushed.current = false; setMinimized(true); } };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [isMobile]);
+
+  // Phones: when the on-screen keyboard opens, size the sheet to the part of the screen still visible, so the Send bar sits
+  // just above the keyboard instead of hiding behind it (a fixed box follows the full-height layout, not what you can see).
+  const [vv, setVv] = useState<{ h: number; top: number } | null>(null);
+  useEffect(() => {
+    const v = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!sheetUp || !v) return;
+    const on = () => setVv({ h: Math.round(v.height), top: Math.round(v.offsetTop) });
+    on();
+    v.addEventListener('resize', on); v.addEventListener('scroll', on);
+    return () => { v.removeEventListener('resize', on); v.removeEventListener('scroll', on); setVv(null); };
+  }, [sheetUp]);
+
   if (!open) return null;
 
   const draftKey = request?.resumeKey ?? `dock:${(request?.to ?? 'new').toLowerCase()}${request?.subject ? ':' + request.subject.slice(0, 60) : ''}`;
@@ -170,7 +197,7 @@ export default function ComposeDock(props: {
 
   const barBtn: React.CSSProperties = { width: isMobile ? 44 : 30, height: isMobile ? 44 : 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'rgba(255,255,255,.85)', cursor: 'pointer', fontSize: 16, borderRadius: 6, padding: 0, minWidth: 0, minHeight: 0 };
   const shell: React.CSSProperties = isMobile
-    ? { position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)', paddingBottom: 'env(safe-area-inset-bottom)' }
+    ? { position: 'fixed', left: 0, right: 0, top: vv?.top ?? 0, ...(vv ? { height: vv.h } : { bottom: 0 }), zIndex: 1200, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)', paddingBottom: vv && vv.h < window.innerHeight - 100 ? 0 : 'env(safe-area-inset-bottom)' }
     : full
       ? { position: 'fixed', left: '50%', top: '5vh', transform: 'translateX(-50%)', width: 'min(920px, 92vw)', height: '88vh', zIndex: 1200, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)', borderRadius: 12, boxShadow: '0 12px 48px rgba(0,0,0,.35)', overflow: 'hidden' }
       : { position: 'fixed', right: 24, bottom: 0, width: 580, maxWidth: 'calc(100vw - 32px)', height: minimized ? 44 : 'min(640px, calc(100vh - 24px))', zIndex: 1200, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)', borderRadius: '12px 12px 0 0', boxShadow: '0 8px 36px rgba(0,0,0,.30)', overflow: 'hidden', transition: 'height .15s' };

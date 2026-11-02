@@ -245,7 +245,7 @@ export default function GmailMailbox(p: Props) {
   }, [open, p.isMobile]);
   useEffect(() => {
     if (!p.isMobile) return;
-    const onPop = () => { if (readerPushed.current) { readerPushed.current = false; setOpenThread(null); } };
+    const onPop = () => { if (readerPushed.current && !window.history.state?.crmMail) { readerPushed.current = false; setOpenThread(null); } }; // only when OUR entry was popped (a compose sheet over the reader pops its own)
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [p.isMobile]);
