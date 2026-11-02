@@ -28,6 +28,7 @@ import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import CrmShield, { detectAutomation, reportSecurityEvent } from '@/components/crm/CrmShield';
 import { agentTitle } from '@/lib/agent-title';
 import { recallView, rememberView, useRememberedSelection, useRememberedState } from '@/lib/view-memory';
+import { useBackToClose } from '@/lib/use-back-to-close';
 import { chicagoFormat } from '@/lib/chicago-time';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import ContactFiles from '@/components/crm/ContactFiles';
@@ -1886,6 +1887,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Reopen what was open inside the page before a refresh (lib/view-memory) ──
   // The hash brings back the page; these bring back the contact card, campaign or
   // action plan you had open, instead of dropping you on the list.
+  // Phones: the back swipe closes an open contact / deal card instead of leaving the CRM.
+  useBackToClose(!!activeClient, () => setActiveClient(null), 'crmClient', windowWidth < 768);
+  useBackToClose(!!activeDeal, () => setActiveDeal(null), 'crmDeal', windowWidth < 768);
   useRememberedSelection(`${businessUnit}:contact`, activeClient?.id, clients.length > 0, id => {
     const c = clients.find(x => x.id === id);
     if (c) setActiveClient(c);

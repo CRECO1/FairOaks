@@ -281,6 +281,18 @@ export default function EmailComposer(p: EmailComposerProps) {
   }, []);
   useEffect(() => { scheduleSave(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [p.subject, p.moreTo, p.cc, bcc]);
 
+  // Phones: while writing, publish how tall the on-screen keyboard is (--kb) so the Send bar, which sticks to the bottom of
+  // its scrolling card, rides just above the keyboard instead of hiding behind it. A fixed/sticky box follows the full-height
+  // layout on iOS and Chrome Android, not the part of the screen you can still see.
+  useEffect(() => {
+    const v = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!p.isMobile || !v) return;
+    const on = () => document.documentElement.style.setProperty('--kb', `${Math.max(0, Math.round(window.innerHeight - v.height - v.offsetTop))}px`);
+    on();
+    v.addEventListener('resize', on); v.addEventListener('scroll', on);
+    return () => { v.removeEventListener('resize', on); v.removeEventListener('scroll', on); document.documentElement.style.removeProperty('--kb'); };
+  }, [p.isMobile]);
+
   // ── undo send ──
   const countRef = useRef<number | null>(null);
   countRef.current = count;
@@ -653,7 +665,7 @@ export default function EmailComposer(p: EmailComposerProps) {
           </select>
         </div>
       )}
-      <div style={{ position: dock ? 'relative' : 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 10, ...(p.isMobile ? { flexWrap: 'wrap' as const, rowGap: 8 } : {}), padding: p.isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '10px 12px', background: 'var(--k-fff)', borderTop: '1px solid var(--k-e5e7eb)' }}>
+      <div style={{ position: dock ? 'relative' : 'sticky', bottom: dock ? 0 : 'var(--kb, 0px)', display: 'flex', alignItems: 'center', gap: 10, ...(p.isMobile ? { flexWrap: 'wrap' as const, rowGap: 8 } : {}), padding: p.isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '10px 12px', background: 'var(--k-fff)', borderTop: '1px solid var(--k-e5e7eb)' }}>
         {busy ? (
           <>
             <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: 'var(--k-374151)' }} role="status" aria-live="polite">Sending in {count}…</div>
