@@ -43,6 +43,10 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
   const [note, setNote] = useState('');
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [search, setSearch] = useState('');
+  // Optional, explicit: tagging stays silent unless this is ticked, then Google emails a real calendar invite.
+  const [invite, setInvite] = useState(false);
+  const [time, setTime] = useState('');
+  const [location, setLocation] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,7 +61,7 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
 
   useEffect(() => { load(); }, [load]);
 
-  function resetForm() { setDate(todayISO()); setTitle(''); setNote(''); setAttendees([]); setSearch(''); }
+  function resetForm() { setDate(todayISO()); setTitle(''); setNote(''); setAttendees([]); setSearch(''); setInvite(false); setTime(''); setLocation(''); }
   function startNew() { resetForm(); setEditing('new'); }
   function startEdit(m: Meeting) {
     setDate(m.meeting_date); setTitle(m.title || ''); setNote(m.note || '');
@@ -77,10 +81,35 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
       });
       const j = await r.json();
       if (!r.ok) { showToast?.(j.error || 'Could not save'); return; }
+      let inviteMsg = '';
+      if (invite) inviteMsg = await sendInvite();
       setEditing(null); resetForm(); load();
-      showToast?.(isNew ? 'Note saved ✓' : 'Note updated ✓');
+      showToast?.(inviteMsg || (isNew ? 'Note saved ✓' : 'Note updated ✓'));
     } catch { showToast?.('Could not save'); }
     finally { setBusy(false); }
+  }
+
+  // Creates the event on the agent's Google Calendar with each tagged contact as a guest; Google emails them the invite.
+  async function sendInvite(): Promise<string> {
+    if (!time) return 'Note saved — pick a start time to send the invite';
+    if (attendees.length === 0) return 'Note saved — tag who to invite';
+    try {
+      const sb = createBrowserClient();
+      const { data: u } = await sb.auth.getUser();
+      const { data: rows } = await sb.from('crm_clients').select('id, email').in('id', attendees.map(a => a.id));
+      const emails = (rows ?? []).map(c => (c.email as string | null)?.trim()).filter((e): e is string => !!e);
+      const missing = attendees.filter(a => !(rows ?? []).some(c => c.id === a.id && c.email)).map(a => a.name);
+      if (!u.user || emails.length === 0) return `Note saved — no invite sent: ${missing.join(', ') || 'those contacts'} ha${missing.length === 1 ? 's' : 've'} no email`;
+      const r = await fetch('/api/calendar/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ userId: u.user.id, title: title.trim() || 'Meeting', due_date: date, start_time: time, location: location.trim() || undefined, notes: note.trim() || undefined, attendees: emails }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j?.error === 'scope_missing') return 'Note saved — reconnect Google in Settings to send calendar invites';
+      if (!r.ok || !j?.success) return 'Note saved — calendar invite failed';
+      return `Calendar invite sent to ${emails.length} ✓${missing.length ? ` (no email for ${missing.join(', ')})` : ''}`;
+    } catch { return 'Note saved — calendar invite failed'; }
   }
 
   async function remove(id: string) {
@@ -151,7 +180,7 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)' }}>📝 Internal Notes</div>
-            <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>Tag the contacts involved so the team can see who&rsquo;s in this deal. Tagging never notifies anyone.</div>
+            <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>Tag the contacts involved so the team can see who&rsquo;s in this deal. Tagging never notifies anyone unless you tick the calendar-invite box.</div>
           </div>
           {editing === null && (
             <button onClick={startNew} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: GOLD, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}>＋ Add note</button>
@@ -198,7 +227,7 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
               </div>
             )}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 4 }}>Internal only — tagged contacts are never emailed or notified. They&rsquo;ll see this deal listed on their contact record.</div>
+          <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 4 }}>Internal only — tagged contacts aren&rsquo;t notified unless you tick the calendar invite. They&rsquo;ll see this deal listed on their contact record.</div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
             <div style={{ flex: '0 0 150px' }}>
@@ -211,8 +240,25 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
             </div>
           </div>
 
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={invite} onChange={e => setInvite(e.target.checked)} /> 📅 Send a Google Calendar invite to the tagged contacts
+          </label>
+          {invite && (
+            <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+              <div style={{ flex: '0 0 130px' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-9ca3af)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Start time</label>
+                <input type="time" className="crm-input" style={{ marginTop: 3, width: '100%' }} value={time} onChange={e => setTime(e.target.value)} />
+              </div>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-9ca3af)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Location <span style={{ textTransform: 'none', fontWeight: 500 }}>(optional)</span></label>
+                <input className="crm-input" style={{ marginTop: 3, width: '100%' }} value={location} onChange={e => setLocation(e.target.value)} placeholder="Address or meeting spot" />
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', width: '100%' }}>Central time, 1 hour. Google emails each tagged contact (with an email on file) a real calendar invite from your calendar.</div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={save} disabled={busy} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 700, background: GOLD, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : (editing === 'new' ? 'Save note' : 'Save')}</button>
+            <button onClick={save} disabled={busy} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 700, background: GOLD, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : invite ? (editing === 'new' ? 'Save + send invite' : 'Save + send invite') : (editing === 'new' ? 'Save note' : 'Save')}</button>
             <button onClick={() => { setEditing(null); resetForm(); }} style={{ padding: '7px 14px', fontSize: 13, fontWeight: 700, background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
