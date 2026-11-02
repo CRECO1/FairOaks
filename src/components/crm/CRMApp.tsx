@@ -32,6 +32,7 @@ import { useBackToClose } from '@/lib/use-back-to-close';
 import { chicagoFormat } from '@/lib/chicago-time';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import ContactFiles from '@/components/crm/ContactFiles';
+import ContactJumpBar from '@/components/crm/ContactJumpBar';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
 import DeletedItems from '@/components/crm/DeletedItems';
@@ -1092,6 +1093,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
   const [activeClient, setActiveClient] = useState<Client | null>(null);
+  const [cardCompact, setCardCompact] = useState(false); // phones: the contact card's header folds away once its content is scrolled
+  useEffect(() => { setCardCompact(false); }, [activeClient?.id]);
   const importFileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState('');
   const [showAddDeal, setShowAddDeal] = useState(false);
@@ -12974,16 +12977,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div className="overlay">
             <div className="modal" style={{ maxWidth: 580 }} onClick={e => e.stopPropagation()}>
               {/* Header */}
-              <div style={{ padding: '22px 28px', background: '#111', color: '#fff', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, color: 'var(--k-111)', flexShrink: 0 }}>
+              <div style={{ padding: isMobile && cardCompact ? '8px 12px 8px 16px' : '22px 28px', background: '#111', color: '#fff', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: isMobile && cardCompact ? 'center' : 'flex-start', gap: 16 }}>
+                <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#c9922c', ...(isMobile && cardCompact ? { display: 'none' } : {}), display: isMobile && cardCompact ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, color: 'var(--k-111)', flexShrink: 0 }}>
                   {(c.first_name[0] ?? '') + (c.last_name[0] ?? '')}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, marginBottom: 2 }}>{c.first_name} {c.last_name}</h3>
-                  {c.business_name && <div style={{ fontSize: 14, color: 'rgba(255,255,255,.6)', marginBottom: 4 }}>{c.business_name}</div>}
-                  <span style={{ ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 10px', borderRadius: 4, fontSize: 13, fontWeight: 700 } as React.CSSProperties}>
+                  <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile && cardCompact ? 19 : 24, fontWeight: 700, marginBottom: isMobile && cardCompact ? 0 : 2, ...(isMobile && cardCompact ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>{c.first_name} {c.last_name}{isMobile && cardCompact && c.business_name ? <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, fontWeight: 500, color: 'rgba(255,255,255,.55)', marginLeft: 8 }}>{c.business_name}</span> : null}</h3>
+                  {c.business_name && !(isMobile && cardCompact) && <div style={{ fontSize: 14, color: 'rgba(255,255,255,.6)', marginBottom: 4 }}>{c.business_name}</div>}
+                  {!(isMobile && cardCompact) && <span style={{ ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 10px', borderRadius: 4, fontSize: 13, fontWeight: 700 } as React.CSSProperties}>
                     {c.type === 'Buyer' ? '🏡' : c.type === 'Seller' ? '🪧' : c.type === 'Tenant' ? '🔑' : c.type === 'Landlord/Investor' ? '🏢' : c.type === 'Agent' ? '🤝' : '🏛'} {c.type}
-                  </span>
+                  </span>}
                   {isDnc(c) && <span title="Marked do-not-call — skipped by the call queue" style={{ display: 'inline-block', marginLeft: 8, padding: '2px 10px', borderRadius: 4, fontSize: 12, fontWeight: 800, background: 'var(--k-fee2e2)', color: 'var(--k-991b1b)' }}>🚫 Do not call</span>}
                 </div>
                 <button className="crm-icon-btn" onClick={() => setActiveClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
@@ -13013,7 +13016,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               )}
 
               {/* Smart Status Banner */}
-              {(() => {
+              {!(isMobile && cardCompact) && (() => {
                 const openDeals = clientDeals.filter(d => d.stage !== 'Closed' && d.stage !== 'Lost');
                 const activeDeal = openDeals[0];
                 const closedDeal = clientDeals.find(d => d.stage === 'Closed');
@@ -13105,7 +13108,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 );
               })()}
 
-              <div className="modal-body" style={{ padding: isMobile ? '20px 18px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
+              <div className="modal-body" style={{ padding: isMobile ? '20px 18px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}
+                onScroll={isMobile ? (e => {
+                  // Phones: once you scroll a long card, fold the big name/status header away so the content gets the screen.
+                  const el = e.currentTarget, long = el.scrollHeight - el.clientHeight > 300;
+                  setCardCompact(prev => (!long ? false : prev ? el.scrollTop > 4 : el.scrollTop > 60));
+                }) : undefined}>
+                {isMobile && <ContactJumpBar />}
                 {/* Contact Info */}
                 <div>
                   <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 10 }}>
