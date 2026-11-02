@@ -350,12 +350,16 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
         const meta = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${sendData.id}?format=metadata&metadataHeaders=Message-ID`, { headers: { Authorization: `Bearer ${accessToken}` } });
         if (meta.ok) sentMessageId = ((await meta.json()).payload?.headers ?? []).find((h: { name: string }) => h.name.toLowerCase() === 'message-id')?.value ?? null;
       } catch { /* threading still works by Gmail thread id */ }
+      const copyAddr = (opts.toHeader.match(/<([^>]+)>/)?.[1] ?? opts.toHeader).toLowerCase();
+      const rowClient = (individual ? copyClient.get(copyAddr) : undefined) ?? clientId;
       const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/crm_deal_emails`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}`, Prefer: 'return=representation' },
         body: JSON.stringify({
           ...(dealId ? { deal_id: dealId } : {}),
-          ...(clientId ? { client_id: clientId } : {}),
+          // A separately-sent copy is filed on ITS recipient's own contact (so their card shows their copy and opens, and the
+          // Gmail sync doesn't log the same message a second time there); everything else stays on the sending card.
+          ...(rowClient ? { client_id: rowClient } : {}),
           direction: 'sent',
           from_email: gmailEmail,
           to_email: opts.toHeader,
@@ -391,6 +395,19 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
     const everyone = [...toList, ...ccList];
     // A Bcc can't ride along with separate per-person copies (each copy would expose who else got one), so Bcc means one shared message.
     const individual = individualRaw === true && everyone.length > 1 && bccList.length === 0;
+    // Which CRM contact each separate copy belongs to (by address, same business unit as the sender).
+    const copyClient = new Map<string, string>();
+    if (individual) {
+      try {
+        const wanted = everyone.map(a => (a.match(/<([^>]+)>/)?.[1] ?? a).toLowerCase());
+        const { data: found } = await sigDb.from('crm_clients').select('id, email, business_unit').in('email', wanted).limit(40);
+        for (const r of found ?? []) {
+          if (!(ctx.role === 'admin' || ctx.role === 'super_admin' || !ctx.businessUnit || r.business_unit === ctx.businessUnit)) continue;
+          const k = String(r.email ?? '').toLowerCase();
+          if (k && !copyClient.has(k)) copyClient.set(k, r.id as string);
+        }
+      } catch { /* every copy simply stays on the sending card */ }
+    }
     let emailId: string | undefined;
     try {
       if (individual) {
