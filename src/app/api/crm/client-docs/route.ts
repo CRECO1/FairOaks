@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, hiddenDealIds, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { findIdenticalFile } from '@/lib/dup-files';
 import { adminClient } from '@/lib/supabase-admin';
+import { onDeal } from '@/lib/deal-access';
 
 // Files on a CONTACT's card: anything uploaded straight onto the person, plus every file on the Docs tab of
 // their deals (a lease filed against the deal is still that person's lease). Stored in the same private
@@ -44,7 +45,8 @@ export async function GET(req: NextRequest) {
     const fromDeal = req.nextUrl.searchParams.get('source') === 'deal';
     if (fromDeal) {
       const { data: doc } = await supabase.from('crm_deal_docs').select('deal_id, storage_path').eq('id', docId).maybeSingle();
-      if (!doc || !(await assertOwnsResource('crm_deals', doc.deal_id, ctx))) return notFound('Document not found');
+      const deal = doc ? (await supabase.from('crm_deals').select('agent_id, assigned_agent_ids').eq('id', doc.deal_id).maybeSingle()).data : null;
+      if (!doc || !deal || !onDeal(ctx, deal) || !(await assertOwnsResource('crm_deals', doc.deal_id, ctx))) return notFound('Document not found');
       const url = await sign(doc.storage_path);
       return url ? NextResponse.json({ url }) : NextResponse.json({ error: 'Could not generate a download link.' }, { status: 500 });
     }
@@ -63,11 +65,11 @@ export async function GET(req: NextRequest) {
   if (own.error) { console.error('[api/crm/client-docs] list:', own.error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
 
   // Their deals' files — private (restricted) deals the caller may not see stay out, like everywhere else.
-  let dq = supabase.from('crm_deals').select('id, listing_id, crm_listings(address)').eq('client_id', clientId);
+  let dq = supabase.from('crm_deals').select('id, listing_id, agent_id, assigned_agent_ids, crm_listings(address)').eq('client_id', clientId);
   if (!isAdminRole(ctx.role)) dq = dq.eq('business_unit', ctx.businessUnit);
   const hidden = new Set(await hiddenDealIds(ctx));
   const { data: dealRows } = await dq;
-  const deals = (dealRows ?? []).filter(d => !hidden.has(d.id as string));
+  const deals = (dealRows ?? []).filter(d => !hidden.has(d.id as string) && onDeal(ctx, d as { agent_id?: string | null; assigned_agent_ids?: string[] | null }));
   const dealLabel = new Map(deals.map(d => {
     const l = d.crm_listings as unknown as { address?: string } | { address?: string }[] | null;
     const address = Array.isArray(l) ? l[0]?.address : l?.address;
