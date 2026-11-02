@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/ratelimit';
+import { pushEmailOpen } from '@/lib/notify';
 
 const AUTO_OPEN_WINDOW_MS = 20_000;
 
@@ -118,23 +119,29 @@ export async function GET(req: NextRequest) {
             let recipientId: string | null = (conn?.[0]?.user_id as string | undefined) ?? null;
             if (!recipientId) recipientId = ((await supabase.from('crm_profiles').select('id').ilike('email', addr).maybeSingle()).data?.id as string | undefined) ?? null;
             if (recipientId) {
-              // Name the person: the contact on the card, else the To header's display name, else the address.
+              // Name the person whose copy this is. For an email sent to several people "separately" every copy shares the same deal/contact,
+              // so the card's name would credit the wrong person — look the recipient of THIS copy up by address first, then fall back.
               let who = '';
-              if (row.client_id) {
+              const toFirst = String(row.to_email ?? '').split(',')[0] ?? '';
+              const toAddr = (toFirst.match(/<([^>]+)>/)?.[1] ?? toFirst).trim().toLowerCase();
+              if (toAddr.includes('@')) {
+                const { data: c } = await supabase.from('crm_clients').select('first_name, last_name').eq('email', toAddr).limit(1);
+                who = `${c?.[0]?.first_name ?? ''} ${c?.[0]?.last_name ?? ''}`.trim();
+              }
+              if (!who) who = (toFirst.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] ?? '').trim();
+              if (!who && row.client_id) {
                 const { data: c } = await supabase.from('crm_clients').select('first_name, last_name').eq('id', row.client_id).maybeSingle();
                 who = `${c?.first_name ?? ''} ${c?.last_name ?? ''}`.trim();
               }
               if (!who && row.deal_id) who = String(((await supabase.from('crm_deals').select('client').eq('id', row.deal_id).maybeSingle()).data?.client as string | undefined) ?? '').trim();
-              if (!who) {
-                const first = String(row.to_email ?? '').split(',')[0] ?? '';
-                who = (first.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] ?? first.split('@')[0]).trim();
-              }
+              if (!who) who = toFirst.split('@')[0].trim();
               who = who || 'Someone';
               await supabase.from('crm_notifications').insert([{
                 recipient_id: recipientId, sender_id: null, type: 'email_open',
                 message: `👁 ${who} opened your email: ${String(row.subject ?? '').slice(0, 80)}`,
                 entity_type: row.deal_id ? 'deal' : 'contact', entity_id: (row.deal_id ?? row.client_id) as string,
               }]);
+              await pushEmailOpen(supabase, { recipientId, name: who, subject: String(row.subject ?? ''), tag: `open:${row.id}` });
             }
           }
         }

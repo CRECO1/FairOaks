@@ -89,3 +89,26 @@ export async function pushEmailReply(
     console.error('[notify] reply push failed (the bell notification is unaffected):', e);
   }
 }
+
+/**
+ * A phone alert the first time someone opens an email you sent from the CRM ("Nita opened your email"). Best effort, never throws.
+ * Devices that haven't switched on the "Email opens" alert simply don't get it (the bell row is the record either way).
+ */
+export async function pushEmailOpen(
+  db: SupabaseClient,
+  n: { recipientId: string; name: string; subject: string; tag: string },
+): Promise<void> {
+  try {
+    const { data: who } = await db.from('crm_profiles').select('business_unit').eq('id', n.recipientId).maybeSingle();
+    await sendPushToProfiles([n.recipientId], {
+      title: `${n.name} opened your email`,
+      body: n.subject.slice(0, 120),
+      url: '/crm/commercial#emails',
+      tag: n.tag,
+      category: 'opens',
+      businessUnit: who?.business_unit ?? null,
+    }, { db });
+  } catch (e) {
+    console.error('[notify] open push failed (the bell notification is unaffected):', e);
+  }
+}
