@@ -63,16 +63,18 @@ export function MessageFrame({ html }: { html: string }) {
   const fit = useCallback(() => {
     const f = ref.current, d = f?.contentDocument;
     if (!f || !d?.documentElement || !d.body) return;
-    // A wide email (a table-based signature, a fixed 600px newsletter) would be cut off at the right edge on a phone and
-    // this frame can't scroll sideways, so shrink it to fit — what Gmail's phone app does — down to a still-readable 50%.
+    // A wide email (a table-based signature, a fixed 600px newsletter) would be cut off at the right edge on a phone, so
+    // shrink it to fit — what Gmail's phone app does — but never below 70%: smaller than that the text is unreadable, so
+    // the last bit scrolls sideways inside the frame instead.
     d.body.style.zoom = '1';
     const avail = f.clientWidth, need = d.documentElement.scrollWidth;
-    if (avail > 0 && need > avail + 2) d.body.style.zoom = String(Math.max(0.5, avail / need));
-    setH(Math.min(30000, Math.max(40, d.documentElement.scrollHeight)));
+    if (avail > 0 && need > avail + 2) d.body.style.zoom = String(Math.max(0.7, avail / need));
+    const sideways = avail > 0 && d.documentElement.scrollWidth > avail + 2;
+    setH(Math.min(30000, Math.max(40, d.documentElement.scrollHeight + (sideways ? 14 : 0))));
   }, []);
   // No scripts or event handlers survive; links open in a new tab, never inside the frame.
   const safe = useMemo(() => collapseQuotes(sanitizeHtml(stripTrackers(html)).replace(/<a\s/gi, '<a target="_blank" rel="noopener noreferrer" ')), [html]);
-  const doc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;padding:0;background:#fff;color:#222;font:14px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;word-wrap:break-word;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}blockquote{margin:0 0 0 .8ex;border-left:2px solid #d5d9df;padding-left:1ex;color:#555}a{color:#1a56c4}details.q{margin:10px 0}details.q>summary{display:inline-block;cursor:pointer;list-style:none;background:#eceff3;color:#4b5563;border-radius:10px;padding:0 10px;font-size:13px;line-height:18px;user-select:none}details.q>summary::-webkit-details-marker{display:none}details.q[open]>summary{margin-bottom:8px}.gmail_signature{color:#555}</style></head><body>${safe}</body></html>`;
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>html{overflow-x:auto;overflow-y:hidden}html,body{margin:0;padding:0;background:#fff;color:#222;font:14px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;word-wrap:break-word;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}blockquote{margin:0 0 0 .8ex;border-left:2px solid #d5d9df;padding-left:1ex;color:#555}a{color:#1a56c4}details.q{margin:10px 0}details.q>summary{display:inline-block;cursor:pointer;list-style:none;background:#eceff3;color:#4b5563;border-radius:10px;padding:0 10px;font-size:13px;line-height:18px;user-select:none}details.q>summary::-webkit-details-marker{display:none}details.q[open]>summary{margin-bottom:8px}.gmail_signature{color:#555}</style></head><body>${safe}</body></html>`;
   return <iframe ref={ref} title="Message" srcDoc={doc} sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
     onLoad={() => {
       fit(); setTimeout(fit, 400); setTimeout(fit, 1500);

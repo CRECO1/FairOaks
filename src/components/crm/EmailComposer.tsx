@@ -653,7 +653,7 @@ export default function EmailComposer(p: EmailComposerProps) {
           </select>
         </div>
       )}
-      <div style={{ position: dock ? 'relative' : 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--k-fff)', borderTop: '1px solid var(--k-e5e7eb)' }}>
+      <div style={{ position: dock ? 'relative' : 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 10, ...(p.isMobile ? { flexWrap: 'wrap' as const, rowGap: 8 } : {}), padding: p.isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '10px 12px', background: 'var(--k-fff)', borderTop: '1px solid var(--k-e5e7eb)' }}>
         {busy ? (
           <>
             <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: 'var(--k-374151)' }} role="status" aria-live="polite">Sending in {count}…</div>
@@ -673,7 +673,7 @@ export default function EmailComposer(p: EmailComposerProps) {
                 style={{ width: 48, height: 48, flexShrink: 0, background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 10, fontSize: 18, cursor: 'pointer' }}>📎</button>
             )}
             <button type="button" onClick={trySend} disabled={p.sending}
-              style={{ flex: p.isMobile ? 1 : undefined, minWidth: 120, height: p.isMobile ? 48 : 40, padding: '0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: p.sending ? 'default' : 'pointer', opacity: p.sending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+              style={{ flex: p.isMobile ? '1 1 140px' : undefined, minWidth: 120, height: p.isMobile ? 48 : 40, padding: '0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: p.sending ? 'default' : 'pointer', opacity: p.sending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif" }}>
               {p.sending ? 'Sending…' : (p.sendLabel ?? 'Send')}
             </button>
             {p.onSchedule && (
