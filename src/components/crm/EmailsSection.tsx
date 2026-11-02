@@ -4,9 +4,8 @@ import React, { useEffect, useState } from 'react';
 import GmailMailbox, { type ContactMatch } from './GmailMailbox';
 import type { LiveMessage } from '@/lib/gmail-live';
 import InboxSection from './InboxSection';
-import DraftsSection from './DraftsSection';
+import DraftsSection, { type GmailDraftBody } from './DraftsSection';
 import ScheduledEmails from './ScheduledEmails';
-import GmailDrafts from './GmailDrafts';
 import SentSection from './SentSection';
 import type { EmailDraft } from '@/lib/email-drafts';
 import type { InboxRow } from '@/lib/use-inbox';
@@ -45,6 +44,7 @@ type Props = {
   onInboxReply: (r: InboxRow, all: boolean) => void;
   canInboxReplyAll: (r: InboxRow) => boolean;
   onResumeDraft: (d: EmailDraft) => void;
+  onEditGmailDraft: (g: GmailDraftBody) => void;
   onFollowUp: (o: { to: string; name: string; subject: string; dealId: string | null; clientId: string | null; threadId: string | null; inReplyTo: string | null }) => void;
 };
 
@@ -71,7 +71,16 @@ export default function EmailsSection(p: Props) {
       ))}
     </div>
   );
-  const tabs: Array<[EmailsTab, string, number]> = [['inbox', 'Inbox', p.unread], ['drafts', 'Drafts', p.draftCount], ['sent', 'Sent', 0]];
+  // Drafts badge = the CRM's saved drafts + the drafts sitting in Gmail (it used to count only the CRM's, so a Gmail draft was invisible).
+  const [gmailDrafts, setGmailDrafts] = useState(0);
+  useEffect(() => {
+    let live = true;
+    const load = () => { fetch('/api/gmail/drafts?count=1', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => { if (live && j?.connected) setGmailDrafts(Number(j.count) || 0); }).catch(() => {}); };
+    load();
+    window.addEventListener('focus', load); window.addEventListener('crm-gmail-drafts-changed', load);
+    return () => { live = false; window.removeEventListener('focus', load); window.removeEventListener('crm-gmail-drafts-changed', load); };
+  }, [p.tab]);
+  const tabs: Array<[EmailsTab, string, number]> = [['inbox', 'Inbox', p.unread], ['drafts', 'Drafts', p.draftCount + gmailDrafts], ['sent', 'Sent', 0]];
   return (
     <div style={{ maxWidth: source === 'gmail' && p.tab !== 'drafts' ? 1400 : 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, borderBottom: '1px solid var(--k-e5e7eb)', marginBottom: 16 }}>
@@ -102,7 +111,7 @@ export default function EmailsSection(p: Props) {
             : <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />}
         </>
       )}
-      {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} onResume={p.onResumeDraft} nameFor={p.nameFor} /><GmailDrafts isMobile={p.isMobile} /></>)}
+      {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} onResume={p.onResumeDraft} nameFor={p.nameFor} onEditGmail={p.onEditGmailDraft} notify={p.notify} /></>)}
       {p.tab === 'sent' && (
         <>
           {toggle('All sent', 'Tracked opens')}

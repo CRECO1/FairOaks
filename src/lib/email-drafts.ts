@@ -7,6 +7,9 @@ export type DraftContext = {
   id?: string;        // deal id / contact id
   label?: string;     // "Nick Medeiros" — shown in the Drafts list
   replyToId?: string; // crm_deal_emails row being replied to, so a resumed reply stays in its thread
+  // CRM documents attached to the draft (from Deal docs / the property or contact), so they are still attached when you come back to it.
+  // Files picked from your computer can't be kept in a draft.
+  files?: Array<{ kind: string; id: string; name: string; size: number | null; type: string; sub?: string }>;
 };
 export type EmailDraft = {
   key: string; subject: string; to: string; moreTo: string; cc: string; bcc: string;

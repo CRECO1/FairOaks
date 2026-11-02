@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listDrafts, deleteDraft, saveDraft, syncDrafts, onDraftsChanged, draftsServerReady, type EmailDraft } from '@/lib/email-drafts';
+import { confirmDialog } from '@/lib/confirm-dialog';
 
-// Gmail's "Drafts" folder: everything you started writing and didn't send, newest first. Click one to pick
-// up exactly where you left off — back in the right deal or contact, and still inside its thread if it was a reply.
-// Search it, filter it (replies / new / stale), tick several and discard them at once — with Undo.
+// Everything you started writing and didn't send — the CRM's own saved drafts AND the drafts sitting in Gmail itself — in ONE list,
+// newest first. A CRM draft resumes exactly where you left off (right deal or contact, still inside its thread, CRM files still attached).
+// A Gmail draft opens "here" in the CRM composer, which is what gives it open tracking and the deal/contact filing — or in Gmail.
+// Search it, filter it (replies / new / with files / in Gmail / stale), tick several CRM drafts and discard them at once — with Undo.
 
 const plain = (html: string) => html
   .replace(/<br\s*\/?>/gi, ' ').replace(/<\/(p|div|li)>/gi, ' ').replace(/<[^>]*>/g, '')
-  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
 
 const CT: Intl.DateTimeFormatOptions = { timeZone: 'America/Chicago' };
 const dayKey = (ms: number) => new Date(ms).toLocaleDateString('en-US', CT);
@@ -36,49 +38,95 @@ const people = (raw: string, nameFor?: (e: string) => string | undefined) => raw
   return { email, name: (m && m[1].trim()) || nameFor?.(email) || '' };
 });
 const STALE_DAYS = 3;
+const kb = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
-type Props = { isMobile: boolean; onResume: (d: EmailDraft) => void; nameFor?: (email: string) => string | undefined };
+export type GmailDraftRow = { id: string; messageId: string; to: string; cc: string; subject: string; snippet: string; date: number; files: Array<{ name: string; size: number }> };
+export type GmailDraftBody = { to: string; cc: string; bcc: string; subject: string; html: string; files: Array<{ name: string; size: number }> };
 
-export default function DraftsSection({ isMobile, onResume, nameFor }: Props) {
+type Item =
+  | { src: 'crm'; key: string; at: number; d: EmailDraft }
+  | { src: 'gmail'; key: string; at: number; g: GmailDraftRow };
+
+type Props = {
+  isMobile: boolean;
+  onResume: (d: EmailDraft) => void;
+  nameFor?: (email: string) => string | undefined;
+  /** Open a Gmail draft in the CRM composer (so it is tracked and filed). */
+  onEditGmail?: (g: GmailDraftBody) => void;
+  notify?: (msg: string) => void;
+};
+
+export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail, notify }: Props) {
   const [drafts, setDrafts] = useState<EmailDraft[]>(() => listDrafts());
+  const [gm, setGm] = useState<{ drafts: GmailDraftRow[]; account: string | null; canModify: boolean; loaded: boolean }>({ drafts: [], account: null, canModify: false, loaded: false });
   const [syncing, setSyncing] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'replies' | 'new' | 'stale'>('all');
+  const [filter, setFilter] = useState<'all' | 'replies' | 'new' | 'files' | 'gmail' | 'stale'>('all');
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Set<string>>(() => new Set());
-  const [toast, setToast] = useState<{ msg: string; undo: () => void } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastTick = useRef(-1);
+
+  const loadGmail = useCallback(async () => {
+    try {
+      const r = await fetch('/api/gmail/drafts', { cache: 'no-store' });
+      const j = r.ok ? await r.json() : null;
+      setGm({ drafts: j?.connected ? (j.drafts as GmailDraftRow[]) : [], account: j?.account ?? null, canModify: !!j?.canModify, loaded: true });
+    } catch { setGm(g => ({ ...g, loaded: true })); }
+  }, []);
 
   useEffect(() => {
     const refresh = () => setDrafts(listDrafts());
     const off = onDraftsChanged(refresh);
     syncDrafts().finally(() => { refresh(); setSyncing(false); });
-    return off;
-  }, []);
+    void loadGmail();
+    const onFocus = () => void loadGmail();
+    window.addEventListener('focus', onFocus);
+    return () => { off(); window.removeEventListener('focus', onFocus); };
+  }, [loadGmail]);
 
   const deviceOnly = !syncing && draftsServerReady() === false;
-  const isReply = (d: EmailDraft) => !!d.context.replyToId;
-  const stale = (d: EmailDraft) => Date.now() - d.updatedAt >= STALE_DAYS * DAY;
-  const counts = useMemo(() => ({ all: drafts.length, replies: drafts.filter(isReply).length, new: drafts.filter(d => !isReply(d)).length, stale: drafts.filter(stale).length }), [drafts]);
+  const isReplyCrm = (d: EmailDraft) => !!d.context.replyToId;
+  const isReply = (it: Item) => (it.src === 'crm' ? isReplyCrm(it.d) : /^\s*(re|fwd?):/i.test(it.g.subject));
+  const fileCount = (it: Item) => (it.src === 'crm' ? it.d.context.files?.length ?? 0 : it.g.files.length);
+  const items: Item[] = useMemo(() => [
+    ...drafts.map(d => ({ src: 'crm' as const, key: `c:${d.key}`, at: d.updatedAt, d })),
+    ...gm.drafts.map(g => ({ src: 'gmail' as const, key: `g:${g.id}`, at: g.date, g })),
+  ].sort((a, b) => b.at - a.at), [drafts, gm.drafts]);
+  const stale = (it: Item) => Date.now() - it.at >= STALE_DAYS * DAY;
+  const counts = useMemo(() => ({
+    all: items.length, replies: items.filter(isReply).length, new: items.filter(i => !isReply(i)).length,
+    files: items.filter(i => fileCount(i) > 0).length, gmail: items.filter(i => i.src === 'gmail').length, stale: items.filter(stale).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [items]);
+
+  const text = (it: Item) => it.src === 'crm'
+    ? `${it.d.to} ${it.d.moreTo} ${it.d.cc} ${it.d.subject} ${it.d.context.label ?? ''} ${plain(it.d.bodyHtml)} ${(it.d.context.files ?? []).map(f => f.name).join(' ')}`
+    : `${it.g.to} ${it.g.cc} ${it.g.subject} ${it.g.snippet} ${it.g.files.map(f => f.name).join(' ')}`;
+  const recips = (it: Item) => people(it.src === 'crm' ? `${it.d.to},${it.d.moreTo}` : it.g.to, nameFor);
 
   const shown = useMemo(() => {
-    let list = drafts;
+    let list = items;
     if (filter === 'replies') list = list.filter(isReply);
-    if (filter === 'new') list = list.filter(d => !isReply(d));
+    if (filter === 'new') list = list.filter(i => !isReply(i));
+    if (filter === 'files') list = list.filter(i => fileCount(i) > 0);
+    if (filter === 'gmail') list = list.filter(i => i.src === 'gmail');
     if (filter === 'stale') list = list.filter(stale);
     const needle = q.trim().toLowerCase();
-    if (needle) list = list.filter(d => `${d.to} ${d.moreTo} ${d.cc} ${d.subject} ${d.context.label ?? ''} ${plain(d.bodyHtml)}`.toLowerCase().includes(needle)
-      || people(`${d.to},${d.moreTo}`, nameFor).some(x => x.name.toLowerCase().includes(needle)));
+    if (needle) list = list.filter(i => text(i).toLowerCase().includes(needle) || recips(i).some(x => x.name.toLowerCase().includes(needle)));
     return list;
-  }, [drafts, filter, q, nameFor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, filter, q, nameFor]);
 
+  const crmShown = shown.filter((i): i is Extract<Item, { src: 'crm' }> => i.src === 'crm');
   useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [filter, q]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && sel.size) setSel(new Set()); };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, [sel.size]);
 
-  const flash = (msg: string, undo: () => void) => { setToast({ msg, undo }); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 8000); };
+  const flash = (msg: string, undo?: () => void) => { setToast({ msg, undo }); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 8000); };
   // Discard now, put it back if you change your mind (no "are you sure?" — the Undo is the safety net).
   const discard = (list: EmailDraft[]) => {
     if (!list.length) return;
@@ -89,9 +137,32 @@ export default function DraftsSection({ isMobile, onResume, nameFor }: Props) {
       setToast(null);
     });
   };
+  // A Gmail draft has no Undo (Gmail deletes it for good), so this one asks first.
+  const discardGmail = async (g: GmailDraftRow) => {
+    if (!(await confirmDialog(`Discard the Gmail draft “${g.subject || '(no subject)'}”? Gmail deletes it for good — there is no Undo.`, { confirmLabel: 'Discard draft' }))) return;
+    setBusy(g.id);
+    try {
+      const r = await fetch(`/api/gmail/drafts?id=${encodeURIComponent(g.id)}`, { method: 'DELETE' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { notify?.(j.error ?? 'Could not discard it in Gmail.'); return; }
+      setGm(s => ({ ...s, drafts: s.drafts.filter(x => x.id !== g.id) }));
+      window.dispatchEvent(new Event('crm-gmail-drafts-changed'));
+      flash('Gmail draft discarded');
+    } finally { setBusy(null); }
+  };
+  const editGmail = async (g: GmailDraftRow) => {
+    if (!onEditGmail) return;
+    setBusy(g.id);
+    try {
+      const r = await fetch(`/api/gmail/drafts?id=${encodeURIComponent(g.id)}`, { cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.draft) { notify?.(j.error ?? 'Could not open that draft.'); return; }
+      onEditGmail(j.draft as GmailDraftBody);
+    } finally { setBusy(null); }
+  };
   const tick = (key: string, idx: number, range: boolean) => setSel(prev => {
     const n = new Set(prev);
-    if (range && lastTick.current >= 0) { const [a, b] = [Math.min(lastTick.current, idx), Math.max(lastTick.current, idx)]; const on = !prev.has(key); for (const x of shown.slice(a, b + 1)) { if (on) n.add(x.key); else n.delete(x.key); } }
+    if (range && lastTick.current >= 0) { const [a, b] = [Math.min(lastTick.current, idx), Math.max(lastTick.current, idx)]; const on = !prev.has(key); for (const x of crmShown.slice(a, b + 1)) { if (on) n.add(x.d.key); else n.delete(x.d.key); } }
     else if (n.has(key)) n.delete(key); else n.add(key);
     lastTick.current = idx; return n;
   });
@@ -102,25 +173,30 @@ export default function DraftsSection({ isMobile, onResume, nameFor }: Props) {
     fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap',
   });
   const n = (c: number) => (c ? <span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{c}</span> : null);
+  const pill = (bg: string, fg: string, border?: string): React.CSSProperties => ({ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, background: bg, color: fg, ...(border ? { border: `1px solid ${border}` } : {}) });
+  const btn: React.CSSProperties = { height: isMobile ? 40 : 32, padding: '0 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', border: '1px solid var(--k-d1d5db)', background: 'var(--k-fff)', color: 'var(--k-374151)', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' };
 
+  const total = items.length;
   return (
     <div style={{ maxWidth: 860 }}>
-      <style>{'.dr-chk{display:none;position:absolute;inset:0;align-items:center;justify-content:center}.dr-row:hover .dr-av,.dr-sel .dr-av{display:none}.dr-row:hover .dr-chk,.dr-sel .dr-chk{display:flex}@media (hover:none){.dr-row .dr-av{display:flex!important}.dr-row .dr-chk{display:none!important}}'}</style>
+      <style>{'.dr-chk{display:none;position:absolute;inset:0;align-items:center;justify-content:center}.dr-row:hover .dr-av,.dr-sel .dr-av{display:none}.dr-row:hover .dr-chk,.dr-sel .dr-chk{display:flex}.dr-row.dr-gm .dr-chk{display:none!important}.dr-row.dr-gm:hover .dr-av{display:flex!important}@media (hover:none){.dr-row .dr-av{display:flex!important}.dr-row .dr-chk{display:none!important}}'}</style>
       <p style={{ margin: '0 0 14px', fontSize: 14, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>
-        Anything you start writing and don’t send is saved here automatically{deviceOnly ? ' on this device' : ' — and follows you between your computer and your phone'}.
+        Everything you started and haven’t sent — saved here in the CRM{deviceOnly ? ' on this device' : ' (it follows you to your phone)'} or sitting in your Gmail. Open a draft to pick up where you left off.
       </p>
       {deviceOnly && (
         <div style={{ margin: '0 0 14px', padding: '9px 12px', background: 'var(--k-fef9f0)', border: '1px solid var(--k-fde68a)', borderRadius: 8, fontSize: 12.5, color: 'var(--k-92400e)' }}>
-          Drafts are only on this device for now. Once the one-time drafts setup is applied they’ll sync across devices too.
+          CRM drafts are only on this device for now. Once the one-time drafts setup is applied they’ll sync across devices too.
         </div>
       )}
 
-      {drafts.length > 0 && (
+      {total > 0 && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%' }}>
             <button type="button" onClick={() => setFilter('all')} style={chip(filter === 'all')}>All{n(counts.all)}</button>
             <button type="button" onClick={() => setFilter('replies')} style={chip(filter === 'replies')}>↩ Replies{n(counts.replies)}</button>
             <button type="button" onClick={() => setFilter('new')} style={chip(filter === 'new')}>✉ New{n(counts.new)}</button>
+            {counts.files > 0 && <button type="button" onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 With files{n(counts.files)}</button>}
+            {counts.gmail > 0 && <button type="button" onClick={() => setFilter('gmail')} style={chip(filter === 'gmail')}>In Gmail{n(counts.gmail)}</button>}
             <button type="button" onClick={() => setFilter('stale')} title={`Not touched in ${STALE_DAYS}+ days`} style={chip(filter === 'stale')}>⏳ {STALE_DAYS}+ days old{n(counts.stale)}</button>
           </div>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search drafts" aria-label="Search drafts"
@@ -131,18 +207,18 @@ export default function DraftsSection({ isMobile, onResume, nameFor }: Props) {
       {sel.size > 0 && (
         <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', background: '#111', color: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600 }}>
           <span>{sel.size} selected</span>
-          {sel.size < shown.length && <button type="button" onClick={() => setSel(new Set(shown.map(x => x.key)))} style={{ border: 'none', background: 'none', color: '#e8b563', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>All {shown.length}</button>}
+          {sel.size < crmShown.length && <button type="button" onClick={() => setSel(new Set(crmShown.map(x => x.d.key)))} style={{ border: 'none', background: 'none', color: '#e8b563', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>All {crmShown.length}</button>}
           <span style={{ flex: 1 }} />
-          <button type="button" onClick={() => discard(shown.filter(d => sel.has(d.key)))} style={{ height: 32, padding: '0 12px', border: '1px solid #7f1d1d', borderRadius: 8, background: '#450a0a', color: '#fecaca', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>🗑 Discard</button>
+          <button type="button" onClick={() => discard(crmShown.map(x => x.d).filter(d => sel.has(d.key)))} style={{ height: 32, padding: '0 12px', border: '1px solid #7f1d1d', borderRadius: 8, background: '#450a0a', color: '#fecaca', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>🗑 Discard</button>
           <button type="button" onClick={() => setSel(new Set())} aria-label="Clear selection" title="Clear (Esc)" style={{ width: 32, height: 32, border: 'none', borderRadius: 8, background: 'none', color: '#bbb', cursor: 'pointer', fontSize: 16 }}>✕</button>
         </div>
       )}
 
-      {drafts.length === 0 ? (
+      {total === 0 ? (
         <div style={{ padding: '40px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)' }}>
           <div style={{ fontSize: 30, marginBottom: 8 }}>✎</div>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>No drafts</div>
-          <div style={{ fontSize: 13, lineHeight: 1.6 }}>{syncing ? 'Checking for drafts from your other devices…' : <>Start an email from Compose, a contact or a deal and it’s saved here if you don’t send it.<br />Press <kbd style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 5, padding: '0 6px' }}>c</kbd> on this page to compose.</>}</div>
+          <div style={{ fontSize: 13, lineHeight: 1.6 }}>{syncing || !gm.loaded ? 'Checking for drafts…' : <>Start an email from Compose, a contact or a deal and it’s saved here if you don’t send it.<br />Press <kbd style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 5, padding: '0 6px' }}>c</kbd> on this page to compose.</>}</div>
         </div>
       ) : shown.length === 0 ? (
         <div style={{ padding: '32px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)', fontSize: 14 }}>
@@ -150,51 +226,68 @@ export default function DraftsSection({ isMobile, onResume, nameFor }: Props) {
         </div>
       ) : (
         <div className={sel.size ? 'dr-sel' : undefined} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
-          {shown.map((d, i) => {
-            const to = people(`${d.to},${d.moreTo}`, nameFor);
-            const snippet = plain(d.bodyHtml);
-            const kind = d.context.kind === 'deal' ? '💼 Deal' : d.context.kind === 'contact' ? '👤 Contact' : '✉ New message';
-            const reply = isReply(d);
-            const old = stale(d);
-            const days = Math.floor((Date.now() - d.updatedAt) / DAY);
-            const g = groupOf(d.updatedAt), showHeader = i === 0 || groupOf(shown[i - 1].updatedAt) !== g;
+          {shown.map((it, i) => {
+            const to = recips(it);
+            const isG = it.src === 'gmail';
+            const subject = isG ? it.g.subject : it.d.subject;
+            const snippet = isG ? it.g.snippet : plain(it.d.bodyHtml);
+            const files = isG ? it.g.files : (it.d.context.files ?? []).map(f => ({ name: f.name, size: f.size ?? 0 }));
+            const reply = isReply(it);
+            const old = stale(it);
+            const days = Math.floor((Date.now() - it.at) / DAY);
+            const g = groupOf(it.at), showHeader = i === 0 || groupOf(shown[i - 1].at) !== g;
             const first = to[0];
             const label = first ? (first.name || first.email) : '';
             const initial = (label || '✉').replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '✉';
+            const crmIdx = isG ? -1 : crmShown.findIndex(x => x.key === it.key);
+            const kind = !isG ? (it.d.context.kind === 'deal' ? '💼 Deal' : it.d.context.kind === 'contact' ? '👤 Contact' : '✉ New message') : '';
+            const open = () => (isG ? void editGmail(it.g) : onResume(it.d));
+            const gLink = isG ? `https://mail.google.com/mail/${gm.account ? `?authuser=${encodeURIComponent(gm.account)}` : ''}#drafts?compose=${it.g.messageId}` : '';
             return (
-              <React.Fragment key={d.key}>
+              <React.Fragment key={it.key}>
                 {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{g}</div>}
-                <div role="button" tabIndex={0} className="dr-row" onClick={() => onResume(d)} onKeyDown={e => { if (e.key === 'Enter') onResume(d); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: isMobile ? '12px 12px' : '12px 16px', minHeight: 64, borderTop: !showHeader && i ? '1px solid var(--k-f3f4f6)' : 'none', cursor: 'pointer', background: sel.has(d.key) ? 'var(--k-fdf6e8)' : 'var(--k-fff)' }}>
+                <div role="button" tabIndex={0} className={`dr-row${isG ? ' dr-gm' : ''}`} onClick={open} onKeyDown={e => { if (e.key === 'Enter') open(); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: isMobile ? '12px 12px' : '12px 16px', minHeight: 68, borderTop: !showHeader && i ? '1px solid var(--k-f3f4f6)' : 'none', cursor: 'pointer', opacity: busy === (isG ? it.g.id : '') ? 0.6 : 1, background: !isG && sel.has(it.d.key) ? 'var(--k-fdf6e8)' : 'var(--k-fff)' }}>
                   <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
                     <div className="dr-av" aria-hidden style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', background: first ? '#475569' : '#9ca3af' }}>{initial}</div>
-                    <div className="dr-chk" onClick={e => { e.stopPropagation(); tick(d.key, i, e.shiftKey); }} title="Select (shift-click for a range)">
-                      <input type="checkbox" aria-label={`Select draft to ${label || 'nobody'}`} checked={sel.has(d.key)} onChange={() => {}} style={{ width: 18, height: 18, accentColor: '#c9922c', cursor: 'pointer' }} />
-                    </div>
+                    {!isG && (
+                      <div className="dr-chk" onClick={e => { e.stopPropagation(); tick(it.d.key, crmIdx, e.shiftKey); }} title="Select (shift-click for a range)">
+                        <input type="checkbox" aria-label={`Select draft to ${label || 'nobody'}`} checked={sel.has(it.d.key)} onChange={() => {}} style={{ width: 18, height: 18, accentColor: '#c9922c', cursor: 'pointer' }} />
+                      </div>
+                    )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
                       <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                         {first ? <>{label}{to.length > 1 && <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}> +{to.length - 1}</span>}</> : <span style={{ color: '#dc2626', fontWeight: 600 }}>(no recipient)</span>}
                       </span>
-                      <span style={{ marginLeft: 'auto', fontSize: 12, color: old ? 'var(--k-b45309)' : 'var(--k-9ca3af)', fontWeight: old ? 600 : 400, whiteSpace: 'nowrap', flexShrink: 0 }}>{ago(d.updatedAt)}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 12, color: old ? 'var(--k-b45309)' : 'var(--k-9ca3af)', fontWeight: old ? 600 : 400, whiteSpace: 'nowrap', flexShrink: 0 }}>{ago(it.at)}</span>
                     </div>
                     <div style={{ fontSize: 13.5, color: 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <strong style={{ fontWeight: 600 }}>{d.subject || '(no subject)'}</strong>
+                      <strong style={{ fontWeight: 600 }}>{subject || '(no subject)'}</strong>
                       {snippet && <span style={{ color: 'var(--k-9ca3af)' }}> — {snippet.slice(0, 140)}</span>}
                     </div>
-                    <div style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)' }}>
-                        {kind}{d.context.label ? ` · ${d.context.label}` : ''}
-                      </span>
-                      {reply && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, background: 'var(--k-eff6ff)', color: 'var(--k-1d4ed8)' }}>↩ Reply</span>}
-                      {old && <span title="Still need to send this?" style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)', color: 'var(--k-92400e)' }}>⏳ {days} days old</span>}
-                      {!snippet && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, background: 'var(--k-fef2f2)', color: 'var(--k-dc2626)' }}>No text yet</span>}
+                    <div style={{ marginTop: 5, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {isG
+                        ? <span title="Saved in your Gmail" style={pill('var(--k-f3f4f6)', 'var(--k-374151)', 'var(--k-e5e7eb)')}>✉ Gmail</span>
+                        : <span style={pill('var(--k-f3f4f6)', 'var(--k-6b7280)')}>{kind}{it.d.context.label ? ` · ${it.d.context.label}` : ''}</span>}
+                      {reply && <span style={pill('var(--k-eff6ff)', 'var(--k-1d4ed8)')}>↩ Reply</span>}
+                      {files.length > 0 && <span title={files.map(f => `${f.name}${f.size ? ` (${kb(f.size)})` : ''}`).join('\n')} style={pill('var(--k-fdf6e8)', 'var(--k-92400e)', 'var(--k-fde68a)')}>📎 {files.length === 1 ? files[0].name.replace(/(.{26}).+(\.\w+)$/, '$1…$2') : `${files.length} files`}</span>}
+                      {old && <span title="Still need to send this?" style={pill('var(--k-fdf6e8)', 'var(--k-92400e)', 'var(--k-fde68a)')}>⏳ {days} days old</span>}
+                      {!snippet && !files.length && <span style={pill('var(--k-fef2f2)', 'var(--k-dc2626)')}>No text yet</span>}
                     </div>
                   </div>
-                  <button type="button" aria-label="Discard draft" title="Discard draft (you can undo)"
-                    onClick={e => { e.stopPropagation(); discard([d]); }}
-                    style={{ flexShrink: 0, width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--k-9ca3af)', cursor: 'pointer', fontSize: 17 }}>🗑</button>
+                  {isG ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                      {onEditGmail && <button type="button" onClick={() => void editGmail(it.g)} disabled={busy === it.g.id} title="Open it in the CRM composer — sent from here it is tracked (opens) and filed on the deal or contact" style={{ ...btn, borderColor: '#c9922c', color: 'var(--k-92400e)', background: 'var(--k-fffbeb)' }}>{busy === it.g.id ? 'Opening…' : 'Edit here'}</button>}
+                      {!isMobile && <a href={gLink} target="_blank" rel="noopener noreferrer" title="Open this draft in Gmail (keeps its attachments)" style={btn}>Gmail ↗</a>}
+                      {gm.canModify && <button type="button" aria-label="Discard Gmail draft" title="Discard this draft in Gmail" onClick={() => void discardGmail(it.g)} style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--k-9ca3af)', cursor: 'pointer', fontSize: 17 }}>🗑</button>}
+                    </div>
+                  ) : (
+                    <button type="button" aria-label="Discard draft" title="Discard draft (you can undo)"
+                      onClick={e => { e.stopPropagation(); discard([it.d]); }}
+                      style={{ flexShrink: 0, width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--k-9ca3af)', cursor: 'pointer', fontSize: 17 }}>🗑</button>
+                  )}
                 </div>
               </React.Fragment>
             );
@@ -205,7 +298,7 @@ export default function DraftsSection({ isMobile, onResume, nameFor }: Props) {
       {toast && (
         <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: isMobile ? 84 : 24, zIndex: 80, display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', background: '#111', color: '#fff', borderRadius: 10, boxShadow: '0 6px 24px rgba(0,0,0,.25)', fontSize: 13.5, fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
           {toast.msg}
-          <button type="button" onClick={toast.undo} style={{ border: 'none', background: 'none', color: '#e8b563', fontWeight: 800, cursor: 'pointer', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif" }}>Undo</button>
+          {toast.undo && <button type="button" onClick={toast.undo} style={{ border: 'none', background: 'none', color: '#e8b563', fontWeight: 800, cursor: 'pointer', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif" }}>Undo</button>}
         </div>
       )}
     </div>

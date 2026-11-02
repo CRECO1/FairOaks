@@ -184,29 +184,54 @@ export async function hasModifyScope(token: string): Promise<boolean> {
   return modify;
 }
 
-// ── Drafts saved in Gmail itself (written in Gmail, by Claude, or by another app) — read-only here ────────────────────
-export type GmailDraft = { id: string; messageId: string; to: string; subject: string; snippet: string; date: number; files: string[] };
-/** Names of the real attachments (not inline pictures) in a message payload. */
-function fileNames(part: GPart | undefined, out: string[] = []): string[] {
+// ── Drafts saved in Gmail itself (written in Gmail, by the assistant, or by another app) ──────────────────────────────
+export type GmailDraft = { id: string; messageId: string; to: string; cc: string; subject: string; snippet: string; date: number; files: Array<{ name: string; size: number }> };
+const decodeEntities = (t: string) => t.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+/** The real attachments (not inline pictures) in a message payload. */
+function draftFiles(part: GPart | undefined, out: Array<{ name: string; size: number }> = []): Array<{ name: string; size: number }> {
   if (!part) return out;
   if (part.filename && part.body?.attachmentId) {
     const h = (n: string) => part.headers?.find(x => x.name.toLowerCase() === n)?.value ?? '';
-    if (!(/^inline/i.test(h('content-disposition')) && h('content-id') && /^image\//i.test(part.mimeType ?? ''))) out.push(part.filename);
+    if (!(/^inline/i.test(h('content-disposition')) && h('content-id') && /^image\//i.test(part.mimeType ?? ''))) out.push({ name: part.filename, size: part.body?.size ?? 0 });
   }
-  for (const p of part.parts ?? []) fileNames(p, out);
+  for (const p of part.parts ?? []) draftFiles(p, out);
   return out;
 }
-export async function listGmailDrafts(token: string, max = 20): Promise<GmailDraft[]> {
+const asDraft = (id: string, m: GMsg): GmailDraft => ({
+  id, messageId: m.id, to: hdr(m, 'to'), cc: hdr(m, 'cc'), subject: hdr(m, 'subject'), snippet: decodeEntities(m.snippet ?? ''),
+  date: Number(m.internalDate) || 0, files: draftFiles(m.payload),
+});
+export async function listGmailDrafts(token: string, max = 25): Promise<GmailDraft[]> {
   const r = await g(token, `/drafts?maxResults=${max}`);
   if (!r.ok) return [];
   const ids = ((r.json.drafts ?? []) as Array<{ id: string }>).map(d => d.id);
   const rows = await pool(ids, 6, async id => {
     const d = await g(token, `/drafts/${id}?format=full`);
     const m = d.json?.message as GMsg | undefined;
-    if (!d.ok || !m) return null;
-    return { id, messageId: m.id, to: hdr(m, 'to'), subject: hdr(m, 'subject'), snippet: m.snippet ?? '', date: Number(m.internalDate) || 0, files: fileNames(m.payload) } as GmailDraft;
+    return d.ok && m ? asDraft(id, m) : null;
   });
   return rows.filter((x): x is GmailDraft => !!x).sort((a, b) => b.date - a.date);
+}
+/** How many drafts are in Gmail — ids only, so it is cheap enough for a tab badge. */
+export async function countGmailDrafts(token: string): Promise<number> {
+  const r = await g(token, '/drafts?maxResults=100&fields=drafts/id');
+  return r.ok ? ((r.json.drafts ?? []) as unknown[]).length : 0;
+}
+/** One draft with its body, so it can be opened in the CRM composer. HTML is sanitized in the browser before display. */
+export async function getGmailDraft(token: string, id: string): Promise<(GmailDraft & { bcc: string; html: string }) | null> {
+  const r = await g(token, `/drafts/${id}?format=full`);
+  const m = r.json?.message as GMsg | undefined;
+  if (!r.ok || !m) return null;
+  const html = findPart(m.payload, 'text/html');
+  const plain = findPart(m.payload, 'text/plain');
+  const body = html?.body?.data ? b64(html.body.data).toString('utf8')
+    : plain?.body?.data ? b64(plain.body.data).toString('utf8').split(/\n{2,}/).map(par => `<p>${esc(par.trim()).replace(/\n/g, '<br>')}</p>`).join('')
+    : '';
+  return { ...asDraft(id, m), bcc: hdr(m, 'bcc'), html: body };
+}
+export async function deleteGmailDraft(token: string, id: string): Promise<boolean> {
+  const res = await fetch(`${API}/drafts/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+  return res.ok;
 }
 
 // ── The user's own labels (system labels like INBOX/STARRED are handled by the actions above) ───────────────────────

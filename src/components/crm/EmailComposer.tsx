@@ -238,6 +238,7 @@ export default function EmailComposer(p: EmailComposerProps) {
   const mirror = useRef({ html: '', text: '' });
   const syncMirror = () => { const el = p.bodyRef.current; if (el) mirror.current = { html: el.innerHTML.trim(), text: (el.innerText ?? '').trim() }; };
   const firing = useRef(false); // a send is in flight: don't re-save the text that is on its way out
+  const filesRef = useRef<CrmAttachItem[]>([]); filesRef.current = p.crmFiles?.items ?? []; // the newest attached CRM files, for the delayed autosave
   const saveNow = () => {
     if (!p.draftKey || firing.current) return;
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
@@ -248,9 +249,13 @@ export default function EmailComposer(p: EmailComposerProps) {
     // Only a draft with body text is worth keeping — and it stops a just-sent email leaving a subject-only ghost behind.
     const empty = !text;
     if (empty) { deleteDraft(p.draftKey); setDraftNote(''); return; }
-    saveDraft({ key: p.draftKey, subject: l.subject, to: p.to ?? '', moreTo: l.moreTo, cc: l.cc, bcc: l.bcc, bodyHtml: html, context: p.draftContext ?? { kind: 'dock' } });
+    const files = filesRef.current.map(f => ({ kind: f.kind, id: f.id, name: f.name, size: f.size, type: f.type, ...(f.sub ? { sub: f.sub } : {}) }));
+    saveDraft({ key: p.draftKey, subject: l.subject, to: p.to ?? '', moreTo: l.moreTo, cc: l.cc, bcc: l.bcc, bodyHtml: html, context: { ...(p.draftContext ?? { kind: 'dock' }), ...(files.length ? { files } : {}) } });
     setDraftNote('Draft saved');
   };
+  const attachedKey = (p.crmFiles?.items ?? []).map(f => `${f.kind}:${f.id}`).join(',');
+  const mountedOnce = useRef(false);
+  useEffect(() => { if (!mountedOnce.current) { mountedOnce.current = true; return; } scheduleSave(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [attachedKey]);
   const scheduleSave = () => {
     if (!p.draftKey) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -268,6 +273,7 @@ export default function EmailComposer(p: EmailComposerProps) {
       if (!p.moreTo.trim() && d.moreTo) p.setMoreTo(d.moreTo);
       if (!p.cc.trim() && d.cc) { p.setCc(d.cc); setShowCc(true); }
       if (!bcc.trim() && d.bcc && p.setBcc) { p.setBcc(d.bcc); setShowBcc(true); }
+      if (d.context.files?.length && p.crmFiles && !p.crmFiles.items.length) p.crmFiles.setItems(d.context.files as CrmAttachItem[]);
       setDraftNote('Draft restored');
     }
     return () => { saveNow(); };

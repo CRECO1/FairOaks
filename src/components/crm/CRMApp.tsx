@@ -11303,6 +11303,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               onInboxReply={inboxReply} canInboxReplyAll={inboxCanReplyAll}
               onFollowUp={o => openCompose({ to: o.to, name: o.name, subject: o.subject, threadId: o.threadId ?? undefined, inReplyTo: o.inReplyTo ?? undefined, ...(o.dealId ? { dealId: o.dealId } : o.clientId ? { clientId: o.clientId } : {}) })}
               onResumeDraft={resumeDraft}
+              onEditGmailDraft={g => {
+                // A draft written in Gmail, opened in the CRM composer so it is tracked and filed. The body comes across; its files do not.
+                openCompose({ to: g.to, cc: g.cc, bcc: g.bcc, subject: g.subject, body: g.html });
+                if (g.files.length) showToast(`That Gmail draft has ${g.files.length} attachment${g.files.length === 1 ? '' : 's'} (${g.files.map(f => f.name).join(', ')}) — attach ${g.files.length === 1 ? 'it' : 'them'} again here with Deal docs or Attach.`);
+              }}
               />
           )}
 
