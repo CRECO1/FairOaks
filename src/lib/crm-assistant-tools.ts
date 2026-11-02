@@ -546,7 +546,7 @@ export const TOOLS: Anthropic.Tool[] = [
       cc: { type: 'array', items: { type: 'string' }, description: 'Optional extra recipients (email addresses) to copy.' },
       attachments: { type: 'array', description: 'Optional files to attach (about 3 MB total). Each item has exactly ONE of: submission_id (a saved CRM document or Letter of Intent — its PDF is attached), deal_file_id (a file on a deal\'s Docs tab), attachment_id (a file the agent attached to this chat).', items: { type: 'object', properties: { submission_id: { type: 'string' }, deal_file_id: { type: 'string' }, attachment_id: { type: 'string' } } } } }, required: ['contact_id', 'subject', 'body'] } },
   { name: 'schedule_event', description: "Add an event to the agent's Google Calendar on a given date. WRITE. ALWAYS pass `time` when the agent gave a time of day (an event with no time is all-day, and a time left in the notes does not move it). Times are Central. Optionally tie it to a contact.",
-    input_schema: { type: 'object', properties: { title: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, time: { type: 'string', description: 'Start time of day, Central — e.g. 13:30 or 1:30 PM. Omit only for an all-day event.' }, duration_minutes: { type: 'number', description: 'Length in minutes (default 60)' }, location: { type: 'string' }, notes: { type: 'string' }, contact_id: { type: 'string' } }, required: ['title', 'date'] } },
+    input_schema: { type: 'object', properties: { title: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, time: { type: 'string', description: 'Start time of day, Central — e.g. 13:30 or 1:30 PM. Omit only for an all-day event.' }, duration_minutes: { type: 'number', description: 'Length in minutes (default 60)' }, location: { type: 'string' }, attendees: { type: 'array', items: { type: 'string' }, description: 'Guest email addresses. With a time, Google emails each a real calendar invite. Look them up with search_contacts — never guess an address.' }, notes: { type: 'string' }, contact_id: { type: 'string' } }, required: ['title', 'date'] } },
 
   // ── Records & documents (Layer 4) ─────────────────────────────────────────
   { name: 'create_contact', description: `Add a new contact to the CRM. Search first with search_contacts so you don't create a duplicate. Type must be one of: ${CONTACT_TYPES.join(', ')}. WRITE — confirm the details with the agent first.`,
@@ -1328,9 +1328,9 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
           const { data: c } = await db.from('crm_clients').select('first_name, last_name, business_name').eq('id', input.contact_id).single();
           if (c) clientName = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name || undefined;
         }
-        const r = await crmFetch(ctx, '/api/calendar/create', 'POST', { title: input.title, due_date: input.date, notes: input.notes, client_name: clientName, userId: ctx.userId, ...(input.time ? { start_time: String(input.time) } : {}), ...(input.duration_minutes ? { duration_minutes: input.duration_minutes } : {}), ...(input.location ? { location: String(input.location) } : {}) });
+        const r = await crmFetch(ctx, '/api/calendar/create', 'POST', { title: input.title, due_date: input.date, notes: input.notes, client_name: clientName, userId: ctx.userId, ...(input.time ? { start_time: String(input.time) } : {}), ...(input.duration_minutes ? { duration_minutes: input.duration_minutes } : {}), ...(input.location ? { location: String(input.location) } : {}), ...(Array.isArray(input.attendees) && input.attendees.length ? { attendees: input.attendees } : {}) });
         if (!r.ok) return j({ error: r.data?.error || 'Could not create the event — the agent may need to connect Google Calendar in Settings.' });
-        await logCopilot(db, ctx, `Scheduled “${input.title}” on ${input.date}${input.time ? ` at ${input.time}` : ''}`, input.contact_id);
+        await logCopilot(db, ctx, `Scheduled “${input.title}” on ${input.date}${input.time ? ` at ${input.time}` : ''}${(r.data?.invited ?? []).length ? `, invited ${r.data.invited.join(', ')}` : ''}`, input.contact_id);
         return j({ ok: true, scheduled: true, event: r.data });
       }
 
@@ -1721,7 +1721,10 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'prepare_esign': return `Place initials / signature / date boxes for ${(input.signers || []).map((x: any) => x.role).join(', ') || 'the signers'} — draft only, nothing is sent`;
     case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => [s.name, s.email && `<${s.email}>`].filter(Boolean).join(' ')).join(', ')} — this emails them the document`;
     case 'send_email': return `📧 Send the email “${input.subject}” from your Gmail — this emails the contact`;
-    case 'schedule_event': return `📅 Add “${input.title}” to your calendar on ${input.date}${input.time ? ` at ${input.time}` : ' (all day)'}`;
+    case 'schedule_event': {
+      const guests: string[] = Array.isArray(input.attendees) ? input.attendees : [];
+      return `📅 Add “${input.title}” to your calendar on ${input.date}${input.time ? ` at ${input.time}` : ' (all day)'}${input.time && guests.length ? ` and send a calendar invite to ${guests.join(', ')}` : ' — no one is invited'}`;
+    }
     case 'create_contact': return `Add contact ${input.business_name || `${input.first_name ?? ''} ${input.last_name ?? ''}`.trim()} (${input.type})`;
     case 'update_contact': return `Update this contact's ${Object.keys(input).filter(k => k !== 'contact_id').join(', ') || 'details'}`;
     case 'create_property': return `Add property “${input.name}”${input.address ? ` — ${input.address}` : ''}${input.asking_price ? ` at $${Number(input.asking_price).toLocaleString()}` : ''}`;

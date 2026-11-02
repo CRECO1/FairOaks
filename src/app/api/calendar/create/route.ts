@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     const caller = await getCrmProfileUser(req);
     if (!caller) return unauthorized();
 
-    const { title, due_date, notes, client_name, task_type, userId, start_time, duration_minutes, location } = await req.json();
+    const { title, due_date, notes, client_name, task_type, userId, start_time, duration_minutes, location, attendees } = await req.json();
 
     if (!title || !due_date || !userId) {
       return NextResponse.json({ error: 'title, due_date, and userId required' }, { status: 400 });
@@ -126,8 +126,13 @@ export async function POST(req: NextRequest) {
       return `${d.toISOString().slice(0, 10)}T${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}:00`;
     })();
     const nextDay = (() => { const d = new Date(`${due_date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); })();
+    // Guests get a real Google Calendar invite (sendUpdates=all). Only on a timed meeting, never an all-day reminder.
+    const guestEmails: string[] = startHm && Array.isArray(attendees)
+      ? [...new Set<string>(attendees.map((a: unknown) => String(a ?? '').trim().toLowerCase()).filter((a: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a)))].slice(0, 20)
+      : [];
     const event = {
       summary: eventTitle,
+      ...(guestEmails.length ? { attendees: guestEmails.map(email => ({ email })) } : {}),
       description,
       ...(typeof location === 'string' && location.trim() ? { location: location.trim().slice(0, 300) } : {}),
       ...(startHm
@@ -142,7 +147,7 @@ export async function POST(req: NextRequest) {
     };
 
     const createRes = await fetch(
-      'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events${guestEmails.length ? '?sendUpdates=all' : ''}`,
       {
         method: 'POST',
         headers: {
@@ -165,7 +170,7 @@ export async function POST(req: NextRequest) {
 
     const created = await safeJson<{ id?: string; htmlLink?: string }>(createRes, 'calendar/create event');
     if (!created) return NextResponse.json({ error: 'Calendar API error' }, { status: 500 });
-    return NextResponse.json({ success: true, eventId: created.id, htmlLink: created.htmlLink });
+    return NextResponse.json({ success: true, eventId: created.id, htmlLink: created.htmlLink, invited: guestEmails });
   } catch (err) {
     console.error('Calendar create error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
