@@ -51,6 +51,7 @@ type Props = {
 export default function EmailsSection(p: Props) {
   // Inbox and Sent can show your real Gmail ("All mail", the default) or only what the CRM filed / tracked.
   const [source, setSourceState] = useState<'gmail' | 'crm'>('gmail');
+  const [reading, setReading] = useState(false); // phones: a conversation is open → the tabs make way for the message
   useEffect(() => { try { if (localStorage.getItem('crm-emails-source') === 'crm') setSourceState('crm'); } catch { /* ignore */ } }, []);
   const setSource = (v: 'gmail' | 'crm') => { setSourceState(v); try { localStorage.setItem('crm-emails-source', v); } catch { /* ignore */ } };
   useEffect(() => {
@@ -83,7 +84,7 @@ export default function EmailsSection(p: Props) {
   const tabs: Array<[EmailsTab, string, number]> = [['inbox', 'Inbox', p.unread], ['drafts', 'Drafts', p.draftCount + gmailDrafts], ['sent', 'Sent', 0]];
   return (
     <div style={{ maxWidth: source === 'gmail' && p.tab !== 'drafts' ? 1400 : 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, borderBottom: '1px solid var(--k-e5e7eb)', marginBottom: 16 }}>
+      {!(p.isMobile && reading && p.tab !== 'drafts') && <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, borderBottom: '1px solid var(--k-e5e7eb)', marginBottom: 16 }}>
       <div role="tablist" aria-label="Emails" className="crm-tabs-scroll" style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto' }}>
         {tabs.map(([id, label, n]) => {
           const on = p.tab === id;
@@ -101,22 +102,22 @@ export default function EmailsSection(p: Props) {
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 0, marginBottom: 7, padding: p.isMobile ? 0 : '8px 18px', width: p.isMobile ? 44 : undefined, height: p.isMobile ? 44 : undefined, borderRadius: p.isMobile ? 22 : 22, border: 'none', background: '#c9922c', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 14, fontWeight: 700, boxShadow: '0 2px 8px rgba(201,146,44,.35)' }}>
         <span aria-hidden style={{ fontSize: p.isMobile ? 19 : 16 }}>✉</span>{!p.isMobile && ' Compose'}
       </button>
-      </div>
+      </div>}
 
       {p.tab === 'inbox' && (
         <>
-          {toggle('All mail', 'CRM replies')}
+          {!(p.isMobile && reading) && toggle('All mail', 'CRM replies')}
           {source === 'gmail'
-            ? <GmailMailbox box="inbox" isMobile={p.isMobile} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
+            ? <GmailMailbox box="inbox" isMobile={p.isMobile} onReading={setReading} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
             : <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />}
         </>
       )}
       {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} onResume={p.onResumeDraft} nameFor={p.nameFor} onEditGmail={p.onEditGmailDraft} notify={p.notify} /></>)}
       {p.tab === 'sent' && (
         <>
-          {toggle('All sent', 'Tracked opens')}
+          {!(p.isMobile && reading) && toggle('All sent', 'Tracked opens')}
           {source === 'gmail'
-            ? <GmailMailbox box="sent" isMobile={p.isMobile} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
+            ? <GmailMailbox box="sent" isMobile={p.isMobile} onReading={setReading} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
             : <SentSection embedded isMobile={p.isMobile} myAddresses={p.myAddresses} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onFollowUp={p.onFollowUp} />}
         </>
       )}

@@ -109,6 +109,8 @@ export type ContactMatch = { kind: 'deal' | 'contact'; id: string; label: string
 type Props = {
   box: 'inbox' | 'sent';
   isMobile: boolean;
+  /** Phones: told when a conversation is open, so the page can drop its tabs and give the message the whole screen. */
+  onReading?: (reading: boolean) => void;
   contactFor: (email: string) => ContactMatch;
   searchPeople: (q: string) => Array<{ name: string; email: string; sub?: string }>;
   onOpenDeal: (id: string) => void;
@@ -234,6 +236,9 @@ export default function GmailMailbox(p: Props) {
   }, [build, account, cacheKey]);
 
   useEffect(() => { setOpenThread(null); setFilter(f => (p.box === 'sent' && f === 'unread' ? 'all' : f)); }, [p.box]);
+
+  const onReadingRef = useRef(p.onReading); onReadingRef.current = p.onReading;
+  useEffect(() => { onReadingRef.current?.(!!open); return () => onReadingRef.current?.(false); }, [open]);
 
   // Phones: the back swipe / back button closes the open conversation and returns to the list instead of leaving the CRM.
   // The history entry keeps Next.js's own state (it reloads the page on a back step it doesn't recognise).
