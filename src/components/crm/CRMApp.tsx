@@ -12402,7 +12402,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* ── Add Deal Modal ── */}
       {showAddDeal && (
-        <div className="overlay" onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); setNdPackets([]); }}>
+        <div className="overlay">
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>New Deal</h3>
@@ -12540,7 +12540,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* ── Add Client Modal ── */}
       {showAddClient && (
-        <div className="overlay" onClick={() => { setShowAddClient(false); setAssetDropdownOpen(null); }}>
+        <div className="overlay">
           <div className="modal" style={{ maxWidth: 580 }} onClick={e => e.stopPropagation()}>
 
             {/* Header */}
@@ -12912,7 +12912,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         const ownerProfile = profiles.find(p => p.id === c.agent_id);
         const ownerName = ownerProfile ? `${ownerProfile.first_name} ${ownerProfile.last_name}` : profile!.id === c.agent_id ? `${profile!.first_name} ${profile!.last_name}` : '—';
         return (
-          <div className="overlay" onClick={() => setActiveClient(null)}>
+          <div className="overlay">
             <div className="modal" style={{ maxWidth: 580 }} onClick={e => e.stopPropagation()}>
               {/* Header */}
               <div style={{ padding: '22px 28px', background: '#111', color: '#fff', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
@@ -13940,7 +13940,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* ── Edit Client Modal ── */}
       {editClient && (
-        <div className="overlay" onClick={() => { setEditClient(null); setAssetDropdownOpen(null); }}>
+        <div className="overlay">
           <div className="modal" style={{ maxWidth: 580 }} onClick={e => e.stopPropagation()}>
 
             {/* Header */}
@@ -14799,7 +14799,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {showTaskModal && taskClientId && (() => {
         const client = clients.find(c => c.id === taskClientId);
         return (
-          <div className="overlay" onClick={() => setShowTaskModal(false)}>
+          <div className="overlay">
             <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
               <div style={{ padding: '20px 24px', background: '#111', color: '#fff', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
