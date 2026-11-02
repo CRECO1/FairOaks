@@ -470,6 +470,26 @@ export default function GmailMailbox(p: Props) {
     return list;
   }, [threads, who, noReply, waiting, triF, triage, trackF, tracking, otherOf, p]);
 
+  // Sent separately ("See who opens it"): each person gets their OWN copy, which lands in Sent as N separate rows. Fold copies sent
+  // together (same subject, within 2 minutes, different people, all tracked) into ONE row that names each person and whether they opened it.
+  type SentGroup = { gid: string; idx: number; size: number; members: ThreadSummary[] };
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
+  const sentGroup = useMemo(() => {
+    const m = new Map<string, SentGroup>();
+    if (p.box !== 'sent') return m;
+    const norm = (x: string) => x.replace(/^\s*((re|fwd?):\s*)+/i, '').trim().toLowerCase();
+    let i = 0;
+    while (i < visible.length) {
+      const a = visible[i], grp = [a], who = new Set([otherOf(a).email.toLowerCase()]);
+      let j = i + 1;
+      while (j < visible.length && a.lastMine && visible[j].lastMine && norm(visible[j].subject) === norm(a.subject) && Math.abs(visible[j].date - a.date) <= 120_000
+        && tracking.get(visible[j].id)?.tracked && !who.has(otherOf(visible[j]).email.toLowerCase())) { who.add(otherOf(visible[j]).email.toLowerCase()); grp.push(visible[j]); j++; }
+      if (grp.length >= 2 && tracking.get(a.id)?.tracked) grp.forEach((t, k) => m.set(t.id, { gid: grp[0].id, idx: k, size: grp.length, members: grp }));
+      i = j > i ? j : i + 1;
+    }
+    return m;
+  }, [visible, tracking, p.box, otherOf]);
+
   // Bulk select: tick several conversations (shift-click for a range), then one action for all of them.
   const [sel, setSel] = useState<Set<string>>(() => new Set());
   const lp = useRef<{ t?: ReturnType<typeof setTimeout>; fired: boolean }>({ fired: false }); // phone: long-press a row to start selecting
@@ -761,9 +781,40 @@ export default function GmailMailbox(p: Props) {
             const selected = open?.id === t.id;
             const label = groupLabel(t.date);
             const showHeader = i === 0 || groupLabel(visible[i - 1].date) !== label;
+            const gi = sentGroup.get(t.id), gOpen = gi ? openGroups.has(gi.gid) : true;
+            if (gi && !gOpen && gi.idx > 0) return null;   // folded into the group row above
+            const dayHdr = showHeader ? <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div> : null;
+            const groupEl = gi && gi.idx === 0 ? (() => {
+              const opened = gi.members.filter(x => tracking.get(x.id)?.opened).length;
+              const toggle = () => setOpenGroups(prev => { const n = new Set(prev); if (n.has(gi.gid)) n.delete(gi.gid); else n.add(gi.gid); return n; });
+              return (
+                <div role="button" tabIndex={0} aria-expanded={gOpen} onClick={toggle} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: p.isMobile ? '12px' : '12px 16px', cursor: 'pointer', background: 'var(--k-fffbeb)', borderTop: i && !showHeader ? '1px solid var(--k-f3f4f6)' : 'none', borderBottom: gOpen ? '1px solid var(--k-fde68a)' : 'none' }}>
+                  <div aria-hidden style={{ width: 36, height: 36, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>{gi.size}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{t.subject}</span>
+                      <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(t.date)}>{when(t.date)}</span>
+                    </div>
+                    <div style={{ marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: '3px 10px', fontSize: 12.5 }}>
+                      {gi.members.map(x => {
+                        const o = otherOf(x), tr = tracking.get(x.id), who = (o.name || o.email).split(/[\s@]/)[0];
+                        return <span key={x.id} title={tr?.opened ? `Opened${tr.opens > 1 ? ` ${tr.opens}×` : ''}` : 'Not opened yet'} style={{ color: tr?.opened ? 'var(--k-065f46)' : 'var(--k-9ca3af)', fontWeight: tr?.opened ? 700 : 500 }}>{tr?.opened ? '👁' : '○'} {who}{tr?.opened && tr.opens > 1 ? ` ${tr.opens}×` : ''}</span>;
+                      })}
+                    </div>
+                    <div style={{ marginTop: 5, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, background: opened ? 'var(--k-d1fae5)' : 'var(--k-f3f4f6)', color: opened ? 'var(--k-065f46)' : 'var(--k-6b7280)' }}>👁 {opened} of {gi.size} opened</span>
+                      <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>Sent separately · {gOpen ? 'tap to fold' : 'tap for each person'} {gOpen ? '▴' : '▾'}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })() : null;
+            if (groupEl && !gOpen) return <React.Fragment key={t.id}>{dayHdr}{groupEl}</React.Fragment>;
             return (
               <React.Fragment key={t.id}>
                 {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div>}
+                {groupEl}
                 <div style={{ position: 'relative', overflow: p.isMobile ? 'hidden' : undefined }}>
                 {p.isMobile && canModify && swipe?.id === t.id && swipe.dx !== 0 && (
                   <div aria-hidden style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: swipe.dx < 0 ? 'flex-end' : 'flex-start', padding: '0 22px', background: swipe.dx < 0 ? (p.box === 'inbox' ? '#b45309' : '#b91c1c') : '#2563eb', color: '#fff', fontWeight: 800, fontSize: 14, opacity: Math.min(1, Math.abs(swipe.dx) / 90) }}>
