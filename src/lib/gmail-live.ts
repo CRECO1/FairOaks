@@ -184,6 +184,31 @@ export async function hasModifyScope(token: string): Promise<boolean> {
   return modify;
 }
 
+// ── Drafts saved in Gmail itself (written in Gmail, by Claude, or by another app) — read-only here ────────────────────
+export type GmailDraft = { id: string; messageId: string; to: string; subject: string; snippet: string; date: number; files: string[] };
+/** Names of the real attachments (not inline pictures) in a message payload. */
+function fileNames(part: GPart | undefined, out: string[] = []): string[] {
+  if (!part) return out;
+  if (part.filename && part.body?.attachmentId) {
+    const h = (n: string) => part.headers?.find(x => x.name.toLowerCase() === n)?.value ?? '';
+    if (!(/^inline/i.test(h('content-disposition')) && h('content-id') && /^image\//i.test(part.mimeType ?? ''))) out.push(part.filename);
+  }
+  for (const p of part.parts ?? []) fileNames(p, out);
+  return out;
+}
+export async function listGmailDrafts(token: string, max = 20): Promise<GmailDraft[]> {
+  const r = await g(token, `/drafts?maxResults=${max}`);
+  if (!r.ok) return [];
+  const ids = ((r.json.drafts ?? []) as Array<{ id: string }>).map(d => d.id);
+  const rows = await pool(ids, 6, async id => {
+    const d = await g(token, `/drafts/${id}?format=full`);
+    const m = d.json?.message as GMsg | undefined;
+    if (!d.ok || !m) return null;
+    return { id, messageId: m.id, to: hdr(m, 'to'), subject: hdr(m, 'subject'), snippet: m.snippet ?? '', date: Number(m.internalDate) || 0, files: fileNames(m.payload) } as GmailDraft;
+  });
+  return rows.filter((x): x is GmailDraft => !!x).sort((a, b) => b.date - a.date);
+}
+
 // ── The user's own labels (system labels like INBOX/STARRED are handled by the actions above) ───────────────────────
 export type GLabel = { id: string; name: string; bg: string | null; fg: string | null };
 export async function listLabels(token: string): Promise<GLabel[]> {
