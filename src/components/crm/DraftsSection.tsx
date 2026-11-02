@@ -247,7 +247,7 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
               <React.Fragment key={it.key}>
                 {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{g}</div>}
                 <div role="button" tabIndex={0} className={`dr-row${isG ? ' dr-gm' : ''}`} onClick={open} onKeyDown={e => { if (e.key === 'Enter') open(); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: isMobile ? '12px 12px' : '12px 16px', minHeight: 68, borderTop: !showHeader && i ? '1px solid var(--k-f3f4f6)' : 'none', cursor: 'pointer', opacity: busy === (isG ? it.g.id : '') ? 0.6 : 1, background: !isG && sel.has(it.d.key) ? 'var(--k-fdf6e8)' : 'var(--k-fff)' }}>
+                  style={{ display: 'flex', flexWrap: isMobile && isG ? 'wrap' : 'nowrap', alignItems: 'center', gap: 12, padding: isMobile ? '12px 12px' : '12px 16px', minHeight: 68, borderTop: !showHeader && i ? '1px solid var(--k-f3f4f6)' : 'none', cursor: 'pointer', opacity: busy === (isG ? it.g.id : '') ? 0.6 : 1, background: !isG && sel.has(it.d.key) ? 'var(--k-fdf6e8)' : 'var(--k-fff)' }}>
                   <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
                     <div className="dr-av" aria-hidden style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', background: first ? '#475569' : '#9ca3af' }}>{initial}</div>
                     {!isG && (
@@ -278,7 +278,7 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
                     </div>
                   </div>
                   {isG ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, ...(isMobile ? { flexBasis: '100%', paddingLeft: 48 } : {}) }} onClick={e => e.stopPropagation()}>
                       {onEditGmail && <button type="button" onClick={() => void editGmail(it.g)} disabled={busy === it.g.id} title="Open it in the CRM composer — sent from here it is tracked (opens) and filed on the deal or contact" style={{ ...btn, borderColor: '#c9922c', color: 'var(--k-92400e)', background: 'var(--k-fffbeb)' }}>{busy === it.g.id ? 'Opening…' : 'Edit here'}</button>}
                       {!isMobile && <a href={gLink} target="_blank" rel="noopener noreferrer" title="Open this draft in Gmail (keeps its attachments)" style={btn}>Gmail ↗</a>}
                       {gm.canModify && <button type="button" aria-label="Discard Gmail draft" title="Discard this draft in Gmail" onClick={() => void discardGmail(it.g)} style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--k-9ca3af)', cursor: 'pointer', fontSize: 17 }}>🗑</button>}
