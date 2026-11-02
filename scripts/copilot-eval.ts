@@ -34,6 +34,7 @@ interface Case {
   name: string; role?: string; history: Msg[];
   /** at least one of these tools is called in round one */ anyOf?: string[];
   /** none of these may be called */ never?: string[];
+  /** inspect the tool inputs of round one; return a problem string or null */ check?: (calls: Anthropic.ToolUseBlock[]) => string | null;
   /** no tool at all, and the reply must match */ noTools?: boolean; say?: RegExp; notSay?: RegExp;
 }
 
@@ -55,6 +56,25 @@ const cases: Case[] = [
   { name: 'LOI term change uses edit_loi path (reads first)', history: [U('change the price on the Chestnut LOI to $1.2M')], anyOf: ['read_document'], never: ['fill_document', 'send_for_signature'] },
 ];
 
+const FOUND = tool('t9', 'search_contacts', { query: 'Brian Robert' },
+  { contacts: [{ id: 'c-b', first_name: 'Brian', last_name: 'Blanco', email: 'brian@crecotx.com', type: 'Agent' }, { id: 'c-r', first_name: 'Robert', last_name: 'Stovall', email: 'robert@crecotx.com', type: 'Agent' }] });
+const sched = (calls: Anthropic.ToolUseBlock[]) => calls.filter(c => c.name === 'schedule_event').map(c => c.input as Record<string, any>);
+const inviteCheck = (n: number, hhmm: RegExp) => (calls: Anthropic.ToolUseBlock[]) => {
+  const ev = sched(calls);
+  if (ev.length < n) return `wanted ${n} schedule_event call(s), got ${ev.length}`;
+  for (const e of ev) {
+    const guests: string[] = (e.attendees ?? []).map((a: string) => a.toLowerCase());
+    if (!guests.includes('brian@crecotx.com') || !guests.includes('robert@crecotx.com')) return `attendees missing Brian/Robert: ${JSON.stringify(e.attendees)}`;
+    if (!e.time || !hhmm.test(String(e.time))) return `no usable time on "${e.title}": ${JSON.stringify(e.time)}`;
+  }
+  return null;
+};
+cases.push(
+  { name: 'calendar invite request: looks up guests, never emails a stand-in', history: [U('send Brian and Robert a calendar invite for the property tour tomorrow at 1:30 PM at 4946 Center Park Blvd')], anyOf: ['search_contacts', 'schedule_event'], never: ['send_email', 'create_task'] },
+  { name: 'guests found: one timed schedule_event with both attendees + location', history: [U('send Brian and Robert a calendar invite for the property tour on 2026-11-03 at 1:30 PM at 4946 Center Park Blvd'), ...FOUND], anyOf: ['schedule_event'], never: ['send_email'], check: c => inviteCheck(1, /^(13:30|1:30\s*PM)$/i)(c) ?? (sched(c)[0].location ? null : 'no location passed') },
+  { name: 'tour + lunch = two separate timed events', history: [U('invite Brian and Robert to the tour at 1:30 PM and lunch at 11:30 AM, both on 2026-11-03, tour at 4946 Center Park Blvd, lunch at Fair Oaks Country Club'), ...FOUND], anyOf: ['schedule_event'], never: ['send_email'], check: inviteCheck(2, /^(\d{1,2}:\d{2})/) },
+);
+
 (async () => {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const names = new Set(TOOLS.map(t => t.name));
@@ -71,6 +91,7 @@ const cases: Case[] = [
     if (c.noTools && called.length) problems.push(`wanted no tool, got [${called.join(', ')}]`);
     if (c.say && !called.length && !c.say.test(said)) problems.push(`reply doesn't match ${c.say}`);
     if (c.say && called.length && c.noTools && !c.say.test(said)) problems.push(`reply doesn't match ${c.say}`);
+    if (c.check) { const pr = c.check(res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')); if (pr) problems.push(pr); }
     if (c.notSay && c.notSay.test(said)) problems.push(`reply matches forbidden ${c.notSay}`);
     if (problems.length) failed++;
     console.log(`${problems.length ? 'FAIL' : 'ok  '} ${c.name}${problems.length ? '\n       ' + problems.join('\n       ') + `\n       called: [${called.join(', ')}]\n       said: ${said.slice(0, 300)}` : ''}`);
