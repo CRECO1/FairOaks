@@ -291,7 +291,8 @@ function titleCase(v: string): string {
   return v.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1));
 }
 
-function emailDisplayName(addr: string): string {
+function emailDisplayName(raw: string): string {
+  const addr = raw.trim().replace(/^<([^<>]*)>$/, '$1'); // a bare "<a@x.com>" is just the address
   const m = addr.match(/^"?(.+?)"?\s*<[^>]+>/);
   return m ? m[1].trim() : addr.split('@')[0];
 }
