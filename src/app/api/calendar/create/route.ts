@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     const caller = await getCrmProfileUser(req);
     if (!caller) return unauthorized();
 
-    const { title, due_date, notes, client_name, task_type, userId } = await req.json();
+    const { title, due_date, notes, client_name, task_type, userId, start_time, duration_minutes, location } = await req.json();
 
     if (!title || !due_date || !userId) {
       return NextResponse.json({ error: 'title, due_date, and userId required' }, { status: 400 });
@@ -74,11 +74,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Could not refresh Google token' }, { status: 401 });
     }
 
+    // A time of day ("13:30" or "1:30 PM") makes this a real timed event in Central time; without one it stays all-day.
+    const timeMatch = typeof start_time === 'string' ? start_time.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)?$/i) : null;
+    let startHm: string | null = null;
+    if (timeMatch) {
+      let h = Number(timeMatch[1]); const m = Number(timeMatch[2] ?? 0); const ap = timeMatch[3]?.toLowerCase();
+      if (ap) { if (h < 1 || h > 12) h = -1; else h = (h % 12) + (ap.startsWith('p') ? 12 : 0); }
+      if (h >= 0 && h <= 23 && m >= 0 && m <= 59) startHm = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+    if (typeof start_time === 'string' && start_time.trim() && !startHm) return NextResponse.json({ error: `I couldn't read the time "${start_time}" — use something like 13:30 or 1:30 PM.` }, { status: 400 });
+    const mins = Math.min(1440, Math.max(5, Number(duration_minutes) || 60));
+
     const typeEmoji = task_type === 'call' ? '📞' : task_type === 'email' ? '✉️' : '📋';
     const eventTitle = `${typeEmoji} ${title}${client_name ? ` — ${client_name}` : ''}`;
     const description = [
       client_name ? `Contact: ${client_name}` : '',
-      `Task type: ${task_type === 'follow_up' ? 'Follow Up' : task_type === 'call' ? 'Call' : 'Email'}`,
+      task_type ? `Task type: ${task_type === 'follow_up' ? 'Follow Up' : task_type === 'call' ? 'Call' : 'Email'}` : '',
       notes ? `Notes: ${notes}` : '',
       '',
       'Created by Fair Oaks Realty Group CRM',
@@ -101,16 +112,27 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* dedupe is best-effort — never block a genuine create over it */ }
 
-    // Create all-day event on the due date
+    // All-day on the due date, or a timed event at start_time. (An all-day end date is exclusive, so it is the next day.)
+    const ZONE = 'America/Chicago';
+    const localEnd = (() => {
+      const [h, m] = (startHm ?? '00:00').split(':').map(Number);
+      const t = new Date(Date.UTC(2000, 0, 1, h, m + mins)); // only the clock and day-roll matter
+      const dayRoll = Math.floor((h * 60 + m + mins) / 1440);
+      const d = new Date(`${due_date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + dayRoll);
+      return `${d.toISOString().slice(0, 10)}T${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}:00`;
+    })();
+    const nextDay = (() => { const d = new Date(`${due_date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); })();
     const event = {
       summary: eventTitle,
       description,
-      start: { date: due_date },
-      end: { date: due_date },
+      ...(typeof location === 'string' && location.trim() ? { location: location.trim().slice(0, 300) } : {}),
+      ...(startHm
+        ? { start: { dateTime: `${due_date}T${startHm}:00`, timeZone: ZONE }, end: { dateTime: localEnd, timeZone: ZONE } }
+        : { start: { date: due_date }, end: { date: nextDay } }),
       reminders: {
         useDefault: false,
         overrides: [
-          { method: 'popup', minutes: 480 }, // 8 hours before (morning of)
+          startHm ? { method: 'popup', minutes: 30 } : { method: 'popup', minutes: 480 }, // 30 min before a timed event; morning of an all-day one
         ],
       },
     };
