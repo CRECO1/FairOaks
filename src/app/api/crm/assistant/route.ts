@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
-import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, resolveRecord, DOC_EDIT_TOOLS, DEAL_WRITE_TOOLS, CONTACT_WRITE_TOOLS, runTool, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
+import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, resolveRecord, DOC_EDIT_TOOLS, DEAL_WRITE_TOOLS, CONTACT_WRITE_TOOLS, runTool, precheckWrite, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
 import { writeAuditLog } from '@/lib/audit';
 import { systemPrompt } from '@/lib/crm-assistant-prompt';
 import { rateLimit } from '@/lib/ratelimit';
@@ -44,7 +44,7 @@ function safeArgs(input: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-async function logToolCall(ctx: AgentCtx, req: NextRequest, tool: string, input: Record<string, unknown>, outcome: 'executed' | 'queued_for_confirmation', result?: string) {
+async function logToolCall(ctx: AgentCtx, req: NextRequest, tool: string, input: Record<string, unknown>, outcome: 'executed' | 'queued_for_confirmation' | 'rejected_precheck', result?: string) {
   let ok: boolean | undefined;
   let error: string | undefined;
   if (result) {
@@ -214,6 +214,9 @@ export async function POST(req: NextRequest) {
             content = JSON.stringify({ ok: true, opened: t.label, note: 'The screen has switched. Say so in one short line.' });
           }
           await logToolCall(toolCtx, req, block.name, input, 'executed', content);
+        } else if (WRITE_TOOLS.has(block.name) && (content = await precheckWrite(block.name, input, toolCtx) ?? '')) {
+          // Refused before the agent is ever asked to confirm — the model gets the reason and fixes the call.
+          await logToolCall(toolCtx, req, block.name, input, 'rejected_precheck', content);
         } else if (WRITE_TOOLS.has(block.name)) {
           pendingWrites.push({ id: signPendingWrite(toolCtx, block.name, input), name: block.name, summary: await describeWriteRich(block.name, input, toolCtx) });
           content = JSON.stringify({ status: 'NOT_EXECUTED', reason: 'Queued for the agent\'s one-click confirmation in the app. In one short line, restate what will happen. Do not ask a yes/no question and do not retry.' });

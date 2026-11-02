@@ -544,9 +544,10 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { contact_id: { type: 'string', description: 'The contact to email (their email is looked up)' }, subject: { type: 'string' }, body: { type: 'string', description: 'The complete email body — write it in full, no placeholders. Plain text or simple HTML.' },
       deal_id: { type: 'string', description: 'Optional: the deal this email is about, so it is logged on that deal too.' },
       cc: { type: 'array', items: { type: 'string' }, description: 'Optional extra recipients (email addresses) to copy.' },
+      email_only: { type: 'boolean', description: 'Set true ONLY when the agent explicitly asked for a plain email about a meeting instead of a calendar invite. Meeting invites go through schedule_event.' },
       attachments: { type: 'array', description: 'Optional files to attach (about 3 MB total). Each item has exactly ONE of: submission_id (a saved CRM document or Letter of Intent — its PDF is attached), deal_file_id (a file on a deal\'s Docs tab), attachment_id (a file the agent attached to this chat).', items: { type: 'object', properties: { submission_id: { type: 'string' }, deal_file_id: { type: 'string' }, attachment_id: { type: 'string' } } } } }, required: ['contact_id', 'subject', 'body'] } },
   { name: 'schedule_event', description: "Add an event to the agent's Google Calendar on a given date. WRITE. ALWAYS pass `time` when the agent gave a time of day (an event with no time is all-day, and a time left in the notes does not move it). Times are Central. Optionally tie it to a contact.",
-    input_schema: { type: 'object', properties: { title: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, time: { type: 'string', description: 'Start time of day, Central — e.g. 13:30 or 1:30 PM. Omit only for an all-day event.' }, duration_minutes: { type: 'number', description: 'Length in minutes (default 60)' }, location: { type: 'string' }, attendees: { type: 'array', items: { type: 'string' }, description: 'Guest email addresses. With a time, Google emails each a real calendar invite. Look them up with search_contacts — never guess an address.' }, notes: { type: 'string' }, contact_id: { type: 'string' } }, required: ['title', 'date'] } },
+    input_schema: { type: 'object', properties: { title: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, time: { type: 'string', description: 'Start time of day, Central — e.g. 13:30 or 1:30 PM. Omit only for an all-day event.' }, duration_minutes: { type: 'number', description: 'Length in minutes (default 60)' }, location: { type: 'string' }, attendees: { type: 'array', items: { type: 'string' }, description: 'Guest email addresses. With a time, Google emails each a real calendar invite. Look them up with search_contacts — never guess an address.' }, confirmed_unlisted_emails: { type: 'boolean', description: 'Set true ONLY after the agent has confirmed, in chat, an attendee address that is not on any CRM contact or teammate.' }, notes: { type: 'string' }, contact_id: { type: 'string' } }, required: ['title', 'date'] } },
 
   // ── Records & documents (Layer 4) ─────────────────────────────────────────
   { name: 'create_contact', description: `Add a new contact to the CRM. Search first with search_contacts so you don't create a duplicate. Type must be one of: ${CONTACT_TYPES.join(', ')}. WRITE — confirm the details with the agent first.`,
@@ -1582,6 +1583,39 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
  * different body than the agent read in chat) could be approved blind. Resolves the real recipient from the record and
  * prints the full body. Everything else falls through to describeWrite.
  */
+/**
+ * Runs BEFORE a write is queued for the agent's confirmation. Returns an error string (handed back to the model so it
+ * can fix the call) or null. Two calendar traps: a meeting invite sent as a plain email, and an invite going to an
+ * address nobody in the CRM owns.
+ */
+const MEETING_WORDS = /\b(invit(e|ation)|tour|showing|walk-?through|site walk|site visit|meeting|lunch|appointment)\b/i;
+const WHEN_WORDS = /\b(\d{1,2}(:\d{2})?\s*(a\.?m\.?|p\.?m\.?)|tomorrow|tonight|today|mon(day)?|tue(s(day)?)?|wed(nesday)?|thu(r(s(day)?)?)?|fri(day)?|sat(urday)?|sun(day)?)\b/i;
+export async function precheckWrite(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string | null> {
+  if (name === 'send_email' && !input.email_only) {
+    const text = `${input.subject ?? ''} ${String(input.body ?? '').replace(/<[^>]+>/g, ' ')}`;
+    if (MEETING_WORDS.test(String(input.subject ?? '')) && WHEN_WORDS.test(text)) {
+      return j({ error: 'This email reads like a meeting invite (a meeting/tour/lunch with a date or time). Meeting invites are Google Calendar invites, not emails: call schedule_event with the date, start time, location and the guests as attendees. Only if the agent explicitly asked for a plain email instead, call send_email again with email_only: true.' });
+    }
+  }
+  if (name === 'schedule_event') {
+    const guests = (Array.isArray(input.attendees) ? input.attendees : []).map((a: unknown) => String(a ?? '').trim().toLowerCase()).filter(Boolean);
+    if (guests.length && !input.time) return j({ error: 'An invite needs a start time — ask the agent what time, then call schedule_event again. Without a time it is an all-day reminder that invites nobody.' });
+    const bad = guests.filter((g: string) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g));
+    if (bad.length) return j({ error: `Not a valid email address: ${bad.join(', ')}. Look the person up with search_contacts or ask the agent.` });
+    if (guests.length && !input.confirmed_unlisted_emails) {
+      const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+      const [{ data: cs }, { data: ps }] = await Promise.all([
+        db.from('crm_clients').select('email').in('email', guests),
+        db.from('crm_profiles').select('email').in('email', guests),
+      ]);
+      const known = new Set([...(cs ?? []), ...(ps ?? [])].map(r => String(r.email ?? '').toLowerCase()));
+      const unknown = guests.filter((g: string) => !known.has(g));
+      if (unknown.length) return j({ error: `${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not on any CRM contact or teammate, so it may be a typo or the wrong address. Tell the agent that address and ask them to confirm it (or give the right one). Only after they confirm, call schedule_event again with confirmed_unlisted_emails: true.` });
+    }
+  }
+  return null;
+}
+
 export async function describeWriteRich(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
   if (name === 'send_email') {
     try {
