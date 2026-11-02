@@ -10,6 +10,7 @@ import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import EmailsSection, { type EmailsTab } from './EmailsSection';
 import type { ContactMatch } from './GmailMailbox';
+import { MessageFrame } from './MessageFrame';
 import type { LiveMessage } from '@/lib/gmail-live';
 import { useInbox } from '@/lib/use-inbox';
 import CardDrafts from './CardDrafts';
@@ -501,10 +502,39 @@ function MessageAttachments({ emailId, isMobile, none, dealId, onNote }: { email
   );
 }
 
+// What the recipient actually got: the message HTML from the viewer's own Gmail (signature, logo, formatting), shown in
+// the same sandboxed frame the Emails page uses. Only the mailbox that sent or received a message can read it, so anyone
+// else (and any failure) keeps the stored plain text. Opening it never counts as an open: tracking pixels are stripped.
+const threadHtmlCache = new Map<string, Promise<LiveMessage[] | null>>();
+function useMessageHtml(threadId?: string | null, messageId?: string | null): string | null | undefined {
+  const [html, setHtml] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!threadId || !messageId || !/^[0-9a-f]{8,32}$/i.test(threadId)) { setHtml(null); return; }
+    let live = true;
+    let p = threadHtmlCache.get(threadId);
+    if (!p) {
+      p = (async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`/api/gmail/thread?id=${threadId}`, { headers: session ? { Authorization: `Bearer ${session.access_token}` } : {} });
+        if (!res.ok) return null;
+        return ((await res.json().catch(() => null))?.messages ?? null) as LiveMessage[] | null;
+      })().catch(() => null);
+      threadHtmlCache.set(threadId, p);
+      const cached = p;
+      cached.then(v => { if (!v && threadHtmlCache.get(threadId) === cached) threadHtmlCache.delete(threadId); });
+    }
+    p.then(msgs => { if (live) setHtml(msgs?.find(m => m.id === messageId)?.html || null); });
+    return () => { live = false; };
+  }, [threadId, messageId]);
+  return html;
+}
+
 // One message inside an expanded thread, like Gmail: the latest is open, older ones fold to a single line you can
 // tap open. Used by both the deal and the contact thread so they can't drift apart.
 function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onReplyAll, dealId, onNote }: { e: DealEmail; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void; onReplyAll?: () => void; dealId?: string; onNote?: (msg: string) => void }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [plain, setPlain] = useState(false);
+  const html = useMessageHtml(open ? e.gmail_thread_id : null, e.gmail_message_id);
   const bodyText = cleanEmailBody(e.body ?? '');
   const bg = striped ? 'var(--k-fafafa)' : 'var(--k-fff)';
   const border = last ? 'none' : '1px solid var(--k-f0f0f0)';
@@ -545,7 +575,18 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
           <EmailRecipients to={e.to_email} cc={e.cc_emails} bcc={e.bcc_emails} />
         </div>
       </div>
-      {bodyText.trim() && (
+      {html && !plain && (
+        <div style={{ paddingLeft: 42, marginTop: 4 }}>
+          <MessageFrame html={html} />
+        </div>
+      )}
+      {html && (
+        <div style={{ paddingLeft: 42, marginTop: 6 }}>
+          <span role="button" tabIndex={0} onClick={() => setPlain(v => !v)} onKeyDown={ev => { if (ev.key === 'Enter') setPlain(v => !v); }}
+            style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', cursor: 'pointer', textDecoration: 'underline' }}>{plain ? 'Show it as received' : 'Show plain text'}</span>
+        </div>
+      )}
+      {bodyText.trim() && (!html || plain) && (
         <div style={{ fontSize: 14, color: 'var(--k-374151)', lineHeight: 1.65, paddingLeft: 42, marginTop: 4 }}>
           {bodyText.split('\n').map((line, i) => line.trim()
             ? <p key={i} style={{ margin: 0, marginBottom: 2, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}><Linkified text={line} /></p>
