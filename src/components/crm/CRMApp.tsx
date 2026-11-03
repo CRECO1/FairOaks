@@ -11429,6 +11429,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               isAdmin={isAdmin}
               authToken={session?.access_token}
               deals={deals}
+              contacts={clients}
               onNewDeal={() => setShowAddDeal(true)}
               isSuperAdmin={isSuperAdmin}
               currentUser={{ id: profile.id, name: `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() }}

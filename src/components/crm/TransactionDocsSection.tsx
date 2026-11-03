@@ -27,6 +27,7 @@ interface Props {
   isAdmin: boolean;
   authToken?: string;
   deals?: DealLite[];
+  contacts?: Array<{ id: string; first_name?: string | null; last_name?: string | null; business_name?: string | null; email?: string | null; type?: string | null }>;
   onNewDeal?: () => void;
   onToast: (msg: string) => void;
   agentPrefill?: Record<string, string>;
@@ -38,7 +39,7 @@ interface Props {
 
 const ACTIVE_STAGES = ['Active', 'LOI', 'In Contract'];
 
-export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast, agentPrefill, isMobile = false, isSuperAdmin = false, currentUser, profiles }: Props) {
+export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast, agentPrefill, isMobile = false, currentUser, profiles, contacts }: Props) {
   const driveOn = !!currentUser;
   const showDrive = driveOn; // the Drive replaces the old forms / active-deals page for everyone
   const [forms, setForms] = useState<Form[]>([]);
@@ -101,15 +102,17 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
 
   return (
     <div style={{ maxWidth: showDrive ? 1280 : 1100 }}>
+      {!showDrive && (
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 26, fontWeight: 600, color: 'var(--k-1a1a1a)', margin: 0 }}>{driveOn ? 'My Drive' : 'Transaction Docs'}</h2>
         <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 2 }}>
           {showDrive ? 'Folders and live documents your team edits together.' : 'Pick a form to fill, or attach a use-case packet to a deal below.'}
         </div>
       </div>
+      )}
 
       {showDrive && currentUser && (
-        <DocsDrive deals={deals} businessUnit={businessUnit} authToken={authToken} currentUser={currentUser} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={isMobile} onToast={onToast} />
+        <DocsDrive deals={deals} contacts={contacts} businessUnit={businessUnit} authToken={authToken} currentUser={currentUser} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={isMobile} onToast={onToast} />
       )}
 
       {!showDrive && (<>

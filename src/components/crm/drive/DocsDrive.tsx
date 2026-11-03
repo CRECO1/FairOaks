@@ -8,6 +8,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DI, { toneFor, type DIName } from './DriveIcons';
 import dynamic from 'next/dynamic';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import { useBackToClose } from '@/lib/use-back-to-close';
@@ -23,9 +24,12 @@ export interface DrivePerson { id: string; first_name?: string | null; last_name
 
 /** A deal the signed-in user can see (for "Add to a deal…"). */
 export interface DriveDealLite { id: string; client?: string; property?: string; type?: string; stage?: string }
+/** A contact the signed-in user can see (for "Add to a contact…"). The CRM's own contact rows fit this. */
+export interface DriveContactLite { id: string; first_name?: string | null; last_name?: string | null; business_name?: string | null; email?: string | null; type?: string | null }
 
 interface Props {
   deals?: DriveDealLite[];
+  contacts?: DriveContactLite[];
   businessUnit: string;
   authToken?: string;
   currentUser: { id: string; name: string };
@@ -47,13 +51,19 @@ type Dlg =
   | { t: 'trash'; kind: Kind; item: Item }
   | { t: 'delete'; kind: Kind; item: Item }
   | { t: 'toDeal'; kind: Kind; item: Item }
+  | { t: 'toContact'; kind: Kind; item: Item }
   | { t: 'form' }
   | { t: 'template' }
   | { t: 'saveTpl'; item: DriveDoc };
 
 const GOLD = '#c9922c';
 const nameOf = (kind: Kind, item: Item) => (kind === 'doc' || kind === 'form' ? (item as DriveDoc | DriveFormItem).title : (item as DriveFolder | DriveFile).name);
-const fileIcon = (f: DriveFile) => { const n = f.name.toLowerCase(); return f.mime === 'application/pdf' || n.endsWith('.pdf') ? '📕' : f.mime?.startsWith('image/') ? '🖼' : /\.(xlsx?|csv)$/.test(n) ? '📊' : /\.(docx?)$/.test(n) ? '📝' : /\.(pptx?)$/.test(n) ? '📙' : '📎'; };
+const GOLD_SOFT = '#c9922c1f';
+/** The rounded, tinted tile an item's icon sits in. */
+function Tile({ n, color, size = 36 }: { n: DIName; color: string; size?: number }) {
+  return <span style={{ width: size, height: size, borderRadius: 10, background: `${color}1f`, color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><DI n={n} size={Math.round(size * 0.52)} /></span>;
+}
+const initials = (name: string) => (name.replace(/[^A-Za-z ]/g, '').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2) || '·').toUpperCase();
 const fmtSize = (n: number | null) => (n == null ? '' : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 function fmtWhen(iso: string) {
@@ -62,7 +72,7 @@ function fmtWhen(iso: string) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
 }
 
-export default function DocsDrive({ deals = [], businessUnit, authToken, currentUser, profiles, isAdmin, isMobile, onToast }: Props) {
+export default function DocsDrive({ deals = [], contacts = [], businessUnit, authToken, currentUser, profiles, isAdmin, isMobile, onToast }: Props) {
   const [view, setView] = useState<View>('folder');
   const [folderId, setFolderId] = useState<string | null>(() => (typeof window === 'undefined' ? null : recallView(`${businessUnit}:drive-folder`)));
   const [q, setQ] = useState('');
@@ -167,6 +177,38 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
   const [formEditor, setFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId: string } | null>(null);
   // Put a COPY of a document or file on a deal card's Docs tab: a live document goes as a PDF snapshot (with its letterhead), an uploaded
   // file as itself. It uses the deal's normal file upload, so the deal's own access rules apply and an identical file is not added twice.
+  // The bytes a copy is made of: a live document as a PDF snapshot (with its letterhead), an uploaded file as itself.
+  const copyOf = async (kind: Kind, item: Item, where: 'deal' | 'contact'): Promise<{ blob: Blob; name: string }> => {
+    let blob: Blob, name: string;
+    if (kind === 'doc') {
+      const [{ loadDocJson }, { docToPdf, pdfName }] = await Promise.all([import('./doc-export'), import('@/lib/doc-pdf')]);
+      const j = await loadDocJson(item.id, authToken);
+      name = pdfName(j.title);
+      blob = new Blob([(await docToPdf(j.json, j.title, { letterhead: j.letterhead })) as BlobPart], { type: 'application/pdf' });
+    } else {
+      const f = item as DriveFile;
+      if (!/\.(pdf|docx?|jpe?g|png|webp)$/i.test(f.name)) throw new Error(`${where === 'deal' ? 'A deal’s Docs tab' : 'A contact’s Files'} takes PDF, Word, JPG, PNG or WebP files — this one can stay here in My Drive.`);
+      const j = await api<{ url: string }>(`/api/crm/drive/file/${f.id}`);
+      const r = await fetch(j.url);
+      if (!r.ok) throw new Error('Could not read that file');
+      blob = await r.blob(); name = f.name;
+    }
+    if (blob.size > 25 * 1024 * 1024) throw new Error(`A file must be 25 MB or smaller to go on a ${where}`);
+    return { blob, name };
+  };
+  const addToContact = async (kind: Kind, item: Item, c: DriveContactLite) => {
+    setDlg(null);
+    const label = contactLabel(c);
+    onToast(`Adding to ${label}…`);
+    try {
+      const { blob, name } = await copyOf(kind, item, 'contact');
+      const pre = await api<{ uploadUrl: string; storagePath: string; contentType: string }>('/api/crm/client-docs', { method: 'POST', body: JSON.stringify({ action: 'presign', clientId: c.id, filename: name, file_size: blob.size }) });
+      const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': pre.contentType }, body: blob });
+      if (!put.ok) throw new Error('Could not upload the copy — try again');
+      const done = await api<{ duplicate?: boolean }>('/api/crm/client-docs', { method: 'POST', body: JSON.stringify({ action: 'confirm', clientId: c.id, storagePath: pre.storagePath, filename: name }) });
+      onToast(done.duplicate ? `That file is already on ${label}` : `Added to ${label} — see the Files section on their card`);
+    } catch (e) { onToast((e as Error).message || 'Could not add it to the contact'); }
+  };
   const addToDeal = async (kind: Kind, item: Item, deal: DriveDealLite) => {
     setDlg(null);
     const label = [deal.client, deal.property].filter(Boolean).join(' · ') || 'the deal';
@@ -177,21 +219,7 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
         onToast(`Added to ${label} — see its Docs tab (it’s a separate copy)`);
         return;
       }
-      let blob: Blob, name: string;
-      if (kind === 'doc') {
-        const [{ loadDocJson }, { docToPdf, pdfName }] = await Promise.all([import('./doc-export'), import('@/lib/doc-pdf')]);
-        const j = await loadDocJson(item.id, authToken);
-        name = pdfName(j.title);
-        blob = new Blob([(await docToPdf(j.json, j.title, { letterhead: j.letterhead })) as BlobPart], { type: 'application/pdf' });
-      } else {
-        const f = item as DriveFile;
-        if (!/\.(pdf|docx?|jpe?g|png|webp)$/i.test(f.name)) throw new Error('A deal’s Docs tab takes PDF, Word, JPG, PNG or WebP files — this one can stay here in My Drive.');
-        const j = await api<{ url: string }>(`/api/crm/drive/file/${f.id}`);
-        const r = await fetch(j.url);
-        if (!r.ok) throw new Error('Could not read that file');
-        blob = await r.blob(); name = f.name;
-      }
-      if (blob.size > 25 * 1024 * 1024) throw new Error('A file must be 25 MB or smaller to go on a deal');
+      const { blob, name } = await copyOf(kind, item, 'deal');
       const pre = await api<{ uploadUrl: string; storagePath: string; contentType: string }>('/api/crm/docs', { method: 'POST', body: JSON.stringify({ action: 'presign', dealId: deal.id, filename: name, file_size: blob.size }) });
       const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': pre.contentType }, body: blob });
       if (!put.ok) throw new Error('Could not upload the copy — try again');
@@ -279,7 +307,7 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
           <div onClick={() => go(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: `5px 8px 5px ${8 + depth * 14}px`, borderRadius: 7, cursor: 'pointer', background: here ? 'var(--k-fdf6e9)' : 'transparent', color: here ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 13.5, fontWeight: here ? 700 : 500 }}>
             <span role="button" aria-label={expanded.has(f.id) ? 'Collapse' : 'Expand'} onClick={e => { e.stopPropagation(); if (has) setExpanded(prev => { const n = new Set(prev); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n; }); }}
               style={{ width: 16, textAlign: 'center', fontSize: 10, color: 'var(--k-9ca3af)', visibility: has ? 'visible' : 'hidden' }}>{expanded.has(f.id) ? '▾' : '▸'}</span>
-            <span>{f.visibility === 'private' ? '🔒' : f.deal_id ? '💼' : '📁'}</span>
+            <span style={{ color: toneFor('folder', f).color, display: 'inline-flex' }}><DI n={toneFor('folder', f).icon} size={16} /></span>
             <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
           </div>
           {has && expanded.has(f.id) && renderTree(f.id, depth + 1)}
@@ -287,41 +315,83 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
       );
     });
 
-  const navBtn = (label: string, on: boolean, onClick: () => void, icon: string) => (
+  const navBtn = (label: string, on: boolean, onClick: () => void, icon: DIName) => (
     <button type="button" onClick={onClick}
       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', borderRadius: 7, cursor: 'pointer', background: on ? 'var(--k-fdf6e9)' : 'transparent', color: on ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 14, fontWeight: on ? 700 : 600, fontFamily: "'DM Sans',sans-serif" }}>
-      <span>{icon}</span>{label}
+      <DI n={icon} size={17} />{label}
     </button>
   );
 
   // ── pieces ────────────────────────────────────────────────────────────────
-  const accessLabel = (it: Item) => it.deal_id ? '💼 Deal team' : it.visibility === 'private' ? (it.shared_with.length ? `🔒 Shared · ${it.shared_with.length + 1}` : '🔒 Only you') : '👥 Team';
+  const accessLabel = (it: Item) => it.deal_id ? 'Deal team' : it.visibility === 'private' ? (it.shared_with.length ? `Shared · ${it.shared_with.length + 1}` : 'Only you') : 'Team';
+  // A small pill: who can open it.
+  const accessPill = (it: Item) => {
+    const deal = !!it.deal_id, priv = it.visibility === 'private';
+    const color = deal ? '#2563eb' : priv ? (it.shared_with.length ? '#c9922c' : '#6b7280') : '#16a34a';
+    return (
+      <span title={deal ? 'Only people on the linked deal' : priv ? (it.shared_with.length ? 'Shared with specific people' : 'Only you can open this') : 'Everyone on the team can open this'}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 9px', borderRadius: 11, background: `${color}1a`, color, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
+        <DI n={deal ? 'briefcase' : priv ? 'lock' : 'users'} size={12} />{accessLabel(it)}
+      </span>
+    );
+  };
+  const rowSub = (kind: Kind, it: Item) => `${who(it.created_by)} · ${kind === 'file' && (it as DriveFile).size ? `${fmtSize((it as DriveFile).size)} · ` : ''}${kind === 'form' ? `${(it as DriveFormItem).form_code ? `${(it as DriveFormItem).form_code} · ` : ''}${(it as DriveFormItem).has_pdf ? 'saved' : 'in progress'} · ` : ''}${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}`;
+  const tone = (kind: Kind, it: Item) => toneFor(kind, kind === 'file' ? { name: (it as DriveFile).name, mime: (it as DriveFile).mime } : { visibility: it.visibility, deal_id: it.deal_id });
+  const ownerChip = (id: string | null) => {
+    const n = who(id);
+    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+      <span style={{ width: 24, height: 24, borderRadius: 12, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{initials(n)}</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n}</span>
+    </span>;
+  };
+  const dotsBtn = (kind: Kind, it: Item, title: string) => (
+    <button type="button" className="dd-dots" aria-label={`Actions for ${title}`} onClick={() => setDlg({ t: 'menu', kind, item: it })}
+      style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-6b7280)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="dots" size={18} /></button>
+  );
   const row = (kind: Kind, it: Item) => {
     const title = nameOf(kind, it);
     const snippet = (it as DriveDoc).snippet;
+    const t = tone(kind, it);
     return (
-      <div key={`${kind}${it.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '4px 8px 4px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 56 : 46 }}>
+      <div key={`${kind}${it.id}`} className="dd-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '5px 10px 5px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 60 : 54 }}>
         <button type="button" onClick={() => openItem(kind, it)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-          <span style={{ fontSize: 22, flexShrink: 0 }}>{kind === 'folder' ? (it.visibility === 'private' ? '🔒' : it.deal_id ? '💼' : '📁') : kind === 'file' ? fileIcon(it as DriveFile) : kind === 'form' ? '📝' : '📄'}</span>
+          <Tile n={t.icon} color={t.color} />
           <span style={{ minWidth: 0, flex: 1 }}>
             <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
-            {(isMobile || snippet) && <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet ?? `${who(it.created_by)} · ${kind === 'file' && (it as DriveFile).size ? `${fmtSize((it as DriveFile).size)} · ` : ''}${kind === 'form' ? `${(it as DriveFormItem).form_code ? `${(it as DriveFormItem).form_code} · ` : ''}${(it as DriveFormItem).has_pdf ? 'saved' : 'in progress'} · ` : ''}${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}`}</span>}
+            {(isMobile || snippet) && <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet ?? rowSub(kind, it)}</span>}
           </span>
         </button>
         {!isMobile && <>
-          <span style={{ width: 90, fontSize: 12.5, color: 'var(--k-6b7280)' }}>{who(it.created_by)}</span>
-          <span style={{ width: 120, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{accessLabel(it)}</span>
-          <span style={{ width: 88, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}</span>
+          <span style={{ width: 120, fontSize: 12.5, color: 'var(--k-6b7280)', minWidth: 0 }}>{ownerChip(it.created_by)}</span>
+          <span style={{ width: 118 }}>{accessPill(it)}</span>
+          <span style={{ width: 84, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}</span>
         </>}
         {kind === 'doc' && !isMobile && !inTrash && (
-          <button type="button" aria-label={`Quick look at ${title}`} title="Quick look — preview without opening" onClick={() => setQuickDocId(it.id)}
-            style={{ width: 34, height: 34, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-9ca3af)', fontSize: 16, cursor: 'pointer' }}>👁</button>
+          <button type="button" className="dd-dots" aria-label={`Quick look at ${title}`} title="Quick look — preview without opening" onClick={() => setQuickDocId(it.id)}
+            style={{ width: 32, height: 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-9ca3af)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="eye" size={17} /></button>
         )}
-        <button type="button" aria-label={`Actions for ${title}`} onClick={() => setDlg({ t: 'menu', kind, item: it })}
-          style={{ width: isMobile ? 44 : 34, height: isMobile ? 44 : 34, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-6b7280)', fontSize: 20, cursor: 'pointer' }}>⋯</button>
+        {dotsBtn(kind, it, title)}
       </div>
     );
   };
+  // Folders in a folder view are cards on top (like a drive), not rows.
+  const folderCard = (f: DriveFolder) => {
+    const t = tone('folder', f);
+    return (
+      <div key={`folder${f.id}`} className="dd-card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 6px 10px 12px', border: '1px solid var(--k-eef0f2)', borderRadius: 12, background: 'var(--k-fff)', minHeight: 62 }}>
+        <button type="button" onClick={() => openItem('folder', f)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+          <Tile n={t.icon} color={t.color} size={38} />
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 1 }}>{accessLabel(f)}</span>
+          </span>
+        </button>
+        {dotsBtn('folder', f, f.name)}
+      </div>
+    );
+  };
+  const sectionLabel = (t: string) => <div style={{ fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, margin: '2px 2px 8px' }}>{t}</div>;
+  const cardsView = view === 'folder';
 
   const heading = view === 'recent' ? 'Recent' : view === 'trash' ? 'Trash' : view === 'templates' ? 'Templates' : view === 'search' ? 'Search results' : null;
 
@@ -336,11 +406,11 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
         </div>
       ) : (
         <nav aria-label="Folders" style={{ width: 230, flexShrink: 0, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 8, maxHeight: '72vh', overflowY: 'auto' }}>
-          {navBtn('All files', view === 'folder' && folderId === null, () => go(null), '🗂')}
-          {navBtn('Recent', view === 'recent', () => { setQ(''); setView('recent'); }, '🕘')}
-          {navBtn('Templates', view === 'templates', () => { setQ(''); setView('templates'); }, '📋')}
-          {navBtn('Trash', view === 'trash', () => { setQ(''); setView('trash'); }, '🗑')}
-          <div style={{ height: 1, background: 'var(--k-f0f0f0)', margin: '8px 4px' }} />
+          {navBtn('All files', view === 'folder' && folderId === null, () => go(null), 'grid')}
+          {navBtn('Recent', view === 'recent', () => { setQ(''); setView('recent'); }, 'clock')}
+          {navBtn('Templates', view === 'templates', () => { setQ(''); setView('templates'); }, 'template')}
+          {navBtn('Trash', view === 'trash', () => { setQ(''); setView('trash'); }, 'trash')}
+          <div style={{ fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, padding: '14px 10px 6px' }}>Folders</div>
           {tree.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', padding: '4px 10px' }}>No folders yet</div> : renderTree(null, 0)}
         </nav>
       )}
@@ -354,19 +424,22 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
                 <button type="button" onClick={() => go(null)} style={crumb(folderId === null)}>All files</button>
                 {(data?.path ?? []).map((p, i, arr) => (
                   <React.Fragment key={p.id}>
-                    <span style={{ color: 'var(--k-9ca3af)' }}>›</span>
+                    <span style={{ color: 'var(--k-9ca3af)', display: 'inline-flex' }}><DI n="chevron" size={14} /></span>
                     <button type="button" onClick={() => go(p.id)} style={crumb(i === arr.length - 1)}>{p.name}</button>
                   </React.Fragment>
                 ))}
               </>
             )}
           </div>
-          <input value={q} onChange={e => { setQ(e.target.value); setView(e.target.value.trim().length >= 2 ? 'search' : view === 'search' ? 'folder' : view); }} placeholder="🔍  Search docs" aria-label="Search documents"
-            style={{ flex: isMobile ? '1 1 140px' : '0 0 220px', minWidth: 0, height: isMobile ? 44 : 36, border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '0 12px', fontSize: 14, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)' }} />
+          <div style={{ position: 'relative', flex: isMobile ? '1 1 140px' : '0 0 250px', minWidth: 0 }}>
+            <span style={{ position: 'absolute', left: 11, top: 0, bottom: 0, display: 'flex', alignItems: 'center', color: 'var(--k-9ca3af)', pointerEvents: 'none' }}><DI n="search" size={16} /></span>
+            <input value={q} onChange={e => { setQ(e.target.value); setView(e.target.value.trim().length >= 2 ? 'search' : view === 'search' ? 'folder' : view); }} placeholder="Search documents" aria-label="Search documents"
+              style={{ width: '100%', boxSizing: 'border-box', height: isMobile ? 44 : 38, border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '0 12px 0 34px', fontSize: 14, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)' }} />
+          </div>
           {!inTrash && view !== 'templates' && (
             <div style={{ position: 'relative' }}>
               <button type="button" onClick={() => setNewOpen(o => !o)} aria-haspopup="menu" aria-expanded={newOpen}
-                style={{ height: isMobile ? 44 : 36, padding: '0 18px', border: 'none', borderRadius: 8, background: GOLD, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ New</button>
+                style={{ height: isMobile ? 44 : 38, padding: '0 16px 0 13px', border: 'none', borderRadius: 10, background: GOLD, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 7, boxShadow: '0 1px 2px rgba(0,0,0,.12)' }}><DI n="plus" size={16} />New</button>
               {newOpen && (
                 <>
                   <div onClick={() => setNewOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
@@ -386,24 +459,48 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
         </div>
 
         {/* List */}
-        <div onDragOver={e => { if (!inTrash && view === 'folder' && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)}
+        <div className="dd-scope" onDragOver={e => { if (!inTrash && view === 'folder' && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)}
           onDrop={e => { setDragOver(false); if (!inTrash && view === 'folder' && e.dataTransfer.files.length) { e.preventDefault(); void uploadFiles(e.dataTransfer.files); } }}
-          style={{ background: 'var(--k-fff)', border: `1px ${dragOver ? 'dashed' : 'solid'} ${dragOver ? GOLD : '#eef0f2'}`, outline: dragOver ? `3px solid ${GOLD}33` : 'none', borderRadius: 12, overflow: 'hidden' }}>
-          {!isMobile && (folders.length > 0 || docs.length > 0 || files.length > 0 || forms.length > 0) && (
-            <div style={{ display: 'flex', gap: 10, padding: '8px 8px 8px 14px', borderBottom: '1px solid var(--k-eef0f2)', fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>
-              <span style={{ flex: 1, paddingLeft: 34 }}>Name</span><span style={{ width: 90 }}>Owner</span><span style={{ width: 120 }}>Access</span><span style={{ width: 88 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 34 }} />
+          style={{ borderRadius: 14, outline: dragOver ? `2px dashed ${GOLD}` : 'none', outlineOffset: 4, background: dragOver ? `${GOLD}0d` : 'transparent' }}>
+          <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}`}</style>
+          {uploading > 0 && <div style={{ padding: '10px 16px', marginBottom: 10, borderRadius: 10, fontSize: 13, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', display: 'flex', alignItems: 'center', gap: 8 }}><DI n="upload" size={15} />Uploading {uploading} file{uploading === 1 ? '' : 's'}…</div>}
+          {loading && !data && <div style={{ padding: 28, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>}
+          {cardsView && folders.length > 0 && (
+            <div style={{ marginBottom: 18 }}>
+              {sectionLabel('Folders')}
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 150 : 220}px, 1fr))`, gap: 10 }}>{folders.map(folderCard)}</div>
             </div>
           )}
-          {loading && !data && <div style={{ padding: 28, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>}
-          {uploading > 0 && <div style={{ padding: '10px 16px', fontSize: 13, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', borderBottom: '1px solid var(--k-f0e2c4)' }}>⬆ Uploading {uploading} file{uploading === 1 ? '' : 's'}…</div>}
-          {folders.map(f => row('folder', f))}
-          {docs.map(d => row('doc', d))}
-          {forms.map(f => row('form', f))}
-          {files.map(f => row('file', f))}
+          {(docs.length > 0 || forms.length > 0 || files.length > 0 || (!cardsView && folders.length > 0)) && (
+            <>
+              {cardsView && folders.length > 0 && sectionLabel('Files')}
+              <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, overflow: 'hidden' }}>
+                {!isMobile && (
+                  <div style={{ display: 'flex', gap: 10, padding: '9px 10px 9px 14px', borderBottom: '1px solid var(--k-eef0f2)', background: 'var(--k-fafafa)', fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>
+                    <span style={{ flex: 1, paddingLeft: 48 }}>Name</span><span style={{ width: 120 }}>Owner</span><span style={{ width: 118 }}>Access</span><span style={{ width: 84 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 32 + (inTrash ? 0 : 32) }} />
+                  </div>
+                )}
+                {!cardsView && folders.map(f => row('folder', f))}
+                {docs.map(d => row('doc', d))}
+                {forms.map(f => row('form', f))}
+                {files.map(f => row('file', f))}
+              </div>
+            </>
+          )}
           {empty && (
-            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1.6 }}>
-              {view === 'trash' ? 'The trash is empty.' : view === 'templates' ? 'No templates yet.' : view === 'search' ? 'Nothing matches that search.' : view === 'recent' ? 'No documents yet.' : (
-                <>This folder is empty.<br />Use <b>＋ New</b> to add a document, a folder or a file{isMobile ? '' : ' — or drop files here'}.</>
+            <div style={{ padding: '54px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <Tile n={view === 'trash' ? 'trash' : view === 'templates' ? 'template' : view === 'search' ? 'search' : view === 'recent' ? 'clock' : 'folder'} color={GOLD} size={52} />
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--k-1a1a1a)', marginTop: 8 }}>
+                {view === 'trash' ? 'The trash is empty' : view === 'templates' ? 'No templates yet' : view === 'search' ? 'Nothing matches that search' : view === 'recent' ? 'No documents yet' : 'This folder is empty'}
+              </div>
+              <div style={{ fontSize: 13.5, color: 'var(--k-6b7280)', maxWidth: 360, lineHeight: 1.55 }}>
+                {view === 'trash' ? 'Items you delete wait here until you remove them for good.' : view === 'templates' ? 'Open any document, then ⋯ → Save as template.' : view === 'search' ? 'Try a different word, or check the spelling.' : view === 'recent' ? 'Documents you open or edit show up here.' : `Add a document, a folder or a form${isMobile ? '' : ' — or drop files right here'}.`}
+              </div>
+              {view === 'folder' && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <button type="button" onClick={() => void createDoc()} style={{ height: isMobile ? 44 : 36, padding: '0 16px', border: 'none', borderRadius: 10, background: GOLD, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: "'DM Sans',sans-serif" }}><DI n="doc" size={16} />New document</button>
+                  <button type="button" onClick={() => fileInput.current?.click()} style={{ height: isMobile ? 44 : 36, padding: '0 16px', border: '1px solid var(--k-d1d5db)', borderRadius: 10, background: 'var(--k-fff)', color: 'var(--k-374151)', fontWeight: 600, fontSize: 14, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: "'DM Sans',sans-serif" }}><DI n="upload" size={16} />Upload files</button>
+                </div>
               )}
             </div>
           )}
@@ -414,6 +511,7 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
 
       {/* Dialogs */}
       {dlg?.t === 'form' && <FormPicker api={api} businessUnit={businessUnit} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void createForm(id)} />}
+      {dlg?.t === 'toContact' && <ContactPicker contacts={contacts} isMobile={isMobile} title={nameOf(dlg.kind, dlg.item)} onClose={() => setDlg(null)} onPick={c => void addToContact(dlg.kind, dlg.item, c)} />}
       {dlg?.t === 'toDeal' && <DealPicker deals={deals} isMobile={isMobile} title={nameOf(dlg.kind, dlg.item)} onClose={() => setDlg(null)} onPick={d => void addToDeal(dlg.kind, dlg.item, d)} />}
       {dlg?.t === 'template' && <TemplatePicker api={api} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void startFromTemplate(id)} />}
       {dlg?.t === 'saveTpl' && <NameDialog title="Save as template" cta="Save template" initial={dlg.item.title} isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void saveAsTemplate(dlg.item, name)} />}
@@ -435,6 +533,7 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
               {dlg.kind === 'form' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void quickLookForm(d.item as DriveFormItem); }} />}
               {dlg.kind === 'form' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFormPdf(d.item as DriveFormItem); }} />}
               {(dlg.kind === 'file' || dlg.kind === 'form' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label="Add to a deal…" isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
+              {(dlg.kind === 'file' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && contacts.length > 0 && <MenuBtn icon="👤" label="Add to a contact…" isMobile={isMobile} onClick={() => setDlg({ t: 'toContact', kind: dlg.kind, item: dlg.item })} />}
               {dlg.kind === 'doc' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
@@ -488,12 +587,13 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
 
 const crumb = (current: boolean): React.CSSProperties => ({ background: 'none', border: 'none', padding: '6px 6px', borderRadius: 6, cursor: current ? 'default' : 'pointer', fontSize: 'inherit', fontWeight: current ? 700 : 600, color: current ? 'var(--k-1a1a1a)' : 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif", maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 
+const MENU_ICON: Record<string, DIName> = { '📄': 'doc', '📋': 'template', '📁': 'folder', '📝': 'form', '⬆': 'upload', '↩': 'restore', '🗑': 'trash', '↗': 'open', '👁': 'eye', '⬇': 'download', '↓': 'download', '💼': 'briefcase', '👤': 'user', '✎': 'pen', '👥': 'users' };
 function MenuBtn({ icon, label, onClick, danger, isMobile }: { icon: string; label: string; onClick: () => void; danger?: boolean; isMobile: boolean }) {
   return (
     <button type="button" role="menuitem" onClick={onClick}
       style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', minHeight: isMobile ? 48 : 38, padding: '0 12px', border: 'none', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 14.5, fontWeight: 600, color: danger ? 'var(--k-dc2626)' : 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-fbf8f1)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-      <span style={{ width: 22, textAlign: 'center' }}>{icon}</span>{label}
+      <span style={{ width: 22, display: 'inline-flex', justifyContent: 'center', color: danger ? 'var(--k-dc2626)' : 'var(--k-6b7280)' }}>{MENU_ICON[icon] ? <DI n={MENU_ICON[icon]} size={17} /> : icon}</span>{label}
     </button>
   );
 }
@@ -551,7 +651,7 @@ function MoveDialog({ kind, item, tree, kids, isMobile, onClose, onPick }: { kin
     <div key={f.id}>
       <button type="button" disabled={blocked.has(f.id)} onClick={() => setSel(f.id)}
         style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', minHeight: isMobile ? 46 : 34, padding: `0 10px 0 ${10 + depth * 18}px`, border: 'none', borderRadius: 8, background: sel === f.id ? 'var(--k-fdf6e9)' : 'none', color: blocked.has(f.id) ? 'var(--k-d1d5db)' : 'var(--k-1a1a1a)', fontSize: 14, fontWeight: sel === f.id ? 700 : 500, cursor: blocked.has(f.id) ? 'default' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-        <span>{f.visibility === 'private' ? '🔒' : f.deal_id ? '💼' : '📁'}</span><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+        <span style={{ color: toneFor('folder', f).color, display: 'inline-flex' }}><DI n={toneFor('folder', f).icon} size={16} /></span><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
       </button>
       {render(f.id, depth + 1)}
     </div>
@@ -628,6 +728,38 @@ function TemplatePicker({ api, isMobile, onClose, onPick }: { api: <T>(path: str
           </span>
         </button>
       ))}
+    </Modal>
+  );
+}
+
+const contactLabel = (c: DriveContactLite) => [[c.first_name, c.last_name].filter(Boolean).join(' '), c.business_name].filter(Boolean).join(' · ') || c.email || 'the contact';
+
+function ContactPicker({ contacts, isMobile, title, onClose, onPick }: { contacts: DriveContactLite[]; isMobile: boolean; title: string; onClose: () => void; onPick: (c: DriveContactLite) => void }) {
+  const [q, setQ] = useState('');
+  const list = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (t.length < 2) return [];
+    return contacts.filter(c => `${c.first_name ?? ''} ${c.last_name ?? ''} ${c.business_name ?? ''} ${c.email ?? ''}`.toLowerCase().includes(t)).slice(0, 40);
+  }, [contacts, q]);
+  return (
+    <Modal title="Add to a contact" isMobile={isMobile} onClose={onClose}>
+      <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>A copy of “{title}” goes in the Files section on the contact’s card. Later changes here won’t change the copy.</p>
+      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="🔍  Search contacts by name, company or email" style={{ width: '100%', boxSizing: 'border-box', height: isMobile ? 46 : 36, border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '0 12px', fontSize: 14, marginBottom: 8, fontFamily: "'DM Sans',sans-serif" }} />
+      <div style={{ maxHeight: isMobile ? '50dvh' : 320, overflowY: 'auto' }}>
+        {q.trim().length < 2 && <div style={{ padding: 12, color: 'var(--k-9ca3af)', fontSize: 14 }}>Type at least 2 letters to search.</div>}
+        {q.trim().length >= 2 && list.length === 0 && <div style={{ padding: 12, color: 'var(--k-9ca3af)', fontSize: 14 }}>No contacts match.</div>}
+        {list.map(c => (
+          <button key={c.id} type="button" onClick={() => onPick(c)}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', minHeight: isMobile ? 54 : 44, padding: '6px 10px', border: 'none', borderBottom: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            <span style={{ fontSize: 20 }}>👤</span>
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[c.first_name, c.last_name].filter(Boolean).join(' ') || c.business_name || c.email}</span>
+              <span style={{ display: 'block', fontSize: 12.5, color: 'var(--k-6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[c.business_name, c.email].filter(Boolean).join(' · ')}</span>
+            </span>
+            {c.type && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-1d4ed8)', background: 'var(--k-dbeafe)', padding: '2px 8px', borderRadius: 20 }}>{c.type}</span>}
+          </button>
+        ))}
+      </div>
     </Modal>
   );
 }
