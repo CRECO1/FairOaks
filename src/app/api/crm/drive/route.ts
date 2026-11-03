@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound } from '@/lib/crm-auth';
-import { driveContext, likePattern } from '@/lib/drive-server';
+import { driveContext, likePattern, stripCommentMarks } from '@/lib/drive-server';
 import { DOC_COLS, FILE_COLS, FOLDER_COLS, type DriveDoc, type DriveFile, type DriveFolder, type DriveListing } from '@/lib/drive-types';
 
 // Transaction Docs "Drive": list folders + live documents, and create new ones.
@@ -24,9 +24,17 @@ export async function GET(req: NextRequest) {
 
   if (view === 'recent') {
     const { data, error } = await userDb.from('crm_drive_docs').select(DOC_COLS)
-      .eq('business_unit', bu).is('trashed_at', null).order('updated_at', { ascending: false }).limit(40);
+      .eq('business_unit', bu).is('trashed_at', null).eq('is_template', false).order('updated_at', { ascending: false }).limit(40);
     if (error) return NextResponse.json({ error: 'Could not load documents' }, { status: 500 });
     return NextResponse.json({ path: [], folder: null, folders: [], docs: data ?? [] } satisfies DriveListing);
+  }
+
+  if (view === 'templates') {
+    const { data, error } = await userDb.from('crm_drive_docs').select(`${DOC_COLS},content_text`)
+      .eq('business_unit', bu).eq('is_template', true).is('trashed_at', null).order('title');
+    if (error) return NextResponse.json({ error: 'Could not load templates' }, { status: 500 });
+    const docs = ((data ?? []) as unknown as Array<DriveDoc & { content_text: string }>).map(({ content_text, ...d }) => ({ ...d, snippet: content_text.replace(/\s+/g, ' ').slice(0, 110) }));
+    return NextResponse.json({ path: [], folder: null, folders: [], docs } satisfies DriveListing);
   }
 
   if (view === 'trash') {
@@ -56,8 +64,8 @@ export async function GET(req: NextRequest) {
     const pat = likePattern(q);
     const [f, byTitle, byText, byFile] = await Promise.all([
       userDb.from('crm_drive_folders').select(FOLDER_COLS).eq('business_unit', bu).is('trashed_at', null).ilike('name', pat).limit(30),
-      userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).is('trashed_at', null).ilike('title', pat).limit(40),
-      userDb.from('crm_drive_docs').select(`${DOC_COLS},content_text`).eq('business_unit', bu).is('trashed_at', null).ilike('content_text', pat).limit(40),
+      userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).is('trashed_at', null).eq('is_template', false).ilike('title', pat).limit(40),
+      userDb.from('crm_drive_docs').select(`${DOC_COLS},content_text`).eq('business_unit', bu).is('trashed_at', null).eq('is_template', false).ilike('content_text', pat).limit(40),
       userDb.from('crm_drive_files').select(FILE_COLS).eq('business_unit', bu).is('trashed_at', null).ilike('name', pat).limit(40),
     ]);
     const docs = new Map<string, DriveDoc>();
@@ -84,7 +92,7 @@ export async function GET(req: NextRequest) {
     cur = row.parent_id;
   }
   const fq = userDb.from('crm_drive_folders').select(FOLDER_COLS).eq('business_unit', bu).is('trashed_at', null);
-  const dq = userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).is('trashed_at', null);
+  const dq = userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).is('trashed_at', null).eq('is_template', false);
   const lq = userDb.from('crm_drive_files').select(FILE_COLS).eq('business_unit', bu).is('trashed_at', null);
   const [f, d, fl] = await Promise.all([
     (folderId ? fq.eq('parent_id', folderId) : fq.is('parent_id', null)).order('name'),
@@ -99,7 +107,7 @@ export async function POST(req: NextRequest) {
   const dc = await driveContext(req);
   if (!dc) return unauthorized();
   const { userDb, admin, bu, ctx } = dc;
-  const body = await req.json().catch(() => ({})) as { type?: string; name?: string; title?: string; parent_id?: string | null; deal_id?: string | null };
+  const body = await req.json().catch(() => ({})) as { type?: string; name?: string; title?: string; parent_id?: string | null; deal_id?: string | null; template_id?: string; from_doc_id?: string; as_template?: boolean };
   const type = body.type === 'doc' ? 'doc' : body.type === 'folder' ? 'folder' : null;
   if (!type) return NextResponse.json({ error: 'type must be folder or doc' }, { status: 400 });
   const label = ((type === 'folder' ? body.name : body.title) ?? '').trim().slice(0, type === 'folder' ? 200 : 300) || (type === 'folder' ? 'New folder' : 'Untitled document');
@@ -118,6 +126,30 @@ export async function POST(req: NextRequest) {
     const { data: deal } = await userDb.from('crm_deals').select('id').eq('id', body.deal_id).maybeSingle();
     if (!deal) return notFound('That deal is not available');
     deal_id = deal.id;
+  }
+
+  // From a template (a copy of it in this folder), or "Save as template" (a copy of a document, outside the folders, for the team).
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (type === 'doc' && (body.template_id || body.from_doc_id)) {
+    const srcId = (body.template_id || body.from_doc_id) as string;
+    if (!UUID.test(srcId)) return NextResponse.json({ error: 'invalid document' }, { status: 400 });
+    const asTemplate = !!body.from_doc_id && body.as_template === true;
+    const { data: seen } = await userDb.from('crm_drive_docs').select('id,title,deal_id,is_template,trashed_at').eq('id', srcId).eq('business_unit', bu).maybeSingle();
+    if (!seen || seen.trashed_at || (body.template_id && !seen.is_template)) return notFound('That document is not available');
+    // A document linked to a deal can't become a team-wide template (its contents belong to that deal's people).
+    if (asTemplate && seen.deal_id) return NextResponse.json({ error: 'A document linked to a deal can’t be saved as a template' }, { status: 400 });
+    const { data: srcRow } = await admin.from('crm_drive_docs').select('ystate,content_text').eq('id', srcId).single();
+    if (!srcRow) return notFound('That document is not available');
+    const copy = {
+      business_unit: bu, created_by: ctx.userId, updated_by: ctx.userId,
+      title: (body.title ?? '').trim().slice(0, 300) || (seen.title as string),
+      ystate: srcRow.ystate ? stripCommentMarks(srcRow.ystate as string) : null,
+      content_text: (srcRow.content_text as string) ?? '', version: srcRow.ystate ? 1 : 0,
+      ...(asTemplate ? { is_template: true, folder_id: null, visibility: 'team', shared_with: [], deal_id: null } : { folder_id: parentId, visibility, shared_with, deal_id }),
+    };
+    const { data: made, error: e } = await admin.from('crm_drive_docs').insert(copy).select(DOC_COLS).single();
+    if (e || !made) return NextResponse.json({ error: asTemplate ? 'Could not save the template' : 'Could not create the document' }, { status: 500 });
+    return NextResponse.json({ type: 'doc', item: made });
   }
 
   const base = { business_unit: bu, created_by: ctx.userId, visibility, shared_with, deal_id };

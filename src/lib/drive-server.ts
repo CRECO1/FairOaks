@@ -81,3 +81,32 @@ export function descendantFolderIds(all: Array<{ id: string; parent_id: string |
   while (stack.length) for (const k of kids.get(stack.pop()!) ?? []) { out.push(k); stack.push(k); }
   return out;
 }
+
+/**
+ * A copy of a document's Yjs state with every comment highlight taken off. Used when a document becomes a template or a template is
+ * used: the copy has no comments, so a leftover yellow highlight would point at nothing. (A comment mark is stored by y-prosemirror
+ * as a text attribute named `comment` or `comment--<hash>`.)
+ */
+export function stripCommentMarks(stateB64: string): string {
+  const doc = new Y.Doc();
+  try {
+    Y.applyUpdate(doc, b64ToBytes(stateB64));
+    doc.transact(() => {
+      const walk = (n: Y.XmlElement | Y.XmlFragment | Y.XmlText | Y.XmlHook) => {
+        if (n instanceof Y.XmlText) {
+          let idx = 0;
+          for (const op of n.toDelta() as Array<{ insert?: unknown; attributes?: Record<string, unknown> }>) {
+            const len = typeof op.insert === 'string' ? op.insert.length : 1;
+            const marks = Object.keys(op.attributes ?? {}).filter(k => k === 'comment' || k.startsWith('comment--'));
+            if (marks.length) n.format(idx, len, Object.fromEntries(marks.map(k => [k, null])));
+            idx += len;
+          }
+        } else if (n instanceof Y.XmlElement || n instanceof Y.XmlFragment) {
+          n.forEach(child => walk(child as Y.XmlElement));
+        }
+      };
+      walk(doc.getXmlFragment('default'));
+    });
+    return bytesToB64(Y.encodeStateAsUpdate(doc));
+  } finally { doc.destroy(); }
+}

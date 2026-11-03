@@ -29,7 +29,7 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
-type View = 'folder' | 'recent' | 'trash' | 'search';
+type View = 'folder' | 'recent' | 'trash' | 'search' | 'templates';
 type Kind = 'folder' | 'doc' | 'file';
 type Item = DriveFolder | DriveDoc | DriveFile;
 type Dlg =
@@ -39,7 +39,9 @@ type Dlg =
   | { t: 'move'; kind: Kind; item: Item }
   | { t: 'share'; kind: Kind; item: Item }
   | { t: 'trash'; kind: Kind; item: Item }
-  | { t: 'delete'; kind: Kind; item: Item };
+  | { t: 'delete'; kind: Kind; item: Item }
+  | { t: 'template' }
+  | { t: 'saveTpl'; item: DriveDoc };
 
 const GOLD = '#c9922c';
 const nameOf = (kind: Kind, item: Item) => (kind === 'doc' ? (item as DriveDoc).title : (item as DriveFolder | DriveFile).name);
@@ -128,6 +130,17 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
       refresh(); setOpenDocId(j.item.id);
     } catch (e) { onToast((e as Error).message); }
   };
+  // A copy of a template, in the folder you are looking at (or at the top level when you aren't in a folder), opened straight away.
+  const startFromTemplate = async (templateId: string) => {
+    setDlg(null); setNewOpen(false);
+    try {
+      const j = await api<{ item: DriveDoc }>('/api/crm/drive', { method: 'POST', body: JSON.stringify({ type: 'doc', template_id: templateId, parent_id: view === 'folder' ? folderId : null }) });
+      refresh(); setOpenDocId(j.item.id);
+    } catch (e) { onToast((e as Error).message); }
+  };
+  const saveAsTemplate = (doc: DriveDoc, title: string) => act(async () => {
+    await api('/api/crm/drive', { method: 'POST', body: JSON.stringify({ type: 'doc', from_doc_id: doc.id, as_template: true, title }) });
+  }, 'Saved as a template — find it under Templates').then(ok => { if (ok) setDlg(null); });
   const patch = (kind: Kind, item: Item, body: Record<string, unknown>, ok?: string) =>
     act(() => api(`/api/crm/drive/items/${kind}/${item.id}`, { method: 'PATCH', body: JSON.stringify(body) }), ok);
 
@@ -145,7 +158,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
     try { const j = await api<{ url: string }>(`/api/crm/drive/file/${f.id}?download=1`); window.location.href = j.url; }
     catch (e) { onToast((e as Error).message); }
   };
-  const openItem = (kind: Kind, item: Item) => { if (inTrash) { setDlg({ t: 'menu', kind, item }); return; } if (kind === 'folder') go(item.id); else if (kind === 'doc') setOpenDocId(item.id); else void openFile(item as DriveFile); };
+  const openItem = (kind: Kind, item: Item) => { if (inTrash || view === 'templates') { setDlg({ t: 'menu', kind, item }); return; } if (kind === 'folder') go(item.id); else if (kind === 'doc') setOpenDocId(item.id); else void openFile(item as DriveFile); };
 
   // Upload: the browser PUTs each file straight to storage (signed URL), then the API records it in the current folder.
   const uploadFiles = async (list: FileList | File[]) => {
@@ -225,14 +238,14 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
     );
   };
 
-  const heading = view === 'recent' ? 'Recent' : view === 'trash' ? 'Trash' : view === 'search' ? 'Search results' : null;
+  const heading = view === 'recent' ? 'Recent' : view === 'trash' ? 'Trash' : view === 'templates' ? 'Templates' : view === 'search' ? 'Search results' : null;
 
   return (
     <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
       {/* Sidebar (desktop) / quick switch (phone) */}
       {isMobile ? (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', width: '100%', paddingBottom: 2 }}>
-          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
+          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Templates', view === 'templates', () => { setQ(''); setView('templates'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
             <button key={l} type="button" onClick={fn} style={{ minHeight: 40, padding: '0 16px', borderRadius: 20, border: `1px solid ${on ? GOLD : 'var(--k-e5e7eb)'}`, background: on ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: on ? 'var(--k-a06a12)' : 'var(--k-374151)', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>{l}</button>
           ))}
         </div>
@@ -240,6 +253,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
         <nav aria-label="Folders" style={{ width: 230, flexShrink: 0, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 8, maxHeight: '72vh', overflowY: 'auto' }}>
           {navBtn('All files', view === 'folder' && folderId === null, () => go(null), '🗂')}
           {navBtn('Recent', view === 'recent', () => { setQ(''); setView('recent'); }, '🕘')}
+          {navBtn('Templates', view === 'templates', () => { setQ(''); setView('templates'); }, '📋')}
           {navBtn('Trash', view === 'trash', () => { setQ(''); setView('trash'); }, '🗑')}
           <div style={{ height: 1, background: 'var(--k-f0f0f0)', margin: '8px 4px' }} />
           {tree.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', padding: '4px 10px' }}>No folders yet</div> : renderTree(null, 0)}
@@ -264,7 +278,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
           </div>
           <input value={q} onChange={e => { setQ(e.target.value); setView(e.target.value.trim().length >= 2 ? 'search' : view === 'search' ? 'folder' : view); }} placeholder="🔍  Search docs" aria-label="Search documents"
             style={{ flex: isMobile ? '1 1 140px' : '0 0 220px', minWidth: 0, height: isMobile ? 44 : 36, border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '0 12px', fontSize: 14, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)' }} />
-          {!inTrash && (
+          {!inTrash && view !== 'templates' && (
             <div style={{ position: 'relative' }}>
               <button type="button" onClick={() => setNewOpen(o => !o)} aria-haspopup="menu" aria-expanded={newOpen}
                 style={{ height: isMobile ? 44 : 36, padding: '0 18px', border: 'none', borderRadius: 8, background: GOLD, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ New</button>
@@ -273,6 +287,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
                   <div onClick={() => setNewOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
                   <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 41, minWidth: 190, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.14)', padding: 6 }}>
                     <MenuBtn onClick={() => void createDoc()} icon="📄" label="Document" isMobile={isMobile} />
+                    <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'template' }); }} icon="📋" label="From template…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'newFolder' }); }} icon="📁" label="Folder" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); fileInput.current?.click(); }} icon="⬆" label="Upload files" isMobile={isMobile} />
                   </div>
@@ -281,6 +296,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
             </div>
           )}
           {inTrash && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Items you delete stay here until you remove them for good.</span>}
+          {view === 'templates' && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Click a template to use it. To add one: open any document, then ⋯ → Save as template.</span>}
         </div>
 
         {/* List */}
@@ -299,7 +315,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
           {files.map(f => row('file', f))}
           {empty && (
             <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1.6 }}>
-              {view === 'trash' ? 'The trash is empty.' : view === 'search' ? 'Nothing matches that search.' : view === 'recent' ? 'No documents yet.' : (
+              {view === 'trash' ? 'The trash is empty.' : view === 'templates' ? 'No templates yet.' : view === 'search' ? 'Nothing matches that search.' : view === 'recent' ? 'No documents yet.' : (
                 <>This folder is empty.<br />Use <b>＋ New</b> to add a document, a folder or a file{isMobile ? '' : ' — or drop files here'}.</>
               )}
             </div>
@@ -310,6 +326,8 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
       <input ref={fileInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.txt" onChange={e => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ''; }} />
 
       {/* Dialogs */}
+      {dlg?.t === 'template' && <TemplatePicker api={api} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void startFromTemplate(id)} />}
+      {dlg?.t === 'saveTpl' && <NameDialog title="Save as template" cta="Save template" initial={dlg.item.title} isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void saveAsTemplate(dlg.item, name)} />}
       {dlg?.t === 'newFolder' && <NameDialog title="New folder" cta="Create" initial="" isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void createFolder(name)} />}
       {dlg?.t === 'rename' && <NameDialog title="Rename" cta="Save" initial={nameOf(dlg.kind, dlg.item)} isMobile={isMobile} onClose={() => setDlg(null)}
         onSubmit={name => void patch(dlg.kind, dlg.item, dlg.kind === 'doc' ? { title: name } : { name }, 'Renamed').then(ok => { if (ok) setDlg(null); })} />}
@@ -322,11 +340,15 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
             </>
           ) : (
             <>
-              <MenuBtn icon="↗" label="Open" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); openItem(d.kind, d.item); }} />
+              {dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template && <MenuBtn icon="📋" label="Use this template" isMobile={isMobile} onClick={() => void startFromTemplate(dlg.item.id)} />}
+              <MenuBtn icon="↗" label={dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template ? 'Edit the template' : 'Open'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); if (d.kind === 'doc') setOpenDocId(d.item.id); else openItem(d.kind, d.item); }} />
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
-              <MenuBtn icon="📁" label="Move to…" isMobile={isMobile} onClick={() => setDlg({ t: 'move', kind: dlg.kind, item: dlg.item })} />
-              <MenuBtn icon="👥" label="Share…" isMobile={isMobile} onClick={() => setDlg({ t: 'share', kind: dlg.kind, item: dlg.item })} />
+              {!(dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template) && <>
+                <MenuBtn icon="📁" label="Move to…" isMobile={isMobile} onClick={() => setDlg({ t: 'move', kind: dlg.kind, item: dlg.item })} />
+                <MenuBtn icon="👥" label="Share…" isMobile={isMobile} onClick={() => setDlg({ t: 'share', kind: dlg.kind, item: dlg.item })} />
+              </>}
+              {dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template && !dlg.item.deal_id && <MenuBtn icon="📋" label="Save as template…" isMobile={isMobile} onClick={() => setDlg({ t: 'saveTpl', item: dlg.item as DriveDoc })} />}
               <MenuBtn icon="🗑" label="Move to trash" danger isMobile={isMobile} onClick={() => setDlg({ t: 'trash', kind: dlg.kind, item: dlg.item })} />
             </>
           )}
@@ -486,6 +508,27 @@ function ShareDialog({ kind, item, people, can, isMobile, who, onClose, onSave }
           ? <DialogButtons isMobile={isMobile} onCancel={onClose} cta="Save" onSubmit={() => onSave(vis, vis === 'private' ? [...picked] : [])} />
           : <p style={{ fontSize: 13, color: 'var(--k-6b7280)', margin: 0 }}>Only the owner ({who(item.created_by)}) or an admin can change this.</p>}
       </div>
+    </Modal>
+  );
+}
+
+function TemplatePicker({ api, isMobile, onClose, onPick }: { api: <T>(path: string, init?: RequestInit) => Promise<T>; isMobile: boolean; onClose: () => void; onPick: (id: string) => void }) {
+  const [list, setList] = useState<DriveDoc[] | null>(null);
+  useEffect(() => { api<DriveListing>('/api/crm/drive?view=templates').then(j => setList(j.docs)).catch(() => setList([])); }, [api]);
+  return (
+    <Modal title="Start from a template" isMobile={isMobile} onClose={onClose}>
+      {list === null && <div style={{ padding: 10, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>}
+      {list?.length === 0 && <div style={{ padding: 10, color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1.5 }}>No templates yet. Open any document, then ⋯ → Save as template.</div>}
+      {list?.map(t => (
+        <button key={t.id} type="button" onClick={() => onPick(t.id)}
+          style={{ display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%', textAlign: 'left', padding: '10px 12px', minHeight: isMobile ? 56 : 48, border: 'none', borderBottom: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+          <span style={{ fontSize: 22 }}>📋</span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>{t.title}</span>
+            {t.snippet && <span style={{ display: 'block', fontSize: 12.5, color: 'var(--k-6b7280)', marginTop: 2, lineHeight: 1.4 }}>{t.snippet}…</span>}
+          </span>
+        </button>
+      ))}
     </Modal>
   );
 }

@@ -30,6 +30,8 @@ export interface DriveDoc {
   created_at: string;
   updated_at: string;
   version: number;
+  /** a reusable starting point (lives under Templates, outside the folders) */
+  is_template?: boolean;
   /** search results only: a short plain-text excerpt around the match */
   snippet?: string;
 }
@@ -62,7 +64,7 @@ export interface DriveListing {
 export interface DriveTreeFolder { id: string; parent_id: string | null; name: string; visibility: DriveVisibility; deal_id: string | null }
 
 export const FOLDER_COLS = 'id,business_unit,parent_id,name,created_by,visibility,shared_with,deal_id,trashed_at,created_at,updated_at';
-export const DOC_COLS = 'id,business_unit,folder_id,title,created_by,updated_by,visibility,shared_with,deal_id,trashed_at,created_at,updated_at,version';
+export const DOC_COLS = 'id,business_unit,folder_id,title,created_by,updated_by,visibility,shared_with,deal_id,trashed_at,created_at,updated_at,version,is_template';
 
 export const FILE_COLS = 'id,business_unit,folder_id,name,size,mime,created_by,visibility,shared_with,deal_id,trashed_at,created_at,updated_at';
 /** Extension → content type for what the Drive accepts (the bucket enforces the same list). */

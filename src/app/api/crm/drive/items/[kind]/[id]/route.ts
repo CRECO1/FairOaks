@@ -48,12 +48,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
   const row = await loadVisible(dc, kind, id);
   if (!row) return notFound();
   const canManage = dc.isAdmin || row.created_by === dc.ctx.userId;
+  const isTemplate = (row as unknown as { is_template?: boolean }).is_template === true;
   const body = await req.json().catch(() => ({})) as {
     name?: string; title?: string;
     move?: { parent_id: string | null };
     share?: { visibility: 'team' | 'private'; shared_with?: string[] };
     trash?: boolean;
   };
+  // Templates are team-wide and live outside the folders: they can be renamed, edited and trashed, not moved or re-shared.
+  if (isTemplate && (body.move || body.share)) return NextResponse.json({ error: 'A template can’t be moved or shared separately — it is always available to the team' }, { status: 400 });
   const now = new Date().toISOString();
 
   // Rename
