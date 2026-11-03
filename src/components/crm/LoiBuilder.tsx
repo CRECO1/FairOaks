@@ -15,6 +15,7 @@ import { leaseSpec, exhibitLetter, TENANTREP_INTRO } from '@/lib/loi-spec';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 import EmailDocDialog from '@/components/crm/EmailDocDialog';
 import { setOpenDoc, DOC_UPDATED_EVENT } from '@/lib/open-doc';
+import { useLiveLoi } from '@/components/crm/forms/useLiveLoi';
 
 interface Prefill {
   agentName?: string; agentEmail?: string; agentPhone?: string;
@@ -42,7 +43,13 @@ const HEAD_CONTACT = '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015 
 const FOOT_TAG = 'Where your real estate ventures find the support they deserve';
 const FOOT_CONTACT = '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015   |   (210) 817-3443   |   info@crecotx.com   |   crecotx.com';
 let _tid = 0;
-const newId = () => `t${++_tid}`;
+// While a letter is shared live, two people can add a row in the same instant — a random suffix keeps their ids apart.
+let _liveTid = false;
+const newId = () => (_liveTid ? `t${++_tid}x${Math.random().toString(36).slice(2, 6)}` : `t${++_tid}`);
+/** Marks a field so the live editor knows which one a person is in (and can reserve it for them). */
+function Lk({ k, children }: { k: string; children: React.ReactNode }) { return <div data-lk={k} style={{ display: 'contents' }}>{children}</div>; }
+const lkOf = (el: EventTarget | null) => ((el as HTMLElement | null)?.closest?.('[data-lk]')?.getAttribute('data-lk')) ?? null;
+const LK_LABEL: Record<string, string> = { loiDate: 'the date', addresseeName: 'the addressee', addresseeAddr1: 'the addressee', addresseeAddr2: 'the addressee', reLine: 'the Re: line', subtitle: 'the subtitle', intro: 'the intro', additionalTerms: 'Other Stipulations', agentName: 'the sign-off', agentEmail: 'the sign-off', agentPhone: 'the sign-off' };
 
 function bytesToBase64(bytes: Uint8Array): string {
   let bin = '';
@@ -157,6 +164,12 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
   const syncedRef = useRef<string>('');
   const dataRef = useRef(data);
   dataRef.current = data;
+  // Live co-editing: everyone with this saved letter open shares the terms and fields (see forms/useLiveLoi). Saving stays explicit.
+  const [liveSel, setLiveSel] = useState<string | null>(null);
+  const live = useLiveLoi({ submissionId: savedId, enabled: !!savedId && !loading, data, setData, selected: liveSel });
+  _liveTid = live.status !== 'off';
+  const onLkFocus = (e: React.FocusEvent) => setLiveSel(lkOf(e.target));
+  const onLkBlur = (e: React.FocusEvent) => setLiveSel(lkOf(e.relatedTarget));
   const toastRef = useRef(onToast);
   toastRef.current = onToast;
   useEffect(() => {
@@ -312,6 +325,12 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
         .loi-row:hover .loi-gutter { opacity: 1; }
         .loi-ctrl:hover { background: #efe4c6 !important; border-color: #d9c085 !important; color: #7a5410 !important; }
       `}</style>
+      {/* A field a teammate is in right now: outlined in their colour and click-locked for everyone else. Keys and colours come from other
+          people's tabs, so only plain characters are allowed into the stylesheet. */}
+      {live.lockedKeys.length > 0 && (
+        <style>{live.lockedKeys.filter(p => p.sel && /^[\w:-]+$/.test(p.sel) && /^#[0-9a-f]{6}$/i.test(p.color))
+          .map(p => `[data-lk="${p.sel}"] .rte{outline:2px solid ${p.color} !important;background:${p.color}18;pointer-events:none}`).join('\n')}</style>
+      )}
 
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 18px', background: '#fff', borderBottom: '1px solid #eef0f2', fontFamily: "'DM Sans',sans-serif" }}>
@@ -319,6 +338,21 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
           <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a1a' }}>{spec.title}</div>
           <div style={{ fontSize: 12, color: '#9ca3af' }}>Edit on the letter · hover a term for ↑ ↓ ＋ ✕ · select text to <b>bold</b>/<i>italic</i> (⌘B / ⌘I)</div>
         </div>
+        {live.status !== 'off' && (
+          <span title={live.status === 'live' ? 'Live — everyone with this letter open sees changes as they are made. Nothing is saved until someone clicks Save.' : live.status === 'denied' ? 'Live editing is not available for you on this letter' : 'Connecting…'}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#6b7280', flexShrink: 0 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: live.status === 'live' ? '#16a34a' : live.status === 'connecting' ? '#d97706' : '#dc2626' }} />
+            {live.status === 'live' ? (live.peers.length ? `Live · ${live.peers.length + 1} here` : 'Live') : live.status === 'denied' ? 'Not live' : 'Connecting…'}
+            {live.peers.slice(0, 4).map((p, i) => (
+              <span key={p.clientId} title={p.name} style={{ width: 22, height: 22, borderRadius: '50%', background: p.color, color: '#fff', fontSize: 10.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: i ? -8 : 0, border: '2px solid #fff' }}>{p.name.slice(0, 1).toUpperCase()}</span>
+            ))}
+            {live.lockedKeys.slice(0, 2).map(p => {
+              const k = p.sel as string;
+              const what = k.startsWith('t:') ? (data.terms.find(t => t.id === k.split(':')[1])?.label.replace(/\*|:$/g, '').trim() || 'a term') : k.startsWith('seller:') ? 'the acceptance block' : LK_LABEL[k] ?? 'a field';
+              return <span key={p.clientId} style={{ color: p.color, fontWeight: 700 }}>{p.name.split(' ')[0]} is editing {what}</span>;
+            })}
+          </span>
+        )}
         <RtFormatButtons />
         <div style={{ width: 1, height: 26, background: '#eef0f2' }} />
         {savedId && <button onClick={() => setShowHistory(true)} title="Edit history — who changed what" style={{ padding: '8px 12px', fontSize: 13, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>🕘 History{edits.length ? ` (${edits.length})` : ''}</button>}
@@ -338,7 +372,7 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
       {/* The page */}
       <div style={{ flex: 1, overflowY: 'auto', background: '#e9ebee', padding: '26px 16px' }}>
         {loading ? <div style={{ textAlign: 'center', color: '#6b7280', fontFamily: "'DM Sans',sans-serif", marginTop: 40 }}>Loading…</div> : (
-          <div style={{ width: 816, maxWidth: '100%', margin: '0 auto', background: '#fff', boxShadow: '0 2px 18px rgba(0,0,0,0.16)', padding: '46px 92px 40px', fontFamily: 'Georgia, "Times New Roman", serif', color: '#16181c', fontSize: 14, lineHeight: 1.34, boxSizing: 'border-box' }}>
+          <div onFocusCapture={onLkFocus} onBlurCapture={onLkBlur} style={{ width: 816, maxWidth: '100%', margin: '0 auto', background: '#fff', boxShadow: '0 2px 18px rgba(0,0,0,0.16)', padding: '46px 92px 40px', fontFamily: 'Georgia, "Times New Roman", serif', color: '#16181c', fontSize: 14, lineHeight: 1.34, boxSizing: 'border-box' }}>
             {/* Letterhead */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/creco-letterhead-logo.png" alt="CRECO" style={{ display: 'block', width: 300, maxWidth: '70%', margin: '0 auto 8px' }} />
@@ -346,26 +380,26 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
             <div style={{ borderBottom: '3px solid #1c1c1f', marginBottom: 22 }} />
 
             {/* Date / addressee / re */}
-            <div style={{ marginBottom: 16, maxWidth: 240 }}><RichText value={data.loiDate} onChange={v => patch({ loiDate: v })} placeholder="Date" /></div>
+            <div data-lk="loiDate" style={{ marginBottom: 16, maxWidth: 240 }}><RichText value={data.loiDate} onChange={v => patch({ loiDate: v })} placeholder="Date" /></div>
             <div style={{ marginBottom: 14, maxWidth: 360 }}>
-              <RichText value={data.addresseeName} onChange={v => patch({ addresseeName: v })} placeholder={`Addressee name (${spec.partyNoun.toLowerCase()})`} />
-              <RichText value={data.addresseeAddr1} onChange={v => patch({ addresseeAddr1: v })} placeholder="Street address" />
-              <RichText value={data.addresseeAddr2} onChange={v => patch({ addresseeAddr2: v })} placeholder="City, State ZIP" />
+              <Lk k="addresseeName"><RichText value={data.addresseeName} onChange={v => patch({ addresseeName: v })} placeholder={`Addressee name (${spec.partyNoun.toLowerCase()})`} /></Lk>
+              <Lk k="addresseeAddr1"><RichText value={data.addresseeAddr1} onChange={v => patch({ addresseeAddr1: v })} placeholder="Street address" /></Lk>
+              <Lk k="addresseeAddr2"><RichText value={data.addresseeAddr2} onChange={v => patch({ addresseeAddr2: v })} placeholder="City, State ZIP" /></Lk>
             </div>
             <div style={{ display: 'flex', marginBottom: 20 }}>
               <span style={{ fontWeight: 700, flex: '0 0 30px' }}>Re:</span>
-              <div style={{ flex: 1 }}><RichText value={data.reLine} onChange={v => patch({ reLine: v })} placeholder="Re: line" /></div>
+              <div data-lk="reLine" style={{ flex: 1 }}><RichText value={data.reLine} onChange={v => patch({ reLine: v })} placeholder="Re: line" /></div>
             </div>
 
             <div style={{ textAlign: 'center', fontSize: 20, fontWeight: 700, margin: '0 0 16px' }}>{spec.title}</div>
             {variant === 'tenantrep' && (
               <>
-                <div style={{ maxWidth: 420, margin: '-8px auto 14px', textAlign: 'center' }}>
+                <div data-lk="subtitle" style={{ maxWidth: 420, margin: '-8px auto 14px', textAlign: 'center' }}>
                   <RichText value={data.subtitle ?? ''} onChange={v => patch({ subtitle: v })} placeholder="Building address (shown under the title)" />
                 </div>
                 <div style={{ marginBottom: 6 }}>Dear Sir or Madam,</div>
                 <div style={{ marginBottom: 14 }}>
-                  <RichText value={data.intro ?? TENANTREP_INTRO} onChange={v => patch({ intro: v })} placeholder="On behalf of our client…" />
+                  <Lk k="intro"><RichText value={data.intro ?? TENANTREP_INTRO} onChange={v => patch({ intro: v })} placeholder="On behalf of our client…" /></Lk>
                 </div>
               </>
             )}
@@ -377,8 +411,8 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
                   <button className="loi-ctrl" title="Move term up" onClick={() => moveTerm(i, -1)} disabled={i === 0} style={{ ...ctrlBtn, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
                   <button className="loi-ctrl" title="Move term down" onClick={() => moveTerm(i, 1)} disabled={i === data.terms.length - 1} style={{ ...ctrlBtn, opacity: i === data.terms.length - 1 ? 0.3 : 1 }}>↓</button>
                 </div>
-                <div style={{ flex: '0 0 150px', minWidth: 0 }}><RichText bold value={t.label} onChange={v => setTerm(i, { label: v })} placeholder="Label" /></div>
-                <div style={{ flex: 1, minWidth: 0 }}><RichText value={t.value} onChange={v => setTerm(i, { value: v })} placeholder="Value" /></div>
+                <div data-lk={`t:${t.id}:label`} style={{ flex: '0 0 150px', minWidth: 0 }}><RichText bold value={t.label} onChange={v => setTerm(i, { label: v })} placeholder="Label" /></div>
+                <div data-lk={`t:${t.id}:value`} style={{ flex: 1, minWidth: 0 }}><RichText value={t.value} onChange={v => setTerm(i, { value: v })} placeholder="Value" /></div>
                 <div className="loi-gutter" style={{ display: 'flex', gap: 3, paddingTop: 1, fontFamily: "'DM Sans',sans-serif" }}>
                   <button title="Add row below" onClick={() => addTermAfter(i)} style={{ ...ctrlBtn, color: '#a06a12' }}>＋</button>
                   <button title="Remove row" onClick={() => removeTerm(i)} style={{ ...ctrlBtn, color: '#dc2626' }}>✕</button>
@@ -390,7 +424,7 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
             {/* Other Stipulations */}
             <div style={{ marginBottom: 18 }}>
               <div style={{ fontWeight: 700, marginBottom: 2 }}>Other Stipulations:</div>
-              <RichText multiline value={data.additionalTerms} onChange={v => patch({ additionalTerms: v })} placeholder="Any additional terms that don’t fit the rows above…" />
+              <Lk k="additionalTerms"><RichText multiline value={data.additionalTerms} onChange={v => patch({ additionalTerms: v })} placeholder="Any additional terms that don’t fit the rows above…" /></Lk>
             </div>
 
             {/* Boilerplate */}
@@ -399,9 +433,9 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
             {/* Sign-off */}
             <div style={{ margin: '18px 0 6px' }}>Sincerely,</div>
             <div style={{ marginBottom: 22, maxWidth: 320 }}>
-              <RichText value={data.agentName} onChange={v => patch({ agentName: v })} placeholder="Your name" />
-              <RichText value={data.agentEmail} onChange={v => patch({ agentEmail: v })} placeholder="Your email" />
-              <RichText value={data.agentPhone} onChange={v => patch({ agentPhone: v })} placeholder="Your phone" />
+              <Lk k="agentName"><RichText value={data.agentName} onChange={v => patch({ agentName: v })} placeholder="Your name" /></Lk>
+              <Lk k="agentEmail"><RichText value={data.agentEmail} onChange={v => patch({ agentEmail: v })} placeholder="Your email" /></Lk>
+              <Lk k="agentPhone"><RichText value={data.agentPhone} onChange={v => patch({ agentPhone: v })} placeholder="Your phone" /></Lk>
             </div>
 
             {/* Seller acceptance */}
@@ -415,9 +449,9 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
             {data.sellers.map((s, i) => (
               <div key={i} style={{ marginBottom: 20 }}>
                 <div style={{ fontWeight: 700, fontSize: 12.5, letterSpacing: 0.3, margin: '6px 0 10px' }}>AGREED TO &amp; ACCEPTED BY:</div>
-                <div style={{ maxWidth: 360, marginBottom: 12 }}><RichText value={s.entity} onChange={v => setSeller(i, { entity: v })} placeholder={`${spec.partyNoun} ${i + 1} — entity / name`} /><div style={{ borderBottom: '1px solid #9ca3af', marginTop: -2 }} /></div>
+                <div data-lk={`seller:${i}:entity`} style={{ maxWidth: 360, marginBottom: 12 }}><RichText value={s.entity} onChange={v => setSeller(i, { entity: v })} placeholder={`${spec.partyNoun} ${i + 1} — entity / name`} /><div style={{ borderBottom: '1px solid #9ca3af', marginTop: -2 }} /></div>
                 <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 12, maxWidth: 420 }}><span>Signature:</span><span style={SIGLINE} /><span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: '#b08833', marginLeft: 8, whiteSpace: 'nowrap' }}>✎ signed at e-sign</span></div>
-                <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 12, maxWidth: 420 }}><span>Name:</span><div style={{ flex: 1, marginLeft: 8, borderBottom: '1px solid #9ca3af' }}><RichText value={s.signatory} onChange={v => setSeller(i, { signatory: v })} placeholder="printed name" /></div></div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 12, maxWidth: 420 }}><span>Name:</span><div data-lk={`seller:${i}:signatory`} style={{ flex: 1, marginLeft: 8, borderBottom: '1px solid #9ca3af' }}><RichText value={s.signatory} onChange={v => setSeller(i, { signatory: v })} placeholder="printed name" /></div></div>
                 <div style={{ display: 'flex', alignItems: 'flex-end', maxWidth: 420 }}><span>Date:</span><span style={SIGLINE} /><span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: '#b08833', marginLeft: 8, whiteSpace: 'nowrap' }}>✎ signed at e-sign</span></div>
               </div>
             ))}

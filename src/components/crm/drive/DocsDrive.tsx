@@ -16,6 +16,7 @@ import type { DriveDoc, DriveFile, DriveFolder, DriveListing, DriveTreeFolder } 
 import { DRIVE_FILE_MAX } from '@/lib/drive-types';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
+const DocQuickView = dynamic(() => import('./DocQuickView'), { ssr: false });
 
 export interface DrivePerson { id: string; first_name?: string | null; last_name?: string | null; role?: string | null }
 
@@ -65,6 +66,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
   const [dlg, setDlg] = useState<Dlg | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [openDocId, setOpenDocId] = useState<string | null>(null);
+  const [quickDocId, setQuickDocId] = useState<string | null>(null);   // the quick-look side panel
   const [preview, setPreview] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [uploading, setUploading] = useState(0);
   const [dragOver, setDragOver] = useState(false);
@@ -150,6 +152,11 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
   const docs = data?.docs ?? [];
   const files = data?.files ?? [];
   const empty = !loading && data && !folders.length && !docs.length && !files.length;
+  const downloadDocPdf = async (d: DriveDoc) => {
+    onToast('Preparing the PDF…');
+    try { const { exportDocPdf } = await import('./doc-export'); await exportDocPdf(d.id, authToken, d.title); }
+    catch (e) { onToast((e as Error).message || 'Could not make the PDF'); }
+  };
   const openFile = async (f: DriveFile) => {
     try { const j = await api<{ url: string; name: string; type?: string | null }>(`/api/crm/drive/file/${f.id}`); setPreview({ url: j.url, name: f.name, type: j.type ?? f.mime }); }
     catch (e) { onToast((e as Error).message); }
@@ -232,6 +239,10 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
           <span style={{ width: 120, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{accessLabel(it)}</span>
           <span style={{ width: 88, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}</span>
         </>}
+        {kind === 'doc' && !isMobile && !inTrash && (
+          <button type="button" aria-label={`Quick look at ${title}`} title="Quick look — preview without opening" onClick={() => setQuickDocId(it.id)}
+            style={{ width: 34, height: 34, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-9ca3af)', fontSize: 16, cursor: 'pointer' }}>👁</button>
+        )}
         <button type="button" aria-label={`Actions for ${title}`} onClick={() => setDlg({ t: 'menu', kind, item: it })}
           style={{ width: isMobile ? 44 : 34, height: isMobile ? 44 : 34, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-6b7280)', fontSize: 20, cursor: 'pointer' }}>⋯</button>
       </div>
@@ -342,6 +353,8 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
             <>
               {dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template && <MenuBtn icon="📋" label="Use this template" isMobile={isMobile} onClick={() => void startFromTemplate(dlg.item.id)} />}
               <MenuBtn icon="↗" label={dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template ? 'Edit the template' : 'Open'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); if (d.kind === 'doc') setOpenDocId(d.item.id); else openItem(d.kind, d.item); }} />
+              {dlg.kind === 'doc' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); setQuickDocId(d.item.id); }} />}
+              {dlg.kind === 'doc' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
               {!(dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template) && <>
@@ -375,6 +388,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
         onSave={(visibility, shared_with) => void patch(dlg.kind, dlg.item, { share: { visibility, shared_with } }, 'Sharing updated').then(ok => { if (ok) setDlg(null); })} />}
 
       {preview && <DocPreviewModal file={preview} onClose={() => setPreview(null)} />}
+      {quickDocId && <DocQuickView docId={quickDocId} authToken={authToken} isMobile={isMobile} onToast={onToast} onClose={() => setQuickDocId(null)} onOpen={id => { setQuickDocId(null); setOpenDocId(id); }} />}
 
       {openDocId && (
         <LiveDocEditor docId={openDocId} authToken={authToken} user={currentUser} isMobile={isMobile} people={profiles} isAdmin={isAdmin}
