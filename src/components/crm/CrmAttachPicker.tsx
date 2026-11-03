@@ -8,7 +8,7 @@ import type { CrmAttachItem, CrmAttachGroup } from '@/lib/crm-attachments';
 
 const key = (i: CrmAttachItem) => `${i.kind}:${i.id}`;
 const fmt = (n: number | null) => n == null ? '' : n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
-const icon = (i: CrmAttachItem) => i.kind === 'signed' ? '✅' : i.kind === 'form' ? '📝' : /^image\//.test(i.type) ? '🖼️' : /word|document/.test(i.type) ? '📃' : '📄';
+const icon = (i: CrmAttachItem) => i.kind === 'drive_doc' ? '🔗' : i.kind === 'signed' ? '✅' : i.kind === 'form' ? '📝' : /^image\//.test(i.type) ? '🖼️' : /word|document/.test(i.type) ? '📃' : '📄';
 
 export default function CrmAttachPicker(p: {
   ctx: { dealId?: string; clientId?: string; email?: string; searchable?: boolean };

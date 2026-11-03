@@ -13,9 +13,10 @@ import { canAccessLinked } from '@/lib/crm-linked-access';
 import { EMAIL_ATTACH_BUCKET, type StoredAttachment } from '@/lib/email-attachments';
 import { callerMailboxes } from '@/lib/gmail-mailbox';
 import { fetchAttachment } from '@/lib/gmail-live';
+import { driveDocPdf } from '@/lib/drive-pdf-server';
 
-export type CrmAttachKind = 'deal_doc' | 'form' | 'signed' | 'email_att' | 'gmail_att' | 'upload';
-export const CRM_ATTACH_KINDS: CrmAttachKind[] = ['deal_doc', 'form', 'signed', 'email_att', 'gmail_att', 'upload'];
+export type CrmAttachKind = 'deal_doc' | 'form' | 'signed' | 'email_att' | 'gmail_att' | 'upload' | 'drive_doc';
+export const CRM_ATTACH_KINDS: CrmAttachKind[] = ['deal_doc', 'form', 'signed', 'email_att', 'gmail_att', 'upload', 'drive_doc'];
 /** An 'upload' id is the storage path `pending/<uploader's id>/<uuid>/<file name>` of a big file the sender put in storage straight from the browser. */
 export const UPLOAD_ID = /^pending\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[^/\\]{1,150}$/i;
 const MIME_BY_EXT: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', csv: 'text/csv', txt: 'text/plain', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', zip: 'application/zip' };
@@ -35,15 +36,22 @@ const clean = (s: string, fallback: string) => s.replace(/[\\/:*?"<>|\r\n]+/g, '
 /** Everything on one deal's Docs tab that can be emailed. */
 async function dealItems(dealId: string): Promise<CrmAttachItem[]> {
   const db = adminClient();
-  const [docs, subs, envs] = await Promise.all([
+  const [docs, subs, envs, linked] = await Promise.all([
     db.from('crm_deal_docs').select('id, name, file_size, file_type, created_at').eq('deal_id', dealId).order('created_at', { ascending: false }),
     db.from('crm_form_submissions').select('id, title, status, filled_path, updated_at').eq('deal_id', dealId).not('filled_path', 'is', null).order('updated_at', { ascending: false }),
     db.from('crm_envelopes').select('id, title, executed_path, executed_clean_path, completed_at').eq('deal_id', dealId).eq('status', 'completed').order('completed_at', { ascending: false }),
+    db.from('crm_drive_doc_links').select('doc_id, crm_drive_docs(id, title, trashed_at, ystate)').eq('deal_id', dealId).order('created_at', { ascending: false }),
   ]);
   const items: CrmAttachItem[] = [];
   for (const d of docs.data ?? []) items.push({ kind: 'deal_doc', id: d.id as string, name: d.name as string, size: (d.file_size as number | null) ?? null, type: (d.file_type as string) || 'application/octet-stream', sub: 'Uploaded to the deal' });
   for (const s of subs.data ?? []) items.push({ kind: 'form', id: s.id as string, name: `${clean(String(s.title ?? ''), 'Form')}.pdf`, size: null, type: 'application/pdf', sub: 'Form on the deal' });
   for (const e of envs.data ?? []) if (e.executed_clean_path || e.executed_path) items.push({ kind: 'signed', id: e.id as string, name: `${clean(String(e.title ?? ''), 'Document')} (signed).pdf`, size: null, type: 'application/pdf', sub: 'Signed copy' });
+  // Live My Drive documents linked to the deal: attached as a PDF of their latest saved text.
+  for (const l of linked.data ?? []) {
+    const raw = l.crm_drive_docs as unknown as { id: string; title: string; trashed_at: string | null; ystate: string | null } | Array<{ id: string; title: string; trashed_at: string | null; ystate: string | null }> | null;
+    const d = Array.isArray(raw) ? raw[0] : raw;
+    if (d && !d.trashed_at && d.ystate) items.push({ kind: 'drive_doc', id: d.id, name: `${clean(d.title, 'Document')}.pdf`, size: null, type: 'application/pdf', sub: 'Live document — sent as its latest version' });
+  }
   return items;
 }
 
@@ -115,6 +123,14 @@ export async function resolveCrmAttachments(refs: CrmAttachRef[], ctx: CrmContex
       if (!d || !(await assertOwnsResource('crm_deals', d.deal_id as string, ctx))) return { ok: false, status: 404, error: 'A deal document you picked is no longer available' };
       name = d.name as string; mimeType = (d.file_type as string) || 'application/octet-stream';
       bytes = await fetchBytes(DEAL_DOCS, d.storage_path as string);
+    } else if (ref.kind === 'drive_doc') {
+      // A live My Drive document, authorized by a deal it is linked to (the same card rule as opening it there).
+      const { data: links } = await db.from('crm_drive_doc_links').select('deal_id').eq('doc_id', ref.id).not('deal_id', 'is', null);
+      let ok = false;
+      for (const l of links ?? []) if (await assertOwnsResource('crm_deals', l.deal_id as string, ctx)) { ok = true; break; }
+      const pdf = ok ? await driveDocPdf(ref.id) : null;
+      if (!pdf) return { ok: false, status: 404, error: 'A live document you picked is no longer available' };
+      name = pdf.name; bytes = Buffer.from(pdf.bytes);
     } else if (ref.kind === 'form') {
       const { data: s } = await db.from('crm_form_submissions').select('id, title, filled_path, deal_id, listing_id, business_unit').eq('id', ref.id).maybeSingle();
       if (!s || !s.deal_id || !s.filled_path

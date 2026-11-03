@@ -35,6 +35,12 @@ let logoCache: Uint8Array | null = null;
 /** The letterhead logo's bytes (fetched once). */
 export async function letterheadLogo(): Promise<Uint8Array | null> {
   if (logoCache) return logoCache;
+  // On the server (emailing a document as a PDF) there is no page origin: read the file from the app's own public folder, else fetch the live site's copy.
+  if (typeof window === 'undefined') {
+    try { const [{ readFile }, path] = await Promise.all([import('fs/promises'), import('path')]); logoCache = new Uint8Array(await readFile(path.join(process.cwd(), 'public', LETTERHEAD.logoPath))); return logoCache; } catch { /* fall through */ }
+    try { const r = await fetch(`https://www.fairoaksrealtygroup.com${LETTERHEAD.logoPath}`); if (r.ok) { logoCache = new Uint8Array(await r.arrayBuffer()); return logoCache; } } catch { /* no logo */ }
+    return null;
+  }
   try { const r = await fetch(LETTERHEAD.logoPath); if (!r.ok) return null; logoCache = new Uint8Array(await r.arrayBuffer()); return logoCache; } catch { return null; }
 }
 
