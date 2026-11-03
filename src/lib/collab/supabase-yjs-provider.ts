@@ -68,7 +68,8 @@ export class SupabaseYjsProvider {
 
   private setStatus(s: CollabStatus) { this._status = s; this.onStatus?.(s); }
 
-  constructor(supabase: SupabaseClient, docId: string, doc: Y.Doc, awareness: Awareness, opts: SupabaseYjsProviderOpts = {}) {
+  /** @param channelName the full Realtime topic, e.g. `drive-doc:<id>` or `form-doc:<id>` (the realtime.messages policies key off this prefix) */
+  constructor(supabase: SupabaseClient, channelName: string, doc: Y.Doc, awareness: Awareness, opts: SupabaseYjsProviderOpts = {}) {
     this.doc = doc;
     this.awareness = awareness;
     this.clientId = doc.clientID;
@@ -79,7 +80,7 @@ export class SupabaseYjsProvider {
     if (typeof window !== 'undefined') window.addEventListener('beforeunload', this.onUnload);
 
     this.setStatus('connecting');
-    this.channel = supabase.channel(`drive-doc:${docId}`, {
+    this.channel = supabase.channel(channelName, {
       config: { private: true, broadcast: { self: false, ack: false } },
     });
     this.channel.on('broadcast', { event: EVENT }, ({ payload }) => this.onMessage(payload as WireMsg));

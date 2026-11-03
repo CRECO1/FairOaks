@@ -50,6 +50,8 @@ const registry = new Map<string, Entry>();
 const GRACE_MS = 1000;
 
 export interface AcquireOpts {
+  /** Realtime topic. Defaults to `drive-doc:<docId>`; live forms pass `form-doc:<submission id>`. */
+  channel?: string;
   onStatus?: (status: Status) => void;
   /** Yjs state (Y.encodeStateAsUpdate) to seed a freshly-created doc from. */
   initialState?: Uint8Array | null;
@@ -64,6 +66,7 @@ export function acquireDoc(
   docId: string,
   opts: AcquireOpts = {},
 ): CollabHandle {
+  const topic = opts.channel ?? `drive-doc:${docId}`;
   const existing = registry.get(docId);
   if (existing) {
     // Cancel a pending teardown from a just-released mount (the StrictMode case).
@@ -88,7 +91,7 @@ export function acquireDoc(
     Y.applyUpdate(ydoc, opts.initialState, 'seed');
   }
   const awareness = new Awareness(ydoc);
-  const provider = new SupabaseYjsProvider(supabase, docId, ydoc, awareness, {
+  const provider = new SupabaseYjsProvider(supabase, topic, ydoc, awareness, {
     onStatus: opts.onStatus,
   });
   const entry: Entry = { ydoc, awareness, provider, refs: 1 };

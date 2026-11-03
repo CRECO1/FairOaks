@@ -9,6 +9,7 @@ import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDr
 import { LOI_PURCHASE_SPEC, leaseSpec, assetFromFormName } from '@/lib/loi-spec';
 import EmailDocDialog from '@/components/crm/EmailDocDialog';
 import { setOpenDoc, DOC_UPDATED_EVENT } from '@/lib/open-doc';
+import { useLiveForm } from '@/components/crm/forms/useLiveForm';
 
 // The Letters of Intent are dynamic term-list docs, not fixed overlay forms —
 // whichever surface opens one (deals page, property, Transaction Docs library),
@@ -49,7 +50,10 @@ interface PageDim { num: number; pw: number; ph: number; }
 const RENDER_W = 850;
 const THUMB_W = 150;          // page-navigator thumbnails render at their own small scale
 let _idc = 0;
-const nextId = () => `f${++_idc}`;
+// While a form is shared live, two people can add a blank in the same instant — a random suffix keeps their ids apart.
+let _liveIds = false;
+const nextId = () => (_liveIds ? `f${++_idc}x${Math.random().toString(36).slice(2, 6)}` : `f${++_idc}`);
+const bumpIdc = (vals: { id?: string }[]) => { for (const v of vals) { const m = /^f(\d+)/.exec(String(v.id ?? '')); if (m) _idc = Math.max(_idc, Number(m[1])); } };
 // Keep a saved document's field ids across reopen → save. The server's edit history
 // matches fields by id, so re-numbering them on every load made it log phantom
 // "Filled …/Cleared …" changes (or credit an edit to the wrong field). New fields get
@@ -147,6 +151,8 @@ export default function TransactionDocEditor({
   // regenerated — never as overlay fields on the blank master (see load below).
   const [leaseValues, setLeaseValues] = useState<LeaseDraftValues | null>(null);
   const subIdRef = useRef<string | undefined>(submissionId);
+  // The saved copy this form is shared under (set once it has been saved; a brand-new form is solo until then).
+  const [liveSubId, setLiveSubId] = useState<string | undefined>(submissionId);
   const [emailDocId, setEmailDocId] = useState<string | null>(null);
   // Pages used to render at a hard 850px, which overflows any phone. They now fill
   // the available width, capped at RENDER_W — so desktop still lands on exactly 850
@@ -230,6 +236,15 @@ export default function TransactionDocEditor({
   const syncedVals = useRef<string>('');
   const fieldsRef = useRef<Field[]>([]);
   fieldsRef.current = fields;
+  // Live co-filling: everyone with this saved form open shares the blanks, with who-is-where presence (see forms/useLiveForm).
+  const live = useLiveForm<Field>({
+    submissionId: liveSubId, enabled: !isLoi && !onSend && !!liveSubId && form.id !== LEASE_FORM_ID && status === 'ready',
+    fields, selected,
+    setFields: fs => { bumpIdc(fs); setFields(fs); },
+  });
+  _liveIds = live.status !== 'off';
+  const liveRef = useRef(live); liveRef.current = live;
+  const lockOf = live.lockOf;
   const formNameRef = useRef(form.name);
   formNameRef.current = form.name;
   useEffect(() => {
@@ -286,8 +301,10 @@ export default function TransactionDocEditor({
           const vals = j.submission?.values;
           if (Array.isArray(vals) && vals.length) {
             const adopted = adoptIds(vals as Field[]);
-            setFields(adopted);
             syncedVals.current = valsOf(adopted);
+            // If teammates are already filling this form live, THEIR state is newer than the saved copy — never replace it.
+            if (liveRef.current.hasLiveState()) return;
+            setFields(adopted);
             return;
           }
         }
@@ -556,7 +573,7 @@ export default function TransactionDocEditor({
       if (res.ok) {
         saved = true;
         const j = await res.json();
-        if (j.submission?.id) subIdRef.current = j.submission.id;
+        if (j.submission?.id) { subIdRef.current = j.submission.id; setLiveSubId(j.submission.id); }
         syncedVals.current = valsOf(fields);
         if (subIdRef.current) setOpenDoc({ submissionId: subIdRef.current, title: form.name, kind: 'form' });
         onToast?.(dealSel ? '✓ Saved to the deal' : '✓ Saved to Transaction Docs');
@@ -734,6 +751,20 @@ export default function TransactionDocEditor({
           style={isMobile
             ? { display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
             : { marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {live.status !== 'off' && (
+            <span title={live.status === 'live' ? 'Live — everyone with this form open sees changes as they are made. Nothing is saved to the deal until someone clicks Save.' : live.status === 'denied' ? 'Live editing is not available for you on this form' : 'Connecting…'}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#6b7280', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: live.status === 'live' ? '#16a34a' : live.status === 'connecting' ? '#d97706' : '#dc2626' }} />
+              {live.status === 'live' ? (live.peers.length ? `Live · ${live.peers.length + 1} here` : 'Live') : live.status === 'denied' ? 'Not live' : 'Connecting…'}
+              {live.peers.length > 0 && (
+                <span style={{ display: 'inline-flex' }}>
+                  {live.peers.slice(0, 4).map((p, i) => (
+                    <span key={p.clientId} title={p.name} style={{ width: 22, height: 22, borderRadius: '50%', background: p.color, color: '#fff', fontSize: 10.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: i ? -6 : 0, border: '2px solid #fff' }}>{p.name.slice(0, 1).toUpperCase()}</span>
+                  ))}
+                </span>
+              )}
+            </span>
+          )}
           {subIdRef.current && !isMobile && <button onClick={() => setShowHistory(true)} title="Edit history — who changed what" style={{ ...actionBtn, background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', flexShrink: 0 }}>🕘 History{edits.length ? ` (${edits.length})` : ''}</button>}
           {isAdmin && !isMobile && !imported && !onSend && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
           {!listingId && deals && deals.length > 0 && (
@@ -884,6 +915,7 @@ export default function TransactionDocEditor({
             <PageCanvas pageNum={pd.num} pdfRef={pdfRef} />
             {fields.filter(f => f.page === pd.num).map(f => {
               const isSel = selected === f.id;
+              const lock = lockOf(f.id);   // a teammate is in this blank right now
               const isCheck = f.type === 'check';
               const isSig = f.type === 'signature' || f.type === 'initial' || f.type === 'date';
               // Pin the box BOTTOM to the detected underline (fy) via translateY(-100%),
@@ -904,7 +936,7 @@ export default function TransactionDocEditor({
                     style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
                       height: `max(16px, ${cqw(em * 1.6)})`, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 3, overflow: 'hidden',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: isSel ? 'none' : undefined, cursor: 'move',
-                      background: `${rc}22`, border: `1.5px dashed ${rc}`, outline: isSel ? `2px solid ${rc}` : 'none' }}>
+                      background: `${rc}22`, border: `1.5px dashed ${rc}`, outline: lock ? `2px solid ${lock.color}` : isSel ? `2px solid ${rc}` : 'none', pointerEvents: lock ? 'none' : undefined }}>
                     <span style={{ fontSize: `max(7px, ${cqw(6.5)})`, fontWeight: 700, color: rc, textTransform: rec ? 'none' : 'capitalize', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 3px', pointerEvents: 'none' }}>{glyph} {who} {kind}</span>
                     {isSel && (
                       <button onClick={e => { e.stopPropagation(); delField(f.id); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} aria-label="Delete field"
@@ -924,7 +956,8 @@ export default function TransactionDocEditor({
                   height: isCheck ? `max(11px, ${f.fw * 100}cqw)` : `max(11px, ${cqw(em * 1.1)})`, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 2, overflow: 'visible',
                   display: 'flex', alignItems: isCheck ? 'center' : 'flex-end', touchAction: isSel ? 'none' : undefined,
                   background: isSel ? 'rgba(201,146,44,.20)' : (isCheck ? 'rgba(37,99,235,.05)' : 'rgba(37,99,235,.07)'),
-                  outline: isSel ? '1.5px solid #c9922c' : 'none' }}>
+                  outline: lock ? `2px solid ${lock.color}` : isSel ? '1.5px solid #c9922c' : 'none', pointerEvents: lock ? 'none' : undefined }}>
+                {lock && <span aria-hidden style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 1, background: lock.color, color: '#fff', fontSize: 9.5, fontWeight: 700, lineHeight: 1, padding: '2px 5px', borderRadius: '3px 3px 3px 0', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif", pointerEvents: 'none', zIndex: 3 }}>{lock.name} is editing</span>}
                 {isCheck ? (() => {
                   // A checkbox is one click: tick or untick. It used to be a text input sized
                   // to the printed box, so a click dropped a cursor into an 8pt square and the
