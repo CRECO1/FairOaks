@@ -86,7 +86,7 @@ function withSecurityHeaders(res: NextResponse): NextResponse {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data: blob: https: http:",
-      "connect-src 'self' https://*.supabase.co https://api.resend.com https://api-sabor.connectmls.com https://maps.googleapis.com https://vitals.vercel-insights.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://www.googletagmanager.com https://*.clarity.ms https://graph.facebook.com https://api.linkedin.com https://api.twitter.com https://accounts.google.com https://www.googleapis.com https://oauth2.googleapis.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.resend.com https://api-sabor.connectmls.com https://maps.googleapis.com https://vitals.vercel-insights.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://www.googletagmanager.com https://*.clarity.ms https://graph.facebook.com https://api.linkedin.com https://api.twitter.com https://accounts.google.com https://www.googleapis.com https://oauth2.googleapis.com",
       "frame-src 'self' https://www.google.com https://recaptcha.google.com https://www.recaptcha.net",
       "worker-src 'self' blob:",
     ].join('; ')
