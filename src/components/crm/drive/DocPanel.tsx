@@ -418,7 +418,7 @@ function describeEvent(e: DriveDocEvent): string {
     case 'version_restored': return 'Restored an earlier version';
     case 'commented': return d.resolved === true ? 'Resolved a comment' : d.resolved === false ? 'Reopened a comment' : d.reply ? 'Replied to a comment' : 'Added a comment';
     case 'template_saved': return `Saved as the template “${str(d.name)}”`;
-    case 'deleted': return 'Deleted for good';
+    case 'deleted': return d.auto ? 'Removed from the trash automatically after 30 days' : 'Deleted for good';
     default: return e.kind;
   }
 }

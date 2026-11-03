@@ -345,7 +345,9 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
       </span>
     );
   };
-  const rowSub = (kind: Kind, it: Item) => `${who(it.created_by)} · ${kind === 'file' && (it as DriveFile).size ? `${fmtSize((it as DriveFile).size)} · ` : ''}${kind === 'form' ? `${(it as DriveFormItem).form_code ? `${(it as DriveFormItem).form_code} · ` : ''}${(it as DriveFormItem).has_pdf ? 'saved' : 'in progress'} · ` : ''}${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}`;
+  // Trash keeps things for 30 days (a daily job then removes them for good).
+  const daysLeft = (it: Item) => Math.max(0, 30 - Math.floor((Date.now() - new Date(it.trashed_at ?? it.updated_at).getTime()) / 86_400_000));
+  const rowSub = (kind: Kind, it: Item) => `${who(it.created_by)} · ${kind === 'file' && (it as DriveFile).size ? `${fmtSize((it as DriveFile).size)} · ` : ''}${kind === 'form' ? `${(it as DriveFormItem).form_code ? `${(it as DriveFormItem).form_code} · ` : ''}${(it as DriveFormItem).has_pdf ? 'saved' : 'in progress'} · ` : ''}${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}${inTrash ? ` · ${daysLeft(it)} d left` : ''}`;
   const tone = (kind: Kind, it: Item) => toneFor(kind, kind === 'file' ? { name: (it as DriveFile).name, mime: (it as DriveFile).mime } : { visibility: it.visibility, deal_id: it.deal_id });
   const ownerChip = (id: string | null) => {
     const n = who(id);
@@ -374,7 +376,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
         {!isMobile && <>
           <span style={{ width: 120, fontSize: 12.5, color: 'var(--k-6b7280)', minWidth: 0 }}>{ownerChip(it.created_by)}</span>
           <span style={{ width: 118 }}>{accessPill(it)}</span>
-          <span style={{ width: 84, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}</span>
+          <span style={{ width: 84, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}{inTrash && <span style={{ display: 'block', fontSize: 10.5, color: daysLeft(it) <= 3 ? 'var(--k-dc2626)' : 'var(--k-9ca3af)' }}>{daysLeft(it)} d left</span>}</span>
         </>}
         {kind === 'doc' && !isMobile && !inTrash && (
           <button type="button" className="dd-dots" aria-label={`Quick look at ${title}`} title="Quick look — preview without opening" onClick={() => setQuickDocId(it.id)}
@@ -465,7 +467,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
               )}
             </div>
           )}
-          {inTrash && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Items you delete stay here until you remove them for good.</span>}
+          {inTrash && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Items you delete stay here for 30 days, then are removed for good.</span>}
           {view === 'templates' && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Click a template to use it. To add one: open any document, then ⋯ → Save as template.</span>}
         </div>
 
