@@ -577,21 +577,21 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
           {emailInitials(e.from_email)}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Sender block takes a full row of its own on a phone and the opened chip / date / reply buttons wrap beneath it —
-              the right-hand group can't shrink, so on a 360px screen it used to squeeze the address into a one-letter-wide column. */}
+          {/* On a phone: line 1 = name · date · reply buttons, line 2 = the address on its own full-width line, line 3 = the opened chip.
+              (The date/reply group can't shrink, so sharing a line with the address used to squeeze it into a one-letter-wide column.) */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: isMobile ? '2px 8px' : 8, flexWrap: 'wrap' }}>
-            <div onClick={() => setOpen(false)} title="Fold this message" style={{ cursor: 'pointer', minWidth: 0, flex: isMobile ? '1 1 100%' : '1 1 auto' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{emailDisplayName(e.from_email)}</span>
-              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', ...(isMobile ? { display: 'block' } : { marginLeft: 5 }), overflowWrap: 'break-word', wordBreak: 'break-word' }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
+            <div onClick={() => setOpen(false)} title="Fold this message" style={isMobile ? { display: 'contents', cursor: 'pointer' } : { cursor: 'pointer', minWidth: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', ...(isMobile ? { order: 1, flex: '1 1 0', minWidth: 0, overflowWrap: 'anywhere' } : {}) }}>{emailDisplayName(e.from_email)}</span>
+              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', ...(isMobile ? { order: 4, flexBasis: '100%', minWidth: 0 } : { marginLeft: 5 }), overflowWrap: 'break-word', wordBreak: 'break-word' }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', ...(isMobile ? { width: '100%' } : { flexShrink: 0 }) }}>
-              {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
-              {e.direction === 'sent' && !e.opened_at && e.tracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
-              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap', ...(isMobile ? { marginRight: 'auto' } : {}) }}>{shortEmailDate(e.email_date)}</span>
+            <div style={isMobile ? { display: 'contents' } : { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600, ...(isMobile ? { order: 5, alignSelf: 'flex-start' } : {}) }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
+              {e.direction === 'sent' && !e.opened_at && e.tracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)', ...(isMobile ? { order: 5, alignSelf: 'flex-start' } : {}) }}>Not opened</span>}
+              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap', ...(isMobile ? { order: 2, flexShrink: 0 } : {}) }}>{shortEmailDate(e.email_date)}</span>
               {onReply && <span role="button" tabIndex={0} aria-label="Reply to this message" title="Reply to this message" onClick={onReply} onKeyDown={ev => { if (ev.key === 'Enter') onReply(); }}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)' }}>↩</span>}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)', ...(isMobile ? { order: 3, flexShrink: 0 } : {}) }}>↩</span>}
               {onReplyAll && <span role="button" tabIndex={0} aria-label="Reply all to this message" title="Reply all to this message" onClick={onReplyAll} onKeyDown={ev => { if (ev.key === 'Enter') onReplyAll(); }}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)' }}>↩↩</span>}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)', ...(isMobile ? { order: 3, flexShrink: 0 } : {}) }}>↩↩</span>}
             </div>
           </div>
           <EmailRecipients to={e.to_email} cc={e.cc_emails} bcc={e.bcc_emails} />
@@ -11994,12 +11994,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </div>
                               {/* Middle: name + subject/snippet */}
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0 }}>{emailDisplayName(senderAddr)}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emailDisplayName(senderAddr)}</span>
                                   {threadEmails.length > 1 && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{threadEmails.length}</span>}
-                                  {(() => { const n = new Set(threadEmails.flatMap(m => [...parseAddressList(m.from_email), ...parseAddressList(m.to_email), ...parseAddressList(m.cc_emails)].map(r => r.email.toLowerCase()))).size; return n > 2 ? <span title="People on this thread" style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-eef2ff)', color: 'var(--k-3730a3)' }}>👥 {n}</span> : null; })()}
-                                  {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened{(() => { const n = sentEmails.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0); return n > 1 ? ` ${n}×` : ''; })()}</span>}
-                                  {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
+                                  {(() => { const n = new Set(threadEmails.flatMap(m => [...parseAddressList(m.from_email), ...parseAddressList(m.to_email), ...parseAddressList(m.cc_emails)].map(r => r.email.toLowerCase()))).size; return n > 2 ? <span title="People on this thread" style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-eef2ff)', color: 'var(--k-3730a3)' }}>👥 {n}</span> : null; })()}
+                                  {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened{(() => { const n = sentEmails.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0); return n > 1 ? ` ${n}×` : ''; })()}</span>}
+                                  {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
                                 </div>
                                 <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latest.subject}</div>
                                 <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{snippet}</div>
@@ -13991,12 +13991,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   {emailInitials(senderAddrC)}
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0 }}>{emailDisplayName(senderAddrC)}</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emailDisplayName(senderAddrC)}</span>
                                     {threadEmails.length > 1 && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{threadEmails.length}</span>}
-                                  {(() => { const n = new Set(threadEmails.flatMap(m => [...parseAddressList(m.from_email), ...parseAddressList(m.to_email), ...parseAddressList(m.cc_emails)].map(r => r.email.toLowerCase()))).size; return n > 2 ? <span title="People on this thread" style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-eef2ff)', color: 'var(--k-3730a3)' }}>👥 {n}</span> : null; })()}
-                                    {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened{(() => { const n = sentEmails.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0); return n > 1 ? ` ${n}×` : ''; })()}</span>}
-                                    {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
+                                  {(() => { const n = new Set(threadEmails.flatMap(m => [...parseAddressList(m.from_email), ...parseAddressList(m.to_email), ...parseAddressList(m.cc_emails)].map(r => r.email.toLowerCase()))).size; return n > 2 ? <span title="People on this thread" style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-eef2ff)', color: 'var(--k-3730a3)' }}>👥 {n}</span> : null; })()}
+                                    {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened{(() => { const n = sentEmails.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0); return n > 1 ? ` ${n}×` : ''; })()}</span>}
+                                    {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, overflow: 'hidden' }}>
                                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-374151)', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latest.subject}</span>
