@@ -194,13 +194,13 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
       {/* Sidebar (desktop) / quick switch (phone) */}
       {isMobile ? (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', width: '100%', paddingBottom: 2 }}>
-          {([['Drive', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
+          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
             <button key={l} type="button" onClick={fn} style={{ minHeight: 40, padding: '0 16px', borderRadius: 20, border: `1px solid ${on ? GOLD : 'var(--k-e5e7eb)'}`, background: on ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: on ? 'var(--k-a06a12)' : 'var(--k-374151)', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>{l}</button>
           ))}
         </div>
       ) : (
         <nav aria-label="Folders" style={{ width: 230, flexShrink: 0, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 8, maxHeight: '72vh', overflowY: 'auto' }}>
-          {navBtn('My Drive', view === 'folder' && folderId === null, () => go(null), '🗂')}
+          {navBtn('All files', view === 'folder' && folderId === null, () => go(null), '🗂')}
           {navBtn('Recent', view === 'recent', () => { setQ(''); setView('recent'); }, '🕘')}
           {navBtn('Trash', view === 'trash', () => { setQ(''); setView('trash'); }, '🗑')}
           <div style={{ height: 1, background: 'var(--k-f0f0f0)', margin: '8px 4px' }} />
@@ -214,7 +214,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
           <div style={{ flex: '1 1 220px', minWidth: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, fontSize: isMobile ? 16 : 17, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>
             {heading ? <span style={{ padding: '6px 4px' }}>{heading}</span> : (
               <>
-                <button type="button" onClick={() => go(null)} style={crumb(folderId === null)}>My Drive</button>
+                <button type="button" onClick={() => go(null)} style={crumb(folderId === null)}>All files</button>
                 {(data?.path ?? []).map((p, i, arr) => (
                   <React.Fragment key={p.id}>
                     <span style={{ color: 'var(--k-9ca3af)' }}>›</span>
@@ -390,7 +390,7 @@ function MoveDialog({ kind, item, tree, kids, isMobile, onClose, onPick }: { kin
   return (
     <Modal title={`Move “${nameOf(kind, item)}”`} isMobile={isMobile} onClose={onClose}>
       <button type="button" onClick={() => setSel(null)}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', minHeight: isMobile ? 46 : 34, padding: '0 10px', border: 'none', borderRadius: 8, background: sel === null ? 'var(--k-fdf6e9)' : 'none', fontSize: 14, fontWeight: sel === null ? 700 : 600, cursor: 'pointer', color: 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }}>🗂 My Drive (top level)</button>
+        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', minHeight: isMobile ? 46 : 34, padding: '0 10px', border: 'none', borderRadius: 8, background: sel === null ? 'var(--k-fdf6e9)' : 'none', fontSize: 14, fontWeight: sel === null ? 700 : 600, cursor: 'pointer', color: 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }}>🗂 All files (top level)</button>
       {render(null, 0)}
       {dest && (dest.visibility !== item.visibility || dest.deal_id !== item.deal_id) && (
         <p style={{ fontSize: 12.5, color: 'var(--k-92400e)', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 8, padding: '8px 10px', margin: '10px 0 0', lineHeight: 1.5 }}>

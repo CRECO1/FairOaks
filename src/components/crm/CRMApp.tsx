@@ -5557,7 +5557,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
     'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', emails: 'Emails',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'Transaction Docs', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': isSuperAdmin ? 'My Drive' : 'Transaction Docs', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -5921,7 +5921,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </a>
           )}
           <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}><Ico n="building" />Properties</button>
-          <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}><Ico n="file" />Transaction Docs</button>
+          <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}><Ico n="file" />{isSuperAdmin ? 'My Drive' : 'Transaction Docs'}</button>
           <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}><Ico n="pen" />E-Sign</button>
           <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}><Ico n="phone" />Calling Log</button>
           <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
@@ -6040,7 +6040,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               { id: 'properties', label: 'Properties', ico: 'building', go: () => setPage('properties') },
               { id: 'calls', label: 'Calls', ico: 'phone', go: () => { setPage('calls'); if (!clients.length) loadClients(); } },
               { id: 'esign', label: 'E-Sign', ico: 'pen', go: () => setPage('esign') },
-              { id: 'transaction-docs', label: 'Docs', ico: 'file', go: () => setPage('transaction-docs') },
+              { id: 'transaction-docs', label: isSuperAdmin ? 'Drive' : 'Docs', ico: 'file', go: () => setPage('transaction-docs') },
             ];
             return (
               <nav className="crm-tabs-scroll crm-topnav" aria-label="Sections">
