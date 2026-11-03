@@ -30,6 +30,7 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
 }) {
   const [items, setItems] = useState<Linked[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const q = dealId ? `deal_id=${dealId}` : clientId ? `client_id=${clientId}` : '';
   const headers = useCallback((): Record<string, string> => (authToken ? { Authorization: `Bearer ${authToken}` } : {}), [authToken]);
 
@@ -52,6 +53,16 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
   }, [load]);
 
   const who = (id: string | null) => (id === currentUser.id ? 'you' : [profiles.find(p => p.id === id)?.first_name, profiles.find(p => p.id === id)?.last_name].filter(Boolean).join(' ') || 'a teammate');
+  // Download the latest saved text as a PDF or a Word file (loaded on demand; works for anyone who can open the card).
+  const download = async (l: Linked, kind: 'pdf' | 'word') => {
+    if (busy) return;
+    setBusy(`${l.id}:${kind}`);
+    try {
+      const m = await import('./doc-export');
+      if (kind === 'pdf') await m.exportDocPdf(l.doc_id, authToken, l.title); else await m.exportDocDocx(l.doc_id, authToken, l.title);
+    } catch (e) { onToast((e as Error).message || `Could not make the ${kind === 'pdf' ? 'PDF' : 'Word file'}`); }
+    setBusy(null);
+  };
   const unlink = async (l: Linked) => {
     if (!confirm(`Remove “${l.title}” from this card? The document stays in My Drive.`)) return;
     try {
@@ -78,6 +89,12 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
               <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflowWrap: 'anywhere' }}>{l.title}</div>
               <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>Live from My Drive · edited {ago(l.updated_at)} by {who(l.updated_by)}</div>
             </div>
+            {(['pdf', 'word'] as const).map(k => (
+              <button key={k} type="button" onClick={() => void download(l, k)} disabled={!!busy} title={k === 'pdf' ? 'Download the latest version as a PDF' : 'Download the latest version as a Word (.docx) file'}
+                style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '5px 10px', cursor: busy ? 'default' : 'pointer', flexShrink: 0, minHeight: isMobile ? 36 : undefined, opacity: busy && busy !== `${l.id}:${k}` ? .5 : 1 }}>
+                {busy === `${l.id}:${k}` ? '…' : k === 'pdf' ? '⬇ PDF' : '⬇ Word'}
+              </button>
+            ))}
             <button type="button" onClick={() => setOpenId(l.doc_id)} style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#111', border: 'none', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', flexShrink: 0, minHeight: isMobile ? 36 : undefined }}>Open</button>
             {(isAdmin || l.linked_by === currentUser.id) && (
               <button type="button" onClick={() => void unlink(l)} title="Remove from this card" aria-label={`Remove ${l.title} from this card`}
