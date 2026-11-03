@@ -366,6 +366,52 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
   };
 
   // ── tree ──────────────────────────────────────────────────────────────────
+  // ── drag and drop: drag items (or the whole ticked selection) onto a folder, the sidebar tree, "All files" or a breadcrumb to move them ──
+  const DND = 'application/x-drive-items';
+  const [dragHover, setDragHover] = useState<string | null>(null);   // 'root' or the folder id being hovered
+  const dragPayload = useRef<Array<{ kind: Kind; id: string }> | null>(null);
+  const parentOf = useMemo(() => new Map(tree.map(f => [f.id, f.parent_id])), [tree]);
+  /** A folder can't be dropped into itself or anything inside it. */
+  const canDrop = (target: string | null) => {
+    const p = dragPayload.current; if (!p) return false;
+    for (const x of p) {
+      if (x.kind !== 'folder') continue;
+      if (target === x.id) return false;
+      for (let a = target, i = 0; a && i < 30; a = parentOf.get(a) ?? null, i++) if (a === x.id) return false;
+    }
+    return true;
+  };
+  const dragProps = (kind: Kind, it: Item) => (inTrash || view === 'templates' || isMobile) ? {} : {
+    draggable: true as const,
+    onDragStart: (e: React.DragEvent) => {
+      const items = isSel(kind, it) && sel.size > 1 ? selected.map(x => ({ kind: x.kind, id: x.item.id })) : [{ kind, id: it.id }];
+      dragPayload.current = items;
+      e.dataTransfer.setData(DND, JSON.stringify(items)); e.dataTransfer.effectAllowed = 'move';
+      if (items.length > 1) {   // a small "N items" chip follows the pointer instead of one row
+        const chip = document.createElement('div');
+        chip.textContent = `${items.length} items`;
+        chip.style.cssText = 'position:fixed;top:-100px;left:-100px;padding:6px 12px;border-radius:8px;background:#c9922c;color:#fff;font:700 13px DM Sans,sans-serif';
+        document.body.appendChild(chip); e.dataTransfer.setDragImage(chip, 10, 10); setTimeout(() => chip.remove(), 0);
+      }
+    },
+    onDragEnd: () => { dragPayload.current = null; setDragHover(null); },
+  };
+  const moveDropped = (items: Array<{ kind: Kind; id: string }>, target: string | null) =>
+    runBulk('Moved', (k, it) => api(`/api/crm/drive/items/${k}/${it.id}`, { method: 'PATCH', body: JSON.stringify({ move: { parent_id: target } }) }), items.map(i => ({ kind: i.kind, item: { id: i.id } as Item })));
+  const dropProps = (target: string | null) => ({
+    onDragOver: (e: React.DragEvent) => { if (dragPayload.current && canDrop(target)) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } },
+    onDragEnter: () => { if (dragPayload.current && canDrop(target)) setDragHover(target ?? 'root'); },
+    onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragHover(h => (h === (target ?? 'root') ? null : h)); },
+    onDrop: (e: React.DragEvent) => {
+      const items = dragPayload.current; if (!items) return;
+      e.preventDefault(); e.stopPropagation();
+      const ok = canDrop(target);
+      dragPayload.current = null; setDragHover(null);
+      if (ok) void moveDropped(items, target);
+    },
+  });
+  const dropGlow = (target: string | null): React.CSSProperties => (dragHover === (target ?? 'root') ? { outline: `2px solid ${GOLD}`, outlineOffset: -2, background: 'var(--k-fdf6e9)' } : {});
+
   const kids = useMemo(() => {
     const ids = new Set(tree.map(f => f.id));
     const m = new Map<string | null, DriveTreeFolder[]>();
@@ -379,7 +425,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
       const here = view === 'folder' && folderId === f.id;
       return (
         <div key={f.id}>
-          <div onClick={() => go(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: `5px 8px 5px ${8 + depth * 14}px`, borderRadius: 7, cursor: 'pointer', background: here ? 'var(--k-fdf6e9)' : 'transparent', color: here ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 13.5, fontWeight: here ? 700 : 500 }}>
+          <div onClick={() => go(f.id)} {...dropProps(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: `5px 8px 5px ${8 + depth * 14}px`, borderRadius: 7, cursor: 'pointer', background: here ? 'var(--k-fdf6e9)' : 'transparent', color: here ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 13.5, fontWeight: here ? 700 : 500, ...dropGlow(f.id) }}>
             <span role="button" aria-label={expanded.has(f.id) ? 'Collapse' : 'Expand'} onClick={e => { e.stopPropagation(); if (has) setExpanded(prev => { const n = new Set(prev); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n; }); }}
               style={{ width: 16, textAlign: 'center', fontSize: 10, color: 'var(--k-9ca3af)', visibility: has ? 'visible' : 'hidden' }}>{expanded.has(f.id) ? '▾' : '▸'}</span>
             <span style={{ color: toneFor('folder', f).color, display: 'inline-flex' }}><DI n={toneFor('folder', f).icon} size={16} /></span>
@@ -390,9 +436,9 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
       );
     });
 
-  const navBtn = (label: string, on: boolean, onClick: () => void, icon: DIName) => (
-    <button type="button" onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', borderRadius: 7, cursor: 'pointer', background: on ? 'var(--k-fdf6e9)' : 'transparent', color: on ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 14, fontWeight: on ? 700 : 600, fontFamily: "'DM Sans',sans-serif" }}>
+  const navBtn = (label: string, on: boolean, onClick: () => void, icon: DIName, root = false) => (
+    <button type="button" onClick={onClick} {...(root ? dropProps(null) : {})}
+      style={{ ...(root ? dropGlow(null) : {}), display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', borderRadius: 7, cursor: 'pointer', background: on ? 'var(--k-fdf6e9)' : 'transparent', color: on ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 14, fontWeight: on ? 700 : 600, fontFamily: "'DM Sans',sans-serif" }}>
       <DI n={icon} size={17} />{label}
     </button>
   );
@@ -430,7 +476,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
     const snippet = (it as DriveDoc).snippet;
     const t = tone(kind, it);
     return (
-      <div key={`${kind}${it.id}`} className="dd-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '5px 10px 5px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 60 : 54, ...(isSel(kind, it) ? { background: 'var(--k-fdf6e9)' } : {}) }}>
+      <div key={`${kind}${it.id}`} className="dd-row" {...dragProps(kind, it)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '5px 10px 5px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 60 : 54, ...(isSel(kind, it) ? { background: 'var(--k-fdf6e9)' } : {}) }}>
         {chk(kind, it)}
         <button type="button" onClick={() => openItem(kind, it)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           <Tile n={t.icon} color={t.color} />
@@ -461,7 +507,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
   const folderCard = (f: DriveFolder) => {
     const t = tone('folder', f);
     return (
-      <div key={`folder${f.id}`} className="dd-card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 6px 10px 12px', border: `1px solid ${isSel('folder', f) ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 12, background: isSel('folder', f) ? 'var(--k-fdf6e9)' : 'var(--k-fff)', minHeight: 62 }}>
+      <div key={`folder${f.id}`} className="dd-card" {...dragProps('folder', f)} {...dropProps(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 6px 10px 12px', border: `1px solid ${isSel('folder', f) || dragHover === f.id ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 12, background: isSel('folder', f) || dragHover === f.id ? 'var(--k-fdf6e9)' : 'var(--k-fff)', minHeight: 62, ...(dragHover === f.id ? { boxShadow: `0 0 0 2px ${GOLD}55` } : {}) }}>
         {chk('folder', f)}
         <button type="button" onClick={() => openItem('folder', f)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           <Tile n={t.icon} color={t.color} size={38} />
@@ -495,7 +541,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
         </div>
       ) : (
         <nav aria-label="Folders" style={{ width: 230, flexShrink: 0, background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, padding: 8, maxHeight: '72vh', overflowY: 'auto' }}>
-          {navBtn('All files', view === 'folder' && folderId === null, () => go(null), 'grid')}
+          {navBtn('All files', view === 'folder' && folderId === null, () => go(null), 'grid', true)}
           {navBtn('Recent', view === 'recent', () => { setQ(''); setView('recent'); }, 'clock')}
           {navBtn('Shared with me', view === 'shared', () => { setQ(''); setView('shared'); }, 'users')}
           {navBtn('Templates', view === 'templates', () => { setQ(''); setView('templates'); }, 'template')}
@@ -511,11 +557,11 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
           <div style={{ flex: '1 1 220px', minWidth: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, fontSize: isMobile ? 16 : 17, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>
             {heading ? <span style={{ padding: '6px 4px' }}>{heading}</span> : (
               <>
-                <button type="button" onClick={() => go(null)} style={crumb(folderId === null)}>All files</button>
+                <button type="button" onClick={() => go(null)} {...dropProps(null)} style={{ ...crumb(folderId === null), ...dropGlow(null) }}>All files</button>
                 {(data?.path ?? []).map((p, i, arr) => (
                   <React.Fragment key={p.id}>
                     <span style={{ color: 'var(--k-9ca3af)', display: 'inline-flex' }}><DI n="chevron" size={14} /></span>
-                    <button type="button" onClick={() => go(p.id)} style={crumb(i === arr.length - 1)}>{p.name}</button>
+                    <button type="button" onClick={() => go(p.id)} {...dropProps(p.id)} style={{ ...crumb(i === arr.length - 1), ...dropGlow(p.id) }}>{p.name}</button>
                   </React.Fragment>
                 ))}
               </>
