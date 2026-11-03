@@ -35,6 +35,7 @@ import { chicagoFormat, chicagoToday } from '@/lib/chicago-time';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import ContactFiles from '@/components/crm/ContactFiles';
 import LinkedDocs from '@/components/crm/drive/LinkedDocs';
+import { canEditCardFile, editCardFile } from '@/components/crm/drive/card-edit';
 import ContactJumpBar from '@/components/crm/ContactJumpBar';
 import PhoneFold from '@/components/crm/PhoneFold';
 import AssistantPanel from '@/components/crm/AssistantPanel';
@@ -12280,6 +12281,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 {size}{size ? ' · ' : ''}{doc.created_at?.slice(0, 10)}{uploaderName ? ` · ${uploaderName}` : ''}
                               </div>
                             </div>
+                            {canEditCardFile(doc.name) && (
+                              <button onClick={() => void editCardFile('deal', doc.id, session?.access_token, showToast)} title="Edit as a live document — it then shows above as a live document on this deal"
+                                style={{ padding: '5px 12px', background: 'var(--k-fdf6e9)', color: '#a06a12', border: '1px solid var(--k-f0e2c4)', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✎ Edit</button>
+                            )}
                             {isPdf && (
                               <button onClick={async () => {
                                 const url = await freshDocUrl(doc.id);

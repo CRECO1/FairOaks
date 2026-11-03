@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import DI from './DriveIcons';
 import type { DrivePerson } from './DocsDrive';
+import { OPEN_LIVE_DOC } from './card-edit';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
 
@@ -41,6 +42,12 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
     } catch { setItems([]); }
   }, [q, headers]);
   useEffect(() => { setItems(null); void load(); }, [load]);
+  // A Word / text file on this card was just made editable: refresh the list and open it (only the first mounted section takes the event).
+  useEffect(() => {
+    const h = (e: Event) => { const d = (e as CustomEvent<{ id: string; handled: boolean }>).detail; if (!d || d.handled) return; d.handled = true; setOpenId(d.id); void load(); };
+    window.addEventListener(OPEN_LIVE_DOC, h);
+    return () => window.removeEventListener(OPEN_LIVE_DOC, h);
+  }, [load]);
 
   const who = (id: string | null) => (id === currentUser.id ? 'you' : [profiles.find(p => p.id === id)?.first_name, profiles.find(p => p.id === id)?.last_name].filter(Boolean).join(' ') || 'a teammate');
   const unlink = async (l: Linked) => {
@@ -53,7 +60,11 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
     } catch (e) { onToast((e as Error).message); }
   };
 
-  if (!items || items.length === 0) return null;
+  const editor = openId ? (
+    <LiveDocEditor docId={openId} authToken={authToken} user={currentUser} isMobile={isMobile} people={profiles} isAdmin={isAdmin}
+      onClose={() => { setOpenId(null); void load(); }} onToast={onToast} />
+  ) : null;
+  if (!items || items.length === 0) return editor;
   return (
     <div style={{ marginBottom: 22 }}>
       <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 8 }}>Live documents ({items.length})</div>
@@ -73,10 +84,7 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
           </div>
         ))}
       </div>
-      {openId && (
-        <LiveDocEditor docId={openId} authToken={authToken} user={currentUser} isMobile={isMobile} people={profiles} isAdmin={isAdmin}
-          onClose={() => { setOpenId(null); void load(); }} onToast={onToast} />
-      )}
+      {editor}
     </div>
   );
 }

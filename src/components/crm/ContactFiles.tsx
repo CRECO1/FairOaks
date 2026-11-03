@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import LinkedDocs from '@/components/crm/drive/LinkedDocs';
 import type { DrivePerson } from '@/components/crm/drive/DocsDrive';
+import { canEditCardFile, editCardFile } from '@/components/crm/drive/card-edit';
 
 // The "Files" section of a contact card: documents and photos uploaded onto the person, plus every file on the Docs
 // tab of their deals (tagged with the deal it came from). Open / preview use a freshly signed link at click time.
@@ -97,6 +98,9 @@ export default function ContactFiles({ clientId, authToken, userId, isAdmin, sho
                     {[f.from, kb(f.size), new Date(f.created_at).toLocaleDateString()].filter(Boolean).join(' · ')}
                   </div>
                 </div>
+                {canEditCardFile(f.name) && (
+                  <button onClick={() => void editCardFile(f.source, f.id, authToken, showToast)} title="Edit as a live document" style={{ fontSize: 12, fontWeight: 600, color: '#a06a12', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0 }}>✎ Edit</button>
+                )}
                 {PREVIEWABLE.includes(ext) && (
                   <button onClick={() => open(f, true)} style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>
                 )}
