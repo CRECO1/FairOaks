@@ -110,7 +110,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
       </div>
 
       {showDrive && currentUser && (
-        <DocsDrive businessUnit={businessUnit} authToken={authToken} currentUser={currentUser} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={isMobile} onToast={onToast} />
+        <DocsDrive deals={deals} businessUnit={businessUnit} authToken={authToken} currentUser={currentUser} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={isMobile} onToast={onToast} />
       )}
 
       {!showDrive && (<>

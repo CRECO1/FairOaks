@@ -8,13 +8,14 @@ import { useEffect, useState } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { docExtensions } from './doc-extensions';
 import { DocStyles } from './DocStyles';
+import { LetterheadHeader, LetterheadFooter } from './Letterhead';
 import { loadDocJson } from './doc-export';
 import { docToPdf, pdfName, saveBytes, type PMNode } from '@/lib/doc-pdf';
 
 export default function DocQuickView({ docId, authToken, isMobile, onClose, onOpen, onToast }: {
   docId: string; authToken?: string; isMobile: boolean; onClose: () => void; onOpen: (id: string) => void; onToast: (m: string) => void;
 }) {
-  const [doc, setDoc] = useState<{ title: string; json: PMNode; empty: boolean } | null>(null);
+  const [doc, setDoc] = useState<{ title: string; json: PMNode; empty: boolean; letterhead: boolean } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -28,7 +29,7 @@ export default function DocQuickView({ docId, authToken, isMobile, onClose, onOp
   const pdf = async () => {
     if (!doc) return;
     setBusy(true);
-    try { saveBytes(await docToPdf(doc.json, doc.title), pdfName(doc.title)); } catch { onToast('Could not make the PDF'); }
+    try { saveBytes(await docToPdf(doc.json, doc.title, { letterhead: doc.letterhead }), pdfName(doc.title)); } catch { onToast('Could not make the PDF'); }
     setBusy(false);
   };
   const btn: React.CSSProperties = { height: isMobile ? 42 : 34, padding: '0 14px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' };
@@ -50,7 +51,9 @@ export default function DocQuickView({ docId, authToken, isMobile, onClose, onOp
           {!err && !doc && <div style={{ padding: 24, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>}
           {doc && (
             <div style={{ background: 'var(--k-fff)', borderRadius: isMobile ? 0 : 4, boxShadow: isMobile ? 'none' : '0 1px 3px rgba(0,0,0,.12)', padding: isMobile ? '16px 16px 60px' : '34px 40px 50px', minHeight: isMobile ? '100%' : 320 }}>
+              {doc.letterhead && <LetterheadHeader />}
               {doc.empty ? <div style={{ color: 'var(--k-9ca3af)', fontSize: 14 }}>This document is empty so far.</div> : <EditorContent editor={editor} />}
+              {doc.letterhead && <LetterheadFooter />}
             </div>
           )}
         </div>

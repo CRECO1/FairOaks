@@ -24,7 +24,21 @@ interface Run { text: string; bold?: boolean; italic?: boolean; code?: boolean; 
 interface Seg { text: string; font: PDFFont; size: number; underline?: boolean; strike?: boolean; color: ReturnType<typeof rgb>; w: number }
 interface Line { segs: Seg[]; w: number }
 
-export async function docToPdf(doc: PMNode, title: string): Promise<Uint8Array> {
+/** The CRECO letterhead (same wording as the letters and flyers): printed at the top and bottom of every page when a document has it on. */
+export const LETTERHEAD = {
+  contact: '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015  ·  (210) 817-3443  ·  crecotx.com',
+  tagline: 'Where your real estate ventures find the support they deserve',
+  footContact: '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015  |  (210) 817-3443  |  info@crecotx.com  |  crecotx.com',
+  logoPath: '/creco-letterhead-logo.png',
+};
+let logoCache: Uint8Array | null = null;
+/** The letterhead logo's bytes (fetched once). */
+export async function letterheadLogo(): Promise<Uint8Array | null> {
+  if (logoCache) return logoCache;
+  try { const r = await fetch(LETTERHEAD.logoPath); if (!r.ok) return null; logoCache = new Uint8Array(await r.arrayBuffer()); return logoCache; } catch { return null; }
+}
+
+export async function docToPdf(doc: PMNode, title: string, opts: { letterhead?: boolean } = {}): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.setTitle(winAnsi(title) || 'Document'); pdf.setCreator('CRECO CRM');
   const F = {
@@ -33,9 +47,28 @@ export async function docToPdf(doc: PMNode, title: string): Promise<Uint8Array> 
   };
   const pages: PDFPage[] = [];
   let page: PDFPage, y = 0;
-  const newPage = () => { page = pdf.addPage([PW, PH]); pages.push(page); y = PH - MT; };
+  // Letterhead: logo + contact line + rule on every page's top, tagline + contact on its bottom (the body area shrinks to fit).
+  const lh = !!opts.letterhead;
+  const logo = lh ? await letterheadLogo() : null;
+  const logoImg = logo ? await pdf.embedPng(logo) : null;
+  const logoW = 190, logoH = logoImg ? (logoImg.height / logoImg.width) * logoW : 0;
+  const topY = lh ? PH - 34 - logoH - 40 : PH - MT;      // first line of body text
+  const bottom = lh ? 84 : MB;
+  const newPage = () => {
+    page = pdf.addPage([PW, PH]); pages.push(page); y = topY;
+    if (!lh) return;
+    if (logoImg) page.drawImage(logoImg, { x: (PW - logoW) / 2, y: PH - 34 - logoH, width: logoW, height: logoH });
+    const cw = F.r.widthOfTextAtSize(LETTERHEAD.contact, 8);
+    page.drawText(LETTERHEAD.contact, { x: (PW - cw) / 2, y: PH - 34 - logoH - 14, size: 8, font: F.r, color: GREY });
+    page.drawLine({ start: { x: ML, y: PH - 34 - logoH - 24 }, end: { x: PW - MR, y: PH - 34 - logoH - 24 }, thickness: 2, color: rgb(0.11, 0.11, 0.12) });
+    page.drawLine({ start: { x: ML, y: 66 }, end: { x: PW - MR, y: 66 }, thickness: 2, color: rgb(0.11, 0.11, 0.12) });
+    const tw = F.i.widthOfTextAtSize(LETTERHEAD.tagline, 8.5);
+    page.drawText(LETTERHEAD.tagline, { x: (PW - tw) / 2, y: 52, size: 8.5, font: F.i, color: GREY });
+    const fw = F.r.widthOfTextAtSize(LETTERHEAD.footContact, 7.2);
+    page.drawText(LETTERHEAD.footContact, { x: (PW - fw) / 2, y: 41, size: 7.2, font: F.r, color: GREY });
+  };
   newPage();
-  const need = (h: number) => { if (y - h < MB) newPage(); };
+  const need = (h: number) => { if (y - h < bottom) newPage(); };
   const fontOf = (r: Run) => (r.code ? F.c : r.bold && r.italic ? F.bi : r.bold ? F.b : r.italic ? F.i : F.r);
 
   // Inline content -> runs
@@ -86,7 +119,7 @@ export async function docToPdf(doc: PMNode, title: string): Promise<Uint8Array> 
     let firstDone = false, barTop = y;
     for (const l of lines) {
       const h = lineH(l, size);
-      if (y - h < MB) { if (o.bar) page.drawRectangle({ x: x0 - 9, y, width: 3, height: barTop - y, color: GOLD }); newPage(); barTop = y; }
+      if (y - h < bottom) { if (o.bar) page.drawRectangle({ x: x0 - 9, y, width: 3, height: barTop - y, color: GOLD }); newPage(); barTop = y; }
       const base = y - size;
       let x = x0 + (o.align === 'center' ? (width - l.w) / 2 : o.align === 'right' ? width - l.w : 0);
       for (const s of l.segs) {
@@ -168,7 +201,7 @@ export async function docToPdf(doc: PMNode, title: string): Promise<Uint8Array> 
         return { head, lines: wrap(runs, cw - pad * 2) };
       });
       const h = Math.max(...cells.map(c => c.lines.reduce((a, l) => a + lineH(l, size), 0)), size * 1.4) + pad * 2;
-      need(Math.min(h, PH - MT - MB));
+      need(Math.min(h, topY - bottom));
       cells.forEach((c, ci) => {
         const cx = x + ci * cw;
         page.drawRectangle({ x: cx, y: y - h, width: cw, height: h, borderColor: LINE, borderWidth: 0.7, color: c.head ? rgb(0.95, 0.96, 0.97) : undefined });
@@ -185,7 +218,7 @@ export async function docToPdf(doc: PMNode, title: string): Promise<Uint8Array> 
   };
 
   blocks(doc.content ?? [], ML, CW);
-  pages.forEach((p, i) => p.drawText(`${i + 1} / ${pages.length}`, { x: PW / 2 - 14, y: 30, size: 8.5, font: F.r, color: GREY }));
+  pages.forEach((p, i) => p.drawText(`${i + 1} / ${pages.length}`, lh ? { x: PW - MR - 24, y: 28, size: 8, font: F.r, color: GREY } : { x: PW / 2 - 14, y: 30, size: 8.5, font: F.r, color: GREY }));
   return pdf.save();
 }
 

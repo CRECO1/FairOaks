@@ -12,6 +12,7 @@ import { yXmlFragmentToProsemirrorJSON } from 'y-prosemirror';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import { findCommentRange, removeCommentMark } from '@/lib/collab/comment-mark';
 import { docExtensions } from './doc-extensions';
+import { LetterheadHeader, LetterheadFooter } from './Letterhead';
 import type { DriveComment, DriveVersion } from '@/lib/drive-types';
 import type { DrivePerson } from './DocsDrive';
 
@@ -285,7 +286,7 @@ export function HistoryPanel(p: Common & {
   const [name, setName] = useState('');
   const [naming, setNaming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState<{ v: DriveVersion; json: unknown; bytes: Uint8Array } | null>(null);
+  const [preview, setPreview] = useState<{ v: DriveVersion; json: unknown; bytes: Uint8Array; letterhead: boolean } | null>(null);
   const who = (id: string | null) => (id === p.me.id ? 'You' : fullName(p.people.find(x => x.id === id)) || 'Teammate');
 
   const load = useCallback(async () => {
@@ -308,8 +309,8 @@ export function HistoryPanel(p: Common & {
       const j = await api<{ state: string }>(`/api/crm/drive/doc-versions/${p.docId}?version=${v.id}`);
       const bytes = fromBase64(j.state);
       const d = new Y.Doc(); Y.applyUpdate(d, bytes);
-      const json = yXmlFragmentToProsemirrorJSON(d.getXmlFragment('default')); d.destroy();
-      setPreview({ v, json, bytes });
+      const json = yXmlFragmentToProsemirrorJSON(d.getXmlFragment('default')); const letterhead = d.getMap('meta').get('letterhead') === true; d.destroy();
+      setPreview({ v, json, bytes, letterhead });
     } catch (e) { p.onToast((e as Error).message); }
   };
   const restore = async () => {
@@ -363,12 +364,12 @@ export function HistoryPanel(p: Common & {
           </div>
         ))}
       </Shell>
-      {preview && <VersionPreview v={preview.v} json={preview.json} who={who(preview.v.created_by)} isMobile={p.isMobile} busy={busy} onClose={() => setPreview(null)} onRestore={() => void restore()} />}
+      {preview && <VersionPreview v={preview.v} json={preview.json} letterhead={preview.letterhead} who={who(preview.v.created_by)} isMobile={p.isMobile} busy={busy} onClose={() => setPreview(null)} onRestore={() => void restore()} />}
     </>
   );
 }
 
-function VersionPreview({ v, json, who, isMobile, busy, onClose, onRestore }: { v: DriveVersion; json: unknown; who: string; isMobile: boolean; busy: boolean; onClose: () => void; onRestore: () => void }) {
+function VersionPreview({ v, json, letterhead, who, isMobile, busy, onClose, onRestore }: { v: DriveVersion; json: unknown; letterhead: boolean; who: string; isMobile: boolean; busy: boolean; onClose: () => void; onRestore: () => void }) {
   const editor = useEditor({ immediatelyRender: false, editable: false, extensions: docExtensions(), content: json as never, editorProps: { attributes: { class: 'drive-doc' } } }, [json]);
   return (
     <div role="dialog" aria-label="Version preview" style={{ position: 'fixed', inset: 0, zIndex: 1250, background: 'var(--k-f3f4f6)', display: 'flex', flexDirection: 'column', paddingTop: isMobile ? 'env(safe-area-inset-top, 0px)' : 0 }}>
@@ -382,7 +383,9 @@ function VersionPreview({ v, json, who, isMobile, busy, onClose, onRestore }: { 
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobile ? 0 : '24px 16px 60px' }}>
         <div style={{ maxWidth: 816, margin: '0 auto', minHeight: isMobile ? '100%' : 600, background: 'var(--k-fff)', boxShadow: isMobile ? 'none' : '0 1px 3px rgba(0,0,0,.12)', borderRadius: isMobile ? 0 : 4, padding: isMobile ? '18px 16px 60px' : '48px 64px 60px' }}>
+          {letterhead && <LetterheadHeader />}
           <EditorContent editor={editor} />
+          {letterhead && <LetterheadFooter />}
         </div>
       </div>
     </div>

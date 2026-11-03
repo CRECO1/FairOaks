@@ -25,6 +25,7 @@ import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
 import type { DriveComment, DriveDoc } from '@/lib/drive-types';
 import { docExtensions } from './doc-extensions';
 import { DocStyles } from './DocStyles';
+import { LetterheadHeader, LetterheadFooter } from './Letterhead';
 import { exportDocPdf } from './doc-export';
 import { CommentsPanel, HistoryPanel } from './DocPanel';
 import type { DrivePerson } from './DocsDrive';
@@ -294,6 +295,14 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
 
 function DocSurface({ handle, me, isMobile, onEditor, onComment, onHighlightClick }: { handle: CollabHandle; me: Peer; isMobile: boolean; onEditor: (e: Editor | null) => void; onComment: () => void; onHighlightClick: () => void }) {
   const clickRef = useRef(onHighlightClick); clickRef.current = onHighlightClick;
+  // CRECO letterhead on/off is a setting of the document itself (shared, saved with it), so everyone sees the same page.
+  const [letterhead, setLetterhead] = useState(() => handle.ydoc.getMap<unknown>('meta').get('letterhead') === true);
+  useEffect(() => {
+    const m = handle.ydoc.getMap<unknown>('meta');
+    const f = () => setLetterhead(m.get('letterhead') === true);
+    m.observe(f); f();
+    return () => m.unobserve(f);
+  }, [handle.ydoc]);
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -311,10 +320,12 @@ function DocSurface({ handle, me, isMobile, onEditor, onComment, onHighlightClic
 
   return (
     <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <Toolbar editor={editor} isMobile={isMobile} onComment={onComment} />
+      <Toolbar editor={editor} isMobile={isMobile} onComment={onComment} letterhead={letterhead} onLetterhead={() => handle.ydoc.getMap<unknown>('meta').set('letterhead', !letterhead)} />
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--k-f3f4f6)', padding: isMobile ? '0' : '24px 16px 60px' }}>
         <div style={{ maxWidth: 816, margin: '0 auto', minHeight: isMobile ? '100%' : 1056, background: 'var(--k-fff)', boxShadow: isMobile ? 'none' : '0 1px 3px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.05)', borderRadius: isMobile ? 0 : 4, padding: isMobile ? '18px 16px 80px' : '56px 72px 80px' }}>
+          {letterhead && <LetterheadHeader />}
           <EditorContent editor={editor} />
+          {letterhead && <LetterheadFooter />}
         </div>
       </div>
       <DocStyles />
@@ -324,7 +335,7 @@ function DocSurface({ handle, me, isMobile, onEditor, onComment, onHighlightClic
 
 // ── toolbar ────────────────────────────────────────────────────────────────
 
-function Toolbar({ editor, isMobile, onComment }: { editor: Editor | null; isMobile: boolean; onComment: () => void }) {
+function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { editor: Editor | null; isMobile: boolean; onComment: () => void; letterhead: boolean; onLetterhead: () => void }) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [, force] = useState(0);
@@ -388,6 +399,8 @@ function Toolbar({ editor, isMobile, onComment }: { editor: Editor | null; isMob
           <B on={() => c().deleteTable().run()} label="🗑▦" title="Delete table" />
         </>}
         <B on={() => c().setHorizontalRule().run()} label="―" title="Divider line" />
+        <Sep />
+        <B on={onLetterhead} active={letterhead} label="🏷 Letterhead" title="CRECO letterhead — logo header and footer on every page (and on the PDF)" />
       </div>
       {linkOpen && (
         <form onSubmit={e => { e.preventDefault(); const u = linkUrl.trim(); if (!u) c().unsetLink().run(); else c().extendMarkRange('link').setLink({ href: /^(https?:|mailto:|tel:)/i.test(u) ? u : `https://${u}` }).run(); setLinkOpen(false); }}

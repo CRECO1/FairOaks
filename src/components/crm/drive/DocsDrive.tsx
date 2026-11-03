@@ -20,7 +20,11 @@ const DocQuickView = dynamic(() => import('./DocQuickView'), { ssr: false });
 
 export interface DrivePerson { id: string; first_name?: string | null; last_name?: string | null; role?: string | null }
 
+/** A deal the signed-in user can see (for "Add to a deal…"). */
+export interface DriveDealLite { id: string; client?: string; property?: string; type?: string; stage?: string }
+
 interface Props {
+  deals?: DriveDealLite[];
   businessUnit: string;
   authToken?: string;
   currentUser: { id: string; name: string };
@@ -41,6 +45,7 @@ type Dlg =
   | { t: 'share'; kind: Kind; item: Item }
   | { t: 'trash'; kind: Kind; item: Item }
   | { t: 'delete'; kind: Kind; item: Item }
+  | { t: 'toDeal'; kind: Kind; item: Item }
   | { t: 'template' }
   | { t: 'saveTpl'; item: DriveDoc };
 
@@ -55,7 +60,7 @@ function fmtWhen(iso: string) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
 }
 
-export default function DocsDrive({ businessUnit, authToken, currentUser, profiles, isAdmin, isMobile, onToast }: Props) {
+export default function DocsDrive({ deals = [], businessUnit, authToken, currentUser, profiles, isAdmin, isMobile, onToast }: Props) {
   const [view, setView] = useState<View>('folder');
   const [folderId, setFolderId] = useState<string | null>(() => (typeof window === 'undefined' ? null : recallView(`${businessUnit}:drive-folder`)));
   const [q, setQ] = useState('');
@@ -152,6 +157,35 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
   const docs = data?.docs ?? [];
   const files = data?.files ?? [];
   const empty = !loading && data && !folders.length && !docs.length && !files.length;
+  // Put a COPY of a document or file on a deal card's Docs tab: a live document goes as a PDF snapshot (with its letterhead), an uploaded
+  // file as itself. It uses the deal's normal file upload, so the deal's own access rules apply and an identical file is not added twice.
+  const addToDeal = async (kind: Kind, item: Item, deal: DriveDealLite) => {
+    setDlg(null);
+    const label = [deal.client, deal.property].filter(Boolean).join(' · ') || 'the deal';
+    onToast(`Adding to ${label}…`);
+    try {
+      let blob: Blob, name: string;
+      if (kind === 'doc') {
+        const [{ loadDocJson }, { docToPdf, pdfName }] = await Promise.all([import('./doc-export'), import('@/lib/doc-pdf')]);
+        const j = await loadDocJson(item.id, authToken);
+        name = pdfName(j.title);
+        blob = new Blob([(await docToPdf(j.json, j.title, { letterhead: j.letterhead })) as BlobPart], { type: 'application/pdf' });
+      } else {
+        const f = item as DriveFile;
+        if (!/\.(pdf|docx?|jpe?g|png|webp)$/i.test(f.name)) throw new Error('A deal’s Docs tab takes PDF, Word, JPG, PNG or WebP files — this one can stay here in My Drive.');
+        const j = await api<{ url: string }>(`/api/crm/drive/file/${f.id}`);
+        const r = await fetch(j.url);
+        if (!r.ok) throw new Error('Could not read that file');
+        blob = await r.blob(); name = f.name;
+      }
+      if (blob.size > 25 * 1024 * 1024) throw new Error('A file must be 25 MB or smaller to go on a deal');
+      const pre = await api<{ uploadUrl: string; storagePath: string; contentType: string }>('/api/crm/docs', { method: 'POST', body: JSON.stringify({ action: 'presign', dealId: deal.id, filename: name, file_size: blob.size }) });
+      const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': pre.contentType }, body: blob });
+      if (!put.ok) throw new Error('Could not upload the copy — try again');
+      const done = await api<{ duplicate?: boolean }>('/api/crm/docs', { method: 'POST', body: JSON.stringify({ action: 'confirm', dealId: deal.id, storagePath: pre.storagePath, filename: name }) });
+      onToast(done.duplicate ? `That file is already on ${label}` : `Added to ${label} — see its Docs tab`);
+    } catch (e) { onToast((e as Error).message || 'Could not add it to the deal'); }
+  };
   const downloadDocPdf = async (d: DriveDoc) => {
     onToast('Preparing the PDF…');
     try { const { exportDocPdf } = await import('./doc-export'); await exportDocPdf(d.id, authToken, d.title); }
@@ -337,6 +371,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
       <input ref={fileInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.txt" onChange={e => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ''; }} />
 
       {/* Dialogs */}
+      {dlg?.t === 'toDeal' && <DealPicker deals={deals} isMobile={isMobile} title={nameOf(dlg.kind, dlg.item)} onClose={() => setDlg(null)} onPick={d => void addToDeal(dlg.kind, dlg.item, d)} />}
       {dlg?.t === 'template' && <TemplatePicker api={api} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void startFromTemplate(id)} />}
       {dlg?.t === 'saveTpl' && <NameDialog title="Save as template" cta="Save template" initial={dlg.item.title} isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void saveAsTemplate(dlg.item, name)} />}
       {dlg?.t === 'newFolder' && <NameDialog title="New folder" cta="Create" initial="" isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void createFolder(name)} />}
@@ -354,6 +389,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
               {dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template && <MenuBtn icon="📋" label="Use this template" isMobile={isMobile} onClick={() => void startFromTemplate(dlg.item.id)} />}
               <MenuBtn icon="↗" label={dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template ? 'Edit the template' : 'Open'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); if (d.kind === 'doc') setOpenDocId(d.item.id); else openItem(d.kind, d.item); }} />
               {dlg.kind === 'doc' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); setQuickDocId(d.item.id); }} />}
+              {(dlg.kind === 'file' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label="Add to a deal…" isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
               {dlg.kind === 'doc' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
@@ -543,6 +579,37 @@ function TemplatePicker({ api, isMobile, onClose, onPick }: { api: <T>(path: str
           </span>
         </button>
       ))}
+    </Modal>
+  );
+}
+
+function DealPicker({ deals, isMobile, title, onClose, onPick }: { deals: DriveDealLite[]; isMobile: boolean; title: string; onClose: () => void; onPick: (d: DriveDealLite) => void }) {
+  const [q, setQ] = useState('');
+  const live = ['Active', 'LOI', 'In Contract', 'Prospect'];
+  const list = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    return deals
+      .filter(d => !t || `${d.client ?? ''} ${d.property ?? ''} ${d.type ?? ''}`.toLowerCase().includes(t))
+      .sort((a, b) => (live.indexOf(a.stage ?? '') === -1 ? 9 : live.indexOf(a.stage ?? '')) - (live.indexOf(b.stage ?? '') === -1 ? 9 : live.indexOf(b.stage ?? '')) || (a.client ?? '').localeCompare(b.client ?? ''));
+  }, [deals, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Modal title="Add to a deal" isMobile={isMobile} onClose={onClose}>
+      <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>A copy of “{title}” goes on the deal’s Docs tab. Later changes here won’t change the copy.</p>
+      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="🔍  Search deals" style={{ width: '100%', boxSizing: 'border-box', height: isMobile ? 46 : 36, border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '0 12px', fontSize: 14, marginBottom: 8, background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }} />
+      <div style={{ maxHeight: isMobile ? '50dvh' : 320, overflowY: 'auto' }}>
+        {list.length === 0 && <div style={{ padding: 12, color: 'var(--k-9ca3af)', fontSize: 14 }}>No deals match.</div>}
+        {list.map(d => (
+          <button key={d.id} type="button" onClick={() => onPick(d)}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', minHeight: isMobile ? 54 : 44, padding: '6px 10px', border: 'none', borderBottom: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            <span style={{ fontSize: 20 }}>💼</span>
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client || 'Deal'}</span>
+              <span style={{ display: 'block', fontSize: 12.5, color: 'var(--k-6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[d.property, d.type].filter(Boolean).join(' · ')}</span>
+            </span>
+            {d.stage && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-1d4ed8)', background: 'var(--k-dbeafe)', padding: '2px 8px', borderRadius: 20 }}>{d.stage}</span>}
+          </button>
+        ))}
+      </div>
     </Modal>
   );
 }
