@@ -457,10 +457,12 @@ export default function EmailComposer(p: EmailComposerProps) {
     const taken: File[] = []; let room = attachRoom.current;
     for (const f of incoming) {
       const small = await shrinkImage(f);
+      // Files from this computer go to storage right away and ride along by reference, so a saved draft keeps them
+      // (a File held only in the browser is lost the moment the draft is closed). Falls back to the in-browser copy if the upload fails.
+      if (p.crmFiles && small.size <= BIG_FILE_MAX && await uploadBig(small)) continue;
       if (small.size > room) {
         // Too big to travel inside the Send request: put it in storage straight from the browser and attach it by reference.
-        if (p.crmFiles && small.size <= BIG_FILE_MAX) { if (await uploadBig(small)) continue; }
-        else p.notify?.(small.size > BIG_FILE_MAX ? `“${f.name}” is ${(f.size / 1048576).toFixed(1)} MB — files over 15 MB are too large to email. Share a link instead.` : `“${f.name}” is ${(f.size / 1048576).toFixed(1)} MB — attach it from Deal docs, or send it from Gmail.`);
+        if (small.size > BIG_FILE_MAX || !p.crmFiles) p.notify?.(small.size > BIG_FILE_MAX ? `“${f.name}” is ${(f.size / 1048576).toFixed(1)} MB — files over 15 MB are too large to email. Share a link instead.` : `“${f.name}” is ${(f.size / 1048576).toFixed(1)} MB — attach it from Deal docs, or send it from Gmail.`);
         continue;
       }
       room -= small.size; taken.push(small);
