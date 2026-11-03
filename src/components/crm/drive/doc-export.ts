@@ -17,6 +17,14 @@ export async function loadDocJson(docId: string, authToken?: string): Promise<{ 
   } finally { d.destroy(); }
 }
 
+/** Build the Word (.docx) file for a document and download it. */
+export async function exportDocDocx(docId: string, authToken?: string, titleHint?: string): Promise<void> {
+  const { title, json, letterhead } = await loadDocJson(docId, authToken);
+  const t = titleHint || title;
+  const { docToDocx, docxName, DOCX_MIME } = await import('@/lib/doc-docx');   // loaded only when someone asks for Word
+  saveBytes(await docToDocx(json, t, { letterhead }), docxName(t), DOCX_MIME);
+}
+
 /** Build the PDF for a document and download it. */
 export async function exportDocPdf(docId: string, authToken?: string, titleHint?: string): Promise<void> {
   const { title, json, letterhead } = await loadDocJson(docId, authToken);

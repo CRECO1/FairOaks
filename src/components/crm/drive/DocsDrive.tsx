@@ -239,6 +239,11 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
       onToast(done.duplicate ? `That file is already on ${label}` : `Added to ${label} — see its Docs tab`);
     } catch (e) { onToast((e as Error).message || 'Could not add it to the deal'); }
   };
+  const downloadDocWord = async (d: DriveDoc) => {
+    onToast('Preparing the Word file…');
+    try { const { exportDocDocx } = await import('./doc-export'); await exportDocDocx(d.id, authToken, d.title); }
+    catch (e) { onToast((e as Error).message || 'Could not make the Word file'); }
+  };
   const downloadDocPdf = async (d: DriveDoc) => {
     onToast('Preparing the PDF…');
     try { const { exportDocPdf } = await import('./doc-export'); await exportDocPdf(d.id, authToken, d.title); }
@@ -572,6 +577,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
               {(dlg.kind === 'file' || dlg.kind === 'form' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label={dlg.kind === 'doc' ? 'Link to a deal…' : 'Add to a deal…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
               {(dlg.kind === 'file' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && contacts.length > 0 && <MenuBtn icon="👤" label={dlg.kind === 'doc' ? 'Link to a contact…' : 'Add to a contact…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toContact', kind: dlg.kind, item: dlg.item })} />}
               {dlg.kind === 'doc' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
+              {dlg.kind === 'doc' && <MenuBtn icon="⬇" label="Download as Word (.docx)" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocWord(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && canEditFile((dlg.item as DriveFile).name) && <MenuBtn icon="✎" label="Edit as a live document" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void editFile(d.item as DriveFile); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />

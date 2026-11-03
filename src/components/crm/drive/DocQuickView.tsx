@@ -32,6 +32,12 @@ export default function DocQuickView({ docId, authToken, isMobile, onClose, onOp
     try { saveBytes(await docToPdf(doc.json, doc.title, { letterhead: doc.letterhead }), pdfName(doc.title)); } catch { onToast('Could not make the PDF'); }
     setBusy(false);
   };
+  const word = async () => {
+    if (!doc) return;
+    setBusy(true);
+    try { const { docToDocx, docxName, DOCX_MIME } = await import('@/lib/doc-docx'); saveBytes(await docToDocx(doc.json, doc.title, { letterhead: doc.letterhead }), docxName(doc.title), DOCX_MIME); } catch { onToast('Could not make the Word file'); }
+    setBusy(false);
+  };
   const btn: React.CSSProperties = { height: isMobile ? 42 : 34, padding: '0 14px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' };
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(17,17,17,.4)', display: 'flex', justifyContent: 'flex-end', alignItems: isMobile ? 'flex-end' : 'stretch' }}>
@@ -44,6 +50,7 @@ export default function DocQuickView({ docId, authToken, isMobile, onClose, onOp
           </div>
           <button type="button" onClick={() => onOpen(docId)} style={{ ...btn, background: '#c9922c', color: '#fff', border: 'none' }}>Open ↗</button>
           <button type="button" onClick={() => void pdf()} disabled={!doc || busy} style={btn}>{busy ? '…' : '⬇ PDF'}</button>
+          <button type="button" onClick={() => void word()} disabled={!doc || busy} style={btn}>{busy ? '…' : '⬇ Word'}</button>
           <button type="button" onClick={onClose} aria-label="Close preview" style={{ width: isMobile ? 42 : 34, height: isMobile ? 42 : 34, border: 'none', borderRadius: 8, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 16, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--k-f3f4f6)', padding: isMobile ? 0 : '18px 14px 40px' }}>

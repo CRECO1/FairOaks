@@ -26,7 +26,7 @@ import type { DriveComment, DriveDoc } from '@/lib/drive-types';
 import { docExtensions } from './doc-extensions';
 import { DocStyles } from './DocStyles';
 import { LetterheadHeader, LetterheadFooter } from './Letterhead';
-import { exportDocPdf } from './doc-export';
+import { exportDocPdf, exportDocDocx } from './doc-export';
 import { ActivityPanel, CommentsPanel, HistoryPanel } from './DocPanel';
 import type { DrivePerson } from './DocsDrive';
 
@@ -263,6 +263,8 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
           style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'history' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>🕘</button>
         <button type="button" disabled={!editor} onClick={async () => { if (!editor) return; try { await flushRef.current(); await exportDocPdf(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the PDF'); } }}
           aria-label="Download as PDF" title="Download as PDF" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇ PDF</button>
+        <button type="button" disabled={!editor} onClick={async () => { if (!editor) return; try { await flushRef.current(); await exportDocDocx(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the Word file'); } }}
+          aria-label="Download as Word" title="Download as a Word (.docx) file you can edit in Word" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇ Word</button>
         {onShare && <button type="button" onClick={() => onShare(doc)} style={{ ...btnStyle(isMobile), background: '#c9922c', color: '#fff', border: 'none' }}>Share</button>}
       </header>
       {status === 'denied' && (
