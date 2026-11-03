@@ -24,11 +24,11 @@ interface Run { text: string; bold?: boolean; italic?: boolean; code?: boolean; 
 interface Seg { text: string; font: PDFFont; size: number; underline?: boolean; strike?: boolean; color: ReturnType<typeof rgb>; w: number }
 interface Line { segs: Seg[]; w: number }
 
-/** The CRECO letterhead (same wording as the letters and flyers): printed at the top and bottom of every page when a document has it on. */
+/** The CRECO letterhead, laid out like the preset Letters of Intent: the logo block once at the top of the FIRST page, and a light rule + tagline + address line at the foot of EVERY page. */
 export const LETTERHEAD = {
-  contact: '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015  ·  (210) 817-3443  ·  crecotx.com',
+  contact: '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015      •      (210) 817-3443      •      crecotx.com',
   tagline: 'Where your real estate ventures find the support they deserve',
-  footContact: '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015  |  (210) 817-3443  |  info@crecotx.com  |  crecotx.com',
+  footContact: '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015   |   (210) 817-3443   |   info@crecotx.com   |   crecotx.com',
   logoPath: '/creco-letterhead-logo.png',
 };
 let logoCache: Uint8Array | null = null;
@@ -47,25 +47,30 @@ export async function docToPdf(doc: PMNode, title: string, opts: { letterhead?: 
   };
   const pages: PDFPage[] = [];
   let page: PDFPage, y = 0;
-  // Letterhead: logo + contact line + rule on every page's top, tagline + contact on its bottom (the body area shrinks to fit).
+  // Letterhead (as on the preset LOIs): logo block on page 1 only; rule + tagline + address line at the foot of every page.
   const lh = !!opts.letterhead;
   const logo = lh ? await letterheadLogo() : null;
   const logoImg = logo ? await pdf.embedPng(logo) : null;
-  const logoW = 190, logoH = logoImg ? (logoImg.height / logoImg.width) * logoW : 0;
-  const topY = lh ? PH - 34 - logoH - 40 : PH - MT;      // first line of body text
-  const bottom = lh ? 84 : MB;
+  const logoW = 240, logoH = logoImg ? (logoImg.height / logoImg.width) * logoW : 0;
+  const TIMES = lh ? await pdf.embedFont(StandardFonts.TimesRoman) : null;
+  const TIMESI = lh ? await pdf.embedFont(StandardFonts.TimesRomanItalic) : null;
+  const firstTop = lh ? PH - 30 - logoH - 13 - 9 - 24 : PH - MT;   // below the logo, contact line and rule
+  const bottom = lh ? 80 : MB;
+  const BLACK = rgb(0.07, 0.07, 0.08);
   const newPage = () => {
-    page = pdf.addPage([PW, PH]); pages.push(page); y = topY;
-    if (!lh) return;
-    if (logoImg) page.drawImage(logoImg, { x: (PW - logoW) / 2, y: PH - 34 - logoH, width: logoW, height: logoH });
-    const cw = F.r.widthOfTextAtSize(LETTERHEAD.contact, 8);
-    page.drawText(LETTERHEAD.contact, { x: (PW - cw) / 2, y: PH - 34 - logoH - 14, size: 8, font: F.r, color: GREY });
-    page.drawLine({ start: { x: ML, y: PH - 34 - logoH - 24 }, end: { x: PW - MR, y: PH - 34 - logoH - 24 }, thickness: 2, color: rgb(0.11, 0.11, 0.12) });
-    page.drawLine({ start: { x: ML, y: 66 }, end: { x: PW - MR, y: 66 }, thickness: 2, color: rgb(0.11, 0.11, 0.12) });
-    const tw = F.i.widthOfTextAtSize(LETTERHEAD.tagline, 8.5);
-    page.drawText(LETTERHEAD.tagline, { x: (PW - tw) / 2, y: 52, size: 8.5, font: F.i, color: GREY });
-    const fw = F.r.widthOfTextAtSize(LETTERHEAD.footContact, 7.2);
-    page.drawText(LETTERHEAD.footContact, { x: (PW - fw) / 2, y: 41, size: 7.2, font: F.r, color: GREY });
+    const first = pages.length === 0;
+    page = pdf.addPage([PW, PH]); pages.push(page); y = first ? firstTop : PH - MT;
+    if (!lh || !TIMES || !TIMESI) return;
+    const center = (t: string, cy: number, size: number, font: PDFFont, color = GREY) => page.drawText(t, { x: (PW - font.widthOfTextAtSize(t, size)) / 2, y: cy, size, font, color });
+    if (first) {
+      let hy = PH - 30 - logoH;
+      if (logoImg) page.drawImage(logoImg, { x: (PW - logoW) / 2, y: hy, width: logoW, height: logoH });
+      hy -= 13; center(winAnsi(LETTERHEAD.contact), hy, 8, TIMES);
+      hy -= 9; page.drawLine({ start: { x: ML, y: hy }, end: { x: PW - MR, y: hy }, thickness: 2.4, color: BLACK });
+    }
+    page.drawLine({ start: { x: ML, y: 64 }, end: { x: PW - MR, y: 64 }, thickness: 2.4, color: BLACK });
+    center(LETTERHEAD.tagline, 51, 8.5, TIMESI, rgb(0.23, 0.23, 0.25));
+    center(winAnsi(LETTERHEAD.footContact), 40, 7.5, TIMES);
   };
   newPage();
   const need = (h: number) => { if (y - h < bottom) newPage(); };
@@ -201,7 +206,7 @@ export async function docToPdf(doc: PMNode, title: string, opts: { letterhead?: 
         return { head, lines: wrap(runs, cw - pad * 2) };
       });
       const h = Math.max(...cells.map(c => c.lines.reduce((a, l) => a + lineH(l, size), 0)), size * 1.4) + pad * 2;
-      need(Math.min(h, topY - bottom));
+      need(Math.min(h, PH - MT - bottom));
       cells.forEach((c, ci) => {
         const cx = x + ci * cw;
         page.drawRectangle({ x: cx, y: y - h, width: cw, height: h, borderColor: LINE, borderWidth: 0.7, color: c.head ? rgb(0.95, 0.96, 0.97) : undefined });
@@ -218,7 +223,7 @@ export async function docToPdf(doc: PMNode, title: string, opts: { letterhead?: 
   };
 
   blocks(doc.content ?? [], ML, CW);
-  pages.forEach((p, i) => p.drawText(`${i + 1} / ${pages.length}`, lh ? { x: PW - MR - 24, y: 28, size: 8, font: F.r, color: GREY } : { x: PW / 2 - 14, y: 30, size: 8.5, font: F.r, color: GREY }));
+  pages.forEach((p, i) => p.drawText(`${i + 1} / ${pages.length}`, lh ? { x: PW - MR - 24, y: 24, size: 8, font: F.r, color: GREY } : { x: PW / 2 - 14, y: 30, size: 8.5, font: F.r, color: GREY }));
   return pdf.save();
 }
 
