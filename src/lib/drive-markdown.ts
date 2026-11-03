@@ -135,7 +135,11 @@ export function markdownToYDoc(markdown: string): Y.Doc {
  * editor's schema, so a bad conversion can never be saved as a document the editor can't open.
  */
 export function markdownToDriveState(markdown: string, opts: { letterhead?: boolean } = {}): { ystate: string; text: string } {
-  const json = markdownToDocJson(markdown);
+  return jsonToDriveState(markdownToDocJson(markdown), opts);
+}
+
+/** The same, from editor JSON (a Word file converted to a document goes through here). Throws if it doesn't fit the schema. */
+export function jsonToDriveState(json: PMNode, opts: { letterhead?: boolean } = {}): { ystate: string; text: string } {
   schema().nodeFromJSON(json).check();
   const ydoc = prosemirrorJSONToYDoc(schema(), json, 'default');
   try {

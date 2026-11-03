@@ -64,6 +64,8 @@ function Tile({ n, color, size = 36 }: { n: DIName; color: string; size?: number
   return <span style={{ width: size, height: size, borderRadius: 10, background: `${color}1f`, color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><DI n={n} size={Math.round(size * 0.52)} /></span>;
 }
 const initials = (name: string) => (name.replace(/[^A-Za-z ]/g, '').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2) || '·').toUpperCase();
+/** Files that can become a live document. */
+const canEditFile = (name: string) => /\.(docx|txt)$/i.test(name);
 const fmtSize = (n: number | null) => (n == null ? '' : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 function fmtWhen(iso: string) {
@@ -277,7 +279,16 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
       refresh(); await openFormItem(j.item);
     } catch (e) { onToast((e as Error).message); }
   };
-  const openItem = (kind: Kind, item: Item) => { if (inTrash || view === 'templates') { setDlg({ t: 'menu', kind, item }); return; } if (kind === 'folder') go(item.id); else if (kind === 'doc') setOpenDocId(item.id); else if (kind === 'form') void openFormItem(item as DriveFormItem); else void openFile(item as DriveFile); };
+  const openItem = (kind: Kind, item: Item) => { if (inTrash || view === 'templates') { setDlg({ t: 'menu', kind, item }); return; } if (kind === 'folder') go(item.id); else if (kind === 'doc') setOpenDocId(item.id); else if (kind === 'form') void openFormItem(item as DriveFormItem); else if (canEditFile((item as DriveFile).name)) void editFile(item as DriveFile); else void openFile(item as DriveFile); };
+
+  // Word (.docx) and text files can be turned into a live document (made once; opening it again returns the same one).
+  const editFile = async (f: DriveFile) => {
+    onToast('Opening as an editable document…');
+    try {
+      const r = await api<{ item: DriveDoc; existing?: boolean }>(`/api/crm/drive/file/${f.id}/convert`, { method: 'POST' });
+      setOpenDocId(r.item.id); refresh();
+    } catch (e) { onToast((e as Error).message || 'Could not open it for editing'); }
+  };
 
   // Upload: the browser PUTs each file straight to storage (signed URL), then the API records it in the current folder.
   const uploadFiles = async (list: FileList | File[]) => {
@@ -297,7 +308,11 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
       } catch (e) { onToast((e as Error).message); }
       finally { setUploading(n => n - 1); }
     }
-    if (ok) { onToast(ok === 1 ? 'File uploaded' : `${ok} files uploaded`); refresh(); }
+    if (ok) {
+      const editable = all.some(f => canEditFile(f.name)), oldWord = all.some(f => /\.(doc|rtf)$/i.test(f.name));
+      onToast(editable ? 'Uploaded — click the file (or the pencil) to edit it as a live document' : oldWord ? 'Uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that' : ok === 1 ? 'File uploaded' : `${ok} files uploaded`);
+      refresh();
+    }
   };
 
   // ── tree ──────────────────────────────────────────────────────────────────
@@ -382,7 +397,11 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
           <button type="button" className="dd-dots" aria-label={`Quick look at ${title}`} title="Quick look — preview without opening" onClick={() => setQuickDocId(it.id)}
             style={{ width: 32, height: 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-9ca3af)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="eye" size={17} /></button>
         )}
-        {!(kind === 'doc' && !isMobile && !inTrash) && !isMobile && !inTrash && <span style={{ width: 32, flexShrink: 0 }} />}
+        {kind === 'file' && !inTrash && canEditFile((it as DriveFile).name) && (
+          <button type="button" className="dd-dots" aria-label={`Edit ${title} as a live document`} title="Edit as a live document" onClick={() => void editFile(it as DriveFile)}
+            style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: GOLD, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="pen" size={17} /></button>
+        )}
+        {!(kind === 'doc' && !isMobile && !inTrash) && !isMobile && !inTrash && !(kind === 'file' && canEditFile((it as DriveFile).name)) && <span style={{ width: 32, flexShrink: 0 }} />}
         {dotsBtn(kind, it, title)}
       </div>
     );
@@ -548,6 +567,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
               {(dlg.kind === 'file' || dlg.kind === 'form' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label={dlg.kind === 'doc' ? 'Link to a deal…' : 'Add to a deal…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
               {(dlg.kind === 'file' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && contacts.length > 0 && <MenuBtn icon="👤" label={dlg.kind === 'doc' ? 'Link to a contact…' : 'Add to a contact…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toContact', kind: dlg.kind, item: dlg.item })} />}
               {dlg.kind === 'doc' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
+              {dlg.kind === 'file' && canEditFile((dlg.item as DriveFile).name) && <MenuBtn icon="✎" label="Edit as a live document" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void editFile(d.item as DriveFile); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
               {!(dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template) && <>
