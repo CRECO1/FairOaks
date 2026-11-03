@@ -15,6 +15,7 @@ import type { LiveMessage } from '@/lib/gmail-live';
 import { useInbox } from '@/lib/use-inbox';
 import CardDrafts from './CardDrafts';
 import ThreadAssist from './ThreadAssist';
+import DealEmailBar, { agoLabel, type EmailFilter } from './DealEmailBar';
 import { htmlToText } from '@/lib/html-text';
 import { gmailSignatureBlock } from '@/lib/agent-signature';
 import type { CrmAttachItem } from '@/lib/crm-attachments';
@@ -30,7 +31,7 @@ import CrmShield, { detectAutomation, reportSecurityEvent } from '@/components/c
 import { agentTitle } from '@/lib/agent-title';
 import { recallView, rememberView, useRememberedSelection, useRememberedState } from '@/lib/view-memory';
 import { useBackToClose } from '@/lib/use-back-to-close';
-import { chicagoFormat } from '@/lib/chicago-time';
+import { chicagoFormat, chicagoToday } from '@/lib/chicago-time';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import ContactFiles from '@/components/crm/ContactFiles';
 import ContactJumpBar from '@/components/crm/ContactJumpBar';
@@ -536,9 +537,10 @@ function useMessageHtml(threadId?: string | null, messageId?: string | null): st
 
 // One message inside an expanded thread, like Gmail: the latest is open, older ones fold to a single line you can
 // tap open. Used by both the deal and the contact thread so they can't drift apart.
-function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onReplyAll, dealId, onNote }: { e: DealEmail; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void; onReplyAll?: () => void; dealId?: string; onNote?: (msg: string) => void }) {
+function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onReplyAll, onTask, dealId, onNote }: { e: DealEmail; onTask?: (due: string) => void; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void; onReplyAll?: () => void; dealId?: string; onNote?: (msg: string) => void }) {
   const [open, setOpen] = useState(defaultOpen);
   const [plain, setPlain] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false);
   // The HTML saved with the email (everyone sees it); older rows fall back to the viewer's own Gmail, then to plain text.
   const liveHtml = useMessageHtml(open && !e.body_html ? e.gmail_thread_id : null, e.gmail_message_id);
   const html = e.body_html || liveHtml;
@@ -598,6 +600,21 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
           {bodyText.split('\n').map((line, i) => line.trim()
             ? <p key={i} style={{ margin: 0, marginBottom: 2, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}><Linkified text={line} /></p>
             : <div key={i} aria-hidden style={{ height: 9 }} />)}
+        </div>
+      )}
+      {onTask && (
+        <div style={{ paddingLeft: 42, marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {!taskOpen
+            ? <button type="button" onClick={() => setTaskOpen(true)} title="Make a to-do from this email"
+                style={{ background: 'none', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, minHeight: isMobile ? 36 : 26, padding: '0 11px', fontSize: 12.5, fontWeight: 600, color: 'var(--k-374151)', cursor: 'pointer' }}>☑ Make a task</button>
+            : <>
+                <span style={{ fontSize: 12.5, color: 'var(--k-6b7280)' }}>Due:</span>
+                {([['Today', 0], ['Tomorrow', 1], ['In 3 days', 3], ['Next week', 7]] as const).map(([label, n]) => (
+                  <button key={label} type="button" onClick={() => { setTaskOpen(false); onTask(chicagoToday(new Date(Date.now() + n * 86_400_000))); }}
+                    style={{ background: 'var(--k-fff)', border: '1px solid #c9922c', borderRadius: 14, minHeight: isMobile ? 36 : 26, padding: '0 11px', fontSize: 12.5, fontWeight: 600, color: '#92400e', cursor: 'pointer' }}>{label}</button>
+                ))}
+                <button type="button" onClick={() => setTaskOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--k-9ca3af)', fontSize: 12.5, cursor: 'pointer' }}>Cancel</button>
+              </>}
         </div>
       )}
       {(e.gmail_message_id || e.attachments?.length) && <MessageAttachments emailId={e.id} isMobile={isMobile} dealId={dealId} onNote={onNote} none={Array.isArray(e.attachments) && e.attachments.length === 0} />}
@@ -1288,6 +1305,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [composeSending, setComposeSending] = useState(false);
   const [replyToEmail, setReplyToEmail] = useState<DealEmail | null>(null);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
+  // Deal Email Log: find / filter, per-browser pins (a pinned thread stays at the top), and when Gmail was last checked.
+  const [emailFilter, setEmailFilter] = useState<EmailFilter>('all');
+  const [emailQuery, setEmailQuery] = useState('');
+  const [emailPins, setEmailPins] = useState<Set<string>>(new Set());
+  const [lastSyncedAt, setLastSyncedAt] = useState<number>(0);
+  const [showResync, setShowResync] = useState(false);
+  useEffect(() => {
+    setEmailFilter('all'); setEmailQuery(''); setShowResync(false);
+    let pins: string[] = [], at = 0;
+    try { if (activeDeal?.id) { pins = JSON.parse(localStorage.getItem(`crm_email_pins_v1:${activeDeal.id}`) || '[]'); at = Number(localStorage.getItem(`crm_email_synced_v1:${activeDeal.id}`)) || 0; } } catch { /* storage unavailable */ }
+    setEmailPins(new Set(Array.isArray(pins) ? pins : [])); setLastSyncedAt(at);
+  }, [activeDeal?.id]);
+  useEffect(() => {
+    if (dealTab !== 'emails' || !activeDeal?.client_email || !gmailConnected || syncing) return;
+    if (Date.now() - lastSyncedAt < 15 * 60_000) return;
+    void syncGmail(activeDeal, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealTab, activeDeal?.id, gmailConnected, lastSyncedAt]);
+  const toggleEmailPin = (key: string) => setEmailPins(prev => {
+    const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key);
+    try { if (activeDeal?.id) localStorage.setItem(`crm_email_pins_v1:${activeDeal.id}`, JSON.stringify([...next])); } catch { /* storage unavailable */ }
+    return next;
+  });
   const [expandedContactThreads, setExpandedContactThreads] = useState<Set<string>>(new Set());
   const [replyingToThreadKey, setReplyingToThreadKey] = useState<string | null>(null);
   const [composeAttachments, setComposeAttachments] = useState<File[]>([]);
@@ -4375,8 +4415,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Gmail sync ───────────────────────────────────────────────────────────────
-  async function syncGmail(deal: Deal) {
-    if (!deal.client_email) { showToast('No client email on this deal'); return; }
+  async function syncGmail(deal: Deal, silent = false) {
+    if (!deal.client_email) { if (!silent) showToast('No client email on this deal'); return; }
     setSyncing(true);
     const res = await fetch('/api/gmail/sync', {
       method: 'POST',
@@ -4384,8 +4424,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       body: JSON.stringify({ userId: deal.agent_id ?? session!.user.id, dealId: deal.id, clientEmail: deal.client_email }),
     });
     const json = await res.json();
-    if (!res.ok) showToast('Sync error: ' + (json.error ?? res.status) + (json.debug ? ' | ' + JSON.stringify(json.debug) : ''));
-    else { showToast(`Synced ${json.synced} new email${json.synced !== 1 ? 's' : ''} from Gmail`); loadDealEmails(deal.id); }
+    if (!res.ok) { if (!silent) showToast('Sync error: ' + (json.error ?? res.status) + (json.debug ? ' | ' + JSON.stringify(json.debug) : '')); }
+    else {
+      if (!silent || json.synced > 0) showToast(`Synced ${json.synced} new email${json.synced !== 1 ? 's' : ''} from Gmail`);
+      loadDealEmails(deal.id);
+      const now = Date.now(); setLastSyncedAt(now);
+      try { localStorage.setItem(`crm_email_synced_v1:${deal.id}`, String(now)); } catch { /* storage unavailable */ }
+    }
     setSyncing(false);
   }
 
@@ -4409,7 +4454,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     });
     const json = await res.json();
     if (!res.ok) showToast('Sync error: ' + json.error);
-    else { showToast(`Re-synced ${json.synced} email${json.synced !== 1 ? 's' : ''} between you and ${deal.client_email}`); loadDealEmails(deal.id); }
+    else {
+      showToast(`Re-synced ${json.synced} email${json.synced !== 1 ? 's' : ''} for this deal`); loadDealEmails(deal.id);
+      const now = Date.now(); setLastSyncedAt(now);
+      try { localStorage.setItem(`crm_email_synced_v1:${deal.id}`, String(now)); } catch { /* storage unavailable */ }
+    }
     setSyncing(false);
   }
 
@@ -4480,6 +4529,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Reply all adds everyone else who was on that message. Threads onto that message and quotes it.
   const selfAddrs = () => [session?.user?.email, profile?.email, ...gmailAccounts.map(a => a.email)];
   const hasReplyAll = (e: DealEmail, thread: DealEmail[], primary: string | undefined) => { const r = replyAllRecipients(e, thread, primary, selfAddrs()); return !!(r.also || r.cc); };
+  // One-click to-do from an inbound email: a follow-up task on the deal (shows on Tasks and the dashboard).
+  async function createEmailTask(e: DealEmail, due: string) {
+    if (!activeDeal) return;
+    try {
+      const who = emailDisplayName(e.from_email);
+      const r = await fetch('/api/crm/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session!.access_token}` }, body: JSON.stringify({
+        title: `Reply to ${who}: ${e.subject || '(no subject)'}`.slice(0, 140),
+        description: `From the email “${e.subject || '(no subject)'}” (${e.email_date}) on ${activeDeal.client ?? 'this deal'}. Open the deal's Email Log to read it.`,
+        due_date: due, type: 'follow_up', priority: 'normal', assigned_to: session!.user.id, deal_id: activeDeal.id,
+        ...(activeDeal.client_id ? { client_id: activeDeal.client_id } : {}),
+      }) });
+      showToast(r.ok ? `Task added for ${due}` : 'Could not add the task — try again.');
+    } catch { showToast('Could not add the task — try again.'); }
+  }
   function startDealReply(e: DealEmail, thread: DealEmail[], all: boolean) {
     const primary = activeDeal?.client_email;
     const ra = replyAllRecipients(e, thread, primary, selfAddrs());
@@ -11822,23 +11885,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   )}
 
                   {gmailConnected && activeDeal?.client_email && (
-                    <div style={{ marginBottom: 12, padding: '10px 12px', background: 'var(--k-f0fdf4)', border: '1px solid var(--k-bbf7d0)', borderRadius: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 13, color: 'var(--k-166534)' }}>✉️ Gmail — syncing direct thread with {activeDeal.client_email}</span>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={() => syncGmail(activeDeal)} disabled={syncing}
-                            style={{ padding: '4px 12px', fontSize: 13, fontWeight: 600, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>
-                            {syncing ? 'Syncing…' : '↻ Sync'}
-                          </button>
-                          <button onClick={() => clearAndResync(activeDeal)} disabled={syncing}
-                            title="Delete all Gmail-synced emails for this deal and re-sync fresh"
-                            style={{ padding: '4px 10px', fontSize: 13, fontWeight: 600, background: 'none', color: 'var(--k-166534)', border: '1px solid var(--k-86efac)', borderRadius: 5, cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>
-                            ↺ Clear & Re-sync
-                          </button>
-                        </div>
-                      </div>
+                    <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--k-6b7280)' }}>
+                      <span>✉️ Gmail {syncing ? 'syncing…' : lastSyncedAt ? `· last synced ${agoLabel(new Date(lastSyncedAt).toISOString())}` : '· not synced yet'} · checks every few minutes on its own</span>
+                      <button onClick={() => syncGmail(activeDeal)} disabled={syncing} style={{ background: 'none', border: 'none', padding: 0, color: '#16a34a', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>↻ Sync now</button>
+                      <button onClick={() => setShowResync(v => !v)} aria-label="More sync options" title="More" style={{ background: 'none', border: 'none', padding: 0, color: 'var(--k-9ca3af)', fontSize: 14, cursor: 'pointer' }}>⋯</button>
+                      {showResync && (
+                        <button onClick={() => clearAndResync(activeDeal)} disabled={syncing} title="Delete all Gmail-synced emails for this deal and re-sync fresh"
+                          style={{ padding: '3px 10px', fontSize: 12.5, fontWeight: 600, background: 'none', color: 'var(--k-166534)', border: '1px solid var(--k-86efac)', borderRadius: 5, cursor: 'pointer' }}>↺ Clear & Re-sync</button>
+                      )}
                     </div>
                   )}
+
+                  {(() => {
+                    const lastE = dealEmails.length ? newestEmail(dealEmails) : null;
+                    return (
+                      <DealEmailBar isMobile={isMobile} total={dealEmails.length} filter={emailFilter} setFilter={setEmailFilter} query={emailQuery} setQuery={setEmailQuery}
+                        pinnedCount={emailPins.size} counts={{ received: dealEmails.filter(e => e.direction === 'received').length, sent: dealEmails.filter(e => e.direction === 'sent').length }}
+                        last={lastE ? { direction: lastE.direction, when: lastE.email_at || lastE.email_date, tracked: !!lastE.tracked, opened: !!lastE.opened_at } : null} />
+                    );
+                  })()}
 
                   {/* Open tracking at a glance: what the deal's sent emails did */}
                   {(() => {
@@ -11876,11 +11941,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         threadMap.set(key, existing);
                       }
                       // Sort groups by most recent email (descending)
-                      const groups = Array.from(threadMap.entries()).sort((a, b) => {
+                      const q = emailQuery.trim().toLowerCase();
+                      const groups = Array.from(threadMap.entries()).filter(([key, list]) => {
+                        if (emailFilter === 'pinned' && !emailPins.has(key)) return false;
+                        if ((emailFilter === 'received' || emailFilter === 'sent') && !list.some(m => m.direction === emailFilter)) return false;
+                        if (q && !list.some(m => `${m.subject} ${m.from_email} ${m.to_email} ${m.cc_emails ?? ''} ${m.body ?? ''}`.toLowerCase().includes(q))) return false;
+                        return true;
+                      }).sort((a, b) => {
+                        const pa = emailPins.has(a[0]) ? 1 : 0, pb = emailPins.has(b[0]) ? 1 : 0;
+                        if (pa !== pb) return pb - pa;
                         const na = newestEmail(a[1]); const latestA = na.email_date + emailTs(na);
                         const nb = newestEmail(b[1]); const latestB = nb.email_date + emailTs(nb);
                         return latestB.localeCompare(latestA);
                       });
+                      if (!groups.length && dealEmails.length) return <div style={{ textAlign: 'center', padding: 16, color: 'var(--k-9ca3af)', fontSize: 13 }}>No emails match{emailQuery ? ` “${emailQuery}”` : ' that filter'}.</div>;
                       return groups.map(([threadKey, threadEmails]) => {
                         const isExpanded = expandedThreads.has(threadKey);
                         const latest = newestEmail(threadEmails);
@@ -11921,6 +11995,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </div>
                               {/* Right: date + chevron */}
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                <span role="button" tabIndex={0} aria-label={emailPins.has(threadKey) ? 'Unpin this conversation' : 'Pin this conversation to the top'} title={emailPins.has(threadKey) ? 'Unpin' : 'Pin to the top (this browser)'}
+                                  onClick={ev => { ev.stopPropagation(); toggleEmailPin(threadKey); }} onKeyDown={ev => { if (ev.key === 'Enter') { ev.stopPropagation(); toggleEmailPin(threadKey); } }}
+                                  style={{ fontSize: 16, cursor: 'pointer', padding: isMobile ? '8px 6px' : '0 2px', color: emailPins.has(threadKey) ? '#c9922c' : 'var(--k-cbd5e1)' }}>{emailPins.has(threadKey) ? '★' : '☆'}</span>
                                 <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{latest.email_date}</span>
                                 <span style={{ fontSize: 12, color: '#cbd5e1' }}>{isExpanded ? '▾' : '▸'}</span>
                               </div>
@@ -11946,6 +12023,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 })()}
                                 {sortedEmails(threadEmails).map((e, idx, arr) => (
                                   <ThreadMessage key={e.id} e={e} isMobile={isMobile} dealId={activeDeal?.id} onNote={showToast} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
+                                    onTask={e.direction === 'received' && activeDeal ? (due) => createEmailTask(e, due) : undefined}
                                     onReply={gmailConnected && activeDeal?.client_email ? () => startDealReply(e, threadEmails, false) : undefined}
                                     onReplyAll={gmailConnected && activeDeal?.client_email && hasReplyAll(e, threadEmails, activeDeal.client_email) ? () => startDealReply(e, threadEmails, true) : undefined} />
                                 ))}
