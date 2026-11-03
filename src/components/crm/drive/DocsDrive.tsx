@@ -416,7 +416,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
           ))}
         </div>
       ) : (
-        <nav aria-label="Folders" style={{ width: 230, flexShrink: 0, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: 8, maxHeight: '72vh', overflowY: 'auto' }}>
+        <nav aria-label="Folders" style={{ width: 230, flexShrink: 0, background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, padding: 8, maxHeight: '72vh', overflowY: 'auto' }}>
           {navBtn('All files', view === 'folder' && folderId === null, () => go(null), 'grid')}
           {navBtn('Recent', view === 'recent', () => { setQ(''); setView('recent'); }, 'clock')}
           {navBtn('Templates', view === 'templates', () => { setQ(''); setView('templates'); }, 'template')}
@@ -479,7 +479,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
           {cardsView && folders.length > 0 && (
             <div style={{ marginBottom: 18 }}>
               {sectionLabel('Folders')}
-              <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 150 : 220}px, 1fr))`, gap: 10 }}>{folders.map(folderCard)}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>{folders.map(folderCard)}</div>
             </div>
           )}
           {(docs.length > 0 || forms.length > 0 || files.length > 0 || (!cardsView && folders.length > 0)) && (
