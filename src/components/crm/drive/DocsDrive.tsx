@@ -370,6 +370,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
           <button type="button" className="dd-dots" aria-label={`Quick look at ${title}`} title="Quick look — preview without opening" onClick={() => setQuickDocId(it.id)}
             style={{ width: 32, height: 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-9ca3af)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="eye" size={17} /></button>
         )}
+        {!(kind === 'doc' && !isMobile && !inTrash) && !isMobile && !inTrash && <span style={{ width: 32, flexShrink: 0 }} />}
         {dotsBtn(kind, it, title)}
       </div>
     );
