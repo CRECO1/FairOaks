@@ -118,8 +118,9 @@ export async function POST(req: NextRequest) {
   if (!type) return NextResponse.json({ error: 'type must be folder or doc' }, { status: 400 });
   const label = ((type === 'folder' ? body.name : body.title) ?? '').trim().slice(0, type === 'folder' ? 200 : 300) || (type === 'folder' ? 'New folder' : 'Untitled document');
 
-  // A new item takes on the visibility (and deal link) of the folder it is created in.
-  let visibility: 'team' | 'private' = 'team';
+  // A new item takes on the visibility (and deal link) of the folder it is created in. At the top level an agent's items start PRIVATE
+  // (only them, until they share with someone); admins and the owner start with team items.
+  let visibility: 'team' | 'private' = ctx.role === 'agent' ? 'private' : 'team';
   let shared_with: string[] = [];
   let deal_id: string | null = null;
   const parentId = body.parent_id || null;

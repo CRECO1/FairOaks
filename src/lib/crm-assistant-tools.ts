@@ -411,10 +411,10 @@ export async function resolveRecord(input: Record<string, any>, ctx: AgentCtx): 
   return { error: 'kind must be "deal" or "contact"' };
 }
 
-// My Drive (live documents + folders). Same rule as the page itself: it is a beta tab for the owner until it is rolled out, so the
-// agent's Copilot only gets these tools when My Drive is on their screen — otherwise it would file documents nobody can open.
+// My Drive (live documents + folders). Rolled out to every role (2026-11-03). Who can open what is decided in the database
+// (crm_drive_can), not here. This stays a function so the tools can be switched off for a role in one place if ever needed.
 export const DRIVE_TOOLS = new Set(['find_drive_items', 'create_drive_folder', 'create_drive_doc']);
-export const canUseDrive = (ctx: AgentCtx) => ctx.role === 'super_admin';
+export const canUseDrive = (ctx: AgentCtx) => !!ctx.role;
 export const DRIVE_WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc']);
 
 export const WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'prepare_esign', 'send_for_signature', 'send_email', 'schedule_event',
@@ -578,9 +578,9 @@ export const TOOLS: Anthropic.Tool[] = [
     }, required: ['submission_id'] } },
   { name: 'find_drive_items', description: "Look around My Drive (the team's folders of live documents): with no arguments it returns every folder path plus what is at the top level; pass folder_id to list one folder's contents, or query to search folder names, document titles and document text. Use it before creating anything, to check the folder or document doesn't already exist and to find the right place for a new one. Read-only.",
     input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Search text (2+ characters)' }, folder_id: { type: 'string', description: 'List this folder (id from an earlier result)' } } } },
-  { name: 'create_drive_folder', description: "Create a folder in My Drive (and any missing levels above it), visible to the whole team. Give the full path, e.g. \"Agent Training\" or \"Agent Training/Leasing\" — levels that already exist are reused, so it is safe to name an existing parent. Use it when the agent asks for a folder on its own; when you are about to create a document, create_drive_doc's folder_path creates the folders for you. WRITE — confirm with the agent first.",
+  { name: 'create_drive_folder', description: "Create a folder in My Drive (and any missing levels above it). A new top-level folder is private to an agent (only them) until they share it; inside an existing folder it takes that folder's sharing. Give the full path, e.g. \"Agent Training\" or \"Agent Training/Leasing\" — levels that already exist are reused, so it is safe to name an existing parent. Use it when the agent asks for a folder on its own; when you are about to create a document, create_drive_doc's folder_path creates the folders for you. WRITE — confirm with the agent first.",
     input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Folder path, levels separated by "/"' } }, required: ['path'] } },
-  { name: 'create_drive_doc', description: "Write a new live document into My Drive and put it in a folder, so the team can open it and edit it together. Write the WHOLE document yourself in `content` as markdown: # / ## / ### headings, paragraphs, **bold**, *italic*, [links](https://…), - bullet lists (nest with indentation), 1. numbered lists, - [ ] checklists (- [x] ticked), > quotes, | tables |, --- rules. No placeholder text and no invented facts, figures, names or legal terms — use what the agent told you or what the CRM records say, and leave a clearly marked blank (e.g. “____”) for anything unknown. Documents carry the CRECO letterhead (logo header and footer, also on the PDF) unless letterhead is false. It is visible to the whole team. Check find_drive_items first so you don't duplicate a document or folder. WRITE — confirm with the agent first.",
+  { name: 'create_drive_doc', description: "Write a new live document into My Drive and put it in a folder, so whoever can see that folder can open it and edit it together. Write the WHOLE document yourself in `content` as markdown: # / ## / ### headings, paragraphs, **bold**, *italic*, [links](https://…), - bullet lists (nest with indentation), 1. numbered lists, - [ ] checklists (- [x] ticked), > quotes, | tables |, --- rules. No placeholder text and no invented facts, figures, names or legal terms — use what the agent told you or what the CRM records say, and leave a clearly marked blank (e.g. “____”) for anything unknown. Documents carry the CRECO letterhead (logo header and footer, also on the PDF) unless letterhead is false. Sharing: a document in an existing folder takes that folder's sharing; at the top level, or in a folder the agent just created, an agent's document is private to them until they share it from My Drive. Check find_drive_items first so you don't duplicate a document or folder. WRITE — confirm with the agent first.",
     input_schema: { type: 'object', properties: { title: { type: 'string', description: 'Document title (shown in the folder list)' }, content: { type: 'string', description: 'The full document, as markdown' },
       folder_path: { type: 'string', description: 'Where to put it, e.g. "Agent Training/Leasing" — missing folders are created. Omit for the top level.' }, folder_id: { type: 'string', description: 'Alternative to folder_path: an existing folder id from find_drive_items' },
       letterhead: { type: 'boolean', description: 'CRECO letterhead header/footer. Default true.' } }, required: ['title', 'content'] } },
@@ -1291,7 +1291,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const r = await crmFetch(ctx, '/api/crm/drive', 'POST', { type: 'doc', title, parent_id: f.id, markdown: content, letterhead: input.letterhead !== false });
         if (!r.ok || !r.data?.item?.id) return j({ error: r.data?.error || 'Could not create the document' });
         await logCopilot(db, ctx, `Created My Drive document “${title}”${f.path ? ` in ${f.path}` : ''}`);
-        return j({ ok: true, doc_id: r.data.item.id, title, folder: f.path || 'top level', created_folders: f.created, letterhead: input.letterhead !== false, note: 'A live document — the team can open and edit it together in My Drive.' });
+        return j({ ok: true, doc_id: r.data.item.id, title, folder: f.path || 'top level', created_folders: f.created, letterhead: input.letterhead !== false, note: (r.data.item as { visibility?: string }).visibility === 'private' ? 'A live document that only the agent can see for now — they can share it with teammates from My Drive (Share).' : 'A live document — everyone who can see that folder can open and edit it together in My Drive.' });
       }
       case 'start_form': {
         const { data: form } = await db.from('crm_forms').select('name').eq('id', input.form_id).single();
@@ -1854,8 +1854,8 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'remove_contacts_from_deal': return `Remove ${(input.contact_ids ?? []).length} contact${(input.contact_ids ?? []).length === 1 ? '' : 's'} from the deal`;
     case 'update_deal': return `Update the deal's ${Object.keys(input).filter(k => k !== 'deal_id').map(k => k.replace(/_/g, ' ')).join(', ') || 'details'}`;
     case 'generate_lease': return `Generate & file the lease${input.values?.tenant_name ? ` for ${input.values.tenant_name}${input.values.suite ? `, suite ${input.values.suite}` : ''}` : ''}`;
-    case 'create_drive_folder': return `📁 Create the My Drive folder “${input.path}” (missing levels are created; the whole team can see it)`;
-    case 'create_drive_doc': return `📄 Create the live My Drive document “${input.title}” ${input.folder_path ? `in “${input.folder_path}”` : input.folder_id ? 'in the chosen folder' : 'at the top level'} — visible to the whole team${input.letterhead === false ? '' : ', with the CRECO letterhead'}`;
+    case 'create_drive_folder': return `📁 Create the My Drive folder “${input.path}” (missing levels are created; sharing follows the folder it goes in)`;
+    case 'create_drive_doc': return `📄 Create the live My Drive document “${input.title}” ${input.folder_path ? `in “${input.folder_path}”` : input.folder_id ? 'in the chosen folder' : 'at the top level'} — sharing follows the folder${input.letterhead === false ? '' : ', with the CRECO letterhead'}`;
     case 'start_form': return `Start a new form document`;
     case 'prepare_esign': return `Place initials / signature / date boxes for ${(input.signers || []).map((x: any) => x.role).join(', ') || 'the signers'} — draft only, nothing is sent`;
     case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => [s.name, s.email && `<${s.email}>`].filter(Boolean).join(' ')).join(', ')} — this emails them the document`;

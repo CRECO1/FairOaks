@@ -85,7 +85,7 @@ cases.push(
   { name: 'My Drive: "write a checklist doc" looks first, never sends or starts a form', history: [U('create a new-agent onboarding checklist in My Drive in a folder called Agent Training')], anyOf: ['find_drive_items', 'create_drive_doc'], never: [...SEND_TOOLS, 'start_form', 'create_task'] },
   { name: 'My Drive: after the look, creates the doc with real markdown content', history: [U('create a new-agent onboarding checklist in My Drive in a folder called Agent Training'), ...DRIVE_LOOK, ...DRIVE_SEARCHED], anyOf: ['create_drive_doc'], never: [...SEND_TOOLS, 'start_form'], check: c => { const d = c.find(x => x.name === 'create_drive_doc'); const i = (d?.input ?? {}) as Record<string, any>; return !i.title ? 'no title' : String(i.content ?? '').length < 200 ? 'content too thin' : !/- \[ \]/.test(String(i.content)) ? 'no checklist items in a checklist' : !/agent training/i.test(String(i.folder_path ?? '')) ? `wrong folder: ${i.folder_path}` : null; } },
   { name: 'My Drive: a legal contract goes through forms, not a Drive doc', history: [U('make me a commercial lease agreement for Acme Corp')], never: ['create_drive_doc'] },
-  { name: 'My Drive: agent role has no Drive tools and says so', role: 'agent', history: [U('put a leasing script doc in My Drive for the team')], never: ['create_drive_doc', 'create_drive_folder', 'find_drive_items', ...SEND_TOOLS] },
+  { name: 'My Drive: an agent can use it too (looks first, never sends)', role: 'agent', history: [U('put a leasing script doc in My Drive for the team')], anyOf: ['find_drive_items', 'create_drive_doc'], never: [...SEND_TOOLS, 'start_form'] },
 );
 
 (async () => {

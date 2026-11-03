@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (parentId && !UUID_RE.test(parentId)) return NextResponse.json({ error: 'invalid folder' }, { status: 400 });
 
   // Destination folder must be visible to the caller (RLS) and not in the trash.
-  let inherit: { visibility: 'team' | 'private'; shared_with: string[]; deal_id: string | null } = { visibility: 'team', shared_with: [], deal_id: null };
+  let inherit: { visibility: 'team' | 'private'; shared_with: string[]; deal_id: string | null } = { visibility: ctx.role === 'agent' ? 'private' : 'team', shared_with: [], deal_id: null };   // an agent's top-level files start private
   if (parentId) {
     const { data: parent } = await userDb.from('crm_drive_folders').select('id,visibility,shared_with,deal_id,trashed_at').eq('id', parentId).eq('business_unit', bu).maybeSingle();
     if (!parent || parent.trashed_at) return notFound('That folder is not available');

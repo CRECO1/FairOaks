@@ -31,7 +31,6 @@ interface Props {
   onToast: (msg: string) => void;
   agentPrefill?: Record<string, string>;
   isMobile?: boolean;
-  /** Docs (beta): the live-documents Drive is shown to the account owner only for now. */
   isSuperAdmin?: boolean;
   currentUser?: { id: string; name: string };
   profiles?: Array<{ id: string; first_name?: string | null; last_name?: string | null; role?: string | null }>;
@@ -40,8 +39,8 @@ interface Props {
 const ACTIVE_STAGES = ['Active', 'LOI', 'In Contract'];
 
 export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast, agentPrefill, isMobile = false, isSuperAdmin = false, currentUser, profiles }: Props) {
-  const driveOn = isSuperAdmin && !!currentUser;
-  const showDrive = driveOn; // the Drive replaces the forms / active-deals page for the account owner
+  const driveOn = !!currentUser;
+  const showDrive = driveOn; // the Drive replaces the old forms / active-deals page for everyone
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');

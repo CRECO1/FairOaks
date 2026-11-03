@@ -5557,7 +5557,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
     'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', emails: 'Emails',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': isSuperAdmin ? 'My Drive' : 'Transaction Docs', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'My Drive', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -5882,7 +5882,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
           <button className={`crm-nav${page === 'deals' && !filter ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); }}><Ico n="deals" />All Deals <span style={{ marginLeft: 'auto', background: '#c9922c', color: 'var(--k-111)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span></button>
-          {isSuperAdmin && <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}><Ico n="file" />My Drive</button>}
+          <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}><Ico n="file" />My Drive</button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>People</div>
@@ -5922,7 +5922,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </a>
           )}
           <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}><Ico n="building" />Properties</button>
-          {!isSuperAdmin && <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}><Ico n="file" />Transaction Docs</button>}
           <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}><Ico n="pen" />E-Sign</button>
           <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}><Ico n="phone" />Calling Log</button>
           <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
@@ -6041,7 +6040,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               { id: 'properties', label: 'Properties', ico: 'building', go: () => setPage('properties') },
               { id: 'calls', label: 'Calls', ico: 'phone', go: () => { setPage('calls'); if (!clients.length) loadClients(); } },
               { id: 'esign', label: 'E-Sign', ico: 'pen', go: () => setPage('esign') },
-              { id: 'transaction-docs', label: isSuperAdmin ? 'Drive' : 'Docs', ico: 'file', go: () => setPage('transaction-docs') },
+              { id: 'transaction-docs', label: 'Drive', ico: 'file', go: () => setPage('transaction-docs') },
             ];
             return (
               <nav className="crm-tabs-scroll crm-topnav" aria-label="Sections">
