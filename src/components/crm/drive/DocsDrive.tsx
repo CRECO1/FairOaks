@@ -296,21 +296,26 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
     const all = Array.from(list);
     if (!all.length) return;
     setUploading(n => n + all.length);
-    let ok = 0;
+    let ok = 0, madeEditable = 0;
     for (const file of all) {
       try {
         if (file.size > DRIVE_FILE_MAX) throw new Error(`“${file.name}” is over 50 MB`);
         const pre = await api<{ uploadUrl: string; storagePath: string; contentType: string }>('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'presign', filename: file.name, size: file.size, parent_id: parent }) });
         const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': pre.contentType }, body: file });
         if (!put.ok) throw new Error(`Couldn’t upload “${file.name}” — try again`);
-        await api('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'confirm', storagePath: pre.storagePath, filename: file.name, parent_id: parent }) });
+        const saved = await api<{ file?: { id: string } }>('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'confirm', storagePath: pre.storagePath, filename: file.name, parent_id: parent }) });
         ok += 1;
+        // A Word / text file is also made editable right away (a live document next to it); a problem here is only mentioned.
+        if (canEditFile(file.name) && saved.file?.id) {
+          try { await api(`/api/crm/drive/file/${saved.file.id}/convert`, { method: 'POST' }); madeEditable += 1; }
+          catch (e) { onToast(`“${file.name}” was uploaded, but ${((e as Error).message || 'it could not be made editable').replace(/^./, c => c.toLowerCase())}`); }
+        }
       } catch (e) { onToast((e as Error).message); }
       finally { setUploading(n => n - 1); }
     }
     if (ok) {
       const editable = all.some(f => canEditFile(f.name)), oldWord = all.some(f => /\.(doc|rtf)$/i.test(f.name));
-      onToast(editable ? 'Uploaded — click the file (or the pencil) to edit it as a live document' : oldWord ? 'Uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that' : ok === 1 ? 'File uploaded' : `${ok} files uploaded`);
+      onToast(madeEditable ? `Uploaded — ${madeEditable === 1 ? 'a live, editable copy was made next to it' : `${madeEditable} live, editable copies were made next to them`}` : editable ? 'Uploaded — click the file (or the pencil) to edit it as a live document' : oldWord ? 'Uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that' : ok === 1 ? 'File uploaded' : `${ok} files uploaded`);
       refresh();
     }
   };

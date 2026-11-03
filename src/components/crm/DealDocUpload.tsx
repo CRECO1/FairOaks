@@ -8,6 +8,7 @@
 // trying to read that plain-text 413 as JSON.
 
 import React, { useEffect, useRef, useState } from 'react';
+import { canEditCardFile, convertCardFile } from '@/components/crm/drive/card-edit';
 
 // MIME types as well as extensions: an extension-only list makes Android grey out
 // files whose provider reports no name, and without image types iOS doesn't offer
@@ -36,6 +37,7 @@ export default function DealDocUpload({ dealId, clientId, authToken, showToast, 
   const [dragging, setDragging] = useState(false);
   const [touch, setTouch] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const convertedRef = useRef(0);
   const endpoint = clientId ? '/api/crm/client-docs' : '/api/crm/docs';
   const owner = clientId ? { clientId } : { dealId };
   const noun = clientId ? 'contact' : 'deal';
@@ -70,6 +72,12 @@ export default function DealDocUpload({ dealId, clientId, authToken, showToast, 
     if (!conf.ok) return cj.error || `Couldn't save ${file.name} to the ${noun} (${conf.status})`;
     if (cj.duplicate) return { dup: cj.doc?.name ?? 'an existing file' };   // already attached: nothing was added
     onUploaded(cj.doc);
+    // A Word / text file is also made editable right away (a live document linked to this card). The upload already succeeded, so a
+    // problem here is only mentioned, never an error.
+    if (canEditCardFile(file.name) && cj.doc?.id) {
+      const r = await convertCardFile(clientId ? 'client' : 'deal', cj.doc.id as string, authToken);
+      if (r.ok) convertedRef.current += 1; else showToast(`${file.name} was uploaded, but ${r.error.charAt(0).toLowerCase()}${r.error.slice(1)}`);
+    } else if (/\.(doc|rtf)$/i.test(file.name)) showToast(`${file.name} was uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that`);
     return null;
   }
 
@@ -84,7 +92,8 @@ export default function DealDocUpload({ dealId, clientId, authToken, showToast, 
         if (err && typeof err === 'object') { skipped++; showToast(`${files[i].name} is already on this ${noun} as “${err.dup}” — not added again`); }
         else if (err) showToast(err); else ok++;
       }
-      if (ok) showToast(ok === 1 && files.length === 1 ? `${files[0].name} uploaded ✓` : `${ok} of ${files.length - skipped} new files uploaded ✓`);
+      const made = convertedRef.current; convertedRef.current = 0;
+      if (ok) showToast((ok === 1 && files.length === 1 ? `${files[0].name} uploaded ✓` : `${ok} of ${files.length - skipped} new files uploaded ✓`) + (made ? ` — ${made === 1 ? 'it is' : `${made} are`} also ready to edit as a live document` : ''));
     } finally {
       setStatus(null);
       if (inputRef.current) inputRef.current.value = '';
