@@ -12180,9 +12180,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       // Blanks still waiting to be filled live in the dropdown above.
                       const inUse = dealForms.filter(f => f.url);
                       const row = (f: typeof dealForms[number], w: boolean) => (
-                        <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: w ? 'var(--k-fbfbfc)' : 'var(--k-fffdf6)', border: '1px solid ' + (w ? 'var(--k-ececf0)' : 'var(--k-f0e2c4)'), borderRadius: 8, padding: '10px 14px' }}>
+                        <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: isMobile ? 'wrap' : 'nowrap', rowGap: 8, background: w ? 'var(--k-fbfbfc)' : 'var(--k-fffdf6)', border: '1px solid ' + (w ? 'var(--k-ececf0)' : 'var(--k-f0e2c4)'), borderRadius: 8, padding: '10px 14px' }}>
                           <span style={{ fontSize: 20, flexShrink: 0, opacity: w ? 0.5 : 1 }}>{w ? '◻️' : '📄'}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ flex: isMobile ? '1 1 calc(100% - 44px)' : 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                               {renamingDoc === f.id ? (
                                 <input autoFocus value={renameDraft}
@@ -12273,9 +12273,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         const uploader = profiles.find(p => p.id === doc.uploaded_by);
                         const uploaderName = uploader ? uploader.first_name : profile!.id === doc.uploaded_by ? profile!.first_name : 'Agent';
                         return (
-                          <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '11px 14px' }}>
+                          <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: isMobile ? 'wrap' : 'nowrap', rowGap: 8, background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '11px 14px' }}>
                             <span style={{ fontSize: 22, flexShrink: 0 }}>{icon}</span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ flex: isMobile ? '1 1 calc(100% - 46px)' : 1, minWidth: 0 }}>
                               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</div>
                               <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>
                                 {size}{size ? ' · ' : ''}{doc.created_at?.slice(0, 10)}{uploaderName ? ` · ${uploaderName}` : ''}

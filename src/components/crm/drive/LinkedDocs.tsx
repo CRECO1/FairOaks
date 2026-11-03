@@ -85,7 +85,7 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
         {items.map(l => (
           <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '9px 12px' }}>
             <span style={{ width: 34, height: 34, borderRadius: 9, background: '#2563eb1f', color: '#2563eb', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><DI n="doc" size={18} /></span>
-            <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+            <div style={{ flex: isMobile ? '1 1 calc(100% - 48px)' : '1 1 160px', minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflowWrap: 'anywhere' }}>{l.title}</div>
               <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>Live from My Drive · edited {ago(l.updated_at)} by {who(l.updated_by)}</div>
             </div>
