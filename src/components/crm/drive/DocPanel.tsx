@@ -57,14 +57,14 @@ function Shell({ title, isMobile, onClose, children }: { title: string; isMobile
     return (
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1150, background: 'rgba(17,17,17,.4)', display: 'flex', alignItems: 'flex-end' }}>
         <div onClick={e => e.stopPropagation()} style={{ width: '100%', height: '78dvh', background: 'var(--k-fff)', borderRadius: '18px 18px 0 0', display: 'flex', flexDirection: 'column', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          {head}<div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>{children}</div>
+          {head}<div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 76 }}>{children}</div>
         </div>
       </div>
     );
   }
   return (
     <aside aria-label={title} style={{ width: 360, flexShrink: 0, background: 'var(--k-fff)', borderLeft: '1px solid var(--k-e5e7eb)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {head}<div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>{children}</div>
+      {head}<div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 76 }}>{children}</div>
     </aside>
   );
 }
