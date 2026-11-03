@@ -394,9 +394,9 @@ function DocStyles() {
       .drive-doc mark { background: #fde68a; color: inherit; border-radius: 2px; padding: 0 1px; }
       .drive-doc code { background: var(--k-f3f4f6); border-radius: 4px; padding: 1px 5px; font-size: .9em; }
       .drive-doc pre { background: var(--k-f3f4f6); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
-      .drive-doc table { border-collapse: collapse; table-layout: fixed; width: 100%; margin: .8em 0; overflow: hidden; }
+      .drive-doc table { border-collapse: collapse; table-layout: auto; width: 100%; margin: .8em 0; }
       /* The CRM's global table styles (tiny uppercase headers, bottom-border-only cells) must not leak into documents. */
-      .drive-doc table td, .drive-doc table th { border: 1px solid var(--k-d1d5db) !important; padding: 6px 9px !important; vertical-align: top; position: relative; min-width: 60px; font-size: inherit !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--k-1a1a1a) !important; line-height: 1.6; }
+      .drive-doc table td, .drive-doc table th { border: 1px solid var(--k-d1d5db) !important; padding: 6px 8px !important; vertical-align: top; position: relative; min-width: 64px; font-size: inherit !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--k-1a1a1a) !important; line-height: 1.6; overflow-wrap: break-word; word-break: normal; }
       .drive-doc table th { background: var(--k-f3f4f6) !important; font-weight: 700 !important; text-align: left; }
       .drive-doc table td > p, .drive-doc table th > p { margin: 0; }
       .drive-doc .selectedCell::after { content: ''; position: absolute; inset: 0; background: rgba(201,146,44,.18); pointer-events: none; }
