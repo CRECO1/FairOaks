@@ -373,6 +373,7 @@ function DocStyles() {
   return (
     <style>{`
       .drive-doc { outline: none; font-family: 'DM Sans', system-ui, sans-serif; font-size: 15.5px; line-height: 1.7; color: var(--k-1a1a1a); min-height: 50vh; overflow-wrap: anywhere; }
+      .drive-doc, .drive-doc:focus, .drive-doc:focus-visible { outline: none !important; box-shadow: none !important; border: none !important; }
       .drive-doc > * + * { margin-top: .6em; }
       .drive-doc h1 { font-size: 1.9em; line-height: 1.25; font-weight: 700; margin: 1em 0 .3em; }
       .drive-doc h2 { font-size: 1.45em; line-height: 1.3; font-weight: 700; margin: 1em 0 .3em; }
@@ -394,8 +395,10 @@ function DocStyles() {
       .drive-doc code { background: var(--k-f3f4f6); border-radius: 4px; padding: 1px 5px; font-size: .9em; }
       .drive-doc pre { background: var(--k-f3f4f6); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
       .drive-doc table { border-collapse: collapse; table-layout: fixed; width: 100%; margin: .8em 0; overflow: hidden; }
-      .drive-doc td, .drive-doc th { border: 1px solid var(--k-d1d5db); padding: 6px 9px; vertical-align: top; position: relative; min-width: 60px; }
-      .drive-doc th { background: var(--k-f9fafb); font-weight: 700; text-align: left; }
+      /* The CRM's global table styles (tiny uppercase headers, bottom-border-only cells) must not leak into documents. */
+      .drive-doc table td, .drive-doc table th { border: 1px solid var(--k-d1d5db) !important; padding: 6px 9px !important; vertical-align: top; position: relative; min-width: 60px; font-size: inherit !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--k-1a1a1a) !important; line-height: 1.6; }
+      .drive-doc table th { background: var(--k-f3f4f6) !important; font-weight: 700 !important; text-align: left; }
+      .drive-doc table td > p, .drive-doc table th > p { margin: 0; }
       .drive-doc .selectedCell::after { content: ''; position: absolute; inset: 0; background: rgba(201,146,44,.18); pointer-events: none; }
       .drive-doc .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: -2px; width: 4px; background: #c9922c; pointer-events: none; }
       .drive-doc .tableWrapper { overflow-x: auto; }
