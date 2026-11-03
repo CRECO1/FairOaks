@@ -46,7 +46,7 @@ export default function ContactJumpBar() {
     const mo = new MutationObserver(() => { clearTimeout(t); t = setTimeout(scan, 250); }); // Files / Emails load after the card opens
     mo.observe(b, { childList: true, subtree: true });
     const onScroll = () => {
-      const top = b.getBoundingClientRect().top + 56;
+      const top = b.getBoundingClientRect().top + (bar.current?.offsetHeight ?? 56) + 20;   // a heading just below the sticky row counts as the current section
       let cur = 'Info';
       for (const f of els.current) if (f.el.getBoundingClientRect().top <= top) cur = f.label;
       setActive(prev => (prev === cur ? prev : cur));
