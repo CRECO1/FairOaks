@@ -81,7 +81,7 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
             <button type="button" onClick={() => setOpenId(l.doc_id)} style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: '#111', border: 'none', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', flexShrink: 0, minHeight: isMobile ? 36 : undefined }}>Open</button>
             {(isAdmin || l.linked_by === currentUser.id) && (
               <button type="button" onClick={() => void unlink(l)} title="Remove from this card" aria-label={`Remove ${l.title} from this card`}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 12, textDecoration: 'underline', padding: '4px 2px', flexShrink: 0 }}>Remove</button>
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 12, textDecoration: 'underline', padding: isMobile ? '8px 6px' : '4px 2px', minHeight: isMobile ? 36 : undefined, flexShrink: 0 }}>Remove</button>
             )}
           </div>
         ))}

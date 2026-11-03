@@ -66,7 +66,9 @@ export default function ContactJumpBar() {
     const b = body(); if (!b) return;
     if (label === 'Info') { b.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const f = els.current.find(x => x.label === label); if (!f) return;
-    b.scrollTo({ top: f.el.getBoundingClientRect().top - b.getBoundingClientRect().top + b.scrollTop - 52, behavior: 'smooth' });
+    // leave the heading clear of the sticky chip row (its real height, not a guess) plus a little air
+    const clear = (bar.current?.offsetHeight ?? 56) + 10;
+    b.scrollTo({ top: f.el.getBoundingClientRect().top - b.getBoundingClientRect().top + b.scrollTop - clear, behavior: 'smooth' });
   };
 
   if (found.length < 2) return <div ref={bar} style={{ display: 'none' }} />;
