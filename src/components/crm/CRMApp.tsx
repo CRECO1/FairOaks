@@ -1096,6 +1096,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [activeClient, setActiveClient] = useState<Client | null>(null);
   const [activityMore, setActivityMore] = useState(false); // phones: the contact card's activity log shows the latest few until you ask for the rest
   useEffect(() => { setActivityMore(false); }, [activeClient?.id]);
+  const [docsMore, setDocsMore] = useState(false); // phones: the contact card's Documents list shows the first few until you ask for the rest
+  useEffect(() => { setDocsMore(false); }, [activeClient?.id]);
   const [dealCompact, setDealCompact] = useState(false); // phones: the deal card's second header row folds away once its content is scrolled
   useEffect(() => { setDealCompact(false); }, [activeDeal?.id]);
   const [cardCompact, setCardCompact] = useState(false); // phones: the contact card's header folds away once its content is scrolled
@@ -13320,23 +13322,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 13, color: '#d1d5db' }}>No documents yet. Anything filed on this contact or on their deals shows here.</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {clientDocs.map(d => (
+                      {(isMobile && !docsMore && clientDocs.length > 4 ? clientDocs.slice(0, 3) : clientDocs).map(d => (
                         <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', borderRadius: 8, padding: '9px 12px' }}>
                           <span style={{ fontSize: 17, flexShrink: 0 }}>📄</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', ...(isMobile ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflowWrap: 'anywhere' as const } : { textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }) }}>
                               {d.title || d.crm_forms?.name || 'Document'}
                             </div>
                             <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>{d.updated_at ? `updated ${new Date(d.updated_at).toLocaleDateString()}` : ''}</div>
                           </div>
                           {d.url && (
                             <button onClick={() => setPreviewFile({ url: d.url!, name: `${d.title || 'Document'}.pdf`, type: 'application/pdf' })}
-                              style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>
+                              style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0, ...(isMobile ? { minHeight: 44, minWidth: 64, fontSize: 13 } : {}) }}>👁 View</button>
                           )}
-                          <button onClick={() => deleteFormDoc(d.id, d.title || d.crm_forms?.name || 'Document', false)} title="Delete this document"
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 15, padding: '4px 2px', flexShrink: 0 }}>🗑</button>
+                          <button onClick={() => deleteFormDoc(d.id, d.title || d.crm_forms?.name || 'Document', false)} title="Delete this document" aria-label="Delete this document"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 15, padding: '4px 2px', flexShrink: 0, ...(isMobile ? { minHeight: 44, minWidth: 44, marginLeft: 6 } : {}) }}>🗑</button>
                         </div>
                       ))}
+                      {isMobile && !docsMore && clientDocs.length > 4 && (
+                        <button type="button" onClick={() => setDocsMore(true)}
+                          style={{ marginTop: 2, minHeight: 44, border: '1px solid var(--k-e5e7eb)', borderRadius: 10, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                          Show {clientDocs.length - 3} more
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
