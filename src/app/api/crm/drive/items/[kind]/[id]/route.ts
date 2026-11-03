@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound, forbidden } from '@/lib/crm-auth';
 import { driveContext, descendantFolderIds, type DriveContext } from '@/lib/drive-server';
-import { DOC_COLS, FOLDER_COLS } from '@/lib/drive-types';
+import { DOC_COLS, FILE_COLS, FOLDER_COLS } from '@/lib/drive-types';
 
 // Rename / move / share / trash / restore / permanently delete one folder or document.
 //
@@ -9,14 +9,15 @@ import { DOC_COLS, FOLDER_COLS } from '@/lib/drive-types';
 // or an admin may change who it is shared with, move it out of a deal's folder, or delete it for good.
 // Visibility is stored on every item, so moving or sharing a folder cascades to everything inside it.
 
-type Kind = 'folder' | 'doc';
+type Kind = 'folder' | 'doc' | 'file';
 type Row = { id: string; created_by: string | null; visibility: 'team' | 'private'; shared_with: string[]; deal_id: string | null; trashed_at: string | null; parent_id?: string | null; folder_id?: string | null };
 
-const tableOf = (k: string) => (k === 'folder' ? 'crm_drive_folders' : k === 'doc' ? 'crm_drive_docs' : null);
+const tableOf = (k: string) => (k === 'folder' ? 'crm_drive_folders' : k === 'doc' ? 'crm_drive_docs' : k === 'file' ? 'crm_drive_files' : null);
+const colsOf = (k: Kind): string => (k === 'folder' ? FOLDER_COLS : k === 'doc' ? DOC_COLS : FILE_COLS);
 
 async function loadVisible(dc: DriveContext, kind: Kind, id: string): Promise<Row | null> {
   const t = tableOf(kind)!;
-  const { data } = await dc.userDb.from(t).select(kind === 'folder' ? FOLDER_COLS : DOC_COLS).eq('id', id).eq('business_unit', dc.bu).maybeSingle();
+  const { data } = await dc.userDb.from(t).select(colsOf(kind)).eq('id', id).eq('business_unit', dc.bu).maybeSingle();
   return (data as unknown as Row | null) ?? null;
 }
 
@@ -25,14 +26,16 @@ async function subtree(dc: DriveContext, folderId: string) {
   const { data } = await dc.admin.from('crm_drive_folders').select('id,parent_id').eq('business_unit', dc.bu);
   const folderIds = [folderId, ...descendantFolderIds((data ?? []) as Array<{ id: string; parent_id: string | null }>, folderId)];
   const { data: docs } = await dc.admin.from('crm_drive_docs').select('id').eq('business_unit', dc.bu).in('folder_id', folderIds);
-  return { folderIds, docIds: ((docs ?? []) as Array<{ id: string }>).map(d => d.id) };
+  const { data: files } = await dc.admin.from('crm_drive_files').select('id,storage_path').eq('business_unit', dc.bu).in('folder_id', folderIds);
+  return { folderIds, docIds: ((docs ?? []) as Array<{ id: string }>).map(d => d.id), fileIds: ((files ?? []) as Array<{ id: string }>).map(d => d.id), filePaths: ((files ?? []) as Array<{ storage_path: string }>).map(d => d.storage_path) };
 }
 
 async function applyToSubtree(dc: DriveContext, folderId: string, patch: Record<string, unknown>) {
-  const { folderIds, docIds } = await subtree(dc, folderId);
+  const { folderIds, docIds, fileIds } = await subtree(dc, folderId);
   const stamp = { ...patch, updated_at: new Date().toISOString() };
   await dc.admin.from('crm_drive_folders').update(stamp).in('id', folderIds);
   if (docIds.length) await dc.admin.from('crm_drive_docs').update(stamp).in('id', docIds);
+  if (fileIds.length) await dc.admin.from('crm_drive_files').update(stamp).in('id', fileIds);
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ kind: string; id: string }> }) {
@@ -54,11 +57,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
   const now = new Date().toISOString();
 
   // Rename
-  const label = kind === 'folder' ? body.name : body.title;
+  const label = kind === 'doc' ? body.title : body.name ?? body.title;
   if (label !== undefined) {
-    const v = label.trim().slice(0, kind === 'folder' ? 200 : 300);
+    const v = label.trim().slice(0, kind === 'doc' ? 300 : 200);
     if (!v) return NextResponse.json({ error: 'Give it a name' }, { status: 400 });
-    const { error } = await dc.admin.from(t).update(kind === 'folder' ? { name: v, updated_at: now } : { title: v, updated_by: dc.ctx.userId, updated_at: now }).eq('id', id);
+    const { error } = await dc.admin.from(t).update(kind === 'doc' ? { title: v, updated_by: dc.ctx.userId, updated_at: now } : { name: v, updated_at: now }).eq('id', id);
     if (error) return NextResponse.json({ error: 'Could not rename' }, { status: 500 });
   }
 
@@ -78,12 +81,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
       adopt = { visibility: dest.visibility, shared_with: dest.shared_with ?? [], deal_id: dest.deal_id };
       if (row.deal_id !== adopt.deal_id && !canManage) return forbidden('Only the owner or an admin can move this out of a deal folder');
     }
-    const place = kind === 'folder' ? { parent_id: target } : { folder_id: target };
+    const place = kind === 'folder' ? { parent_id: target } : { folder_id: target }; // docs and files both live in folder_id
     const { error } = await dc.admin.from(t).update({ ...place, updated_at: now }).eq('id', id);
     if (error) return NextResponse.json({ error: 'Could not move' }, { status: 500 });
     if (adopt) {
       if (kind === 'folder') await applyToSubtree(dc, id, adopt);
-      else await dc.admin.from('crm_drive_docs').update({ ...adopt, updated_at: now }).eq('id', id);
+      else await dc.admin.from(t).update({ ...adopt, updated_at: now }).eq('id', id);
     }
   }
 
@@ -98,14 +101,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
     }
     const patch = { visibility, shared_with: shared };
     if (kind === 'folder') await applyToSubtree(dc, id, patch);
-    else await dc.admin.from('crm_drive_docs').update({ ...patch, updated_at: now }).eq('id', id);
+    else await dc.admin.from(t).update({ ...patch, updated_at: now }).eq('id', id);
   }
 
   // Trash / restore. A folder stamps everything inside it with one instant so restoring brings back exactly that branch.
   if (body.trash !== undefined) {
     if (body.trash) {
       if (kind === 'folder') await applyToSubtree(dc, id, { trashed_at: now });
-      else await dc.admin.from('crm_drive_docs').update({ trashed_at: now, updated_at: now }).eq('id', id);
+      else await dc.admin.from(t).update({ trashed_at: now, updated_at: now }).eq('id', id);
     } else {
       // Put it back at the top level when the folder it lived in is itself in the trash.
       const parentId = kind === 'folder' ? row.parent_id : row.folder_id;
@@ -116,15 +119,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
       }
       const place = orphan ? (kind === 'folder' ? { parent_id: null } : { folder_id: null }) : {};
       if (kind === 'folder') {
-        const { folderIds, docIds } = await subtree(dc, id);
+        const { folderIds, docIds, fileIds } = await subtree(dc, id);
         const stamp = row.trashed_at;
         if (stamp) {
           await dc.admin.from('crm_drive_folders').update({ trashed_at: null, updated_at: now }).in('id', folderIds).eq('trashed_at', stamp);
           if (docIds.length) await dc.admin.from('crm_drive_docs').update({ trashed_at: null, updated_at: now }).in('id', docIds).eq('trashed_at', stamp);
+          if (fileIds.length) await dc.admin.from('crm_drive_files').update({ trashed_at: null, updated_at: now }).in('id', fileIds).eq('trashed_at', stamp);
         }
         if (orphan) await dc.admin.from('crm_drive_folders').update(place).eq('id', id);
       } else {
-        await dc.admin.from('crm_drive_docs').update({ trashed_at: null, updated_at: now, ...place }).eq('id', id);
+        await dc.admin.from(t).update({ trashed_at: null, updated_at: now, ...place }).eq('id', id);
       }
     }
   }
@@ -143,7 +147,16 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ k
   if (!row) return notFound();
   if (!row.trashed_at) return NextResponse.json({ error: 'Move it to the trash first' }, { status: 400 });
   if (!(dc.isAdmin || row.created_by === dc.ctx.userId)) return forbidden('Only the owner or an admin can delete this for good');
+  // Uploaded files live in storage too: remove the objects (this one, or everything under a deleted folder) with the rows.
+  let paths: string[] = [];
+  if (kind === 'file') paths = [String((row as unknown as { storage_path?: string }).storage_path ?? '')].filter(Boolean);
+  else if (kind === 'folder') paths = (await subtree(dc, id)).filePaths;
+  if (kind === 'file' && !paths.length) {
+    const { data } = await dc.admin.from('crm_drive_files').select('storage_path').eq('id', id).maybeSingle();
+    if (data?.storage_path) paths = [data.storage_path as string];
+  }
   const { error } = await dc.admin.from(tableOf(kind)!).delete().eq('id', id);
   if (error) return NextResponse.json({ error: 'Could not delete' }, { status: 500 });
+  if (paths.length) await dc.admin.storage.from('drive-files').remove(paths);
   return NextResponse.json({ ok: true });
 }

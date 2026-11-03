@@ -11,7 +11,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import { useBackToClose } from '@/lib/use-back-to-close';
-import type { DriveDoc, DriveFolder, DriveListing, DriveTreeFolder } from '@/lib/drive-types';
+import DocPreviewModal from '../DocPreviewModal';
+import type { DriveDoc, DriveFile, DriveFolder, DriveListing, DriveTreeFolder } from '@/lib/drive-types';
+import { DRIVE_FILE_MAX } from '@/lib/drive-types';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
 
@@ -28,8 +30,8 @@ interface Props {
 }
 
 type View = 'folder' | 'recent' | 'trash' | 'search';
-type Kind = 'folder' | 'doc';
-type Item = DriveFolder | DriveDoc;
+type Kind = 'folder' | 'doc' | 'file';
+type Item = DriveFolder | DriveDoc | DriveFile;
 type Dlg =
   | { t: 'newFolder' }
   | { t: 'menu'; kind: Kind; item: Item }
@@ -40,7 +42,9 @@ type Dlg =
   | { t: 'delete'; kind: Kind; item: Item };
 
 const GOLD = '#c9922c';
-const nameOf = (kind: Kind, item: Item) => (kind === 'folder' ? (item as DriveFolder).name : (item as DriveDoc).title);
+const nameOf = (kind: Kind, item: Item) => (kind === 'doc' ? (item as DriveDoc).title : (item as DriveFolder | DriveFile).name);
+const fileIcon = (f: DriveFile) => { const n = f.name.toLowerCase(); return f.mime === 'application/pdf' || n.endsWith('.pdf') ? '📕' : f.mime?.startsWith('image/') ? '🖼' : /\.(xlsx?|csv)$/.test(n) ? '📊' : /\.(docx?)$/.test(n) ? '📝' : /\.(pptx?)$/.test(n) ? '📙' : '📎'; };
+const fmtSize = (n: number | null) => (n == null ? '' : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 function fmtWhen(iso: string) {
   const d = new Date(iso); const now = new Date();
@@ -59,6 +63,10 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
   const [dlg, setDlg] = useState<Dlg | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [openDocId, setOpenDocId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ url: string; name: string; type?: string | null } | null>(null);
+  const [uploading, setUploading] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const headers = useMemo<Record<string, string>>(() => { const h: Record<string, string> = {}; if (authToken) h.Authorization = `Bearer ${authToken}`; return h; }, [authToken]);
   const toastRef = useRef(onToast); toastRef.current = onToast;
@@ -127,8 +135,38 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
   const inTrash = view === 'trash';
   const folders = data?.folders ?? [];
   const docs = data?.docs ?? [];
-  const empty = !loading && data && !folders.length && !docs.length;
-  const openItem = (kind: Kind, item: Item) => { if (inTrash) { setDlg({ t: 'menu', kind, item }); return; } if (kind === 'folder') go(item.id); else setOpenDocId(item.id); };
+  const files = data?.files ?? [];
+  const empty = !loading && data && !folders.length && !docs.length && !files.length;
+  const openFile = async (f: DriveFile) => {
+    try { const j = await api<{ url: string; name: string; type?: string | null }>(`/api/crm/drive/file/${f.id}`); setPreview({ url: j.url, name: f.name, type: j.type ?? f.mime }); }
+    catch (e) { onToast((e as Error).message); }
+  };
+  const downloadFile = async (f: DriveFile) => {
+    try { const j = await api<{ url: string }>(`/api/crm/drive/file/${f.id}?download=1`); window.location.href = j.url; }
+    catch (e) { onToast((e as Error).message); }
+  };
+  const openItem = (kind: Kind, item: Item) => { if (inTrash) { setDlg({ t: 'menu', kind, item }); return; } if (kind === 'folder') go(item.id); else if (kind === 'doc') setOpenDocId(item.id); else void openFile(item as DriveFile); };
+
+  // Upload: the browser PUTs each file straight to storage (signed URL), then the API records it in the current folder.
+  const uploadFiles = async (list: FileList | File[]) => {
+    const parent = view === 'folder' ? folderId : null;
+    const all = Array.from(list);
+    if (!all.length) return;
+    setUploading(n => n + all.length);
+    let ok = 0;
+    for (const file of all) {
+      try {
+        if (file.size > DRIVE_FILE_MAX) throw new Error(`“${file.name}” is over 50 MB`);
+        const pre = await api<{ uploadUrl: string; storagePath: string; contentType: string }>('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'presign', filename: file.name, size: file.size, parent_id: parent }) });
+        const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': pre.contentType }, body: file });
+        if (!put.ok) throw new Error(`Couldn’t upload “${file.name}” — try again`);
+        await api('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'confirm', storagePath: pre.storagePath, filename: file.name, parent_id: parent }) });
+        ok += 1;
+      } catch (e) { onToast((e as Error).message); }
+      finally { setUploading(n => n - 1); }
+    }
+    if (ok) { onToast(ok === 1 ? 'File uploaded' : `${ok} files uploaded`); refresh(); }
+  };
 
   // ── tree ──────────────────────────────────────────────────────────────────
   const kids = useMemo(() => {
@@ -170,10 +208,10 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
     return (
       <div key={`${kind}${it.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '4px 8px 4px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 56 : 46 }}>
         <button type="button" onClick={() => openItem(kind, it)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-          <span style={{ fontSize: 22, flexShrink: 0 }}>{kind === 'folder' ? (it.visibility === 'private' ? '🔒' : it.deal_id ? '💼' : '📁') : '📄'}</span>
+          <span style={{ fontSize: 22, flexShrink: 0 }}>{kind === 'folder' ? (it.visibility === 'private' ? '🔒' : it.deal_id ? '💼' : '📁') : kind === 'file' ? fileIcon(it as DriveFile) : '📄'}</span>
           <span style={{ minWidth: 0, flex: 1 }}>
             <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
-            {(isMobile || snippet) && <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet ?? `${who(it.created_by)} · ${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}`}</span>}
+            {(isMobile || snippet) && <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet ?? `${who(it.created_by)} · ${kind === 'file' && (it as DriveFile).size ? `${fmtSize((it as DriveFile).size)} · ` : ''}${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}`}</span>}
           </span>
         </button>
         {!isMobile && <>
@@ -236,6 +274,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
                   <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 41, minWidth: 190, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.14)', padding: 6 }}>
                     <MenuBtn onClick={() => void createDoc()} icon="📄" label="Document" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'newFolder' }); }} icon="📁" label="Folder" isMobile={isMobile} />
+                    <MenuBtn onClick={() => { setNewOpen(false); fileInput.current?.click(); }} icon="⬆" label="Upload files" isMobile={isMobile} />
                   </div>
                 </>
               )}
@@ -245,29 +284,35 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
         </div>
 
         {/* List */}
-        <div style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, overflow: 'hidden' }}>
-          {!isMobile && (folders.length > 0 || docs.length > 0) && (
+        <div onDragOver={e => { if (!inTrash && view === 'folder' && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)}
+          onDrop={e => { setDragOver(false); if (!inTrash && view === 'folder' && e.dataTransfer.files.length) { e.preventDefault(); void uploadFiles(e.dataTransfer.files); } }}
+          style={{ background: 'var(--k-fff)', border: `1px ${dragOver ? 'dashed' : 'solid'} ${dragOver ? GOLD : '#eef0f2'}`, outline: dragOver ? `3px solid ${GOLD}33` : 'none', borderRadius: 12, overflow: 'hidden' }}>
+          {!isMobile && (folders.length > 0 || docs.length > 0 || files.length > 0) && (
             <div style={{ display: 'flex', gap: 10, padding: '8px 8px 8px 14px', borderBottom: '1px solid var(--k-eef0f2)', fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>
               <span style={{ flex: 1, paddingLeft: 34 }}>Name</span><span style={{ width: 90 }}>Owner</span><span style={{ width: 120 }}>Access</span><span style={{ width: 88 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 34 }} />
             </div>
           )}
           {loading && !data && <div style={{ padding: 28, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>}
+          {uploading > 0 && <div style={{ padding: '10px 16px', fontSize: 13, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', borderBottom: '1px solid var(--k-f0e2c4)' }}>⬆ Uploading {uploading} file{uploading === 1 ? '' : 's'}…</div>}
           {folders.map(f => row('folder', f))}
           {docs.map(d => row('doc', d))}
+          {files.map(f => row('file', f))}
           {empty && (
             <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1.6 }}>
               {view === 'trash' ? 'The trash is empty.' : view === 'search' ? 'Nothing matches that search.' : view === 'recent' ? 'No documents yet.' : (
-                <>This folder is empty.<br />Use <b>＋ New</b> to add a document or a folder.</>
+                <>This folder is empty.<br />Use <b>＋ New</b> to add a document, a folder or a file{isMobile ? '' : ' — or drop files here'}.</>
               )}
             </div>
           )}
         </div>
       </div>
 
+      <input ref={fileInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.txt" onChange={e => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ''; }} />
+
       {/* Dialogs */}
       {dlg?.t === 'newFolder' && <NameDialog title="New folder" cta="Create" initial="" isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void createFolder(name)} />}
       {dlg?.t === 'rename' && <NameDialog title="Rename" cta="Save" initial={nameOf(dlg.kind, dlg.item)} isMobile={isMobile} onClose={() => setDlg(null)}
-        onSubmit={name => void patch(dlg.kind, dlg.item, dlg.kind === 'folder' ? { name } : { title: name }, 'Renamed').then(ok => { if (ok) setDlg(null); })} />}
+        onSubmit={name => void patch(dlg.kind, dlg.item, dlg.kind === 'doc' ? { title: name } : { name }, 'Renamed').then(ok => { if (ok) setDlg(null); })} />}
       {dlg?.t === 'menu' && (
         <Modal title={nameOf(dlg.kind, dlg.item)} isMobile={isMobile} onClose={() => setDlg(null)}>
           {inTrash ? (
@@ -278,6 +323,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
           ) : (
             <>
               <MenuBtn icon="↗" label="Open" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); openItem(d.kind, d.item); }} />
+              {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
               <MenuBtn icon="📁" label="Move to…" isMobile={isMobile} onClick={() => setDlg({ t: 'move', kind: dlg.kind, item: dlg.item })} />
               <MenuBtn icon="👥" label="Share…" isMobile={isMobile} onClick={() => setDlg({ t: 'share', kind: dlg.kind, item: dlg.item })} />
@@ -305,6 +351,8 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
         onPick={dest => void patch(dlg.kind, dlg.item, { move: { parent_id: dest } }, 'Moved').then(ok => { if (ok) setDlg(null); })} />}
       {dlg?.t === 'share' && <ShareDialog kind={dlg.kind} item={dlg.item} people={profiles.filter(p => p.id !== currentUser.id)} can={canManage(dlg.item)} isMobile={isMobile} who={who} onClose={() => setDlg(null)}
         onSave={(visibility, shared_with) => void patch(dlg.kind, dlg.item, { share: { visibility, shared_with } }, 'Sharing updated').then(ok => { if (ok) setDlg(null); })} />}
+
+      {preview && <DocPreviewModal file={preview} onClose={() => setPreview(null)} />}
 
       {openDocId && (
         <LiveDocEditor docId={openDocId} authToken={authToken} user={currentUser} isMobile={isMobile}
