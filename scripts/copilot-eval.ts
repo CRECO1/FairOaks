@@ -82,11 +82,17 @@ const DRIVE_LOOK = tool('t7', 'find_drive_items', {}, { all_folders: [{ id: 'f-1
 // The model also searches for an existing doc before writing a new one (that is what the tool description asks for) — replay both lookups.
 const DRIVE_SEARCHED = tool('t6', 'find_drive_items', { query: 'onboarding' }, { query: 'onboarding', folders: [], documents: [], files: [], forms: [] });
 const DEAL_LOOK = tool('t5', 'get_deal', { deal_id: '88f2a920-4f96-4178-99e6-b78b5a89f1c2' }, { id: '88f2a920-4f96-4178-99e6-b78b5a89f1c2', client: 'Nita Parikh', property: '4946 Center Park Blvd', stage: 'Prospect', type: 'Landlord Listing' });
+const DOC_FOUND = tool('t8', 'find_drive_items', { query: 'tour recap' }, { query: 'tour recap', folders: [], documents: [{ id: '6f1d2c3e-0000-4000-8000-000000000001', title: 'Elkhorn tour recap', updated_at: '2026-11-02T15:00:00Z' }], files: [], forms: [] });
+const DOC_READ = tool('t9', 'read_drive_doc', { doc_id: '6f1d2c3e-0000-4000-8000-000000000001' }, { title: 'Elkhorn tour recap', words: 24, text: 'Elkhorn tour recap\nThe tour is at 10 am on Friday.\nBring the survey\nBring the county summary\nRent is $13/SF NNN.' });
 cases.push(
   { name: 'My Drive: "write a checklist doc" looks first, never sends or starts a form', history: [U('create a new-agent onboarding checklist in My Drive in a folder called Agent Training')], anyOf: ['find_drive_items', 'create_drive_doc'], never: [...SEND_TOOLS, 'start_form', 'create_task'] },
   { name: 'My Drive: after the look, creates the doc with real markdown content', history: [U('create a new-agent onboarding checklist in My Drive in a folder called Agent Training'), ...DRIVE_LOOK, ...DRIVE_SEARCHED], anyOf: ['create_drive_doc'], never: [...SEND_TOOLS, 'start_form'], check: c => { const d = c.find(x => x.name === 'create_drive_doc'); const i = (d?.input ?? {}) as Record<string, any>; return !i.title ? 'no title' : String(i.content ?? '').length < 200 ? 'content too thin' : !/- \[ \]/.test(String(i.content)) ? 'no checklist items in a checklist' : !/agent training/i.test(String(i.folder_path ?? '')) ? `wrong folder: ${i.folder_path}` : null; } },
   { name: 'My Drive: a legal contract goes through forms, not a Drive doc', history: [U('make me a commercial lease agreement for Acme Corp')], never: ['create_drive_doc'] },
   { name: 'My Drive: a doc about a deal is put on that deal card', history: [U('write a short tour recap doc for deal 88f2a920-4f96-4178-99e6-b78b5a89f1c2 (4946 Center Park Blvd) and show it on that deal card. Tour is tomorrow at 10am, bring the survey and the county summary'), ...DEAL_LOOK, ...DRIVE_LOOK, ...DRIVE_SEARCHED], anyOf: ['create_drive_doc'], never: [...SEND_TOOLS, 'start_form'], check: c => { const d = c.find(x => x.name === 'create_drive_doc'); const i = (d?.input ?? {}) as Record<string, any>; return i.deal_id !== '88f2a920-4f96-4178-99e6-b78b5a89f1c2' ? `deal_id not passed: ${i.deal_id}` : null; } },
+  { name: 'My Drive: edit an existing doc reads it first, never makes a new one', history: [U('add a Parking section to the Elkhorn tour recap doc: 40 spaces, 2 handicap'), ...DOC_FOUND], anyOf: ['read_drive_doc', 'edit_drive_doc'], never: [...SEND_TOOLS, 'create_drive_doc', 'start_form'] },
+  { name: 'My Drive: after reading, appends the section (no rewrite)', history: [U('add a Parking section to the Elkhorn tour recap doc: 40 spaces, 2 handicap'), ...DOC_FOUND, ...DOC_READ], anyOf: ['edit_drive_doc'], never: [...SEND_TOOLS, 'create_drive_doc'], check: c => { const d = c.find(x => x.name === 'edit_drive_doc'); const i = (d?.input ?? {}) as Record<string, any>; return i.op !== 'append' ? `op was ${i.op}, wanted append` : !/parking/i.test(String(i.content ?? '')) ? 'content lacks the Parking section' : null; } },
+  { name: 'My Drive: replace one passage with the exact quoted words', history: [U('change the tour time in the Elkhorn tour recap doc to 2 pm Monday'), ...DOC_FOUND, ...DOC_READ], anyOf: ['edit_drive_doc'], never: [...SEND_TOOLS, 'create_drive_doc'], check: c => { const d = c.find(x => x.name === 'edit_drive_doc'); const i = (d?.input ?? {}) as Record<string, any>; return i.op !== 'replace_text' ? `op was ${i.op}, wanted replace_text` : !String(i.find ?? '').includes('10 am') ? `find does not quote the doc: ${i.find}` : null; } },
+  { name: 'My Drive: a vague "make it better" is not an edit', history: [U('make the Elkhorn tour recap doc better'), ...DOC_FOUND], never: [...SEND_TOOLS, 'create_drive_doc', 'edit_drive_doc'] },
   { name: 'My Drive: an agent can use it too (looks first, never sends)', role: 'agent', history: [U('put a leasing script doc in My Drive for the team')], anyOf: ['find_drive_items', 'create_drive_doc'], never: [...SEND_TOOLS, 'start_form'] },
 );
 
@@ -94,7 +100,10 @@ cases.push(
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const names = new Set(TOOLS.map(t => t.name));
   let failed = 0;
-  for (const c of cases) {
+  // EVAL_ONLY=<text in a case name> EVAL_REPEAT=<n> re-runs just those cases n times (the model is not deterministic: a single failure may be noise).
+  const only = process.env.EVAL_ONLY, rep = Math.max(1, Number(process.env.EVAL_REPEAT ?? 1));
+  const run = (only ? cases.filter(c => c.name.includes(only)) : cases).flatMap(c => Array.from({ length: rep }, () => c));
+  for (const c of run) {
     const ctx = ctxFor(c.role ?? 'super_admin');
     const res = await client.messages.create({ model: MODEL, max_tokens: 1500, system: systemPrompt(ctx, 'Zack', null), tools: TOOLS.filter(t => !DRIVE_TOOLS.has(t.name) || canUseDrive(ctx)), messages: c.history });
     const called = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use').map(b => b.name);
@@ -111,6 +120,6 @@ cases.push(
     if (problems.length) failed++;
     console.log(`${problems.length ? 'FAIL' : 'ok  '} ${c.name}${problems.length ? '\n       ' + problems.join('\n       ') + `\n       called: [${called.join(', ')}]\n       said: ${said.slice(0, 300)}` : ''}`);
   }
-  console.log(`\n${cases.length - failed}/${cases.length} passed`);
+  console.log(`\n${run.length - failed}/${run.length} passed`);
   process.exit(failed ? 1 : 0);
 })();

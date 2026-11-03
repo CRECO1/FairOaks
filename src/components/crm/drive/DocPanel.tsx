@@ -402,6 +402,7 @@ function describeEvent(e: DriveDocEvent): string {
   switch (e.kind) {
     case 'created': return d.via === 'template' ? `Created this from the template “${str(d.from)}”` : d.via === 'copy' ? `Created this as a copy of “${str(d.from)}”` : 'Created this document';
     case 'edited': {
+      if (d.via === 'copilot') { const dl = Number(d.chars_after ?? 0) - Number(d.chars_before ?? 0); return `Used the Copilot to ${d.op === 'append' ? 'add text at the end' : d.op === 'rewrite' ? 'rewrite the whole document' : 'replace a passage'} (${dl >= 0 ? '+' : '−'}${Math.abs(dl).toLocaleString()} characters) — a “Before Copilot edit” version was saved`; }
       const before = Number(d.chars_before ?? 0), after = Number(d.chars_after ?? 0), saves = Number(d.saves ?? 1), delta = after - before;
       const change = delta > 0 ? `added about ${delta.toLocaleString()} characters` : delta < 0 ? `removed about ${Math.abs(delta).toLocaleString()} characters` : 'changed the wording or formatting';
       return `Edited the text — ${change}${saves > 1 ? ` (${saves} saves)` : ''}${d.words_after ? ` · now ${Number(d.words_after).toLocaleString()} words` : ''}`;

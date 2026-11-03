@@ -31,7 +31,7 @@ export async function logDocEdit(
 ): Promise<void> {
   try {
     const { data: last } = await admin.from('crm_drive_doc_events').select('id,actor_id,kind,detail,updated_at').eq('doc_id', e.docId).order('created_at', { ascending: false }).limit(1).maybeSingle();
-    if (last && last.kind === 'edited' && last.actor_id === e.actor && Date.now() - new Date(last.updated_at as string).getTime() < EDIT_WINDOW_MS) {
+    if (last && last.kind === 'edited' && !(last.detail as { via?: string } | null)?.via && last.actor_id === e.actor && Date.now() - new Date(last.updated_at as string).getTime() < EDIT_WINDOW_MS) {
       const d = (last.detail ?? {}) as { saves?: number; chars_before?: number };
       await admin.from('crm_drive_doc_events').update({
         detail: { saves: (d.saves ?? 1) + 1, chars_before: d.chars_before ?? e.charsBefore, chars_after: e.charsAfter, words_after: e.wordsAfter }, updated_at: new Date().toISOString(),

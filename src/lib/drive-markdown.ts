@@ -123,6 +123,13 @@ export function markdownToDocJson(markdown: string): PMNode {
 let schemaCache: ReturnType<typeof getSchema> | null = null;
 const schema = () => (schemaCache ??= getSchema(docExtensions()));
 
+/** Markdown → a throwaway Y.Doc holding the converted blocks in its 'default' fragment (for splicing into an existing document). The caller destroys it. */
+export function markdownToYDoc(markdown: string): Y.Doc {
+  const json = markdownToDocJson(markdown);
+  schema().nodeFromJSON(json).check();
+  return prosemirrorJSONToYDoc(schema(), json, 'default');
+}
+
 /**
  * Markdown → the stored form of a Drive document: base64 Yjs state + the plain text used for search. Throws if the result doesn't fit the
  * editor's schema, so a bad conversion can never be saved as a document the editor can't open.

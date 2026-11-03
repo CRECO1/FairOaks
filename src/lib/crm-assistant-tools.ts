@@ -413,11 +413,11 @@ export async function resolveRecord(input: Record<string, any>, ctx: AgentCtx): 
 
 // My Drive (live documents + folders). Rolled out to every role (2026-11-03). Who can open what is decided in the database
 // (crm_drive_can), not here. This stays a function so the tools can be switched off for a role in one place if ever needed.
-export const DRIVE_TOOLS = new Set(['find_drive_items', 'create_drive_folder', 'create_drive_doc', 'link_drive_doc']);
+export const DRIVE_TOOLS = new Set(['find_drive_items', 'read_drive_doc', 'create_drive_folder', 'create_drive_doc', 'edit_drive_doc', 'link_drive_doc']);
 export const canUseDrive = (ctx: AgentCtx) => !!ctx.role;
-export const DRIVE_WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'link_drive_doc']);
+export const DRIVE_WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'edit_drive_doc', 'link_drive_doc']);
 
-export const WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'link_drive_doc', 'create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'prepare_esign', 'send_for_signature', 'send_email', 'schedule_event',
+export const WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'edit_drive_doc', 'link_drive_doc', 'create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'prepare_esign', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
   'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit', 'edit_file', 'enroll_campaign_contacts', 'duplicate_campaign']);
 
@@ -586,6 +586,10 @@ export const TOOLS: Anthropic.Tool[] = [
       letterhead: { type: 'boolean', description: 'CRECO letterhead header/footer. Default true.' },
       deal_id: { type: 'string', description: 'ALWAYS pass this when the document is about a specific deal or the agent asks for it on a deal card: it also shows the new document live on that deal\'s Docs tab. Use an id the agent gave you or one from list_deals / get_deal / open_record.' },
       contact_id: { type: 'string', description: 'ALWAYS pass this when the document is about a specific contact or the agent asks for it on a contact card: it also shows the new document live on that contact\'s card. Use an id the agent gave you or one from search_contacts.' } }, required: ['title', 'content'] } },
+  { name: 'read_drive_doc', description: "Read an existing My Drive document's current text (plain text, headings and paragraphs separated by line breaks). ALWAYS read a document before editing it, so you quote its exact words. Get the id from find_drive_items. Read-only.",
+    input_schema: { type: 'object', properties: { doc_id: { type: 'string', description: 'Document id from find_drive_items or create_drive_doc' } }, required: ['doc_id'] } },
+  { name: 'edit_drive_doc', description: "Edit an EXISTING live My Drive document. op 'append' adds new markdown at the END (the right choice for 'add a section / notes / update'); op 'replace_text' swaps ONE passage — `find` must be the exact words as read_drive_doc showed them and appear once, `replace` is the new text (plain text, formatting at that spot is kept); op 'rewrite' replaces the WHOLE document with new markdown (use only when asked to redo the document). A 'Before Copilot edit' version is saved first, so it can be undone from Version history, and anyone with the document open sees the change appear. Never invent facts, figures or legal terms. Prefer append / replace_text over rewrite. One edit per call. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { doc_id: { type: 'string' }, op: { type: 'string', enum: ['append', 'replace_text', 'rewrite'] }, content: { type: 'string', description: 'append / rewrite: the markdown to add or the whole new document' }, find: { type: 'string', description: 'replace_text: the exact existing passage (unique in the document)' }, replace: { type: 'string', description: 'replace_text: the new text' } }, required: ['doc_id', 'op'] } },
   { name: 'link_drive_doc', description: "Show an EXISTING My Drive document live on a deal's Docs tab or on a contact's card (it is the document itself, not a copy — edits appear there right away). Anyone who can open that deal or contact card can then open and edit it: for a deal that is the people on the deal; for a contact it is everyone in the workspace, so mention that when the document was private. Find the document first with find_drive_items. WRITE — confirm with the agent first.",
     input_schema: { type: 'object', properties: { doc_id: { type: 'string', description: 'Document id from find_drive_items or create_drive_doc' }, deal_id: { type: 'string' }, contact_id: { type: 'string' } }, required: ['doc_id'] } },
   { name: 'open_page', description: `Switch the agent's CRM screen to a section — use it when they ask you to open, show, go to or pull up part of the app. It changes what is on their screen immediately; it does not read or change any data, so just call it. Destinations: ${Object.keys(NAV_DESTINATIONS).join(', ')}.`,
@@ -1304,6 +1308,20 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         }
         return j({ ok: true, shown_on, ...(link_errors.length ? { link_errors, note_links: 'The document was created but could not be shown on every card requested — tell the agent.' } : {}), doc_id: r.data.item.id, title, folder: f.path || 'top level', created_folders: f.created, letterhead: input.letterhead !== false, note: (r.data.item as { visibility?: string }).visibility === 'private' ? 'A live document that only the agent can see for now — they can share it with teammates from My Drive (Share).' : 'A live document — everyone who can see that folder can open and edit it together in My Drive.' });
       }
+      case 'read_drive_doc': {
+        if (!canUseDrive(ctx)) return j({ error: DRIVE_UNAVAILABLE });
+        const r = await crmFetch(ctx, `/api/crm/drive/doc-edit/${encodeURIComponent(String(input.doc_id ?? ''))}`, 'GET', null);
+        if (!r.ok) return j({ error: r.data?.error || 'Could not open that document' });
+        return j({ title: r.data.title, words: r.data.words, text: r.data.text, note: 'This is the plain text. Quote passages exactly when you use replace_text.' });
+      }
+      case 'edit_drive_doc': {
+        if (!canUseDrive(ctx)) return j({ error: DRIVE_UNAVAILABLE });
+        const op = String(input.op ?? '');
+        const r = await crmFetch(ctx, `/api/crm/drive/doc-edit/${encodeURIComponent(String(input.doc_id ?? ''))}`, 'POST', { op, markdown: input.content, find: input.find, replace: input.replace });
+        if (!r.ok) return j({ error: r.data?.error || 'Could not edit that document' });
+        await logCopilot(db, ctx, `Edited a My Drive document (${op})`);
+        return j({ ok: true, op, characters_before: r.data.chars_before, characters_after: r.data.chars_after, note: 'Saved. A “Before Copilot edit” version was kept in Version history, and the change is in the document’s Activity log.' });
+      }
       case 'link_drive_doc': {
         if (!canUseDrive(ctx)) return j({ error: DRIVE_UNAVAILABLE });
         if (!input.deal_id && !input.contact_id) return j({ error: 'Say which deal or contact card it should show on.' });
@@ -1739,6 +1757,13 @@ export async function precheckWrite(name: string, input: Record<string, any>, ct
 }
 
 export async function describeWriteRich(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
+  if (name === 'edit_drive_doc') {
+    const trim = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
+    const base = describeWrite(name, input);
+    if (input.op === 'replace_text') return `${base}\n\n— Replace —\n${trim(String(input.find ?? ''), 700)}\n\n— With —\n${trim(String(input.replace ?? ''), 700)}\n\nA “Before Copilot edit” version is saved first, so you can undo this from Version history.`;
+    const body = String(input.content ?? '').trim();
+    return `${base}\n\n${trim(body, 1500)}${body.length > 1500 ? `\n… (${body.length.toLocaleString()} characters in all)` : ''}\n\nA “Before Copilot edit” version is saved first, so you can undo this from Version history.`;
+  }
   if (name === 'create_drive_doc') {
     const body = String(input.content ?? '').trim();
     return `${describeWrite(name, input)}\n\n${body.slice(0, 1500)}${body.length > 1500 ? `\n… (${body.length.toLocaleString()} characters in all)` : ''}`;
@@ -1879,6 +1904,7 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'generate_lease': return `Generate & file the lease${input.values?.tenant_name ? ` for ${input.values.tenant_name}${input.values.suite ? `, suite ${input.values.suite}` : ''}` : ''}`;
     case 'create_drive_folder': return `📁 Create the My Drive folder “${input.path}” (missing levels are created; sharing follows the folder it goes in)`;
     case 'create_drive_doc': return `📄 Create the live My Drive document “${input.title}” ${input.folder_path ? `in “${input.folder_path}”` : input.folder_id ? 'in the chosen folder' : 'at the top level'} — sharing follows the folder${input.letterhead === false ? '' : ', with the CRECO letterhead'}${input.deal_id || input.contact_id ? `, and show it live on ${input.deal_id ? 'the deal’s Docs tab' : ''}${input.deal_id && input.contact_id ? ' and ' : ''}${input.contact_id ? 'the contact’s card' : ''}` : ''}`;
+    case 'edit_drive_doc': return input.op === 'append' ? '✏️ Add text to the end of a My Drive document' : input.op === 'rewrite' ? '✏️ Rewrite a whole My Drive document (a “Before Copilot edit” version is saved first)' : '✏️ Replace a passage in a My Drive document';
     case 'link_drive_doc': return `🔗 Show this My Drive document live on ${input.deal_id ? 'the deal’s Docs tab' : ''}${input.deal_id && input.contact_id ? ' and ' : ''}${input.contact_id ? 'the contact’s card' : ''} — whoever can open that card can open it`;
     case 'start_form': return `Start a new form document`;
     case 'prepare_esign': return `Place initials / signature / date boxes for ${(input.signers || []).map((x: any) => x.role).join(', ') || 'the signers'} — draft only, nothing is sent`;
