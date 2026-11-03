@@ -232,9 +232,9 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
 
   return (
     <Frame isMobile={isMobile}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 12, padding: isMobile ? '8px 10px' : '10px 18px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)', flexShrink: 0 }}>
+      <header style={{ display: 'flex', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap', rowGap: isMobile ? 4 : 0, gap: isMobile ? 6 : 12, padding: isMobile ? '8px 10px' : '10px 18px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)', flexShrink: 0 }}>
         <button type="button" onClick={onClose} aria-label="Back to Docs" style={{ ...iconBtn(isMobile), fontSize: 18 }}>←</button>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: isMobile ? '1 1 calc(100% - 56px)' : 1, minWidth: 0 }}>
           <input value={title} onChange={e => onTitleInput(e.target.value)} aria-label="Document title" maxLength={300}
             style={{ width: '100%', border: '1px solid transparent', borderRadius: 6, background: 'transparent', fontSize: isMobile ? 16 : 17, fontWeight: 600, color: 'var(--k-1a1a1a)', padding: '3px 6px', fontFamily: "'DM Sans',sans-serif", textOverflow: 'ellipsis' }}
             onFocus={e => (e.currentTarget.style.borderColor = 'var(--k-d1d5db)')} onBlur={e => (e.currentTarget.style.borderColor = 'transparent')} />
