@@ -1265,6 +1265,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   useEffect(() => { setComposeFollowUp(loadFollowUp()); }, []);
   const [composeReq, setComposeReq] = useState<ComposeRequest>(null);
   const [draftCount, setDraftCount] = useState(0);
+  const [gmailDraftCount, setGmailDraftCount] = useState(0); // drafts sitting in Gmail, so the top-bar pill agrees with the Drafts tab
   // Emails page: Inbox · Drafts · Sent. #sent / #drafts / #inbox links land on the right tab.
   const [emailsTab, setEmailsTab] = useState<EmailsTab>(() => {
     if (typeof window === 'undefined') return 'inbox';
@@ -1429,6 +1430,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     document.addEventListener('click', onClick);
     return () => document.removeEventListener('click', onClick);
   }, []);
+
+  useEffect(() => {
+    if (!session?.user.id) return;
+    let live = true;
+    const load = () => { fetch('/api/gmail/drafts?count=1', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => { if (live && j?.connected) setGmailDraftCount(Number(j.count) || 0); }).catch(() => {}); };
+    load();
+    window.addEventListener('focus', load); window.addEventListener('crm-gmail-drafts-changed', load);
+    return () => { live = false; window.removeEventListener('focus', load); window.removeEventListener('crm-gmail-drafts-changed', load); };
+  }, [session?.user.id]);
 
   // Drafts: keep the sidebar count honest, and pull in drafts started on the agent's other devices.
   useEffect(() => { setDraftAuth(session?.access_token); }, [session?.access_token]);
@@ -6016,10 +6026,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button onClick={() => setAssistantOpen(true)} aria-label="Open CRECO Copilot" title="CRECO Copilot"
                   style={{ background: 'rgba(201,146,44,.16)', border: '1px solid rgba(201,146,44,.5)', borderRadius: 8, color: '#c9922c', cursor: 'pointer', fontSize: 19, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✦</button>
               )}
-              {draftCount > 0 && (
-                <button onClick={() => openCompose({ view: 'drafts' })} aria-label={`Drafts (${draftCount})`} title="Drafts"
+              {draftCount + gmailDraftCount > 0 && (
+                <button onClick={() => openCompose({ view: 'drafts' })} aria-label={`Drafts (${draftCount + gmailDraftCount})`} title="Drafts"
                   style={{ position: 'relative', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.85)', cursor: 'pointer', fontSize: 17, padding: 0, lineHeight: 1, width: 44, height: 44, flexShrink: 0 }}>
-                  ✎<span style={{ position: 'absolute', top: 3, right: 3, background: '#c9922c', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, lineHeight: '16px', borderRadius: 8 }}>{draftCount}</span>
+                  ✎<span style={{ position: 'absolute', top: 3, right: 3, background: '#c9922c', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, lineHeight: '16px', borderRadius: 8 }}>{draftCount + gmailDraftCount}</span>
                 </button>
               )}
               <button onClick={() => { setShowSearch(true); setSearchQuery(''); }} aria-label="Search"
@@ -6161,10 +6171,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 600, flex: 1, color: 'var(--c-ink)' }}>
             {pageLabel[page]}
           </h2>
-          {draftCount > 0 && (
-            <button onClick={() => openCompose({ view: 'drafts' })} title="Your saved email drafts" aria-label={`Drafts (${draftCount})`}
+          {draftCount + gmailDraftCount > 0 && (
+            <button onClick={() => openCompose({ view: 'drafts' })} title="Your saved email drafts" aria-label={`Drafts (${draftCount + gmailDraftCount})`}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 22, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 600 }}>
-              ✎ Drafts <span style={{ background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '0 7px', borderRadius: 10, lineHeight: '18px' }}>{draftCount}</span>
+              ✎ Drafts <span style={{ background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '0 7px', borderRadius: 10, lineHeight: '18px' }}>{draftCount + gmailDraftCount}</span>
             </button>
           )}
           {/* Global search trigger */}

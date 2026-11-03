@@ -745,7 +745,7 @@ export default function GmailMailbox(p: Props) {
       {threads === null ? <ListSkeleton />
       : !connected ? <Empty title="Gmail isn’t connected" sub="Connect your Google account (bottom of the sidebar) and your mail shows up here." />
       : err ? <Empty title="Couldn’t load your mail" sub={err} />
-      : visible.length === 0 ? <Empty title={term || contactsOnly || filter !== 'all' ? 'Nothing matches' : p.box === 'inbox' ? 'You’re all caught up' : 'Nothing here yet'} sub={contactsOnly && threads.length ? 'None of the loaded conversations are with people in your CRM — try “Load older mail”.' : term ? 'Try different words.' : 'Nothing to show.'} />
+      : visible.length === 0 ? <Empty title={term || contactsOnly || filter !== 'all' ? 'Nothing matches' : p.box === 'inbox' ? 'You’re all caught up 🎉' : 'No sent mail yet'} sub={contactsOnly && threads.length ? 'None of the loaded conversations are with people in your CRM — try “Load older mail”.' : term ? 'Try different words, or clear a filter.' : filter !== 'all' ? 'Nothing matches this filter. Choose “All” to see everything.' : p.box === 'inbox' ? 'No new mail right now. Enjoy the quiet.' : 'Emails you send from the CRM or Gmail show up here.'} />
       : (
         <div className={`gm-list${sel.size ? ' gm-sel' : ''}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
           {visible.map((t, i) => {
@@ -1359,7 +1359,7 @@ function ThreadReader(p: {
               style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>Gmail ↗</a>
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, false, p.account)} title="Reply (r)">↩ Reply</button>
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, true, p.account)} title="Reply all (a)">↩↩ All</button>
-            <button type="button" style={btn} onClick={() => p.onForward(last, p.t.id, p.account)} title="Forward (f)">↪</button>
+            <button type="button" style={btn} onClick={() => p.onForward(last, p.t.id, p.account)} title="Forward (f)">↪ Forward</button>
             <div style={{ position: 'relative' }}>
               <button type="button" style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy || !msgs?.length} onClick={() => setAiOpen(v => !v)} aria-haspopup="menu" aria-expanded={aiOpen} title="AI help with this conversation">{aiBusy ? (aiBusy === 'summarize' ? '✨ Reading…' : '✨ Writing…') : '✨ AI'}</button>
               {aiOpen && (
