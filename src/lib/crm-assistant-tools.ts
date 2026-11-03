@@ -413,11 +413,11 @@ export async function resolveRecord(input: Record<string, any>, ctx: AgentCtx): 
 
 // My Drive (live documents + folders). Rolled out to every role (2026-11-03). Who can open what is decided in the database
 // (crm_drive_can), not here. This stays a function so the tools can be switched off for a role in one place if ever needed.
-export const DRIVE_TOOLS = new Set(['find_drive_items', 'create_drive_folder', 'create_drive_doc']);
+export const DRIVE_TOOLS = new Set(['find_drive_items', 'create_drive_folder', 'create_drive_doc', 'link_drive_doc']);
 export const canUseDrive = (ctx: AgentCtx) => !!ctx.role;
-export const DRIVE_WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc']);
+export const DRIVE_WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'link_drive_doc']);
 
-export const WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'prepare_esign', 'send_for_signature', 'send_email', 'schedule_event',
+export const WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'link_drive_doc', 'create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'prepare_esign', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
   'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit', 'edit_file', 'enroll_campaign_contacts', 'duplicate_campaign']);
 
@@ -583,7 +583,11 @@ export const TOOLS: Anthropic.Tool[] = [
   { name: 'create_drive_doc', description: "Write a new live document into My Drive and put it in a folder, so whoever can see that folder can open it and edit it together. Write the WHOLE document yourself in `content` as markdown: # / ## / ### headings, paragraphs, **bold**, *italic*, [links](https://…), - bullet lists (nest with indentation), 1. numbered lists, - [ ] checklists (- [x] ticked), > quotes, | tables |, --- rules. No placeholder text and no invented facts, figures, names or legal terms — use what the agent told you or what the CRM records say, and leave a clearly marked blank (e.g. “____”) for anything unknown. Documents carry the CRECO letterhead (logo header and footer, also on the PDF) unless letterhead is false. Sharing: a document in an existing folder takes that folder's sharing; at the top level, or in a folder the agent just created, an agent's document is private to them until they share it from My Drive. Check find_drive_items first so you don't duplicate a document or folder. WRITE — confirm with the agent first.",
     input_schema: { type: 'object', properties: { title: { type: 'string', description: 'Document title (shown in the folder list)' }, content: { type: 'string', description: 'The full document, as markdown' },
       folder_path: { type: 'string', description: 'Where to put it, e.g. "Agent Training/Leasing" — missing folders are created. Omit for the top level.' }, folder_id: { type: 'string', description: 'Alternative to folder_path: an existing folder id from find_drive_items' },
-      letterhead: { type: 'boolean', description: 'CRECO letterhead header/footer. Default true.' } }, required: ['title', 'content'] } },
+      letterhead: { type: 'boolean', description: 'CRECO letterhead header/footer. Default true.' },
+      deal_id: { type: 'string', description: 'ALWAYS pass this when the document is about a specific deal or the agent asks for it on a deal card: it also shows the new document live on that deal\'s Docs tab. Use an id the agent gave you or one from list_deals / get_deal / open_record.' },
+      contact_id: { type: 'string', description: 'ALWAYS pass this when the document is about a specific contact or the agent asks for it on a contact card: it also shows the new document live on that contact\'s card. Use an id the agent gave you or one from search_contacts.' } }, required: ['title', 'content'] } },
+  { name: 'link_drive_doc', description: "Show an EXISTING My Drive document live on a deal's Docs tab or on a contact's card (it is the document itself, not a copy — edits appear there right away). Anyone who can open that deal or contact card can then open and edit it: for a deal that is the people on the deal; for a contact it is everyone in the workspace, so mention that when the document was private. Find the document first with find_drive_items. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { doc_id: { type: 'string', description: 'Document id from find_drive_items or create_drive_doc' }, deal_id: { type: 'string' }, contact_id: { type: 'string' } }, required: ['doc_id'] } },
   { name: 'open_page', description: `Switch the agent's CRM screen to a section — use it when they ask you to open, show, go to or pull up part of the app. It changes what is on their screen immediately; it does not read or change any data, so just call it. Destinations: ${Object.keys(NAV_DESTINATIONS).join(', ')}.`,
     input_schema: { type: 'object', properties: { destination: { type: 'string', enum: Object.keys(NAV_DESTINATIONS), description: 'Which section to open' } }, required: ['destination'] } },
   { name: 'open_record', description: "Put one specific deal (optionally on a tab: overview, client, emails, docs, esign, intel, commission) or one contact's card on the agent's screen — use it when they ask where something is, or to open, show or pull up a deal, its documents or a contact. A document, LOI or exhibit lives on its deal's Docs tab, so open that deal with tab 'docs'. It changes only what is on screen (no data), so just call it — don't ask first and don't describe where to click.",
@@ -1291,7 +1295,26 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const r = await crmFetch(ctx, '/api/crm/drive', 'POST', { type: 'doc', title, parent_id: f.id, markdown: content, letterhead: input.letterhead !== false });
         if (!r.ok || !r.data?.item?.id) return j({ error: r.data?.error || 'Could not create the document' });
         await logCopilot(db, ctx, `Created My Drive document “${title}”${f.path ? ` in ${f.path}` : ''}`);
-        return j({ ok: true, doc_id: r.data.item.id, title, folder: f.path || 'top level', created_folders: f.created, letterhead: input.letterhead !== false, note: (r.data.item as { visibility?: string }).visibility === 'private' ? 'A live document that only the agent can see for now — they can share it with teammates from My Drive (Share).' : 'A live document — everyone who can see that folder can open and edit it together in My Drive.' });
+        const shown_on: string[] = [], link_errors: string[] = [];
+        for (const t of [['deal_id', input.deal_id, 'deal'], ['client_id', input.contact_id, 'contact']] as const) {
+          if (!t[1]) continue;
+          const lk = await crmFetch(ctx, '/api/crm/drive/links', 'POST', { doc_id: r.data.item.id, [t[0]]: String(t[1]) });
+          if (lk.ok) { shown_on.push(`the ${t[2]}’s card`); await logCopilot(db, ctx, `Linked My Drive document “${title}” to a ${t[2]}`); }
+          else link_errors.push(`${t[2]}: ${lk.data?.error || 'could not link it'}`);
+        }
+        return j({ ok: true, shown_on, ...(link_errors.length ? { link_errors, note_links: 'The document was created but could not be shown on every card requested — tell the agent.' } : {}), doc_id: r.data.item.id, title, folder: f.path || 'top level', created_folders: f.created, letterhead: input.letterhead !== false, note: (r.data.item as { visibility?: string }).visibility === 'private' ? 'A live document that only the agent can see for now — they can share it with teammates from My Drive (Share).' : 'A live document — everyone who can see that folder can open and edit it together in My Drive.' });
+      }
+      case 'link_drive_doc': {
+        if (!canUseDrive(ctx)) return j({ error: DRIVE_UNAVAILABLE });
+        if (!input.deal_id && !input.contact_id) return j({ error: 'Say which deal or contact card it should show on.' });
+        const done: string[] = [], errs: string[] = [];
+        for (const t of [['deal_id', input.deal_id, 'deal'], ['client_id', input.contact_id, 'contact']] as const) {
+          if (!t[1]) continue;
+          const lk = await crmFetch(ctx, '/api/crm/drive/links', 'POST', { doc_id: String(input.doc_id), [t[0]]: String(t[1]) });
+          if (lk.ok) { done.push(lk.data?.already ? `already on the ${t[2]}’s card` : `now live on the ${t[2]}’s card`); await logCopilot(db, ctx, `Linked a My Drive document to a ${t[2]}`); }
+          else errs.push(`${t[2]}: ${lk.data?.error || 'could not link it'}`);
+        }
+        return j(errs.length ? { error: errs.join('; '), done } : { ok: true, done, note: 'It is the live document itself, so edits show on the card right away.' });
       }
       case 'start_form': {
         const { data: form } = await db.from('crm_forms').select('name').eq('id', input.form_id).single();
@@ -1855,7 +1878,8 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'update_deal': return `Update the deal's ${Object.keys(input).filter(k => k !== 'deal_id').map(k => k.replace(/_/g, ' ')).join(', ') || 'details'}`;
     case 'generate_lease': return `Generate & file the lease${input.values?.tenant_name ? ` for ${input.values.tenant_name}${input.values.suite ? `, suite ${input.values.suite}` : ''}` : ''}`;
     case 'create_drive_folder': return `📁 Create the My Drive folder “${input.path}” (missing levels are created; sharing follows the folder it goes in)`;
-    case 'create_drive_doc': return `📄 Create the live My Drive document “${input.title}” ${input.folder_path ? `in “${input.folder_path}”` : input.folder_id ? 'in the chosen folder' : 'at the top level'} — sharing follows the folder${input.letterhead === false ? '' : ', with the CRECO letterhead'}`;
+    case 'create_drive_doc': return `📄 Create the live My Drive document “${input.title}” ${input.folder_path ? `in “${input.folder_path}”` : input.folder_id ? 'in the chosen folder' : 'at the top level'} — sharing follows the folder${input.letterhead === false ? '' : ', with the CRECO letterhead'}${input.deal_id || input.contact_id ? `, and show it live on ${input.deal_id ? 'the deal’s Docs tab' : ''}${input.deal_id && input.contact_id ? ' and ' : ''}${input.contact_id ? 'the contact’s card' : ''}` : ''}`;
+    case 'link_drive_doc': return `🔗 Show this My Drive document live on ${input.deal_id ? 'the deal’s Docs tab' : ''}${input.deal_id && input.contact_id ? ' and ' : ''}${input.contact_id ? 'the contact’s card' : ''} — whoever can open that card can open it`;
     case 'start_form': return `Start a new form document`;
     case 'prepare_esign': return `Place initials / signature / date boxes for ${(input.signers || []).map((x: any) => x.role).join(', ') || 'the signers'} — draft only, nothing is sent`;
     case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => [s.name, s.email && `<${s.email}>`].filter(Boolean).join(' ')).join(', ')} — this emails them the document`;
