@@ -566,15 +566,17 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
           {emailInitials(e.from_email)}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            <div onClick={() => setOpen(false)} title="Fold this message" style={{ cursor: 'pointer', minWidth: 0 }}>
+          {/* Sender block takes a full row of its own on a phone and the opened chip / date / reply buttons wrap beneath it —
+              the right-hand group can't shrink, so on a 360px screen it used to squeeze the address into a one-letter-wide column. */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: isMobile ? '2px 8px' : 8, flexWrap: 'wrap' }}>
+            <div onClick={() => setOpen(false)} title="Fold this message" style={{ cursor: 'pointer', minWidth: 0, flex: isMobile ? '1 1 100%' : '1 1 auto' }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{emailDisplayName(e.from_email)}</span>
-              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', ...(isMobile ? { display: 'block' } : { marginLeft: 5 }), overflowWrap: 'anywhere' }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
+              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', ...(isMobile ? { display: 'block' } : { marginLeft: 5 }), overflowWrap: 'break-word', wordBreak: 'break-word' }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', ...(isMobile ? { width: '100%' } : { flexShrink: 0 }) }}>
               {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
               {e.direction === 'sent' && !e.opened_at && e.tracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
-              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{e.email_date}</span>
+              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', ...(isMobile ? { marginRight: 'auto' } : {}) }}>{e.email_date}</span>
               {onReply && <span role="button" tabIndex={0} aria-label="Reply to this message" title="Reply to this message" onClick={onReply} onKeyDown={ev => { if (ev.key === 'Enter') onReply(); }}
                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)' }}>↩</span>}
               {onReplyAll && <span role="button" tabIndex={0} aria-label="Reply all to this message" title="Reply all to this message" onClick={onReplyAll} onKeyDown={ev => { if (ev.key === 'Enter') onReplyAll(); }}
