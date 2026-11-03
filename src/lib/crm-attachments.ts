@@ -55,6 +55,32 @@ async function dealItems(dealId: string): Promise<CrmAttachItem[]> {
   return items;
 }
 
+/** Live My Drive documents linked straight to a CONTACT's card (as the latest PDF), as one group. Empty when there are none. */
+async function clientLiveGroup(clientId: string): Promise<CrmAttachGroup[]> {
+  const db = adminClient();
+  const [{ data: links }, { data: c }] = await Promise.all([
+    db.from('crm_drive_doc_links').select('doc_id, crm_drive_docs(id, title, trashed_at, ystate)').eq('client_id', clientId).order('created_at', { ascending: false }),
+    db.from('crm_clients').select('first_name, last_name, business_name').eq('id', clientId).maybeSingle(),
+  ]);
+  const items: CrmAttachItem[] = [];
+  for (const l of links ?? []) {
+    const raw = l.crm_drive_docs as unknown as { id: string; title: string; trashed_at: string | null; ystate: string | null } | Array<{ id: string; title: string; trashed_at: string | null; ystate: string | null }> | null;
+    const d = Array.isArray(raw) ? raw[0] : raw;
+    if (d && !d.trashed_at && d.ystate) items.push({ kind: 'drive_doc', id: d.id, name: `${clean(d.title, 'Document')}.pdf`, size: null, type: 'application/pdf', sub: 'Live document — sent as its latest version' });
+  }
+  if (!items.length) return [];
+  const who = [[c?.first_name, c?.last_name].filter(Boolean).join(' '), c?.business_name].filter(Boolean).join(' · ') || 'This contact';
+  return [{ dealId: `client:${clientId}`, title: `${who} — live documents`, items }];
+}
+
+/** May this caller open the contact's card? (workspace rule, and a held lead only for its owner and the super admin) */
+async function canOpenClient(ctx: CrmContext, clientId: string): Promise<boolean> {
+  if (!(await assertOwnsResource('crm_clients', clientId, ctx))) return false;
+  if (ctx.role === 'super_admin') return true;
+  const { data: c } = await adminClient().from('crm_clients').select('lead_hold, agent_id').eq('id', clientId).maybeSingle();
+  return !(c?.lead_hold && c.agent_id !== ctx.userId);
+}
+
 /** Groups of attachable documents for these deals (hidden/Restricted ones left out, deals with nothing on them skipped). */
 async function groupsFor(ctx: CrmContext, deals: Array<{ id: unknown; client: unknown; property: unknown }>): Promise<CrmAttachGroup[]> {
   const hidden = new Set(await hiddenDealIds(ctx));
@@ -81,7 +107,8 @@ export async function listAttachables(ctx: CrmContext, opts: { dealId?: string; 
   if (opts.clientId) {
     if (!(await assertOwnsResource('crm_clients', opts.clientId, ctx))) return null;
     const { data: deals } = await db.from('crm_deals').select('id, client, property').eq('client_id', opts.clientId).limit(10);
-    return groupsFor(ctx, deals ?? []);
+    const live = (await canOpenClient(ctx, opts.clientId)) ? await clientLiveGroup(opts.clientId) : [];
+    return [...live, ...(await groupsFor(ctx, deals ?? []))];
   }
   if (opts.email) {
     const { data: clients } = await db.from('crm_clients').select('id').ilike('email', opts.email.trim().replace(/[%_\\]/g, m => '\\' + m)).limit(5);
@@ -89,7 +116,9 @@ export async function listAttachables(ctx: CrmContext, opts: { dealId?: string; 
     for (const c of clients ?? []) if (await assertOwnsResource('crm_clients', c.id as string, ctx)) ids.push(c.id as string);
     if (!ids.length) return [];
     const { data: deals } = await db.from('crm_deals').select('id, client, property').in('client_id', ids).order('updated_at', { ascending: false }).limit(10);
-    return groupsFor(ctx, deals ?? []);
+    const live: CrmAttachGroup[] = [];
+    for (const id of ids) if (await canOpenClient(ctx, id)) live.push(...(await clientLiveGroup(id)));
+    return [...live, ...(await groupsFor(ctx, deals ?? []))];
   }
   if (opts.q && opts.q.trim().length >= 2) {
     const term = opts.q.trim().replace(/[%_\\,()]/g, ' ').slice(0, 60);
@@ -124,10 +153,12 @@ export async function resolveCrmAttachments(refs: CrmAttachRef[], ctx: CrmContex
       name = d.name as string; mimeType = (d.file_type as string) || 'application/octet-stream';
       bytes = await fetchBytes(DEAL_DOCS, d.storage_path as string);
     } else if (ref.kind === 'drive_doc') {
-      // A live My Drive document, authorized by a deal it is linked to (the same card rule as opening it there).
-      const { data: links } = await db.from('crm_drive_doc_links').select('deal_id').eq('doc_id', ref.id).not('deal_id', 'is', null);
+      // A live My Drive document, authorized by a deal or contact it is linked to (the same card rule as opening it there).
+      const { data: links } = await db.from('crm_drive_doc_links').select('deal_id, client_id').eq('doc_id', ref.id);
       let ok = false;
-      for (const l of links ?? []) if (await assertOwnsResource('crm_deals', l.deal_id as string, ctx)) { ok = true; break; }
+      for (const l of links ?? []) {
+        if (l.deal_id ? await assertOwnsResource('crm_deals', l.deal_id as string, ctx) : l.client_id ? await canOpenClient(ctx, l.client_id as string) : false) { ok = true; break; }
+      }
       const pdf = ok ? await driveDocPdf(ref.id) : null;
       if (!pdf) return { ok: false, status: 404, error: 'A live document you picked is no longer available' };
       name = pdf.name; bytes = Buffer.from(pdf.bytes);
