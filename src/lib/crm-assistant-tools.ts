@@ -38,7 +38,7 @@ async function crmFetch(ctx: AgentCtx, path: string, method: string, body: unkno
       // so the copilot identifies itself with the shared secret.
       ...(process.env.CRON_SECRET ? { 'x-crm-internal': process.env.CRON_SECRET } : {}),
     },
-    body: JSON.stringify(body),
+    ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
   });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };
@@ -354,6 +354,7 @@ export const NAV_DESTINATIONS: Record<string, NavTarget> = {
   action_plans:     { page: 'action-plans',     label: 'Action Plans' },
   social:           { page: 'social',           label: 'Social' },
   transaction_docs: { page: 'transaction-docs', label: 'Transaction Docs' },
+  my_drive:         { page: 'transaction-docs', label: 'My Drive' },
   esign:            { page: 'esign',            label: 'E-Sign' },
   calls:            { page: 'calls',            label: 'Calls' },
   activity:         { page: 'activity',         label: 'Activity' },
@@ -410,7 +411,13 @@ export async function resolveRecord(input: Record<string, any>, ctx: AgentCtx): 
   return { error: 'kind must be "deal" or "contact"' };
 }
 
-export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'prepare_esign', 'send_for_signature', 'send_email', 'schedule_event',
+// My Drive (live documents + folders). Same rule as the page itself: it is a beta tab for the owner until it is rolled out, so the
+// agent's Copilot only gets these tools when My Drive is on their screen — otherwise it would file documents nobody can open.
+export const DRIVE_TOOLS = new Set(['find_drive_items', 'create_drive_folder', 'create_drive_doc']);
+export const canUseDrive = (ctx: AgentCtx) => ctx.role === 'super_admin';
+export const DRIVE_WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc']);
+
+export const WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'prepare_esign', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
   'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit', 'edit_file', 'enroll_campaign_contacts', 'duplicate_campaign']);
 
@@ -569,6 +576,14 @@ export const TOOLS: Anthropic.Tool[] = [
       fields: { type: 'object', description: 'Letter-level fields: loiDate, addresseeName, addresseeAddr1, addresseeAddr2, reLine, additionalTerms, intro, subtitle, agentName, agentEmail, agentPhone.' },
       signers: { type: 'array', description: 'Acceptance blocks by position (first = first block)', items: { type: 'object', properties: { entity: { type: 'string' }, signatory: { type: 'string' } } } },
     }, required: ['submission_id'] } },
+  { name: 'find_drive_items', description: "Look around My Drive (the team's folders of live documents): with no arguments it returns every folder path plus what is at the top level; pass folder_id to list one folder's contents, or query to search folder names, document titles and document text. Use it before creating anything, to check the folder or document doesn't already exist and to find the right place for a new one. Read-only.",
+    input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Search text (2+ characters)' }, folder_id: { type: 'string', description: 'List this folder (id from an earlier result)' } } } },
+  { name: 'create_drive_folder', description: "Create a folder in My Drive (and any missing levels above it), visible to the whole team. Give the full path, e.g. \"Agent Training\" or \"Agent Training/Leasing\" — levels that already exist are reused, so it is safe to name an existing parent. Use it when the agent asks for a folder on its own; when you are about to create a document, create_drive_doc's folder_path creates the folders for you. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Folder path, levels separated by "/"' } }, required: ['path'] } },
+  { name: 'create_drive_doc', description: "Write a new live document into My Drive and put it in a folder, so the team can open it and edit it together. Write the WHOLE document yourself in `content` as markdown: # / ## / ### headings, paragraphs, **bold**, *italic*, [links](https://…), - bullet lists (nest with indentation), 1. numbered lists, - [ ] checklists (- [x] ticked), > quotes, | tables |, --- rules. No placeholder text and no invented facts, figures, names or legal terms — use what the agent told you or what the CRM records say, and leave a clearly marked blank (e.g. “____”) for anything unknown. Documents carry the CRECO letterhead (logo header and footer, also on the PDF) unless letterhead is false. It is visible to the whole team. Check find_drive_items first so you don't duplicate a document or folder. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { title: { type: 'string', description: 'Document title (shown in the folder list)' }, content: { type: 'string', description: 'The full document, as markdown' },
+      folder_path: { type: 'string', description: 'Where to put it, e.g. "Agent Training/Leasing" — missing folders are created. Omit for the top level.' }, folder_id: { type: 'string', description: 'Alternative to folder_path: an existing folder id from find_drive_items' },
+      letterhead: { type: 'boolean', description: 'CRECO letterhead header/footer. Default true.' } }, required: ['title', 'content'] } },
   { name: 'open_page', description: `Switch the agent's CRM screen to a section — use it when they ask you to open, show, go to or pull up part of the app. It changes what is on their screen immediately; it does not read or change any data, so just call it. Destinations: ${Object.keys(NAV_DESTINATIONS).join(', ')}.`,
     input_schema: { type: 'object', properties: { destination: { type: 'string', enum: Object.keys(NAV_DESTINATIONS), description: 'Which section to open' } }, required: ['destination'] } },
   { name: 'open_record', description: "Put one specific deal (optionally on a tab: overview, client, emails, docs, esign, intel, commission) or one contact's card on the agent's screen — use it when they ask where something is, or to open, show or pull up a deal, its documents or a contact. A document, LOI or exhibit lives on its deal's Docs tab, so open that deal with tab 'docs'. It changes only what is on screen (no data), so just call it — don't ask first and don't describe where to click.",
@@ -652,6 +667,52 @@ function applyFields(values: unknown, wanted: Record<string, string>)
   return { values: list, applied, unmatched };
 }
 
+
+// ── My Drive helpers ──────────────────────────────────────────────────────────────
+// Every call goes through the CRM's own /api/crm/drive routes as the agent, so the Drive access rule (crm_drive_can) decides what is
+// visible and where a new item may go — the Copilot never touches the tables directly.
+type DriveFolderRow = { id: string; parent_id: string | null; name: string };
+const DRIVE_UNAVAILABLE = 'My Drive is not switched on for this account yet.';
+
+async function driveTree(ctx: AgentCtx): Promise<DriveFolderRow[] | null> {
+  const r = await crmFetch(ctx, '/api/crm/drive?view=tree', 'GET', null);
+  return r.ok ? ((r.data?.folders ?? []) as DriveFolderRow[]) : null;
+}
+function drivePathOf(tree: DriveFolderRow[], id: string | null): string {
+  const names: string[] = [];
+  for (let cur = id, n = 0; cur && n < 25; n++) {
+    const f = tree.find(x => x.id === cur);
+    if (!f) break;
+    names.unshift(f.name);
+    cur = f.parent_id;
+  }
+  return names.join(' / ');
+}
+const driveParts = (p: unknown) => String(p ?? '').split('/').map(x => x.trim().replace(/\s+/g, ' ').slice(0, 120)).filter(Boolean).slice(0, 6);
+
+/** Find (or, with create=true, build) a folder path. id null = the top level. */
+async function resolveDriveFolder(ctx: AgentCtx, a: { folder_id?: unknown; folder_path?: unknown }, create: boolean): Promise<{ id: string | null; path: string; created: string[] } | { error: string }> {
+  const tree = await driveTree(ctx);
+  if (!tree) return { error: 'Could not read My Drive' };
+  if (a.folder_id) {
+    const id = String(a.folder_id);
+    if (!tree.some(f => f.id === id)) return { error: 'That folder is not in My Drive (or is not available to you)' };
+    return { id, path: drivePathOf(tree, id), created: [] };
+  }
+  let parent: string | null = null;
+  const created: string[] = [];
+  for (const part of driveParts(a.folder_path)) {
+    const hit = tree.find(f => (f.parent_id ?? null) === parent && f.name.toLowerCase() === part.toLowerCase());
+    if (hit) { parent = hit.id; continue; }
+    if (!create) return { error: `There is no folder “${part}”${parent ? ` inside “${drivePathOf(tree, parent)}”` : ''} in My Drive` };
+    const r = await crmFetch(ctx, '/api/crm/drive', 'POST', { type: 'folder', name: part, parent_id: parent });
+    if (!r.ok || !r.data?.item?.id) return { error: r.data?.error || `Could not create the folder “${part}”` };
+    tree.push({ id: r.data.item.id, parent_id: parent, name: r.data.item.name ?? part });
+    parent = r.data.item.id;
+    created.push(part);
+  }
+  return { id: parent, path: drivePathOf(tree, parent), created };
+}
 
 export async function runTool(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
   const db = admin();
@@ -1194,6 +1255,44 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         await logCopilot(db, ctx, `Generated lease document “${r.data.submission?.title ?? ''}”`, r.data.submission?.client_id);
         return j({ ok: true, submission: r.data.submission });
       }
+      case 'find_drive_items': {
+        if (!canUseDrive(ctx)) return j({ error: DRIVE_UNAVAILABLE });
+        const q = String(input.query ?? '').trim();
+        const pick = (l: any) => ({ folders: (l.folders ?? []).map((f: any) => ({ id: f.id, name: f.name, visibility: f.visibility })), documents: (l.docs ?? []).map((d: any) => ({ id: d.id, title: d.title, ...(d.snippet ? { snippet: d.snippet } : {}), updated_at: d.updated_at })), files: (l.files ?? []).map((f: any) => ({ id: f.id, name: f.name })), forms: (l.forms ?? []).map((f: any) => ({ id: f.id, title: f.title })) });
+        if (q.length >= 2) {
+          const r = await crmFetch(ctx, `/api/crm/drive?view=search&q=${encodeURIComponent(q)}`, 'GET', null);
+          if (!r.ok) return j({ error: r.data?.error || 'Could not search My Drive' });
+          return j({ query: q, ...pick(r.data) });
+        }
+        const [tree, r] = await Promise.all([driveTree(ctx), crmFetch(ctx, `/api/crm/drive?view=folder&folder=${encodeURIComponent(String(input.folder_id || 'root'))}`, 'GET', null)]);
+        if (!r.ok || !tree) return j({ error: r.data?.error || 'Could not read My Drive' });
+        return j({ all_folders: tree.slice(0, 120).map(f => ({ id: f.id, path: drivePathOf(tree, f.id) })), showing: input.folder_id ? drivePathOf(tree, String(input.folder_id)) : 'top level', ...pick(r.data) });
+      }
+      case 'create_drive_folder': {
+        if (!canUseDrive(ctx)) return j({ error: DRIVE_UNAVAILABLE });
+        if (!driveParts(input.path).length) return j({ error: 'Give the folder path, e.g. "Agent Training/Leasing".' });
+        const f = await resolveDriveFolder(ctx, { folder_path: input.path }, true);
+        if ('error' in f) return j({ error: f.error });
+        if (f.created.length) await logCopilot(db, ctx, `Created My Drive folder “${f.path}”`);
+        return j({ ok: true, folder_id: f.id, path: f.path, created: f.created, already_existed: f.created.length === 0 });
+      }
+      case 'create_drive_doc': {
+        if (!canUseDrive(ctx)) return j({ error: DRIVE_UNAVAILABLE });
+        const title = String(input.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+        const content = String(input.content ?? '');
+        if (!title) return j({ error: 'The document needs a title.' });
+        if (content.trim().length < 3) return j({ error: 'The document has no content — write the full text in `content`.' });
+        const f = await resolveDriveFolder(ctx, { folder_id: input.folder_id, folder_path: input.folder_path }, true);
+        if ('error' in f) return j({ error: f.error });
+        // Retry guard: a document with this exact title already sitting in that folder is the same job done twice.
+        const here = await crmFetch(ctx, `/api/crm/drive?view=folder&folder=${f.id ?? 'root'}`, 'GET', null);
+        const twin = (here.data?.docs ?? []).find((d: any) => String(d.title).trim().toLowerCase() === title.toLowerCase());
+        if (twin) return j({ error: `A document called “${title}” is already in ${f.path || 'the top level of My Drive'} (id ${twin.id}) — not creating a duplicate. Pick a different title if this is a different document.`, existing_id: twin.id });
+        const r = await crmFetch(ctx, '/api/crm/drive', 'POST', { type: 'doc', title, parent_id: f.id, markdown: content, letterhead: input.letterhead !== false });
+        if (!r.ok || !r.data?.item?.id) return j({ error: r.data?.error || 'Could not create the document' });
+        await logCopilot(db, ctx, `Created My Drive document “${title}”${f.path ? ` in ${f.path}` : ''}`);
+        return j({ ok: true, doc_id: r.data.item.id, title, folder: f.path || 'top level', created_folders: f.created, letterhead: input.letterhead !== false, note: 'A live document — the team can open and edit it together in My Drive.' });
+      }
       case 'start_form': {
         const { data: form } = await db.from('crm_forms').select('name').eq('id', input.form_id).single();
         const r = await crmFetch(ctx, '/api/crm/form-submissions', 'POST', { form_id: input.form_id, deal_id: input.deal_id ?? null, business_unit: ctx.businessUnit ?? 'commercial', title: form?.name ?? 'Form', values: [] });
@@ -1617,6 +1716,10 @@ export async function precheckWrite(name: string, input: Record<string, any>, ct
 }
 
 export async function describeWriteRich(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
+  if (name === 'create_drive_doc') {
+    const body = String(input.content ?? '').trim();
+    return `${describeWrite(name, input)}\n\n${body.slice(0, 1500)}${body.length > 1500 ? `\n… (${body.length.toLocaleString()} characters in all)` : ''}`;
+  }
   if (name === 'send_email') {
     try {
       const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -1751,6 +1854,8 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'remove_contacts_from_deal': return `Remove ${(input.contact_ids ?? []).length} contact${(input.contact_ids ?? []).length === 1 ? '' : 's'} from the deal`;
     case 'update_deal': return `Update the deal's ${Object.keys(input).filter(k => k !== 'deal_id').map(k => k.replace(/_/g, ' ')).join(', ') || 'details'}`;
     case 'generate_lease': return `Generate & file the lease${input.values?.tenant_name ? ` for ${input.values.tenant_name}${input.values.suite ? `, suite ${input.values.suite}` : ''}` : ''}`;
+    case 'create_drive_folder': return `📁 Create the My Drive folder “${input.path}” (missing levels are created; the whole team can see it)`;
+    case 'create_drive_doc': return `📄 Create the live My Drive document “${input.title}” ${input.folder_path ? `in “${input.folder_path}”` : input.folder_id ? 'in the chosen folder' : 'at the top level'} — visible to the whole team${input.letterhead === false ? '' : ', with the CRECO letterhead'}`;
     case 'start_form': return `Start a new form document`;
     case 'prepare_esign': return `Place initials / signature / date boxes for ${(input.signers || []).map((x: any) => x.role).join(', ') || 'the signers'} — draft only, nothing is sent`;
     case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => [s.name, s.email && `<${s.email}>`].filter(Boolean).join(' ')).join(', ')} — this emails them the document`;

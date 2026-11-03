@@ -8,7 +8,7 @@
 // calls none. No tool is executed and nothing is written. Exits 1 on any failure.
 import Anthropic from '@anthropic-ai/sdk';
 import { systemPrompt } from '@/lib/crm-assistant-prompt';
-import { TOOLS, type AgentCtx } from '@/lib/crm-assistant-tools';
+import { TOOLS, DRIVE_TOOLS, canUseDrive, type AgentCtx } from '@/lib/crm-assistant-tools';
 
 const MODEL = process.env.CRM_ASSISTANT_MODEL || 'claude-sonnet-5';
 const ctxFor = (role: string): AgentCtx => ({ userId: '00000000-0000-0000-0000-000000000000', role, businessUnit: 'commercial', token: '', origin: 'http://localhost' }) as AgentCtx;
@@ -74,8 +74,18 @@ cases.push(
   { name: 'guests found: one timed schedule_event with both attendees + location', history: [U('send Brian and Robert a calendar invite for the property tour on 2026-11-03 at 1:30 PM at 4946 Center Park Blvd'), ...FOUND], anyOf: ['schedule_event'], never: ['send_email'], check: c => inviteCheck(1, /^(13:30|1:30\s*PM)$/i)(c) ?? (sched(c)[0].location ? null : 'no location passed') },
   { name: 'meeting with a tenant: finds them, invites by calendar, no email stand-in', history: [U('set up a meeting with Lloyd Pearson, the tenant rep, Thursday 2026-11-05 at 10 AM at 8000 Fair Oaks Pkwy')], anyOf: ['search_contacts', 'schedule_event'], never: ['send_email', 'create_task'] },
   { name: 'landlord walkthrough: timed event with the landlord as attendee', history: [U('book a walkthrough with Nita Parikh on 2026-11-05 at 3 PM at 4946 Center Park Blvd and send her the invite'), ...tool('t8', 'search_contacts', { query: 'Nita Parikh' }, { contacts: [{ id: 'c-n', first_name: 'Nita', last_name: 'Parikh', email: 'nitaparikh@marutius.com', type: 'Landlord/Investor' }] })], anyOf: ['schedule_event'], never: ['send_email'], check: c => { const e = sched(c)[0]; return !e ? 'no schedule_event' : !(e.attendees ?? []).map((a: string) => a.toLowerCase()).includes('nitaparikh@marutius.com') ? `landlord not invited: ${JSON.stringify(e.attendees)}` : !e.time ? 'no time' : null; } },
-  { name: '"confirm the meeting with" is a calendar invite, not an email', history: [U('confirm our 11:30 team meeting tomorrow 2026-11-03 at Fair Oaks Country Club with Brian and Robert'), ...FOUND], anyOf: ['schedule_event'], never: ['send_email'], check: inviteCheck(1, /11:30|11:30\s*AM/i) },
+  { name: '"confirm the meeting with" is a calendar invite, not an email', history: [U('confirm our 11:30 team meeting tomorrow 2026-11-04 at Fair Oaks Country Club with Brian and Robert'), ...FOUND], anyOf: ['schedule_event'], never: ['send_email'], check: inviteCheck(1, /11:30|11:30\s*AM/i) },
   { name: 'tour + lunch = two separate timed events', history: [U('invite Brian and Robert to the tour at 1:30 PM and lunch at 11:30 AM, both on 2026-11-03, tour at 4946 Center Park Blvd, lunch at Fair Oaks Country Club'), ...FOUND], anyOf: ['schedule_event'], never: ['send_email'], check: inviteCheck(2, /^(\d{1,2}:\d{2})/) },
+);
+
+const DRIVE_LOOK = tool('t7', 'find_drive_items', {}, { all_folders: [{ id: 'f-1', path: 'BOVs' }], showing: 'top level', folders: [{ id: 'f-1', name: 'BOVs', visibility: 'team' }], documents: [], files: [], forms: [] })
+// The model also searches for an existing doc before writing a new one (that is what the tool description asks for) — replay both lookups.
+const DRIVE_SEARCHED = tool('t6', 'find_drive_items', { query: 'onboarding' }, { query: 'onboarding', folders: [], documents: [], files: [], forms: [] });
+cases.push(
+  { name: 'My Drive: "write a checklist doc" looks first, never sends or starts a form', history: [U('create a new-agent onboarding checklist in My Drive in a folder called Agent Training')], anyOf: ['find_drive_items', 'create_drive_doc'], never: [...SEND_TOOLS, 'start_form', 'create_task'] },
+  { name: 'My Drive: after the look, creates the doc with real markdown content', history: [U('create a new-agent onboarding checklist in My Drive in a folder called Agent Training'), ...DRIVE_LOOK, ...DRIVE_SEARCHED], anyOf: ['create_drive_doc'], never: [...SEND_TOOLS, 'start_form'], check: c => { const d = c.find(x => x.name === 'create_drive_doc'); const i = (d?.input ?? {}) as Record<string, any>; return !i.title ? 'no title' : String(i.content ?? '').length < 200 ? 'content too thin' : !/- \[ \]/.test(String(i.content)) ? 'no checklist items in a checklist' : !/agent training/i.test(String(i.folder_path ?? '')) ? `wrong folder: ${i.folder_path}` : null; } },
+  { name: 'My Drive: a legal contract goes through forms, not a Drive doc', history: [U('make me a commercial lease agreement for Acme Corp')], never: ['create_drive_doc'] },
+  { name: 'My Drive: agent role has no Drive tools and says so', role: 'agent', history: [U('put a leasing script doc in My Drive for the team')], never: ['create_drive_doc', 'create_drive_folder', 'find_drive_items', ...SEND_TOOLS] },
 );
 
 (async () => {
@@ -84,7 +94,7 @@ cases.push(
   let failed = 0;
   for (const c of cases) {
     const ctx = ctxFor(c.role ?? 'super_admin');
-    const res = await client.messages.create({ model: MODEL, max_tokens: 1500, system: systemPrompt(ctx, 'Zack', null), tools: TOOLS, messages: c.history });
+    const res = await client.messages.create({ model: MODEL, max_tokens: 1500, system: systemPrompt(ctx, 'Zack', null), tools: TOOLS.filter(t => !DRIVE_TOOLS.has(t.name) || canUseDrive(ctx)), messages: c.history });
     const called = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use').map(b => b.name);
     const said = res.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join(' ');
     const problems: string[] = [];

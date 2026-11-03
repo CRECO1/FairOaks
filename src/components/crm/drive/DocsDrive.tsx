@@ -124,6 +124,8 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
 
   const go = (id: string | null) => { setQ(''); setView('folder'); setFolderId(id); setDlg(null); };
   const refresh = () => { void load(); void loadTree(); };
+  // The Copilot filed something into My Drive: reload what is on screen.
+  useEffect(() => { const f = () => { void load(); void loadTree(); }; window.addEventListener('crm:drive-updated', f); return () => window.removeEventListener('crm:drive-updated', f); }, [load, loadTree]);
 
   // ── actions ───────────────────────────────────────────────────────────────
   const act = async (fn: () => Promise<unknown>, ok?: string) => {

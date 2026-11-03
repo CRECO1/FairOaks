@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound } from '@/lib/crm-auth';
 import { driveContext, hydrateDriveForms, likePattern, stripCommentMarks } from '@/lib/drive-server';
+import { markdownToDriveState } from '@/lib/drive-markdown';
 import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS, type DriveDoc, type DriveFile, type DriveFolder, type DriveListing } from '@/lib/drive-types';
 
 // Transaction Docs "Drive": list folders + live documents, and create new ones.
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
   const dc = await driveContext(req);
   if (!dc) return unauthorized();
   const { userDb, admin, bu, ctx } = dc;
-  const body = await req.json().catch(() => ({})) as { type?: string; name?: string; title?: string; parent_id?: string | null; deal_id?: string | null; template_id?: string; from_doc_id?: string; as_template?: boolean };
+  const body = await req.json().catch(() => ({})) as { type?: string; name?: string; title?: string; parent_id?: string | null; deal_id?: string | null; template_id?: string; from_doc_id?: string; as_template?: boolean; markdown?: string; letterhead?: boolean };
   const type = body.type === 'doc' ? 'doc' : body.type === 'folder' ? 'folder' : null;
   if (!type) return NextResponse.json({ error: 'type must be folder or doc' }, { status: 400 });
   const label = ((type === 'folder' ? body.name : body.title) ?? '').trim().slice(0, type === 'folder' ? 200 : 300) || (type === 'folder' ? 'New folder' : 'Untitled document');
@@ -158,9 +159,17 @@ export async function POST(req: NextRequest) {
   }
 
   const base = { business_unit: bu, created_by: ctx.userId, visibility, shared_with, deal_id };
+  // A document created with content (the Copilot writes these): markdown becomes the live document's starting text.
+  let initial: { ystate: string; content_text: string; version: number } | null = null;
+  if (type === 'doc' && typeof body.markdown === 'string' && body.markdown.trim()) {
+    try {
+      const built = markdownToDriveState(body.markdown, { letterhead: body.letterhead === true });
+      initial = { ystate: built.ystate, content_text: built.text, version: 1 };
+    } catch { return NextResponse.json({ error: 'Could not turn that text into a document' }, { status: 400 }); }
+  }
   const { data, error } = type === 'folder'
     ? await admin.from('crm_drive_folders').insert({ ...base, parent_id: parentId, name: label }).select(FOLDER_COLS).single()
-    : await admin.from('crm_drive_docs').insert({ ...base, folder_id: parentId, title: label, updated_by: ctx.userId }).select(DOC_COLS).single();
+    : await admin.from('crm_drive_docs').insert({ ...base, folder_id: parentId, title: label, updated_by: ctx.userId, ...(initial ?? {}) }).select(DOC_COLS).single();
   if (error || !data) return NextResponse.json({ error: `Could not create the ${type}` }, { status: 500 });
   return NextResponse.json({ type, item: data });
 }

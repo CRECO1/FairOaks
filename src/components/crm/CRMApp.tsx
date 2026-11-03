@@ -15226,7 +15226,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           token={session?.access_token}
           userId={profile?.id}
           onClose={() => setAssistantOpen(false)}
-          onRefresh={scope => { if (!profile) return; if (scope === 'deals') loadDeals(profile); else loadClients(profile); }}
+          onRefresh={scope => { if (scope === 'drive') { window.dispatchEvent(new Event('crm:drive-updated')); return; } if (!profile) return; if (scope === 'deals') loadDeals(profile); else loadClients(profile); }}
           onOpenRecord={(kind, id, tab) => {
             setMobileMenuOpen(false);
             if (kind === 'deal') {

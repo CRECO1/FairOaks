@@ -13,7 +13,7 @@ type Msg = { role: 'user' | 'assistant'; content: string | Block[] };
  *  it back is what authorises that exact call, so it is never inspected here. */
 type Pending = { id: string; name: string; summary: string };
 /** A UI directive the server asks the browser to apply — currently just navigation. */
-type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'open-record'; kind: 'deal' | 'contact'; id: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string } | { type: 'refresh'; scope: 'deals' | 'contacts' };
+type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'open-record'; kind: 'deal' | 'contact'; id: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string } | { type: 'refresh'; scope: 'deals' | 'contacts' | 'drive' };
 
 const GOLD = '#c9922c';
 
@@ -101,7 +101,7 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
   /** Put one deal (on a tab) or contact card on screen. */
   onOpenRecord?: (kind: 'deal' | 'contact', id: string, tab?: string) => void;
   /** A confirmed write changed deals or contacts: reload them so the screen matches. */
-  onRefresh?: (scope: 'deals' | 'contacts') => void;
+  onRefresh?: (scope: 'deals' | 'contacts' | 'drive') => void;
 }) {
   // Restored synchronously on first render so the log is already there when the panel opens.
   const restored = useRef<Saved | null | undefined>(undefined);
