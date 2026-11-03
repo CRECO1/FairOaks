@@ -50,6 +50,7 @@ type Dlg =
   | { t: 'share'; kind: Kind; item: Item }
   | { t: 'trash'; kind: Kind; item: Item }
   | { t: 'delete'; kind: Kind; item: Item }
+  | { t: 'bulk'; op: 'move' | 'share' | 'trash' | 'delete' }
   | { t: 'toDeal'; kind: Kind; item: Item }
   | { t: 'toContact'; kind: Kind; item: Item }
   | { t: 'form' }
@@ -89,6 +90,10 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
   const [preview, setPreview] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [uploading, setUploading] = useState(0);
   const [dragOver, setDragOver] = useState(false);
+  // Bulk actions: the ticked items (keyed kind:id) — a tick-box on every row, a select-all, and an action bar.
+  const [sel, setSel] = useState<Map<string, { kind: Kind; item: Item }>>(new Map());
+  const [selectMode, setSelectMode] = useState(false);   // phones: tick-boxes only show once you tap Select
+  const [bulkBusy, setBulkBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const headers = useMemo<Record<string, string>>(() => { const h: Record<string, string> = {}; if (authToken) h.Authorization = `Bearer ${authToken}`; return h; }, [authToken]);
@@ -173,6 +178,41 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
   const docs = data?.docs ?? [];
   const files = data?.files ?? [];
   const forms = data?.forms ?? [];
+
+  // ── bulk selection ───────────────────────────────────────────────────────
+  const selKey = (kind: Kind, it: Item) => `${kind}:${it.id}`;
+  const isSel = (kind: Kind, it: Item) => sel.has(selKey(kind, it));
+  const toggleSel = (kind: Kind, it: Item) => setSel(prev => { const n = new Map(prev); const k = selKey(kind, it); if (n.has(k)) n.delete(k); else n.set(k, { kind, item: it }); return n; });
+  const clearSel = () => { setSel(new Map()); setSelectMode(false); };
+  const selected = [...sel.values()];
+  const visibleItems: Array<{ kind: Kind; item: Item }> = [
+    ...folders.map(item => ({ kind: 'folder' as Kind, item })), ...docs.map(item => ({ kind: 'doc' as Kind, item })),
+    ...forms.map(item => ({ kind: 'form' as Kind, item })), ...files.map(item => ({ kind: 'file' as Kind, item })),
+  ];
+  const allSelected = visibleItems.length > 0 && visibleItems.every(x => sel.has(selKey(x.kind, x.item)));
+  const toggleAll = () => setSel(allSelected ? new Map() : new Map(visibleItems.map(x => [selKey(x.kind, x.item), x])));
+  const selecting = sel.size > 0 || selectMode;
+  // A selection never survives a change of view / folder, and Escape clears it.
+  useEffect(() => { setSel(new Map()); setSelectMode(false); }, [view, folderId]);
+  useEffect(() => {
+    if (!sel.size && !selectMode) return;
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !dlg) { setSel(new Map()); setSelectMode(false); } };
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
+  }, [sel.size, selectMode, dlg]);
+
+  /** Runs one change per selected item (4 at a time) and says what happened — items you may not change are skipped with the reason. */
+  const runBulk = async (verb: string, fn: (kind: Kind, item: Item) => Promise<unknown>, items: Array<{ kind: Kind; item: Item }> = selected) => {
+    setBulkBusy(true);
+    let ok = 0; const failed: string[] = [];
+    const queue = [...items];
+    const worker = async () => { for (let x = queue.shift(); x; x = queue.shift()) { try { await fn(x.kind, x.item); ok++; } catch (e) { failed.push((e as Error).message); } } };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    setBulkBusy(false);
+    const why = [...new Set(failed)].slice(0, 2).join(' · ');
+    onToast(failed.length ? `${verb} ${ok} of ${items.length} — ${failed.length} skipped: ${why}` : `${verb} ${ok} item${ok === 1 ? '' : 's'}`);
+    clearSel(); refresh();
+  };
+  const bulkPatch = (body: Record<string, unknown>) => (kind: Kind, it: Item) => api(`/api/crm/drive/items/${kind}/${it.id}`, { method: 'PATCH', body: JSON.stringify(body) });
   const empty = !loading && data && !folders.length && !docs.length && !files.length && !forms.length;
   // Forms are always shared with the team, so they can only be added somewhere the team can see.
   const canAddForm = view !== 'folder' || !data?.folder || (data.folder.visibility === 'team' && !data.folder.deal_id);
@@ -390,7 +430,8 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
     const snippet = (it as DriveDoc).snippet;
     const t = tone(kind, it);
     return (
-      <div key={`${kind}${it.id}`} className="dd-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '5px 10px 5px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 60 : 54 }}>
+      <div key={`${kind}${it.id}`} className="dd-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '5px 10px 5px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 60 : 54, ...(isSel(kind, it) ? { background: 'var(--k-fdf6e9)' } : {}) }}>
+        {chk(kind, it)}
         <button type="button" onClick={() => openItem(kind, it)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           <Tile n={t.icon} color={t.color} />
           <span style={{ minWidth: 0, flex: 1 }}>
@@ -420,7 +461,8 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
   const folderCard = (f: DriveFolder) => {
     const t = tone('folder', f);
     return (
-      <div key={`folder${f.id}`} className="dd-card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 6px 10px 12px', border: '1px solid var(--k-eef0f2)', borderRadius: 12, background: 'var(--k-fff)', minHeight: 62 }}>
+      <div key={`folder${f.id}`} className="dd-card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 6px 10px 12px', border: `1px solid ${isSel('folder', f) ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 12, background: isSel('folder', f) ? 'var(--k-fdf6e9)' : 'var(--k-fff)', minHeight: 62 }}>
+        {chk('folder', f)}
         <button type="button" onClick={() => openItem('folder', f)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           <Tile n={t.icon} color={t.color} size={38} />
           <span style={{ minWidth: 0, flex: 1 }}>
@@ -432,6 +474,11 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
       </div>
     );
   };
+  const chk = (kind: Kind, it: Item) => (isMobile && !selecting) ? null : (
+    <label className="dd-chk" onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isMobile ? 32 : 22, height: isMobile ? 44 : 22, flexShrink: 0, cursor: 'pointer' }}>
+      <input type="checkbox" checked={isSel(kind, it)} onChange={() => toggleSel(kind, it)} aria-label={`Select ${nameOf(kind, it)}`} style={{ width: 18, height: 18, margin: 0, accentColor: GOLD, cursor: 'pointer' }} />
+    </label>
+  );
   const sectionLabel = (t: string) => <div style={{ fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, margin: '2px 2px 8px' }}>{t}</div>;
   const cardsView = view === 'folder';
 
@@ -497,15 +544,40 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
               )}
             </div>
           )}
+          {isMobile && view !== 'templates' && (data?.folders.length || data?.docs.length || data?.files?.length || data?.forms?.length) ? (
+            <button type="button" onClick={() => (selectMode || sel.size ? clearSel() : setSelectMode(true))} aria-pressed={selecting} style={{ height: 44, padding: '0 14px', border: `1px solid ${selecting ? GOLD : 'var(--k-e5e7eb)'}`, borderRadius: 10, background: selecting ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: selecting ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{selecting ? 'Done' : 'Select'}</button>
+          ) : null}
           {inTrash && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Items you delete stay here for 30 days, then are removed for good.</span>}
           {view === 'templates' && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Click a template to use it. To add one: open any document, then ⋯ → Save as template.</span>}
         </div>
 
         {/* List */}
-        <div className="dd-scope" onDragOver={e => { if (!inTrash && view === 'folder' && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)}
+        <div className={`dd-scope${selecting ? ' dd-selecting' : ''}`} onDragOver={e => { if (!inTrash && view === 'folder' && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)}
           onDrop={e => { setDragOver(false); if (!inTrash && view === 'folder' && e.dataTransfer.files.length) { e.preventDefault(); void uploadFiles(e.dataTransfer.files); } }}
           style={{ borderRadius: 14, outline: dragOver ? `2px dashed ${GOLD}` : 'none', outlineOffset: 4, background: dragOver ? `${GOLD}0d` : 'transparent' }}>
-          <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}`}</style>
+          <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}.dd-chk{opacity:0;transition:opacity .1s}.dd-row:hover .dd-chk,.dd-card:hover .dd-chk,.dd-selecting .dd-chk,.dd-chk:focus-within{opacity:1}`}</style>
+          {sel.size > 0 && (
+            <div role="toolbar" aria-label="Actions for the selected items" style={{ position: 'sticky', top: 8, zIndex: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: isMobile ? '8px 10px' : '8px 12px', marginBottom: 12, borderRadius: 12, background: 'var(--k-fdf6e9)', border: `1px solid ${GOLD}`, boxShadow: '0 6px 20px rgba(0,0,0,.12)' }}>
+              <button type="button" onClick={clearSel} aria-label="Clear the selection" title="Clear the selection (Esc)" style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-6b7280)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="close" size={16} /></button>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-1a1a1a)', flex: '1 1 90px' }}>{sel.size} selected</span>
+              {(() => {
+                const b: React.CSSProperties = { height: isMobile ? 44 : 34, padding: '0 14px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13.5, fontWeight: 700, cursor: bulkBusy ? 'default' : 'pointer', opacity: bulkBusy ? .6 : 1, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: "'DM Sans',sans-serif" };
+                const danger: React.CSSProperties = { ...b, color: 'var(--k-dc2626)' };
+                return inTrash ? (
+                  <>
+                    <button type="button" disabled={bulkBusy} style={b} onClick={() => void runBulk('Restored', bulkPatch({ trash: false }))}><DI n="restore" size={15} />Restore</button>
+                    <button type="button" disabled={bulkBusy} style={danger} onClick={() => setDlg({ t: 'bulk', op: 'delete' })}><DI n="trash" size={15} />Delete forever</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" disabled={bulkBusy} style={b} onClick={() => setDlg({ t: 'bulk', op: 'move' })}><DI n="move" size={15} />Move…</button>
+                    {selected.some(x => x.kind !== 'form') && <button type="button" disabled={bulkBusy} style={b} onClick={() => setDlg({ t: 'bulk', op: 'share' })}><DI n="users" size={15} />Share…</button>}
+                    <button type="button" disabled={bulkBusy} style={danger} onClick={() => setDlg({ t: 'bulk', op: 'trash' })}><DI n="trash" size={15} />Trash</button>
+                  </>
+                );
+              })()}
+            </div>
+          )}
           {uploading > 0 && <div style={{ padding: '10px 16px', marginBottom: 10, borderRadius: 10, fontSize: 13, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', display: 'flex', alignItems: 'center', gap: 8 }}><DI n="upload" size={15} />Uploading {uploading} file{uploading === 1 ? '' : 's'}…</div>}
           {loading && !data && <div style={{ padding: 28, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>}
           {cardsView && folders.length > 0 && (
@@ -520,6 +592,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
               <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, overflow: 'hidden' }}>
                 {!isMobile && (
                   <div style={{ display: 'flex', gap: 10, padding: '9px 10px 9px 14px', borderBottom: '1px solid var(--k-eef0f2)', background: 'var(--k-fafafa)', fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>
+                    <span style={{ width: 22, flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select everything in this list" style={{ width: 16, height: 16, margin: 0, accentColor: GOLD, cursor: 'pointer' }} /></span>
                     <span style={{ flex: 1, paddingLeft: 48 }}>Name</span><span style={{ width: 120 }}>Owner</span><span style={{ width: 118 }}>Access</span><span style={{ width: 84 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 32 + (inTrash ? 0 : 32) }} />
                   </div>
                 )}
@@ -612,6 +685,33 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
       {dlg?.t === 'share' && <ShareDialog kind={dlg.kind} item={dlg.item} people={profiles.filter(p => p.id !== currentUser.id)} can={canManage(dlg.item)} isMobile={isMobile} who={who} onClose={() => setDlg(null)}
         onSave={(visibility, shared_with) => void patch(dlg.kind, dlg.item, { share: { visibility, shared_with } }, 'Sharing updated').then(ok => { if (ok) setDlg(null); })} />}
 
+      {dlg?.t === 'bulk' && selected.length > 0 && dlg.op === 'move' && (
+        <MoveDialog kind={selected[0].kind} item={selected[0].item} bulk={selected} tree={tree} kids={kids} isMobile={isMobile} onClose={() => setDlg(null)}
+          onPick={dest => { setDlg(null); void runBulk('Moved', bulkPatch({ move: { parent_id: dest } })); }} />
+      )}
+      {dlg?.t === 'bulk' && dlg.op === 'share' && (() => {
+        const shareable = selected.filter(x => x.kind !== 'form');
+        if (!shareable.length) return null;
+        return <ShareDialog kind={shareable[0].kind} item={shareable[0].item} bulk={shareable} people={profiles.filter(p => p.id !== currentUser.id)} can isMobile={isMobile} who={who} onClose={() => setDlg(null)}
+          onSave={(visibility, shared_with) => { setDlg(null); void runBulk('Updated sharing on', bulkPatch({ share: { visibility, shared_with } }), shareable); }} />;
+      })()}
+      {dlg?.t === 'bulk' && selected.length > 0 && dlg.op === 'trash' && (
+        <Modal title={`Move ${selected.length} item${selected.length === 1 ? '' : 's'} to trash?`} isMobile={isMobile} onClose={() => setDlg(null)}>
+          <p style={{ margin: '0 0 14px', fontSize: 14, color: 'var(--k-4b5563)', lineHeight: 1.55 }}>
+            {selected.length} item{selected.length === 1 ? '' : 's'}{selected.some(x => x.kind === 'folder') ? ' (and everything inside the folders)' : ''} will go to the trash. You can restore {selected.length === 1 ? 'it' : 'them'} from there for 30 days.
+          </p>
+          <DialogButtons isMobile={isMobile} onCancel={() => setDlg(null)} cta="Move to trash" danger onSubmit={() => { setDlg(null); void runBulk('Moved to trash:', bulkPatch({ trash: true })); }} />
+        </Modal>
+      )}
+      {dlg?.t === 'bulk' && selected.length > 0 && dlg.op === 'delete' && (
+        <Modal title={`Delete ${selected.length} item${selected.length === 1 ? '' : 's'} forever?`} isMobile={isMobile} onClose={() => setDlg(null)}>
+          <p style={{ margin: '0 0 14px', fontSize: 14, color: 'var(--k-4b5563)', lineHeight: 1.55 }}>
+            {selected.length} item{selected.length === 1 ? '' : 's'}{selected.some(x => x.kind === 'folder') ? ' (and everything inside the folders)' : ''} will be permanently deleted. This can’t be undone.{selected.some(x => x.kind === 'form') ? ' Forms are only removed from My Drive — the saved form itself is kept.' : ''}
+          </p>
+          <DialogButtons isMobile={isMobile} onCancel={() => setDlg(null)} cta="Delete forever" danger onSubmit={() => { setDlg(null); void runBulk('Deleted', (k, it) => api(`/api/crm/drive/items/${k}/${it.id}`, { method: 'DELETE' })); }} />
+        </Modal>
+      )}
+
       {preview && <DocPreviewModal file={preview} onClose={() => setPreview(null)} />}
       {formEditor && (
         <TransactionDocEditor form={formEditor.form} url={formEditor.url} authToken={authToken} isAdmin={isAdmin} businessUnit={businessUnit} submissionId={formEditor.submissionId} isMobile={isMobile}
@@ -682,14 +782,15 @@ function NameDialog({ title, cta, initial, isMobile, onClose, onSubmit }: { titl
   );
 }
 
-function MoveDialog({ kind, item, tree, kids, isMobile, onClose, onPick }: { kind: Kind; item: Item; tree: DriveTreeFolder[]; kids: Map<string | null, DriveTreeFolder[]>; isMobile: boolean; onClose: () => void; onPick: (dest: string | null) => void }) {
+function MoveDialog({ kind, item, bulk, tree, kids, isMobile, onClose, onPick }: { kind: Kind; item: Item; bulk?: Array<{ kind: Kind; item: Item }>; tree: DriveTreeFolder[]; kids: Map<string | null, DriveTreeFolder[]>; isMobile: boolean; onClose: () => void; onPick: (dest: string | null) => void }) {
   // A folder can't go inside itself or anything under it.
   const blocked = useMemo(() => {
     const s = new Set<string>();
-    if (kind === 'folder') { const walk = (id: string) => { s.add(id); (kids.get(id) ?? []).forEach(k => walk(k.id)); }; walk(item.id); }
+    const walk = (id: string) => { s.add(id); (kids.get(id) ?? []).forEach(k => walk(k.id)); };
+    for (const x of bulk ?? [{ kind, item }]) if (x.kind === 'folder') walk(x.item.id);
     return s;
-  }, [kind, item.id, kids]);
-  const current = kind === 'folder' ? (item as DriveFolder).parent_id : (item as DriveDoc).folder_id;
+  }, [kind, item, bulk, kids]);
+  const current = bulk ? undefined : kind === 'folder' ? (item as DriveFolder).parent_id : (item as DriveDoc).folder_id;
   const [sel, setSel] = useState<string | null | undefined>(undefined);
   const dest = sel === undefined ? undefined : tree.find(f => f.id === sel);
   const render = (parent: string | null, depth: number): React.ReactNode => (kids.get(parent) ?? []).map(f => (
@@ -702,11 +803,11 @@ function MoveDialog({ kind, item, tree, kids, isMobile, onClose, onPick }: { kin
     </div>
   ));
   return (
-    <Modal title={`Move “${nameOf(kind, item)}”`} isMobile={isMobile} onClose={onClose}>
+    <Modal title={bulk ? `Move ${bulk.length} items` : `Move “${nameOf(kind, item)}”`} isMobile={isMobile} onClose={onClose}>
       <button type="button" onClick={() => setSel(null)}
         style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', minHeight: isMobile ? 46 : 34, padding: '0 10px', border: 'none', borderRadius: 8, background: sel === null ? 'var(--k-fdf6e9)' : 'none', fontSize: 14, fontWeight: sel === null ? 700 : 600, cursor: 'pointer', color: 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }}>🗂 All files (top level)</button>
       {render(null, 0)}
-      {dest && (dest.visibility !== item.visibility || dest.deal_id !== item.deal_id) && (
+      {dest && (bulk ?? [{ kind, item }]).some(x => dest.visibility !== x.item.visibility || dest.deal_id !== x.item.deal_id) && (
         <p style={{ fontSize: 12.5, color: 'var(--k-92400e)', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 8, padding: '8px 10px', margin: '10px 0 0', lineHeight: 1.5 }}>
           It will take on that folder’s sharing{dest.visibility === 'private' ? ' (private)' : dest.deal_id ? ' (only people on that deal)' : ' (everyone on the team)'}.
         </p>
@@ -718,9 +819,9 @@ function MoveDialog({ kind, item, tree, kids, isMobile, onClose, onPick }: { kin
   );
 }
 
-function ShareDialog({ kind, item, people, can, isMobile, who, onClose, onSave }: { kind: Kind; item: Item; people: DrivePerson[]; can: boolean; isMobile: boolean; who: (id: string | null) => string; onClose: () => void; onSave: (v: 'team' | 'private', shared: string[]) => void }) {
+function ShareDialog({ kind, item, bulk, people, can, isMobile, who, onClose, onSave }: { kind: Kind; item: Item; bulk?: Array<{ kind: Kind; item: Item }>; people: DrivePerson[]; can: boolean; isMobile: boolean; who: (id: string | null) => string; onClose: () => void; onSave: (v: 'team' | 'private', shared: string[]) => void }) {
   const [vis, setVis] = useState<'team' | 'private'>(item.visibility);
-  const [picked, setPicked] = useState<Set<string>>(new Set(item.shared_with));
+  const [picked, setPicked] = useState<Set<string>>(new Set(bulk ? [] : item.shared_with));
   const radio = (v: 'team' | 'private', label: string, sub: string) => (
     <label key={v} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', border: `1px solid ${vis === v ? GOLD : 'var(--k-e5e7eb)'}`, borderRadius: 10, background: vis === v ? 'var(--k-fdf6e9)' : 'var(--k-fff)', cursor: can ? 'pointer' : 'default', minHeight: isMobile ? 56 : undefined }}>
       <input type="radio" name="vis" checked={vis === v} disabled={!can} onChange={() => setVis(v)} style={{ marginTop: 3, accentColor: GOLD, width: 18, height: 18 }} />
@@ -728,7 +829,7 @@ function ShareDialog({ kind, item, people, can, isMobile, who, onClose, onSave }
     </label>
   );
   return (
-    <Modal title={`Share “${nameOf(kind, item)}”`} isMobile={isMobile} onClose={onClose}>
+    <Modal title={bulk ? `Share ${bulk.length} items` : `Share “${nameOf(kind, item)}”`} isMobile={isMobile} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {radio('team', 'Everyone on the team', 'Anyone in the workspace can open and edit it.')}
         {radio('private', 'Only people I choose', `You${' '}and the people you pick below. The account owner can always open it.`)}
@@ -745,8 +846,9 @@ function ShareDialog({ kind, item, people, can, isMobile, who, onClose, onSave }
           ))}
         </div>
       )}
-      {item.deal_id && <p style={{ fontSize: 12.5, color: 'var(--k-6b7280)', margin: '10px 0 0', lineHeight: 1.5 }}>💼 This is linked to a deal, so only people on that deal can open it, whichever you choose.</p>}
-      {kind === 'folder' && can && <p style={{ fontSize: 12.5, color: 'var(--k-6b7280)', margin: '10px 0 0', lineHeight: 1.5 }}>This applies to everything inside the folder too.</p>}
+      {bulk && <p style={{ fontSize: 12.5, color: 'var(--k-6b7280)', margin: '10px 0 0', lineHeight: 1.5 }}>This replaces who each of the {bulk.length} items is shared with. Items you don’t own are skipped.</p>}
+      {item.deal_id && !bulk && <p style={{ fontSize: 12.5, color: 'var(--k-6b7280)', margin: '10px 0 0', lineHeight: 1.5 }}>💼 This is linked to a deal, so only people on that deal can open it, whichever you choose.</p>}
+      {(bulk ? bulk.some(x => x.kind === 'folder') : kind === 'folder') && can && <p style={{ fontSize: 12.5, color: 'var(--k-6b7280)', margin: '10px 0 0', lineHeight: 1.5 }}>This applies to everything inside the folder too.</p>}
       <div style={{ marginTop: 14 }}>
         {can
           ? <DialogButtons isMobile={isMobile} onCancel={onClose} cta="Save" onSubmit={() => onSave(vis, vis === 'private' ? [...picked] : [])} />
