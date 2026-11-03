@@ -30,7 +30,7 @@ export async function notifyAssignment(
 }
 
 /** Which CRM page a bell notification opens (the CRM reads the hash on load). */
-const PAGE_FOR_ENTITY: Record<string, string> = { calls: 'tasks', task: 'tasks', contact: 'contacts', deal: 'deals', listing: 'properties', suite: 'properties', drive_doc: 'transaction-docs' };
+const PAGE_FOR_ENTITY: Record<string, string> = { calls: 'tasks', task: 'tasks', contact: 'contacts', deal: 'deals', listing: 'properties', suite: 'properties', drive_doc: 'transaction-docs', drive_folder: 'transaction-docs' };
 
 /**
  * The same notification, as a phone alert. The bell row is the record; this is the tap on the shoulder.
@@ -44,7 +44,7 @@ export async function pushBellNotification(
     const { data: who } = await db.from('crm_profiles').select('business_unit').eq('id', n.recipientId).maybeSingle();
     const page = PAGE_FOR_ENTITY[n.entityType ?? ''] ?? 'dashboard';
     await sendPushToProfiles([n.recipientId], {
-      title: n.type === 'assignment' ? 'Assigned to you' : 'You were tagged',
+      title: n.type === 'assignment' ? 'Assigned to you' : n.type === 'share' ? 'Shared with you' : 'You were tagged',
       body: n.message,
       url: `/crm/commercial#${page}`,
       tag: n.tag,

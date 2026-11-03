@@ -6340,6 +6340,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   // @mention in a My Drive document: open it (the Drive reopens whatever was last open on mount).
                   rememberView(`${businessUnit}:drive-doc`, n.entity_id);
                   setPage('transaction-docs');
+                } else if (n.entity_type === 'drive_folder') {
+                  // Something (a folder or file) was shared with you in My Drive.
+                  setPage('transaction-docs');
                 } else if (n.entity_type === 'suite') {
                   setPage('properties'); setPropertiesTab('floorplan');
                 } else if (n.entity_type === 'deal' && n.entity_id) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound, forbidden } from '@/lib/crm-auth';
 import { driveContext, descendantFolderIds, type DriveContext } from '@/lib/drive-server';
 import { logDocEvent } from '@/lib/drive-events';
+import { pushBellNotification, senderName } from '@/lib/notify';
 import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS } from '@/lib/drive-types';
 
 // Rename / move / share / trash / restore / permanently delete one folder or document.
@@ -124,6 +125,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
     const patch = { visibility, shared_with: shared };
     if (kind === 'folder') await applyToSubtree(dc, id, patch);
     else await dc.admin.from(t).update({ ...patch, updated_at: now }).eq('id', id);
+    // Tell the people who were just added (bell + phone alert), never yourself and never someone who already had access.
+    if (visibility === 'private') {
+      const had = new Set(row.shared_with ?? []);
+      const added = shared.filter(p => !had.has(p) && p !== dc.ctx.userId && p !== row.created_by);
+      if (added.length) {
+        const who = await senderName(dc.admin, dc.ctx.userId);
+        const label = String((row as unknown as { title?: string; name?: string }).title ?? (row as unknown as { name?: string }).name ?? 'an item');
+        const message = `${who} shared ${kind === 'folder' ? 'the folder' : kind === 'file' ? 'the file' : ''} “${label}” with you`.replace('  ', ' ');
+        const entityType = kind === 'doc' ? 'drive_doc' : 'drive_folder';
+        const rows = added.map(recipient_id => ({ recipient_id, sender_id: dc.ctx.userId, type: 'share', message, entity_type: entityType, entity_id: id }));
+        await dc.admin.from('crm_notifications').insert(rows);
+        await Promise.all(rows.map(r => pushBellNotification(dc.admin, { recipientId: r.recipient_id, type: 'share', message, entityType, tag: `drive-share-${id}` })));
+      }
+    }
   }
 
   // Trash / restore. A folder stamps everything inside it with one instant so restoring brings back exactly that branch.

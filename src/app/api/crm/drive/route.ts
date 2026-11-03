@@ -31,6 +31,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ path: [], folder: null, folders: [], docs: data ?? [] } satisfies DriveListing);
   }
 
+  // Shared with me: what teammates have shared with this user (private items that list them), top of each shared branch only.
+  if (view === 'shared') {
+    const uid = dc.ctx.userId;
+    const mine = [uid];
+    const [f, d, fl] = await Promise.all([
+      userDb.from('crm_drive_folders').select(FOLDER_COLS).eq('business_unit', bu).is('trashed_at', null).contains('shared_with', mine).neq('created_by', uid).limit(200),
+      userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).is('trashed_at', null).eq('is_template', false).contains('shared_with', mine).neq('created_by', uid).order('updated_at', { ascending: false }).limit(200),
+      userDb.from('crm_drive_files').select(FILE_COLS).eq('business_unit', bu).is('trashed_at', null).contains('shared_with', mine).neq('created_by', uid).limit(200),
+    ]);
+    if (f.error || d.error || fl.error) return NextResponse.json({ error: 'Could not load what is shared with you' }, { status: 500 });
+    const folders = (f.data ?? []) as DriveFolder[];
+    const inShared = new Set(folders.map(x => x.id));   // sharing a folder shares everything in it — list the folder, not each child
+    return NextResponse.json({
+      path: [], folder: null,
+      folders: folders.filter(x => !x.parent_id || !inShared.has(x.parent_id)),
+      docs: ((d.data ?? []) as DriveDoc[]).filter(x => !x.folder_id || !inShared.has(x.folder_id)),
+      files: ((fl.data ?? []) as DriveFile[]).filter(x => !x.folder_id || !inShared.has(x.folder_id)),
+    } satisfies DriveListing);
+  }
+
   if (view === 'templates') {
     const { data, error } = await userDb.from('crm_drive_docs').select(`${DOC_COLS},content_text`)
       .eq('business_unit', bu).eq('is_template', true).is('trashed_at', null).order('title');

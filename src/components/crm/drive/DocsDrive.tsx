@@ -39,7 +39,7 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
-type View = 'folder' | 'recent' | 'trash' | 'search' | 'templates';
+type View = 'folder' | 'recent' | 'shared' | 'trash' | 'search' | 'templates';
 type Kind = 'folder' | 'doc' | 'file' | 'form';
 type Item = DriveFolder | DriveDoc | DriveFile | DriveFormItem;
 type Dlg =
@@ -435,14 +435,14 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
   const sectionLabel = (t: string) => <div style={{ fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, margin: '2px 2px 8px' }}>{t}</div>;
   const cardsView = view === 'folder';
 
-  const heading = view === 'recent' ? 'Recent' : view === 'trash' ? 'Trash' : view === 'templates' ? 'Templates' : view === 'search' ? 'Search results' : null;
+  const heading = view === 'recent' ? 'Recent' : view === 'shared' ? 'Shared with me' : view === 'trash' ? 'Trash' : view === 'templates' ? 'Templates' : view === 'search' ? 'Search results' : null;
 
   return (
     <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
       {/* Sidebar (desktop) / quick switch (phone) */}
       {isMobile ? (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', width: '100%', paddingBottom: 2 }}>
-          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Templates', view === 'templates', () => { setQ(''); setView('templates'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
+          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Shared', view === 'shared', () => { setQ(''); setView('shared'); }], ['Templates', view === 'templates', () => { setQ(''); setView('templates'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
             <button key={l} type="button" onClick={fn} style={{ minHeight: 40, padding: '0 16px', borderRadius: 20, border: `1px solid ${on ? GOLD : 'var(--k-e5e7eb)'}`, background: on ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: on ? 'var(--k-a06a12)' : 'var(--k-374151)', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>{l}</button>
           ))}
         </div>
@@ -450,6 +450,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
         <nav aria-label="Folders" style={{ width: 230, flexShrink: 0, background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, padding: 8, maxHeight: '72vh', overflowY: 'auto' }}>
           {navBtn('All files', view === 'folder' && folderId === null, () => go(null), 'grid')}
           {navBtn('Recent', view === 'recent', () => { setQ(''); setView('recent'); }, 'clock')}
+          {navBtn('Shared with me', view === 'shared', () => { setQ(''); setView('shared'); }, 'users')}
           {navBtn('Templates', view === 'templates', () => { setQ(''); setView('templates'); }, 'template')}
           {navBtn('Trash', view === 'trash', () => { setQ(''); setView('trash'); }, 'trash')}
           <div style={{ fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, padding: '14px 10px 6px' }}>Folders</div>
@@ -531,12 +532,12 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
           )}
           {empty && (
             <div style={{ padding: '54px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <Tile n={view === 'trash' ? 'trash' : view === 'templates' ? 'template' : view === 'search' ? 'search' : view === 'recent' ? 'clock' : 'folder'} color={GOLD} size={52} />
+              <Tile n={view === 'trash' ? 'trash' : view === 'shared' ? 'users' : view === 'templates' ? 'template' : view === 'search' ? 'search' : view === 'recent' ? 'clock' : 'folder'} color={GOLD} size={52} />
               <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--k-1a1a1a)', marginTop: 8 }}>
-                {view === 'trash' ? 'The trash is empty' : view === 'templates' ? 'No templates yet' : view === 'search' ? 'Nothing matches that search' : view === 'recent' ? 'No documents yet' : 'This folder is empty'}
+                {view === 'trash' ? 'The trash is empty' : view === 'shared' ? 'Nothing is shared with you yet' : view === 'templates' ? 'No templates yet' : view === 'search' ? 'Nothing matches that search' : view === 'recent' ? 'No documents yet' : 'This folder is empty'}
               </div>
               <div style={{ fontSize: 13.5, color: 'var(--k-6b7280)', maxWidth: 360, lineHeight: 1.55 }}>
-                {view === 'trash' ? 'Items you delete wait here until you remove them for good.' : view === 'templates' ? 'Open any document, then ⋯ → Save as template.' : view === 'search' ? 'Try a different word, or check the spelling.' : view === 'recent' ? 'Documents you open or edit show up here.' : `Add a document, a folder or a form${isMobile ? '' : ' — or drop files right here'}.`}
+                {view === 'trash' ? 'Items you delete wait here until you remove them for good.' : view === 'shared' ? 'When a teammate shares a private document, folder or file with you, it shows up here — and you get a notification.' : view === 'templates' ? 'Open any document, then ⋯ → Save as template.' : view === 'search' ? 'Try a different word, or check the spelling.' : view === 'recent' ? 'Documents you open or edit show up here.' : `Add a document, a folder or a form${isMobile ? '' : ' — or drop files right here'}.`}
               </div>
               {view === 'folder' && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
