@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound, forbidden } from '@/lib/crm-auth';
 import { driveContext, descendantFolderIds, type DriveContext } from '@/lib/drive-server';
-import { DOC_COLS, FILE_COLS, FOLDER_COLS } from '@/lib/drive-types';
+import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS } from '@/lib/drive-types';
 
 // Rename / move / share / trash / restore / permanently delete one folder or document.
 //
@@ -9,16 +9,18 @@ import { DOC_COLS, FILE_COLS, FOLDER_COLS } from '@/lib/drive-types';
 // or an admin may change who it is shared with, move it out of a deal's folder, or delete it for good.
 // Visibility is stored on every item, so moving or sharing a folder cascades to everything inside it.
 
-type Kind = 'folder' | 'doc' | 'file';
-type Row = { id: string; created_by: string | null; visibility: 'team' | 'private'; shared_with: string[]; deal_id: string | null; trashed_at: string | null; parent_id?: string | null; folder_id?: string | null };
+type Kind = 'folder' | 'doc' | 'file' | 'form';
+type Row = { submission_id?: string; id: string; created_by: string | null; visibility: 'team' | 'private'; shared_with: string[]; deal_id: string | null; trashed_at: string | null; parent_id?: string | null; folder_id?: string | null };
 
-const tableOf = (k: string) => (k === 'folder' ? 'crm_drive_folders' : k === 'doc' ? 'crm_drive_docs' : k === 'file' ? 'crm_drive_files' : null);
-const colsOf = (k: Kind): string => (k === 'folder' ? FOLDER_COLS : k === 'doc' ? DOC_COLS : FILE_COLS);
+const tableOf = (k: string) => (k === 'folder' ? 'crm_drive_folders' : k === 'doc' ? 'crm_drive_docs' : k === 'file' ? 'crm_drive_files' : k === 'form' ? 'crm_drive_forms' : null);
+const colsOf = (k: Kind): string => (k === 'folder' ? FOLDER_COLS : k === 'doc' ? DOC_COLS : k === 'file' ? FILE_COLS : FORM_LINK_COLS);
 
 async function loadVisible(dc: DriveContext, kind: Kind, id: string): Promise<Row | null> {
   const t = tableOf(kind)!;
   const { data } = await dc.userDb.from(t).select(colsOf(kind)).eq('id', id).eq('business_unit', dc.bu).maybeSingle();
-  return (data as unknown as Row | null) ?? null;
+  const row = (data as unknown as Row | null) ?? null;
+  // A filed form is always team-visible with no deal link — say so, so the shared rules below treat it like the other items.
+  return row && kind === 'form' ? { ...row, visibility: 'team', shared_with: [], deal_id: null } : row;
 }
 
 /** Folder ids in a folder's subtree (itself included) and the documents inside them. */
@@ -27,12 +29,15 @@ async function subtree(dc: DriveContext, folderId: string) {
   const folderIds = [folderId, ...descendantFolderIds((data ?? []) as Array<{ id: string; parent_id: string | null }>, folderId)];
   const { data: docs } = await dc.admin.from('crm_drive_docs').select('id').eq('business_unit', dc.bu).in('folder_id', folderIds);
   const { data: files } = await dc.admin.from('crm_drive_files').select('id,storage_path').eq('business_unit', dc.bu).in('folder_id', folderIds);
-  return { folderIds, docIds: ((docs ?? []) as Array<{ id: string }>).map(d => d.id), fileIds: ((files ?? []) as Array<{ id: string }>).map(d => d.id), filePaths: ((files ?? []) as Array<{ storage_path: string }>).map(d => d.storage_path) };
+  const { data: forms } = await dc.admin.from('crm_drive_forms').select('id').eq('business_unit', dc.bu).in('folder_id', folderIds);
+  return { formIds: ((forms ?? []) as Array<{ id: string }>).map(f => f.id), folderIds, docIds: ((docs ?? []) as Array<{ id: string }>).map(d => d.id), fileIds: ((files ?? []) as Array<{ id: string }>).map(d => d.id), filePaths: ((files ?? []) as Array<{ storage_path: string }>).map(d => d.storage_path) };
 }
 
 async function applyToSubtree(dc: DriveContext, folderId: string, patch: Record<string, unknown>) {
-  const { folderIds, docIds, fileIds } = await subtree(dc, folderId);
+  const { folderIds, docIds, fileIds, formIds } = await subtree(dc, folderId);
   const stamp = { ...patch, updated_at: new Date().toISOString() };
+  // forms carry only the trash stamp (their sharing is fixed: always the team)
+  if (formIds.length && 'trashed_at' in patch) await dc.admin.from('crm_drive_forms').update({ trashed_at: patch.trashed_at, updated_at: stamp.updated_at }).in('id', formIds);
   await dc.admin.from('crm_drive_folders').update(stamp).in('id', folderIds);
   if (docIds.length) await dc.admin.from('crm_drive_docs').update(stamp).in('id', docIds);
   if (fileIds.length) await dc.admin.from('crm_drive_files').update(stamp).in('id', fileIds);
@@ -61,6 +66,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
 
   // Rename
   const label = kind === 'doc' ? body.title : body.name ?? body.title;
+  if (label !== undefined && kind === 'form') {
+    const v = label.trim().slice(0, 200);
+    if (!v) return NextResponse.json({ error: 'Give it a name' }, { status: 400 });
+    await dc.admin.from('crm_form_submissions').update({ title: v, updated_at: new Date().toISOString() }).eq('id', row.submission_id as string);
+    await dc.admin.from('crm_drive_forms').update({ updated_at: new Date().toISOString() }).eq('id', id);
+  } else
   if (label !== undefined) {
     const v = label.trim().slice(0, kind === 'doc' ? 300 : 200);
     if (!v) return NextResponse.json({ error: 'Give it a name' }, { status: 400 });
@@ -82,12 +93,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
       const { data: dest } = await dc.userDb.from('crm_drive_folders').select('id,visibility,shared_with,deal_id,trashed_at').eq('id', target).eq('business_unit', dc.bu).maybeSingle();
       if (!dest || dest.trashed_at) return notFound('That folder is not available');
       adopt = { visibility: dest.visibility, shared_with: dest.shared_with ?? [], deal_id: dest.deal_id };
+      // Forms are always shared with the team, so they can't go into a private or deal folder — and neither can a folder that holds forms.
+      if (dest.visibility !== 'team' || dest.deal_id) {
+        if (kind === 'form') return NextResponse.json({ error: 'Forms can only go in team folders (not private ones)' }, { status: 400 });
+        if (kind === 'folder' && (await subtree(dc, id)).formIds.length) return NextResponse.json({ error: 'This folder has forms in it, and forms are always shared with the team — move the forms out first' }, { status: 400 });
+      }
       if (row.deal_id !== adopt.deal_id && !canManage) return forbidden('Only the owner or an admin can move this out of a deal folder');
     }
     const place = kind === 'folder' ? { parent_id: target } : { folder_id: target }; // docs and files both live in folder_id
     const { error } = await dc.admin.from(t).update({ ...place, updated_at: now }).eq('id', id);
     if (error) return NextResponse.json({ error: 'Could not move' }, { status: 500 });
-    if (adopt) {
+    if (adopt && kind !== 'form') {
       if (kind === 'folder') await applyToSubtree(dc, id, adopt);
       else await dc.admin.from(t).update({ ...adopt, updated_at: now }).eq('id', id);
     }
@@ -95,8 +111,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
 
   // Share (owner / admin)
   if (body.share) {
+    if (kind === 'form') return NextResponse.json({ error: 'Forms are always shared with the team' }, { status: 400 });
     if (!canManage) return forbidden('Only the owner or an admin can change who this is shared with');
     const visibility = body.share.visibility === 'private' ? 'private' : 'team';
+    if (visibility === 'private' && kind === 'folder' && (await subtree(dc, id)).formIds.length) return NextResponse.json({ error: 'This folder has forms in it, and forms are always shared with the team — move the forms out first' }, { status: 400 });
     let shared: string[] = [];
     if (visibility === 'private' && body.share.shared_with?.length) {
       const { data } = await dc.admin.from('crm_profiles').select('id').eq('business_unit', dc.bu).in('id', body.share.shared_with.slice(0, 50));

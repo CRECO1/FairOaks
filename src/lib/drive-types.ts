@@ -53,12 +53,37 @@ export interface DriveFile {
   updated_at: string;
 }
 
+/**
+ * A transaction form (TREC, TXR, lease, LOI …) filed in a Drive folder: the link row (crm_drive_forms) plus what it points at.
+ * `visibility` / `shared_with` / `deal_id` are constant here (forms live only in team folders) so a form item looks like the others.
+ */
+export interface DriveFormItem {
+  id: string;
+  business_unit: string;
+  folder_id: string | null;
+  submission_id: string;
+  created_by: string | null;
+  trashed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  title: string;
+  form_id: string | null;
+  form_name: string | null;
+  form_code: string | null;
+  status: string | null;
+  has_pdf: boolean;
+  visibility: 'team';
+  shared_with: string[];
+  deal_id: null;
+}
+
 export interface DriveListing {
   path: Array<{ id: string; name: string }>;
   folder: DriveFolder | null;
   folders: DriveFolder[];
   docs: DriveDoc[];
   files?: DriveFile[];
+  forms?: DriveFormItem[];
 }
 
 export interface DriveTreeFolder { id: string; parent_id: string | null; name: string; visibility: DriveVisibility; deal_id: string | null }
@@ -101,3 +126,5 @@ export interface DriveVersion {
   created_by: string | null;
   created_at: string;
 }
+
+export const FORM_LINK_COLS = 'id,business_unit,folder_id,submission_id,created_by,trashed_at,created_at,updated_at';

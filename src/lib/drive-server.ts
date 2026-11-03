@@ -4,6 +4,7 @@ import * as Y from 'yjs';
 import { createClient as createSsrClient } from '@/lib/supabase/server';
 import { getCrmContext, isAdminRole, type CrmContext } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { FORM_LINK_COLS, type DriveFormItem } from '@/lib/drive-types';
 
 const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
@@ -110,3 +111,32 @@ export function stripCommentMarks(stateB64: string): string {
     return bytesToB64(Y.encodeStateAsUpdate(doc));
   } finally { doc.destroy(); }
 }
+
+/**
+ * Fill in the form details behind Drive form links (title, which form, status, whether a PDF is saved). The saved forms are read with the
+ * service role, so each one is first checked with the same access rule the forms API uses (crm_form_can): a form that has since been put
+ * on a deal the person can't see simply isn't listed.
+ */
+export async function hydrateDriveForms(dc: DriveContext, links: Array<Record<string, unknown>>, titleLike?: string): Promise<DriveFormItem[]> {
+  if (!links.length) return [];
+  const ids = links.map(l => l.submission_id as string);
+  const { data } = await dc.admin.from('crm_form_submissions').select('id,title,form_id,status,filled_path,crm_forms(name,form_code)').in('id', ids);
+  const bySub = new Map((data ?? []).map(r => [r.id as string, r]));
+  const out: DriveFormItem[] = [];
+  await Promise.all(links.map(async l => {
+    const sub = bySub.get(l.submission_id as string);
+    if (!sub) return;
+    if (titleLike && !String(sub.title ?? '').toLowerCase().includes(titleLike.toLowerCase())) return;
+    const { data: ok } = await dc.admin.rpc('crm_form_can', { p_uid: dc.ctx.userId, p_sub: sub.id });
+    if (ok !== true) return;
+    const cf = sub.crm_forms as unknown as { name?: string; form_code?: string | null } | { name?: string; form_code?: string | null }[] | null;
+    const f = Array.isArray(cf) ? cf[0] : cf;
+    out.push({
+      ...(l as unknown as DriveFormItem), title: (sub.title as string) || f?.name || 'Form', form_id: (sub.form_id as string | null) ?? null,
+      form_name: f?.name ?? null, form_code: f?.form_code ?? null, status: (sub.status as string | null) ?? null, has_pdf: !!sub.filled_path,
+      visibility: 'team', shared_with: [], deal_id: null,
+    });
+  }));
+  return out;
+}
+export { FORM_LINK_COLS };

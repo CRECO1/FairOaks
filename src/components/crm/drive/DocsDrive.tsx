@@ -12,11 +12,12 @@ import dynamic from 'next/dynamic';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import { useBackToClose } from '@/lib/use-back-to-close';
 import DocPreviewModal from '../DocPreviewModal';
-import type { DriveDoc, DriveFile, DriveFolder, DriveListing, DriveTreeFolder } from '@/lib/drive-types';
+import type { DriveDoc, DriveFile, DriveFolder, DriveFormItem, DriveListing, DriveTreeFolder } from '@/lib/drive-types';
 import { DRIVE_FILE_MAX } from '@/lib/drive-types';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
 const DocQuickView = dynamic(() => import('./DocQuickView'), { ssr: false });
+const TransactionDocEditor = dynamic(() => import('../TransactionDocEditor'), { ssr: false });
 
 export interface DrivePerson { id: string; first_name?: string | null; last_name?: string | null; role?: string | null }
 
@@ -35,8 +36,8 @@ interface Props {
 }
 
 type View = 'folder' | 'recent' | 'trash' | 'search' | 'templates';
-type Kind = 'folder' | 'doc' | 'file';
-type Item = DriveFolder | DriveDoc | DriveFile;
+type Kind = 'folder' | 'doc' | 'file' | 'form';
+type Item = DriveFolder | DriveDoc | DriveFile | DriveFormItem;
 type Dlg =
   | { t: 'newFolder' }
   | { t: 'menu'; kind: Kind; item: Item }
@@ -46,11 +47,12 @@ type Dlg =
   | { t: 'trash'; kind: Kind; item: Item }
   | { t: 'delete'; kind: Kind; item: Item }
   | { t: 'toDeal'; kind: Kind; item: Item }
+  | { t: 'form' }
   | { t: 'template' }
   | { t: 'saveTpl'; item: DriveDoc };
 
 const GOLD = '#c9922c';
-const nameOf = (kind: Kind, item: Item) => (kind === 'doc' ? (item as DriveDoc).title : (item as DriveFolder | DriveFile).name);
+const nameOf = (kind: Kind, item: Item) => (kind === 'doc' || kind === 'form' ? (item as DriveDoc | DriveFormItem).title : (item as DriveFolder | DriveFile).name);
 const fileIcon = (f: DriveFile) => { const n = f.name.toLowerCase(); return f.mime === 'application/pdf' || n.endsWith('.pdf') ? '📕' : f.mime?.startsWith('image/') ? '🖼' : /\.(xlsx?|csv)$/.test(n) ? '📊' : /\.(docx?)$/.test(n) ? '📝' : /\.(pptx?)$/.test(n) ? '📙' : '📎'; };
 const fmtSize = (n: number | null) => (n == null ? '' : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
@@ -156,7 +158,11 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
   const folders = data?.folders ?? [];
   const docs = data?.docs ?? [];
   const files = data?.files ?? [];
-  const empty = !loading && data && !folders.length && !docs.length && !files.length;
+  const forms = data?.forms ?? [];
+  const empty = !loading && data && !folders.length && !docs.length && !files.length && !forms.length;
+  // Forms are always shared with the team, so they can only be added somewhere the team can see.
+  const canAddForm = view !== 'folder' || !data?.folder || (data.folder.visibility === 'team' && !data.folder.deal_id);
+  const [formEditor, setFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId: string } | null>(null);
   // Put a COPY of a document or file on a deal card's Docs tab: a live document goes as a PDF snapshot (with its letterhead), an uploaded
   // file as itself. It uses the deal's normal file upload, so the deal's own access rules apply and an identical file is not added twice.
   const addToDeal = async (kind: Kind, item: Item, deal: DriveDealLite) => {
@@ -164,6 +170,11 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
     const label = [deal.client, deal.property].filter(Boolean).join(' · ') || 'the deal';
     onToast(`Adding to ${label}…`);
     try {
+      if (kind === 'form') {
+        await api(`/api/crm/drive/forms/${item.id}/to-deal`, { method: 'POST', body: JSON.stringify({ deal_id: deal.id }) });
+        onToast(`Added to ${label} — see its Docs tab (it’s a separate copy)`);
+        return;
+      }
       let blob: Blob, name: string;
       if (kind === 'doc') {
         const [{ loadDocJson }, { docToPdf, pdfName }] = await Promise.all([import('./doc-export'), import('@/lib/doc-pdf')]);
@@ -199,7 +210,34 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
     try { const j = await api<{ url: string }>(`/api/crm/drive/file/${f.id}?download=1`); window.location.href = j.url; }
     catch (e) { onToast((e as Error).message); }
   };
-  const openItem = (kind: Kind, item: Item) => { if (inTrash || view === 'templates') { setDlg({ t: 'menu', kind, item }); return; } if (kind === 'folder') go(item.id); else if (kind === 'doc') setOpenDocId(item.id); else void openFile(item as DriveFile); };
+  const openFormItem = async (f: DriveFormItem) => {
+    if (!f.form_id) { onToast('This form has no blank to open'); return; }
+    try {
+      const j = await api<{ url: string }>(`/api/crm/forms/${f.form_id}/url`);
+      setFormEditor({ form: { id: f.form_id, name: f.form_name || f.title }, url: j.url, submissionId: f.submission_id });
+    } catch (e) { onToast((e as Error).message || 'Could not open the form'); }
+  };
+  const quickLookForm = async (f: DriveFormItem) => {
+    try {
+      const j = await api<{ url: string | null }>(`/api/crm/drive/forms/${f.id}`);
+      if (j.url) setPreview({ url: j.url, name: `${f.title}.pdf`, type: 'application/pdf' });
+      else onToast('That form hasn’t been saved as a PDF yet — open it and fill it in first');
+    } catch (e) { onToast((e as Error).message); }
+  };
+  const downloadFormPdf = async (f: DriveFormItem) => {
+    try {
+      const j = await api<{ url: string | null }>(`/api/crm/drive/forms/${f.id}?download=1`);
+      if (j.url) window.location.href = j.url; else onToast('That form hasn’t been saved as a PDF yet — open it, fill it in and Save first');
+    } catch (e) { onToast((e as Error).message); }
+  };
+  const createForm = async (formId: string) => {
+    setDlg(null);
+    try {
+      const j = await api<{ item: DriveFormItem }>('/api/crm/drive/forms', { method: 'POST', body: JSON.stringify({ form_id: formId, parent_id: view === 'folder' ? folderId : null }) });
+      refresh(); await openFormItem(j.item);
+    } catch (e) { onToast((e as Error).message); }
+  };
+  const openItem = (kind: Kind, item: Item) => { if (inTrash || view === 'templates') { setDlg({ t: 'menu', kind, item }); return; } if (kind === 'folder') go(item.id); else if (kind === 'doc') setOpenDocId(item.id); else if (kind === 'form') void openFormItem(item as DriveFormItem); else void openFile(item as DriveFile); };
 
   // Upload: the browser PUTs each file straight to storage (signed URL), then the API records it in the current folder.
   const uploadFiles = async (list: FileList | File[]) => {
@@ -262,10 +300,10 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
     return (
       <div key={`${kind}${it.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '4px 8px 4px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 56 : 46 }}>
         <button type="button" onClick={() => openItem(kind, it)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-          <span style={{ fontSize: 22, flexShrink: 0 }}>{kind === 'folder' ? (it.visibility === 'private' ? '🔒' : it.deal_id ? '💼' : '📁') : kind === 'file' ? fileIcon(it as DriveFile) : '📄'}</span>
+          <span style={{ fontSize: 22, flexShrink: 0 }}>{kind === 'folder' ? (it.visibility === 'private' ? '🔒' : it.deal_id ? '💼' : '📁') : kind === 'file' ? fileIcon(it as DriveFile) : kind === 'form' ? '📝' : '📄'}</span>
           <span style={{ minWidth: 0, flex: 1 }}>
             <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
-            {(isMobile || snippet) && <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet ?? `${who(it.created_by)} · ${kind === 'file' && (it as DriveFile).size ? `${fmtSize((it as DriveFile).size)} · ` : ''}${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}`}</span>}
+            {(isMobile || snippet) && <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet ?? `${who(it.created_by)} · ${kind === 'file' && (it as DriveFile).size ? `${fmtSize((it as DriveFile).size)} · ` : ''}${kind === 'form' ? `${(it as DriveFormItem).form_code ? `${(it as DriveFormItem).form_code} · ` : ''}${(it as DriveFormItem).has_pdf ? 'saved' : 'in progress'} · ` : ''}${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}`}</span>}
           </span>
         </button>
         {!isMobile && <>
@@ -334,6 +372,7 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
                     <MenuBtn onClick={() => void createDoc()} icon="📄" label="Document" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'template' }); }} icon="📋" label="From template…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'newFolder' }); }} icon="📁" label="Folder" isMobile={isMobile} />
+                    <MenuBtn onClick={() => { setNewOpen(false); if (!canAddForm) { onToast('Forms can only be added to team folders (not private ones)'); return; } setDlg({ t: 'form' }); }} icon="📝" label="Form…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); fileInput.current?.click(); }} icon="⬆" label="Upload files" isMobile={isMobile} />
                   </div>
                 </>
@@ -348,7 +387,7 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
         <div onDragOver={e => { if (!inTrash && view === 'folder' && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)}
           onDrop={e => { setDragOver(false); if (!inTrash && view === 'folder' && e.dataTransfer.files.length) { e.preventDefault(); void uploadFiles(e.dataTransfer.files); } }}
           style={{ background: 'var(--k-fff)', border: `1px ${dragOver ? 'dashed' : 'solid'} ${dragOver ? GOLD : '#eef0f2'}`, outline: dragOver ? `3px solid ${GOLD}33` : 'none', borderRadius: 12, overflow: 'hidden' }}>
-          {!isMobile && (folders.length > 0 || docs.length > 0 || files.length > 0) && (
+          {!isMobile && (folders.length > 0 || docs.length > 0 || files.length > 0 || forms.length > 0) && (
             <div style={{ display: 'flex', gap: 10, padding: '8px 8px 8px 14px', borderBottom: '1px solid var(--k-eef0f2)', fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>
               <span style={{ flex: 1, paddingLeft: 34 }}>Name</span><span style={{ width: 90 }}>Owner</span><span style={{ width: 120 }}>Access</span><span style={{ width: 88 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 34 }} />
             </div>
@@ -357,6 +396,7 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
           {uploading > 0 && <div style={{ padding: '10px 16px', fontSize: 13, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', borderBottom: '1px solid var(--k-f0e2c4)' }}>⬆ Uploading {uploading} file{uploading === 1 ? '' : 's'}…</div>}
           {folders.map(f => row('folder', f))}
           {docs.map(d => row('doc', d))}
+          {forms.map(f => row('form', f))}
           {files.map(f => row('file', f))}
           {empty && (
             <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14, lineHeight: 1.6 }}>
@@ -371,6 +411,7 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
       <input ref={fileInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.txt" onChange={e => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ''; }} />
 
       {/* Dialogs */}
+      {dlg?.t === 'form' && <FormPicker api={api} businessUnit={businessUnit} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void createForm(id)} />}
       {dlg?.t === 'toDeal' && <DealPicker deals={deals} isMobile={isMobile} title={nameOf(dlg.kind, dlg.item)} onClose={() => setDlg(null)} onPick={d => void addToDeal(dlg.kind, dlg.item, d)} />}
       {dlg?.t === 'template' && <TemplatePicker api={api} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void startFromTemplate(id)} />}
       {dlg?.t === 'saveTpl' && <NameDialog title="Save as template" cta="Save template" initial={dlg.item.title} isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void saveAsTemplate(dlg.item, name)} />}
@@ -382,20 +423,22 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
           {inTrash ? (
             <>
               <MenuBtn icon="↩" label="Restore" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void patch(d.kind, d.item, { trash: false }, 'Restored'); }} />
-              {canManage(dlg.item) && <MenuBtn icon="🗑" label="Delete forever" danger isMobile={isMobile} onClick={() => setDlg({ t: 'delete', kind: dlg.kind, item: dlg.item })} />}
+              {canManage(dlg.item) && <MenuBtn icon="🗑" label={dlg.kind === 'form' ? 'Remove from My Drive' : 'Delete forever'} danger isMobile={isMobile} onClick={() => setDlg({ t: 'delete', kind: dlg.kind, item: dlg.item })} />}
             </>
           ) : (
             <>
               {dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template && <MenuBtn icon="📋" label="Use this template" isMobile={isMobile} onClick={() => void startFromTemplate(dlg.item.id)} />}
               <MenuBtn icon="↗" label={dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template ? 'Edit the template' : 'Open'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); if (d.kind === 'doc') setOpenDocId(d.item.id); else openItem(d.kind, d.item); }} />
               {dlg.kind === 'doc' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); setQuickDocId(d.item.id); }} />}
-              {(dlg.kind === 'file' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label="Add to a deal…" isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
+              {dlg.kind === 'form' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void quickLookForm(d.item as DriveFormItem); }} />}
+              {dlg.kind === 'form' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFormPdf(d.item as DriveFormItem); }} />}
+              {(dlg.kind === 'file' || dlg.kind === 'form' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label="Add to a deal…" isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
               {dlg.kind === 'doc' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
               {!(dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template) && <>
                 <MenuBtn icon="📁" label="Move to…" isMobile={isMobile} onClick={() => setDlg({ t: 'move', kind: dlg.kind, item: dlg.item })} />
-                <MenuBtn icon="👥" label="Share…" isMobile={isMobile} onClick={() => setDlg({ t: 'share', kind: dlg.kind, item: dlg.item })} />
+                {dlg.kind !== 'form' && <MenuBtn icon="👥" label="Share…" isMobile={isMobile} onClick={() => setDlg({ t: 'share', kind: dlg.kind, item: dlg.item })} />}
               </>}
               {dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template && !dlg.item.deal_id && <MenuBtn icon="📋" label="Save as template…" isMobile={isMobile} onClick={() => setDlg({ t: 'saveTpl', item: dlg.item as DriveDoc })} />}
               <MenuBtn icon="🗑" label="Move to trash" danger isMobile={isMobile} onClick={() => setDlg({ t: 'trash', kind: dlg.kind, item: dlg.item })} />
@@ -412,10 +455,10 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
         </Modal>
       )}
       {dlg?.t === 'delete' && (
-        <Modal title="Delete forever?" isMobile={isMobile} onClose={() => setDlg(null)}>
-          <p style={{ margin: '0 0 14px', fontSize: 14, color: 'var(--k-4b5563)', lineHeight: 1.55 }}>“{nameOf(dlg.kind, dlg.item)}”{dlg.kind === 'folder' ? ' and everything inside it' : ''} will be permanently deleted. This can’t be undone.</p>
-          <DialogButtons isMobile={isMobile} onCancel={() => setDlg(null)} cta="Delete forever" danger
-            onSubmit={() => { const d = dlg; setDlg(null); void act(() => api(`/api/crm/drive/items/${d.kind}/${d.item.id}`, { method: 'DELETE' }), 'Deleted'); }} />
+        <Modal title={dlg.kind === 'form' ? 'Remove from My Drive?' : 'Delete forever?'} isMobile={isMobile} onClose={() => setDlg(null)}>
+          <p style={{ margin: '0 0 14px', fontSize: 14, color: 'var(--k-4b5563)', lineHeight: 1.55 }}>“{nameOf(dlg.kind, dlg.item)}”{dlg.kind === 'folder' ? ' and everything inside it' : ''} {dlg.kind === 'form' ? 'will be removed from My Drive. The saved form itself is kept — a form is never deleted from here.' : 'will be permanently deleted. This can’t be undone.'}</p>
+          <DialogButtons isMobile={isMobile} onCancel={() => setDlg(null)} cta={dlg.kind === 'form' ? 'Remove' : 'Delete forever'} danger
+            onSubmit={() => { const d = dlg; setDlg(null); void act(() => api(`/api/crm/drive/items/${d.kind}/${d.item.id}`, { method: 'DELETE' }), d.kind === 'form' ? 'Removed from My Drive' : 'Deleted'); }} />
         </Modal>
       )}
       {dlg?.t === 'move' && <MoveDialog kind={dlg.kind} item={dlg.item} tree={tree} kids={kids} isMobile={isMobile} onClose={() => setDlg(null)}
@@ -424,6 +467,10 @@ export default function DocsDrive({ deals = [], businessUnit, authToken, current
         onSave={(visibility, shared_with) => void patch(dlg.kind, dlg.item, { share: { visibility, shared_with } }, 'Sharing updated').then(ok => { if (ok) setDlg(null); })} />}
 
       {preview && <DocPreviewModal file={preview} onClose={() => setPreview(null)} />}
+      {formEditor && (
+        <TransactionDocEditor form={formEditor.form} url={formEditor.url} authToken={authToken} isAdmin={isAdmin} businessUnit={businessUnit} submissionId={formEditor.submissionId} isMobile={isMobile}
+          onToast={onToast} onClose={() => { setFormEditor(null); refresh(); }} onSaved={refresh} />
+      )}
       {quickDocId && <DocQuickView docId={quickDocId} authToken={authToken} isMobile={isMobile} onToast={onToast} onClose={() => setQuickDocId(null)} onOpen={id => { setQuickDocId(null); setOpenDocId(id); }} />}
 
       {openDocId && (
@@ -608,6 +655,51 @@ function DealPicker({ deals, isMobile, title, onClose, onPick }: { deals: DriveD
             </span>
             {d.stage && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-1d4ed8)', background: 'var(--k-dbeafe)', padding: '2px 8px', borderRadius: 20 }}>{d.stage}</span>}
           </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+interface LibForm { id: string; name: string; form_code?: string | null; category?: string | null; pinned?: boolean | null }
+/** The whole form library — commercial and TREC residential — grouped by folder, searchable. */
+function FormPicker({ api, businessUnit, isMobile, onClose, onPick }: { api: <T>(path: string, init?: RequestInit) => Promise<T>; businessUnit: string; isMobile: boolean; onClose: () => void; onPick: (id: string) => void }) {
+  const [forms, setForms] = useState<LibForm[] | null>(null);
+  const [q, setQ] = useState('');
+  const [scope, setScope] = useState<'all' | 'commercial' | 'trec'>('all');
+  useEffect(() => { api<{ forms: LibForm[] }>(`/api/crm/forms?business_unit=${businessUnit}`).then(j => setForms(j.forms ?? [])).catch(() => setForms([])); }, [api, businessUnit]);
+  const isTrec = (f: LibForm) => /^residential/i.test(f.category ?? '');
+  const shown = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    return (forms ?? []).filter(f => (scope === 'all' || (scope === 'trec') === isTrec(f)) && (!t || `${f.name} ${f.form_code ?? ''} ${f.category ?? ''}`.toLowerCase().includes(t)));
+  }, [forms, q, scope]);
+  const cats = useMemo(() => [...new Set(shown.map(f => f.category || 'Other'))], [shown]);
+  const chip = (id: 'all' | 'commercial' | 'trec', label: string, n: number) => (
+    <button key={id} type="button" onClick={() => setScope(id)} style={{ minHeight: isMobile ? 38 : 30, padding: '0 12px', borderRadius: 16, border: `1px solid ${scope === id ? GOLD : 'var(--k-e5e7eb)'}`, background: scope === id ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: scope === id ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{label} <span style={{ opacity: .6 }}>{n}</span></button>
+  );
+  const n = (f: (x: LibForm) => boolean) => (forms ?? []).filter(f).length;
+  return (
+    <Modal title="Add a form" isMobile={isMobile} onClose={onClose}>
+      <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>Pick any form in the library. A blank copy is filed here and opens so you and your team can fill it in together.</p>
+      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="🔍  Search all forms (name or form number)" style={{ width: '100%', boxSizing: 'border-box', height: isMobile ? 46 : 36, border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '0 12px', fontSize: 14, marginBottom: 8, background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }} />
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>{chip('all', 'All', forms?.length ?? 0)}{chip('commercial', 'Commercial', n(f => !isTrec(f)))}{chip('trec', 'TREC (residential)', n(isTrec))}</div>
+      <div style={{ maxHeight: isMobile ? '52dvh' : 380, overflowY: 'auto' }}>
+        {forms === null && <div style={{ padding: 12, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading the library…</div>}
+        {forms && shown.length === 0 && <div style={{ padding: 12, color: 'var(--k-9ca3af)', fontSize: 14 }}>No forms match.</div>}
+        {cats.map(cat => (
+          <div key={cat}>
+            <div style={{ fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 700, padding: '10px 8px 4px' }}>{cat}</div>
+            {shown.filter(f => (f.category || 'Other') === cat).map(f => (
+              <button key={f.id} type="button" onClick={() => onPick(f.id)}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', textAlign: 'left', minHeight: isMobile ? 50 : 40, padding: '7px 8px', border: 'none', borderBottom: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                <span style={{ fontSize: 18, flexShrink: 0 }}>📝</span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--k-1a1a1a)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{f.name}</span>
+                  {f.form_code && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 1 }}>Form {f.form_code}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
         ))}
       </div>
     </Modal>

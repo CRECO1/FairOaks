@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound } from '@/lib/crm-auth';
-import { driveContext, likePattern, stripCommentMarks } from '@/lib/drive-server';
-import { DOC_COLS, FILE_COLS, FOLDER_COLS, type DriveDoc, type DriveFile, type DriveFolder, type DriveListing } from '@/lib/drive-types';
+import { driveContext, hydrateDriveForms, likePattern, stripCommentMarks } from '@/lib/drive-server';
+import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS, type DriveDoc, type DriveFile, type DriveFolder, type DriveListing } from '@/lib/drive-types';
 
 // Transaction Docs "Drive": list folders + live documents, and create new ones.
 // Every read runs as the signed-in user, so the crm_drive_* read policies (crm_drive_can) decide what is visible.
@@ -38,10 +38,11 @@ export async function GET(req: NextRequest) {
   }
 
   if (view === 'trash') {
-    const [f, d, fl] = await Promise.all([
+    const [f, d, fl, fm] = await Promise.all([
       userDb.from('crm_drive_folders').select(FOLDER_COLS).eq('business_unit', bu).not('trashed_at', 'is', null),
       userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).not('trashed_at', 'is', null),
       userDb.from('crm_drive_files').select(FILE_COLS).eq('business_unit', bu).not('trashed_at', 'is', null),
+      userDb.from('crm_drive_forms').select(FORM_LINK_COLS).eq('business_unit', bu).not('trashed_at', 'is', null),
     ]);
     if (f.error || d.error || fl.error) return NextResponse.json({ error: 'Could not load the trash' }, { status: 500 });
     const folders = (f.data ?? []) as DriveFolder[];
@@ -55,6 +56,7 @@ export async function GET(req: NextRequest) {
       folders: folders.filter(x => top(x.parent_id, x)),
       docs: docs.filter(x => top(x.folder_id, x)),
       files: files.filter(x => top(x.folder_id, x)),
+      forms: (await hydrateDriveForms(dc, (fm.data ?? []) as Array<Record<string, unknown>>)).filter(x => top(x.folder_id, x)),
     } satisfies DriveListing);
   }
 
@@ -62,11 +64,12 @@ export async function GET(req: NextRequest) {
     const q = (url.searchParams.get('q') ?? '').trim();
     if (q.length < 2) return NextResponse.json({ path: [], folder: null, folders: [], docs: [] } satisfies DriveListing);
     const pat = likePattern(q);
-    const [f, byTitle, byText, byFile] = await Promise.all([
+    const [f, byTitle, byText, byFile, formLinks] = await Promise.all([
       userDb.from('crm_drive_folders').select(FOLDER_COLS).eq('business_unit', bu).is('trashed_at', null).ilike('name', pat).limit(30),
       userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).is('trashed_at', null).eq('is_template', false).ilike('title', pat).limit(40),
       userDb.from('crm_drive_docs').select(`${DOC_COLS},content_text`).eq('business_unit', bu).is('trashed_at', null).eq('is_template', false).ilike('content_text', pat).limit(40),
       userDb.from('crm_drive_files').select(FILE_COLS).eq('business_unit', bu).is('trashed_at', null).ilike('name', pat).limit(40),
+      userDb.from('crm_drive_forms').select(FORM_LINK_COLS).eq('business_unit', bu).is('trashed_at', null).limit(300),
     ]);
     const docs = new Map<string, DriveDoc>();
     for (const x of (byTitle.data ?? []) as unknown as DriveDoc[]) docs.set(x.id, x);
@@ -76,7 +79,7 @@ export async function GET(req: NextRequest) {
       const { content_text, ...rest } = x;
       docs.set(x.id, { ...rest, snippet: `${i > 40 ? '…' : ''}${content_text.slice(Math.max(0, i - 40), i + 100).replace(/\s+/g, ' ')}…` });
     }
-    return NextResponse.json({ path: [], folder: null, folders: (f.data ?? []) as DriveFolder[], docs: [...docs.values()], files: (byFile.data ?? []) as DriveFile[] } satisfies DriveListing);
+    return NextResponse.json({ path: [], folder: null, folders: (f.data ?? []) as DriveFolder[], docs: [...docs.values()], files: (byFile.data ?? []) as DriveFile[], forms: await hydrateDriveForms(dc, (formLinks.data ?? []) as Array<Record<string, unknown>>, q) } satisfies DriveListing);
   }
 
   // Default: the contents of one folder (or the top level).
@@ -94,13 +97,15 @@ export async function GET(req: NextRequest) {
   const fq = userDb.from('crm_drive_folders').select(FOLDER_COLS).eq('business_unit', bu).is('trashed_at', null);
   const dq = userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).is('trashed_at', null).eq('is_template', false);
   const lq = userDb.from('crm_drive_files').select(FILE_COLS).eq('business_unit', bu).is('trashed_at', null);
-  const [f, d, fl] = await Promise.all([
+  const mq = userDb.from('crm_drive_forms').select(FORM_LINK_COLS).eq('business_unit', bu).is('trashed_at', null);
+  const [f, d, fl, fm] = await Promise.all([
     (folderId ? fq.eq('parent_id', folderId) : fq.is('parent_id', null)).order('name'),
     (folderId ? dq.eq('folder_id', folderId) : dq.is('folder_id', null)).order('updated_at', { ascending: false }),
     (folderId ? lq.eq('folder_id', folderId) : lq.is('folder_id', null)).order('name'),
+    (folderId ? mq.eq('folder_id', folderId) : mq.is('folder_id', null)).order('updated_at', { ascending: false }),
   ]);
-  if (f.error || d.error || fl.error) return NextResponse.json({ error: 'Could not load this folder' }, { status: 500 });
-  return NextResponse.json({ path, folder, folders: (f.data ?? []) as DriveFolder[], docs: (d.data ?? []) as DriveDoc[], files: (fl.data ?? []) as DriveFile[] } satisfies DriveListing);
+  if (f.error || d.error || fl.error || fm.error) return NextResponse.json({ error: 'Could not load this folder' }, { status: 500 });
+  return NextResponse.json({ path, folder, folders: (f.data ?? []) as DriveFolder[], docs: (d.data ?? []) as DriveDoc[], files: (fl.data ?? []) as DriveFile[], forms: await hydrateDriveForms(dc, (fm.data ?? []) as Array<Record<string, unknown>>) } satisfies DriveListing);
 }
 
 export async function POST(req: NextRequest) {
