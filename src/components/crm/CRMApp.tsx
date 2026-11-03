@@ -366,6 +366,17 @@ function replyAllRecipients(last: DealEmail, thread: DealEmail[], primary: strin
 // (email_at), else when it reached the CRM (created_at). Without this "the last message" of a thread was a coin flip,
 // so Reply / Reply all quoted — and addressed — the wrong one.
 const emailTs = (e: DealEmail) => e.email_at ?? e.created_at ?? '';
+// "Oct 7" this year, "Oct 7, 2025" otherwise (the stored value is a bare YYYY-MM-DD).
+const shortEmailDate = (d: string) => {
+  const t = new Date(/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T12:00:00` : d);
+  if (isNaN(t.getTime())) return d;
+  return t.toLocaleDateString('en-US', t.getFullYear() === new Date().getFullYear() ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+};
+// One conversation can reach the log as several Gmail threads (each mailbox keeps its own): fold them by subject.
+const threadKeyFor = (e: DealEmail) => {
+  const subj = (e.subject ?? '').toLowerCase().replace(/^(\s*(re|fwd?|fw)\s*:\s*)+/g, '').replace(/\s+/g, ' ').trim();
+  return subj.length >= 6 ? `subj_${subj}` : (e.gmail_thread_id ?? `solo_${e.id}`);
+};
 const byEmailTime = (a: DealEmail, b: DealEmail) => a.email_date.localeCompare(b.email_date) || emailTs(a).localeCompare(emailTs(b));
 const newestEmail = (list: DealEmail[]) => list.reduce((mx, e) => (byEmailTime(e, mx) > 0 ? e : mx), list[0]);
 const sortedEmails = (list: DealEmail[]) => [...list].sort(byEmailTime);
@@ -555,7 +566,7 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
         <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0, maxWidth: isMobile ? 110 : 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emailDisplayName(e.from_email)}</span>
         <span style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{bodyText.replace(/\s+/g, ' ').slice(0, 120)}</span>
         {e.attachments && e.attachments.length > 0 && <span title={e.attachments.map(a => a.name).join('\n')} aria-label={`${e.attachments.length} attachment${e.attachments.length === 1 ? '' : 's'}`} style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }}>📎</span>}
-        <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }}>{e.email_date}</span>
+        <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0, whiteSpace: 'nowrap' }}>{shortEmailDate(e.email_date)}</span>
       </div>
     );
   }
@@ -576,7 +587,7 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', ...(isMobile ? { width: '100%' } : { flexShrink: 0 }) }}>
               {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)', fontWeight: 600 }}>{group ? `👁 Opened by someone on this email${openTail(e)}` : `👁 Opened${openTail(e)}`}</span>; })()}
               {e.direction === 'sent' && !e.opened_at && e.tracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
-              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', ...(isMobile ? { marginRight: 'auto' } : {}) }}>{e.email_date}</span>
+              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap', ...(isMobile ? { marginRight: 'auto' } : {}) }}>{shortEmailDate(e.email_date)}</span>
               {onReply && <span role="button" tabIndex={0} aria-label="Reply to this message" title="Reply to this message" onClick={onReply} onKeyDown={ev => { if (ev.key === 'Enter') onReply(); }}
                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)' }}>↩</span>}
               {onReplyAll && <span role="button" tabIndex={0} aria-label="Reply all to this message" title="Reply all to this message" onClick={onReplyAll} onKeyDown={ev => { if (ev.key === 'Enter') onReplyAll(); }}
@@ -11937,7 +11948,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       // Group emails by gmail_thread_id; emails without a thread ID each get their own group keyed by id
                       const threadMap = new Map<string, DealEmail[]>();
                       for (const email of dealEmails) {
-                        const key = email.gmail_thread_id ?? `solo_${email.id}`;
+                        const key = threadKeyFor(email);
                         const existing = threadMap.get(key) ?? [];
                         existing.push(email);
                         threadMap.set(key, existing);
@@ -11990,17 +12001,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened{(() => { const n = sentEmails.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0); return n > 1 ? ` ${n}×` : ''; })()}</span>}
                                   {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, overflow: 'hidden' }}>
-                                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-374151)', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latest.subject}</span>
-                                  <span style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}> — {snippet}</span>
-                                </div>
+                                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latest.subject}</div>
+                                <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{snippet}</div>
                               </div>
                               {/* Right: date + chevron */}
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                                 <span role="button" tabIndex={0} aria-label={emailPins.has(threadKey) ? 'Unpin this conversation' : 'Pin this conversation to the top'} title={emailPins.has(threadKey) ? 'Unpin' : 'Pin to the top (this browser)'}
                                   onClick={ev => { ev.stopPropagation(); toggleEmailPin(threadKey); }} onKeyDown={ev => { if (ev.key === 'Enter') { ev.stopPropagation(); toggleEmailPin(threadKey); } }}
                                   style={{ fontSize: 16, cursor: 'pointer', padding: isMobile ? '8px 6px' : '0 2px', color: emailPins.has(threadKey) ? '#c9922c' : 'var(--k-cbd5e1)' }}>{emailPins.has(threadKey) ? '★' : '☆'}</span>
-                                <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{latest.email_date}</span>
+                                <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{shortEmailDate(latest.email_date)}</span>
                                 <span style={{ fontSize: 12, color: '#cbd5e1' }}>{isExpanded ? '▾' : '▸'}</span>
                               </div>
                             </div>
@@ -12048,8 +12057,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       });
                     })()}
                   </div>
-                  <div style={{ background: 'var(--k-f9fafb)', border: '1px dashed var(--k-d1d5db)', borderRadius: 8, padding: 15 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--k-111)' }}>+ Log Email Touch</div>
+                  <details style={{ background: 'var(--k-f9fafb)', border: '1px dashed var(--k-d1d5db)', borderRadius: 8, padding: '10px 15px' }}>
+                    <summary style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-6b7280)', cursor: 'pointer', listStyle: 'none' }}>+ Log an email by hand</summary>
+                    <div style={{ height: 12 }} />
                     <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Direction</label>
                         <select className="crm-input" style={{ marginTop: 4 }} value={ne.direction} onChange={e => setNe({ ...ne, direction: e.target.value as 'sent' | 'received' })}>
@@ -12063,7 +12073,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ marginTop: 10, textAlign: 'right' }}>
                       <button className="crm-btn crm-btn-sm" style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: 'pointer' }} onClick={() => logEmail(activeDeal)}>Log Email</button>
                     </div>
-                  </div>
+                  </details>
                 </div>
               )}
 
@@ -13948,7 +13958,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {!contactEmailsLoading && (() => {
                         const threadMap = new Map<string, DealEmail[]>();
                         for (const email of contactEmails) {
-                          const key = email.gmail_thread_id ?? `solo_${email.id}`;
+                          const key = threadKeyFor(email);
                           const existing = threadMap.get(key) ?? [];
                           existing.push(email);
                           threadMap.set(key, existing);
@@ -13994,7 +14004,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   </div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                  <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{latest.email_date}</span>
+                                  <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{shortEmailDate(latest.email_date)}</span>
                                   <span style={{ fontSize: 12, color: '#cbd5e1' }}>{isExpanded ? '▾' : '▸'}</span>
                                 </div>
                               </div>

@@ -33,13 +33,13 @@ export default function ThreadAssist({ messages, contact, canReply, onDraft, onN
   };
 
   const btn: React.CSSProperties = {
-    minHeight: isMobile ? 40 : 30, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)',
+    minHeight: isMobile ? 40 : 30, padding: '0 14px', borderRadius: 15, border: '1px solid #c9922c', background: 'var(--k-fff)', color: '#92400e',
     fontSize: 13, fontWeight: 600, cursor: busy ? 'default' : 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', opacity: busy ? 0.7 : 1,
   };
   const lines = summary.split('\n').map(l => l.trim()).filter(Boolean);
 
   return (
-    <div style={{ padding: '10px 14px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-f0f0f0)' }}>
+    <div style={{ padding: '10px 16px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-f0f0f0)' }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button style={btn} disabled={!!busy} onClick={() => run('summarize')} title="A short summary of this conversation and what to do next">
           {busy === 'summarize' ? '✨ Reading…' : summary ? '✨ Refresh summary' : '✨ Catch me up'}
