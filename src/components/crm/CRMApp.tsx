@@ -5882,6 +5882,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
           <button className={`crm-nav${page === 'deals' && !filter ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); }}><Ico n="deals" />All Deals <span style={{ marginLeft: 'auto', background: '#c9922c', color: 'var(--k-111)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span></button>
+          {isSuperAdmin && <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}><Ico n="file" />My Drive</button>}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>People</div>
@@ -5921,7 +5922,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </a>
           )}
           <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}><Ico n="building" />Properties</button>
-          <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}><Ico n="file" />{isSuperAdmin ? 'My Drive' : 'Transaction Docs'}</button>
+          {!isSuperAdmin && <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}><Ico n="file" />Transaction Docs</button>}
           <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}><Ico n="pen" />E-Sign</button>
           <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}><Ico n="phone" />Calling Log</button>
           <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
