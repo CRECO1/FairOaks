@@ -1098,6 +1098,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   useEffect(() => { setActivityMore(false); }, [activeClient?.id]);
   const [docsMore, setDocsMore] = useState(false); // phones: the contact card's Documents list shows the first few until you ask for the rest
   useEffect(() => { setDocsMore(false); }, [activeClient?.id]);
+  const [logOpen, setLogOpen] = useState(false); // phones: the contact card's Log Touch form is one button until tapped
+  useEffect(() => { setLogOpen(false); }, [activeClient?.id]);
   const [dealCompact, setDealCompact] = useState(false); // phones: the deal card's second header row folds away once its content is scrolled
   useEffect(() => { setDealCompact(false); }, [activeDeal?.id]);
   const [cardCompact, setCardCompact] = useState(false); // phones: the contact card's header folds away once its content is scrolled
@@ -13565,7 +13567,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <button onClick={() => { loadClientActivities(c.id); loadClientCampaignSends(c.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 12, padding: '2px 6px', borderRadius: 4 }} title="Refresh">⟳ Refresh</button>
                   </div>
 
-                  {/* Log new activity */}
+                  {/* Log new activity — on phones a one-line button until tapped (or until a draft is typed) */}
+                  {isMobile && !logOpen && !newActivity.note ? (
+                    <button type="button" onClick={() => setLogOpen(true)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 48, padding: '0 14px', marginBottom: 12, border: '1px dashed var(--k-d1d5db)', borderRadius: 10, background: 'var(--k-f9fafb)', color: 'var(--k-374151)', fontSize: 14, fontWeight: 600, textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                      <span style={{ flex: 1 }}>+ Log a touch <span style={{ fontWeight: 500, fontSize: 13, color: 'var(--k-9ca3af)', marginLeft: 6 }}>call · email · meeting · note</span></span>
+                      <span aria-hidden style={{ color: 'var(--k-9ca3af)' }}>▾</span>
+                    </button>
+                  ) : (
                   <div style={{ background: 'var(--k-f9fafb)', border: '1px dashed var(--k-d1d5db)', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-374151)', marginBottom: 10 }}>+ Log Touch</div>
                     <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -13592,12 +13601,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         onClick={async () => {
                           await logActivity(c.id, newActivity.type, newActivity.note);
                           setNewActivity({ type: 'call', note: '' });
+                          setLogOpen(false);
                           showToast('Activity logged');
                         }}>
                         Log {newActivity.type.charAt(0).toUpperCase() + newActivity.type.slice(1)}
                       </button>
                     </div>
                   </div>
+                  )}
 
                   {/* Other CONTACTS this person is tied to through notes — both the
                       people named in their notes, and the people who named them. This

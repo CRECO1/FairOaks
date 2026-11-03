@@ -11,7 +11,7 @@ interface Thread { conversation_id: string; number: string | null; our_number: s
 interface Props { clientId: string; authToken?: string; businessUnit: string; showToast?: (m: string) => void; onOpenLog?: () => void }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
-const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
+const miniBase: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
 const when = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const dur = (s: number | null) => s == null ? '' : s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 const pretty = (n: string | null) => { const d = String(n ?? '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : (n || ''); };
@@ -84,13 +84,15 @@ export default function ContactComms({ clientId, authToken, businessUnit, showTo
   if (!loaded) return null;
   if (!calls.length && !threads.length) return null;
   const shownCalls = showAllCalls ? calls : calls.slice(0, 5);
+  const phone = typeof window !== 'undefined' && (window.innerWidth < 768 || !!window.matchMedia?.('(pointer: coarse)').matches);
+  const mini = phone ? { ...miniBase, minHeight: 40, padding: '0 14px' } : miniBase; // finger-sized on phones
 
   return (
     <div style={{ marginTop: 14, fontFamily: "'DM Sans',sans-serif" }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)' }}>📞 Calls &amp; 💬 Texts</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: phone ? '2px 8px' : 8, marginBottom: 6 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', whiteSpace: 'nowrap' }}>📞 Calls &amp; 💬 Texts</div>
         <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{calls.length} call{calls.length === 1 ? '' : 's'} · {threads.length} text thread{threads.length === 1 ? '' : 's'}</span>
-        {onOpenLog && <button onClick={onOpenLog} style={{ fontSize: 12, color: 'var(--k-a06a12)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700 }}>Open Calling Log →</button>}
+        {onOpenLog && <button onClick={onOpenLog} style={{ fontSize: 12, color: 'var(--k-a06a12)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700, whiteSpace: 'nowrap', ...(phone ? { minHeight: 40, marginLeft: 'auto' } : {}) }}>Open Calling Log →</button>}
       </div>
 
       {threads.length > 0 && (
