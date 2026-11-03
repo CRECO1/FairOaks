@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound, forbidden } from '@/lib/crm-auth';
 import { driveContext } from '@/lib/drive-server';
+import { logDocEvent } from '@/lib/drive-events';
 import type { DriveVersion } from '@/lib/drive-types';
 
 // Version history of a live document.
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     doc_id: id, ystate: cur.ystate, content_text: cur.content_text ?? '', size: (cur.ystate as string).length, label, kind, created_by: dc.ctx.userId,
   }).select(COLS).single();
   if (error || !data) return NextResponse.json({ error: 'Could not save the version' }, { status: 500 });
+  await logDocEvent(dc.admin, { docId: id, bu: dc.bu, actor: dc.ctx.userId, kind: kind === 'restore' ? 'version_restored' : 'version_saved', detail: { label } });
   return NextResponse.json({ version: data as DriveVersion });
 }
 

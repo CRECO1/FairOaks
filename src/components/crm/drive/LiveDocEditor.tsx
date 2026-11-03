@@ -27,7 +27,7 @@ import { docExtensions } from './doc-extensions';
 import { DocStyles } from './DocStyles';
 import { LetterheadHeader, LetterheadFooter } from './Letterhead';
 import { exportDocPdf } from './doc-export';
-import { CommentsPanel, HistoryPanel } from './DocPanel';
+import { ActivityPanel, CommentsPanel, HistoryPanel } from './DocPanel';
 import type { DrivePerson } from './DocsDrive';
 
 export interface DocUser { id: string; name: string }
@@ -93,7 +93,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
   const [save, setSave] = useState<SaveState>('saved');
   const [title, setTitle] = useState(doc.title);
   const me = useMemo<Peer>(() => ({ name: user.name || 'Teammate', color: colorFor(user.id) }), [user.id, user.name]);
-  const [panel, setPanel] = useState<null | 'comments' | 'history'>(null);
+  const [panel, setPanel] = useState<null | 'comments' | 'history' | 'activity'>(null);
   const [comments, setComments] = useState<DriveComment[]>([]);
   const [anchor, setAnchor] = useState<{ from: number; to: number; text: string } | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -257,6 +257,8 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
           style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'comments' ? 'var(--k-fdf6e9)' : 'var(--k-fff)', position: 'relative' }}>
           💬{comments.some(c => !c.parent_id && !c.resolved_at) && <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--k-a06a12)' }}>{comments.filter(c => !c.parent_id && !c.resolved_at).length}</span>}
         </button>
+        <button type="button" onClick={() => setPanel(p => (p === 'activity' ? null : 'activity'))} aria-pressed={panel === 'activity'} aria-label="Activity log" title="Activity — every change to this document"
+          style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'activity' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>📜</button>
         <button type="button" onClick={() => setPanel(p => (p === 'history' ? null : 'history'))} aria-pressed={panel === 'history'} aria-label="Version history" title="Version history"
           style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'history' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>🕘</button>
         <button type="button" disabled={!editor} onClick={async () => { if (!editor) return; try { await flushRef.current(); await exportDocPdf(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the PDF'); } }}
@@ -284,6 +286,9 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
           <CommentsPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} isAdmin={isAdmin} onToast={onToast} onClose={() => { setPanel(null); setAnchor(null); }}
             editor={editor} comments={comments} reload={() => commentsReload.current()} anchor={anchor} clearAnchor={() => setAnchor(null)}
             bump={() => handle.ydoc.getMap<unknown>('meta').set('commentsRev', Date.now())} />
+        )}
+        {panel === 'activity' && (
+          <ActivityPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} onToast={onToast} onClose={() => setPanel(null)} />
         )}
         {handle && panel === 'history' && (
           <HistoryPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} onToast={onToast} onClose={() => setPanel(null)} ydoc={handle.ydoc} flush={() => flushRef.current()} />

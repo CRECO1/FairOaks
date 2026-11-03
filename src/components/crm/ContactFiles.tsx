@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import DealDocUpload from '@/components/crm/DealDocUpload';
+import LinkedDocs from '@/components/crm/drive/LinkedDocs';
+import type { DrivePerson } from '@/components/crm/drive/DocsDrive';
 
 // The "Files" section of a contact card: documents and photos uploaded onto the person, plus every file on the Docs
 // tab of their deals (tagged with the deal it came from). Open / preview use a freshly signed link at click time.
@@ -15,13 +17,16 @@ const PREVIEWABLE = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'docx', 'xlsx',
 const kb = (n: number | null) => (n == null ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const icon = (name: string) => (/\.(png|jpe?g|webp|gif)$/i.test(name) ? '🖼' : '📄');
 
-export default function ContactFiles({ clientId, authToken, userId, isAdmin, showToast, onPreview }: {
+export default function ContactFiles({ clientId, authToken, userId, isAdmin, showToast, onPreview, userName, profiles, isMobile }: {
   clientId: string;
   authToken?: string;
   userId?: string;
   isAdmin: boolean;
   showToast: (m: string) => void;
   onPreview: (f: { url: string; name: string; type?: string | null }) => void;
+  userName?: string;
+  profiles?: DrivePerson[];
+  isMobile?: boolean;
 }) {
   const [files, setFiles] = useState<ContactFile[] | null>(null);
   const [adding, setAdding] = useState(false);
@@ -64,6 +69,8 @@ export default function ContactFiles({ clientId, authToken, userId, isAdmin, sho
   const list = files ?? [];
   const label: React.CSSProperties = { fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 };
   return (
+    <>
+    {userId && <LinkedDocs clientId={clientId} authToken={authToken} currentUser={{ id: userId, name: userName ?? '' }} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={!!isMobile} onToast={showToast} />}
     <div style={{ marginBottom: 22 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={label}>Files{list.length ? ` (${list.length})` : ''}</div>
@@ -104,5 +111,6 @@ export default function ContactFiles({ clientId, authToken, userId, isAdmin, sho
         </div>
       )}
     </div>
+    </>
   );
 }

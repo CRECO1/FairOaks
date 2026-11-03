@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound, forbidden } from '@/lib/crm-auth';
 import { driveContext, descendantFolderIds, type DriveContext } from '@/lib/drive-server';
+import { logDocEvent } from '@/lib/drive-events';
 import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS } from '@/lib/drive-types';
 
 // Rename / move / share / trash / restore / permanently delete one folder or document.
@@ -154,6 +155,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
     }
   }
 
+  // Activity log (documents): what just happened, in the order the rules above ran.
+  if (kind === 'doc') {
+    const ev = (k: Parameters<typeof logDocEvent>[1]['kind'], detail: Record<string, unknown> = {}) => logDocEvent(dc.admin, { docId: id, bu: dc.bu, actor: dc.ctx.userId, kind: k, detail });
+    const was = String((row as unknown as { title?: string }).title ?? '');
+    const now2 = (label ?? '').trim().slice(0, 300);
+    if (label !== undefined && now2 && now2 !== was) await ev('renamed', { from: was, to: now2 });
+    if (body.move) {
+      let to = 'All files';
+      if (body.move.parent_id) { const { data: f } = await dc.admin.from('crm_drive_folders').select('name').eq('id', body.move.parent_id).maybeSingle(); to = (f?.name as string) ?? 'a folder'; }
+      await ev('moved', { to });
+    }
+    if (body.share) await ev('shared', { visibility: body.share.visibility === 'private' ? 'private' : 'team', people: body.share.visibility === 'private' ? (body.share.shared_with ?? []).length : 0 });
+    if (body.trash !== undefined) await ev(body.trash ? 'trashed' : 'restored');
+  }
+
   const fresh = await loadVisible(dc, kind, id);
   return NextResponse.json({ ok: true, item: fresh });
 }
@@ -178,6 +194,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ k
   }
   const { error } = await dc.admin.from(tableOf(kind)!).delete().eq('id', id);
   if (error) return NextResponse.json({ error: 'Could not delete' }, { status: 500 });
+  if (kind === 'doc') await logDocEvent(dc.admin, { docId: id, bu: dc.bu, actor: dc.ctx.userId, kind: 'deleted', detail: { title: (row as unknown as { title?: string }).title ?? '' } });
   if (paths.length) await dc.admin.storage.from('drive-files').remove(paths);
   return NextResponse.json({ ok: true });
 }

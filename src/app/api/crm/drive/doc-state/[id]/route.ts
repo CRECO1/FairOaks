@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { unauthorized, notFound } from '@/lib/crm-auth';
 import { driveContext, mergeYState } from '@/lib/drive-server';
 import { DOC_COLS } from '@/lib/drive-types';
+import { logDocEdit } from '@/lib/drive-events';
 
 // Load a live document (metadata + its merged Yjs state) and save edits back.
 // Saves are MERGES: the client sends the Yjs update(s) since its last save, the server applies them onto the stored state
@@ -50,7 +51,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (seen.trashed_at) return NextResponse.json({ error: 'That document is in the trash' }, { status: 410 });
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    const { data: cur, error } = await dc.admin.from('crm_drive_docs').select('ystate,version').eq('id', id).single();
+    const { data: cur, error } = await dc.admin.from('crm_drive_docs').select('ystate,version,content_text').eq('id', id).single();
     if (error || !cur) return NextResponse.json({ error: 'Could not save' }, { status: 500 });
     let merged: { state: string; text: string };
     try { merged = mergeYState(cur.ystate as string | null, body.update); }
@@ -61,6 +62,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (upErr) return NextResponse.json({ error: 'Could not save' }, { status: 500 });
     if (ok && ok.length) {
       await autoSnapshot(dc.admin, id, merged, dc.ctx.userId);
+      // The activity log: only a real change counts (a no-op save, e.g. a reconnect, isn't an edit).
+      if (merged.state !== cur.ystate) await logDocEdit(dc.admin, { docId: id, bu: dc.bu, actor: dc.ctx.userId, charsBefore: ((cur.content_text as string | null) ?? '').length, charsAfter: merged.text.length, wordsAfter: merged.text.split(/\s+/).filter(Boolean).length });
       return NextResponse.json({ ok: true, version: ok[0].version });
     }
     // Someone else saved between our read and write — merge onto their result and try again.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound, forbidden } from '@/lib/crm-auth';
 import { driveContext, type DriveContext } from '@/lib/drive-server';
+import { logDocEvent } from '@/lib/drive-events';
 import { pushBellNotification, senderName } from '@/lib/notify';
 import type { DriveComment } from '@/lib/drive-types';
 
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ doc
     await dc.admin.from('crm_notifications').insert(rows);
     await Promise.all(rows.map(r => pushBellNotification(dc.admin, { recipientId: r.recipient_id, type: 'mention', message: r.message, entityType: 'drive_doc', tag: `drive-comment-${docId}` })));
   }
+  await logDocEvent(dc.admin, { docId, bu: dc.bu, actor: dc.ctx.userId, kind: 'commented', detail: { reply: !!parent, snippet } });
   return NextResponse.json({ comment: data as DriveComment });
 }
 
@@ -88,6 +90,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ do
     .update(b.resolved ? { resolved_at: new Date().toISOString(), resolved_by: dc.ctx.userId } : { resolved_at: null, resolved_by: null })
     .eq('id', id).eq('doc_id', docId).is('parent_id', null).select(COLS).maybeSingle();
   if (error || !data) return notFound('That comment is not available');
+  await logDocEvent(dc.admin, { docId, bu: dc.bu, actor: dc.ctx.userId, kind: 'commented', detail: { resolved: b.resolved } });
   return NextResponse.json({ comment: data as DriveComment });
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound } from '@/lib/crm-auth';
 import { driveContext, hydrateDriveForms, likePattern, stripCommentMarks } from '@/lib/drive-server';
+import { logDocEvent } from '@/lib/drive-events';
 import { markdownToDriveState } from '@/lib/drive-markdown';
 import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS, type DriveDoc, type DriveFile, type DriveFolder, type DriveListing } from '@/lib/drive-types';
 
@@ -156,6 +157,8 @@ export async function POST(req: NextRequest) {
     };
     const { data: made, error: e } = await admin.from('crm_drive_docs').insert(copy).select(DOC_COLS).single();
     if (e || !made) return NextResponse.json({ error: asTemplate ? 'Could not save the template' : 'Could not create the document' }, { status: 500 });
+    if (asTemplate) await logDocEvent(admin, { docId: srcId, bu, actor: ctx.userId, kind: 'template_saved', detail: { name: made.title } });
+    else await logDocEvent(admin, { docId: made.id as string, bu, actor: ctx.userId, kind: 'created', detail: { via: body.template_id ? 'template' : 'copy', from: seen.title } });
     return NextResponse.json({ type: 'doc', item: made });
   }
 
@@ -172,5 +175,6 @@ export async function POST(req: NextRequest) {
     ? await admin.from('crm_drive_folders').insert({ ...base, parent_id: parentId, name: label }).select(FOLDER_COLS).single()
     : await admin.from('crm_drive_docs').insert({ ...base, folder_id: parentId, title: label, updated_by: ctx.userId, ...(initial ?? {}) }).select(DOC_COLS).single();
   if (error || !data) return NextResponse.json({ error: `Could not create the ${type}` }, { status: 500 });
+  if (type === 'doc') await logDocEvent(admin, { docId: data.id as string, bu, actor: ctx.userId, kind: 'created', detail: { via: initial ? 'text' : 'blank', title: label } });
   return NextResponse.json({ type, item: data });
 }

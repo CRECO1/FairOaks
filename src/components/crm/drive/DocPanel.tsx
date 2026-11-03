@@ -14,6 +14,7 @@ import { findCommentRange, removeCommentMark } from '@/lib/collab/comment-mark';
 import { docExtensions } from './doc-extensions';
 import { LetterheadHeader, LetterheadFooter } from './Letterhead';
 import type { DriveComment, DriveVersion } from '@/lib/drive-types';
+import type { DriveDocEvent } from '@/lib/drive-events';
 import type { DrivePerson } from './DocsDrive';
 
 const GOLD = '#c9922c';
@@ -389,5 +390,83 @@ function VersionPreview({ v, json, letterhead, who, isMobile, busy, onClose, onR
         </div>
       </div>
     </div>
+  );
+}
+
+
+// ── Activity: every change to this document, plus the cards it is linked to ────────────────────────────────────────────────────────────
+
+const str = (v: unknown) => (typeof v === 'string' ? v : '');
+function describeEvent(e: DriveDocEvent): string {
+  const d = e.detail ?? {};
+  switch (e.kind) {
+    case 'created': return d.via === 'template' ? `Created this from the template “${str(d.from)}”` : d.via === 'copy' ? `Created this as a copy of “${str(d.from)}”` : 'Created this document';
+    case 'edited': {
+      const before = Number(d.chars_before ?? 0), after = Number(d.chars_after ?? 0), saves = Number(d.saves ?? 1), delta = after - before;
+      const change = delta > 0 ? `added about ${delta.toLocaleString()} characters` : delta < 0 ? `removed about ${Math.abs(delta).toLocaleString()} characters` : 'changed the wording or formatting';
+      return `Edited the text — ${change}${saves > 1 ? ` (${saves} saves)` : ''}${d.words_after ? ` · now ${Number(d.words_after).toLocaleString()} words` : ''}`;
+    }
+    case 'renamed': return `Renamed “${str(d.from)}” to “${str(d.to)}”`;
+    case 'moved': return `Moved to “${str(d.to)}”`;
+    case 'shared': return d.visibility === 'private' ? (Number(d.people) > 0 ? `Shared with ${d.people} ${Number(d.people) === 1 ? 'person' : 'people'}` : 'Made private (only the owner)') : 'Shared with the whole team';
+    case 'linked': return `Linked to ${str(d.label) || (d.kind === 'deal' ? 'a deal' : 'a contact')} — it now shows on that card`;
+    case 'unlinked': return `Removed from ${d.kind === 'deal' ? 'a deal' : 'a contact'} card`;
+    case 'trashed': return 'Moved to the trash';
+    case 'restored': return 'Restored from the trash';
+    case 'version_saved': return `Saved a version${str(d.label) ? ` “${str(d.label)}”` : ''}`;
+    case 'version_restored': return 'Restored an earlier version';
+    case 'commented': return d.resolved === true ? 'Resolved a comment' : d.resolved === false ? 'Reopened a comment' : d.reply ? 'Replied to a comment' : 'Added a comment';
+    case 'template_saved': return `Saved as the template “${str(d.name)}”`;
+    case 'deleted': return 'Deleted for good';
+    default: return e.kind;
+  }
+}
+const EVENT_ICON: Record<string, string> = { created: '✨', edited: '✎', renamed: 'Aa', moved: '📁', shared: '👥', linked: '🔗', unlinked: '⛓', trashed: '🗑', restored: '↩', version_saved: '⭐', version_restored: '↩', commented: '💬', template_saved: '📋', deleted: '✕' };
+
+interface DocLink { id: string; kind: 'deal' | 'client'; target_id: string; label: string; created_by: string | null; created_at: string; can_open: boolean }
+
+export function ActivityPanel(p: Common) {
+  const api = useApi(p.authToken);
+  const [events, setEvents] = useState<DriveDocEvent[] | null>(null);
+  const [links, setLinks] = useState<DocLink[] | null>(null);
+  const who = (id: string | null) => (id === p.me.id ? 'You' : fullName(p.people.find(x => x.id === id)) || 'Teammate');
+  const load = useCallback(async () => {
+    try { setEvents((await api<{ events: DriveDocEvent[] }>(`/api/crm/drive/doc-events/${p.docId}`)).events); } catch (e) { p.onToast((e as Error).message); setEvents([]); }
+    try { setLinks((await api<{ links: DocLink[] }>(`/api/crm/drive/links?doc_id=${p.docId}`)).links); } catch { setLinks([]); }
+  }, [api, p.docId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(); }, [load]);
+  const unlink = async (l: DocLink) => {
+    if (!confirm(`Remove this document from ${l.label}? It stays in My Drive; people on that card just stop seeing it.`)) return;
+    try { await api(`/api/crm/drive/links?id=${l.id}`, { method: 'DELETE' }); p.onToast('Removed from the card'); await load(); } catch (e) { p.onToast((e as Error).message); }
+  };
+  return (
+    <Shell title="Activity" isMobile={p.isMobile} onClose={p.onClose}>
+      {links && links.length > 0 && (
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--k-f0f0f0)' }}>
+          <div style={{ fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 6 }}>Shown live on</div>
+          {links.map(l => (
+            <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+              <span style={{ fontSize: 15 }}>{l.kind === 'deal' ? '💼' : '👤'}</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflowWrap: 'anywhere' }}>{l.label}</span>
+              <button type="button" onClick={() => void unlink(l)} style={{ border: 'none', background: 'none', color: 'var(--k-9ca3af)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', minHeight: p.isMobile ? 36 : undefined }}>Unlink</button>
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', lineHeight: 1.45, marginTop: 4 }}>Anyone who can open one of these cards can open and edit this document. Edits show there right away.</div>
+        </div>
+      )}
+      {events === null && <div style={{ padding: 20, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>}
+      {events?.length === 0 && <div style={{ padding: 20, color: 'var(--k-9ca3af)', fontSize: 14, textAlign: 'center' }}>No activity recorded yet. From now on every change to this document is logged here.</div>}
+      {events?.map(e => (
+        <div key={e.id} style={{ display: 'flex', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--k-f0f0f0)' }}>
+          <span style={{ width: 26, height: 26, borderRadius: 13, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{EVENT_ICON[e.kind] ?? '•'}</span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 13.5, color: 'var(--k-1a1a1a)', lineHeight: 1.4 }}><b>{who(e.actor_id)}</b> {describeEvent(e).replace(/^./, c => c.toLowerCase())}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>
+              {fmtWhen(e.created_at)}{e.kind === 'edited' && new Date(e.updated_at).getTime() - new Date(e.created_at).getTime() > 60_000 ? ` – ${new Date(e.updated_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
+            </div>
+          </div>
+        </div>
+      ))}
+    </Shell>
   );
 }

@@ -196,9 +196,18 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
     if (blob.size > 25 * 1024 * 1024) throw new Error(`A file must be 25 MB or smaller to go on a ${where}`);
     return { blob, name };
   };
+  // A live document is LINKED to the card (the document itself shows there, always current) — not copied as a PDF.
+  const linkDoc = async (item: Item, target: { deal_id: string } | { client_id: string }, label: string) => {
+    onToast(`Linking to ${label}…`);
+    try {
+      const r = await api<{ already?: boolean }>('/api/crm/drive/links', { method: 'POST', body: JSON.stringify({ doc_id: item.id, ...target }) });
+      onToast(r.already ? `Already shown on ${label}` : `Linked — it now shows live on ${label}’s card`);
+    } catch (e) { onToast((e as Error).message || 'Could not link it'); }
+  };
   const addToContact = async (kind: Kind, item: Item, c: DriveContactLite) => {
     setDlg(null);
     const label = contactLabel(c);
+    if (kind === 'doc') { await linkDoc(item, { client_id: c.id }, label); return; }
     onToast(`Adding to ${label}…`);
     try {
       const { blob, name } = await copyOf(kind, item, 'contact');
@@ -212,6 +221,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
   const addToDeal = async (kind: Kind, item: Item, deal: DriveDealLite) => {
     setDlg(null);
     const label = [deal.client, deal.property].filter(Boolean).join(' · ') || 'the deal';
+    if (kind === 'doc') { await linkDoc(item, { deal_id: deal.id }, label); return; }
     onToast(`Adding to ${label}…`);
     try {
       if (kind === 'form') {
@@ -512,8 +522,8 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
 
       {/* Dialogs */}
       {dlg?.t === 'form' && <FormPicker api={api} businessUnit={businessUnit} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void createForm(id)} />}
-      {dlg?.t === 'toContact' && <ContactPicker contacts={contacts} isMobile={isMobile} title={nameOf(dlg.kind, dlg.item)} onClose={() => setDlg(null)} onPick={c => void addToContact(dlg.kind, dlg.item, c)} />}
-      {dlg?.t === 'toDeal' && <DealPicker deals={deals} isMobile={isMobile} title={nameOf(dlg.kind, dlg.item)} onClose={() => setDlg(null)} onPick={d => void addToDeal(dlg.kind, dlg.item, d)} />}
+      {dlg?.t === 'toContact' && <ContactPicker contacts={contacts} liveDoc={dlg.kind === 'doc'} isMobile={isMobile} title={nameOf(dlg.kind, dlg.item)} onClose={() => setDlg(null)} onPick={c => void addToContact(dlg.kind, dlg.item, c)} />}
+      {dlg?.t === 'toDeal' && <DealPicker deals={deals} liveDoc={dlg.kind === 'doc'} isMobile={isMobile} title={nameOf(dlg.kind, dlg.item)} onClose={() => setDlg(null)} onPick={d => void addToDeal(dlg.kind, dlg.item, d)} />}
       {dlg?.t === 'template' && <TemplatePicker api={api} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void startFromTemplate(id)} />}
       {dlg?.t === 'saveTpl' && <NameDialog title="Save as template" cta="Save template" initial={dlg.item.title} isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void saveAsTemplate(dlg.item, name)} />}
       {dlg?.t === 'newFolder' && <NameDialog title="New folder" cta="Create" initial="" isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void createFolder(name)} />}
@@ -533,8 +543,8 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
               {dlg.kind === 'doc' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); setQuickDocId(d.item.id); }} />}
               {dlg.kind === 'form' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void quickLookForm(d.item as DriveFormItem); }} />}
               {dlg.kind === 'form' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFormPdf(d.item as DriveFormItem); }} />}
-              {(dlg.kind === 'file' || dlg.kind === 'form' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label="Add to a deal…" isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
-              {(dlg.kind === 'file' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && contacts.length > 0 && <MenuBtn icon="👤" label="Add to a contact…" isMobile={isMobile} onClick={() => setDlg({ t: 'toContact', kind: dlg.kind, item: dlg.item })} />}
+              {(dlg.kind === 'file' || dlg.kind === 'form' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label={dlg.kind === 'doc' ? 'Link to a deal…' : 'Add to a deal…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
+              {(dlg.kind === 'file' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && contacts.length > 0 && <MenuBtn icon="👤" label={dlg.kind === 'doc' ? 'Link to a contact…' : 'Add to a contact…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toContact', kind: dlg.kind, item: dlg.item })} />}
               {dlg.kind === 'doc' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
@@ -735,7 +745,7 @@ function TemplatePicker({ api, isMobile, onClose, onPick }: { api: <T>(path: str
 
 const contactLabel = (c: DriveContactLite) => [[c.first_name, c.last_name].filter(Boolean).join(' '), c.business_name].filter(Boolean).join(' · ') || c.email || 'the contact';
 
-function ContactPicker({ contacts, isMobile, title, onClose, onPick }: { contacts: DriveContactLite[]; isMobile: boolean; title: string; onClose: () => void; onPick: (c: DriveContactLite) => void }) {
+function ContactPicker({ contacts, liveDoc, isMobile, title, onClose, onPick }: { contacts: DriveContactLite[]; liveDoc?: boolean; isMobile: boolean; title: string; onClose: () => void; onPick: (c: DriveContactLite) => void }) {
   const [q, setQ] = useState('');
   const list = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -743,8 +753,8 @@ function ContactPicker({ contacts, isMobile, title, onClose, onPick }: { contact
     return contacts.filter(c => `${c.first_name ?? ''} ${c.last_name ?? ''} ${c.business_name ?? ''} ${c.email ?? ''}`.toLowerCase().includes(t)).slice(0, 40);
   }, [contacts, q]);
   return (
-    <Modal title="Add to a contact" isMobile={isMobile} onClose={onClose}>
-      <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>A copy of “{title}” goes in the Files section on the contact’s card. Later changes here won’t change the copy.</p>
+    <Modal title={liveDoc ? 'Link to a contact' : 'Add to a contact'} isMobile={isMobile} onClose={onClose}>
+      <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>{liveDoc ? <>“{title}” shows on the contact’s card as a <b>live document</b> — edits made here appear there right away. Anyone who can open that contact can open and edit it.</> : <>A copy of “{title}” goes in the Files section on the contact’s card. Later changes here won’t change the copy.</>}</p>
       <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="🔍  Search contacts by name, company or email" style={{ width: '100%', boxSizing: 'border-box', height: isMobile ? 46 : 36, border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '0 12px', fontSize: 14, marginBottom: 8, fontFamily: "'DM Sans',sans-serif" }} />
       <div style={{ maxHeight: isMobile ? '50dvh' : 320, overflowY: 'auto' }}>
         {q.trim().length < 2 && <div style={{ padding: 12, color: 'var(--k-9ca3af)', fontSize: 14 }}>Type at least 2 letters to search.</div>}
@@ -765,7 +775,7 @@ function ContactPicker({ contacts, isMobile, title, onClose, onPick }: { contact
   );
 }
 
-function DealPicker({ deals, isMobile, title, onClose, onPick }: { deals: DriveDealLite[]; isMobile: boolean; title: string; onClose: () => void; onPick: (d: DriveDealLite) => void }) {
+function DealPicker({ deals, liveDoc, isMobile, title, onClose, onPick }: { deals: DriveDealLite[]; liveDoc?: boolean; isMobile: boolean; title: string; onClose: () => void; onPick: (d: DriveDealLite) => void }) {
   const [q, setQ] = useState('');
   const live = ['Active', 'LOI', 'In Contract', 'Prospect'];
   const list = useMemo(() => {
@@ -775,8 +785,8 @@ function DealPicker({ deals, isMobile, title, onClose, onPick }: { deals: DriveD
       .sort((a, b) => (live.indexOf(a.stage ?? '') === -1 ? 9 : live.indexOf(a.stage ?? '')) - (live.indexOf(b.stage ?? '') === -1 ? 9 : live.indexOf(b.stage ?? '')) || (a.client ?? '').localeCompare(b.client ?? ''));
   }, [deals, q]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <Modal title="Add to a deal" isMobile={isMobile} onClose={onClose}>
-      <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>A copy of “{title}” goes on the deal’s Docs tab. Later changes here won’t change the copy.</p>
+    <Modal title={liveDoc ? 'Link to a deal' : 'Add to a deal'} isMobile={isMobile} onClose={onClose}>
+      <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>{liveDoc ? <>“{title}” shows on the deal’s Docs tab as a <b>live document</b> — edits made here appear there right away. Only people on that deal can open it from there.</> : <>A copy of “{title}” goes on the deal’s Docs tab. Later changes here won’t change the copy.</>}</p>
       <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="🔍  Search deals" style={{ width: '100%', boxSizing: 'border-box', height: isMobile ? 46 : 36, border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '0 12px', fontSize: 14, marginBottom: 8, background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }} />
       <div style={{ maxHeight: isMobile ? '50dvh' : 320, overflowY: 'auto' }}>
         {list.length === 0 && <div style={{ padding: 12, color: 'var(--k-9ca3af)', fontSize: 14 }}>No deals match.</div>}

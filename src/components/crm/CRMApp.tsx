@@ -34,6 +34,7 @@ import { useBackToClose } from '@/lib/use-back-to-close';
 import { chicagoFormat, chicagoToday } from '@/lib/chicago-time';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import ContactFiles from '@/components/crm/ContactFiles';
+import LinkedDocs from '@/components/crm/drive/LinkedDocs';
 import ContactJumpBar from '@/components/crm/ContactJumpBar';
 import PhoneFold from '@/components/crm/PhoneFold';
 import AssistantPanel from '@/components/crm/AssistantPanel';
@@ -12229,6 +12230,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       );
                     })()}
                   </div>
+                  <LinkedDocs dealId={activeDeal.id} authToken={session?.access_token} currentUser={{ id: profile.id, name: `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() }} profiles={profiles} isAdmin={isAdmin} isMobile={isMobile} onToast={showToast} />
                   <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 10 }}>Uploaded Files</div>
                   {/* Straight to storage — see DealDocUpload for why the file never goes through the API */}
                   <DealDocUpload dealId={activeDeal.id} authToken={session?.access_token} showToast={showToast} onUploaded={() => loadDealDocs(activeDeal.id)} />
@@ -13426,7 +13428,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 {/* Files — anything uploaded onto this person, plus the files on their deals' Docs tabs. */}
                 <ContactFiles clientId={c.id} authToken={session?.access_token} userId={profile?.id}
-                  isAdmin={isSuperAdmin || profile?.role === 'admin'} showToast={showToast} onPreview={setPreviewFile} />
+                  isAdmin={isSuperAdmin || profile?.role === 'admin'} showToast={showToast} onPreview={setPreviewFile}
+                  userName={`${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim()} profiles={profiles} isMobile={isMobile} />
 
                 {/* Documents — leases and forms tied to this person, whether they were
                     filed on the contact or on one of their deals. */}
