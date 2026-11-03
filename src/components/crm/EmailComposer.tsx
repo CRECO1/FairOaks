@@ -232,6 +232,7 @@ export default function EmailComposer(p: EmailComposerProps) {
   const [draftNote, setDraftNote] = useState('');
   const attachRef = useRef<HTMLInputElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [sigOpen, setSigOpen] = useState(false);
   const attachCount = p.attachments.length + (p.crmFiles?.items.length ?? 0);
   const subjRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -656,7 +657,7 @@ export default function EmailComposer(p: EmailComposerProps) {
             if (files.length) { e.preventDefault(); addFiles(files.map((f, i) => (f.name && f.name !== 'image.png' ? f : new File([f], `pasted-image-${Date.now()}-${i}.${(f.type.split('/')[1] || 'png')}`, { type: f.type })))); }
           }}
           style={dock
-            ? { flex: 1, minHeight: p.isMobile ? 160 : 120, overflowY: 'auto', padding: '12px 14px', fontSize: 15, fontFamily: 'Arial, sans-serif', lineHeight: 1.6, outline: 'none', color: 'var(--k-111)' }
+            ? { flex: 1, minHeight: p.isMobile ? 160 : 220, overflowY: 'auto', padding: '12px 14px', fontSize: 15, fontFamily: 'Arial, sans-serif', lineHeight: 1.6, outline: 'none', color: 'var(--k-111)' }
             : { minHeight: p.isMobile ? 200 : 190, maxHeight: p.isMobile ? '45vh' : 360, overflowY: 'auto', padding: '12px 14px', fontSize: 15, fontFamily: 'Arial, sans-serif', lineHeight: 1.6, outline: 'none', color: 'var(--k-111)' }}
         />
 
@@ -693,11 +694,20 @@ export default function EmailComposer(p: EmailComposerProps) {
 
         {/* Signature — shown in the message the way Gmail shows it, so what you see is what goes out */}
         {p.signature && (
-          <div style={{ padding: '0 14px 10px' }}>
-            <div style={{ borderTop: '1px dashed var(--k-e5e7eb)', paddingTop: 8, fontSize: 13, color: 'var(--k-374151)', lineHeight: 1.5 }} title="Your Gmail signature — added when you send"
-              dangerouslySetInnerHTML={{ __html: sanitizeHtml(p.signature) }} />
-            <button type="button" onClick={p.onSyncSignature}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 11.5, fontWeight: 600, padding: '6px 0 0', fontFamily: "'DM Sans',sans-serif" }}>↻ Re-sync signature from Gmail</button>
+          <div style={{ padding: '0 14px 8px' }}>
+            <div style={{ borderTop: '1px dashed var(--k-e5e7eb)', paddingTop: 6, display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif" }}>
+              <span>✍ Your Gmail signature is added when you send</span>
+              <button type="button" onClick={() => setSigOpen(o => !o)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 11.5, fontWeight: 600, padding: 0, minWidth: 0, minHeight: 0, fontFamily: "'DM Sans',sans-serif" }}>{sigOpen ? 'Hide' : 'Show'}</button>
+            </div>
+            {sigOpen && (
+              <>
+                <div style={{ paddingTop: 6, fontSize: 13, color: 'var(--k-374151)', lineHeight: 1.5, maxHeight: 220, overflowY: 'auto' }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(p.signature) }} />
+                <button type="button" onClick={p.onSyncSignature}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 11.5, fontWeight: 600, padding: '6px 0 0', fontFamily: "'DM Sans',sans-serif" }}>↻ Re-sync signature from Gmail</button>
+              </>
+            )}
           </div>
         )}
       </div>
