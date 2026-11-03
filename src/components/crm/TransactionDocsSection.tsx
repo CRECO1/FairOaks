@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useRememberedSelection } from '@/lib/view-memory';
+import { useRememberedSelection, useRememberedState } from '@/lib/view-memory';
 import { specForForm } from '@/lib/loi-spec';
 import dynamic from 'next/dynamic';
 
 const TransactionDocEditor = dynamic(() => import('./TransactionDocEditor'), { ssr: false });
 const FormAutofillReview = dynamic(() => import('./FormAutofillReview'), { ssr: false });
+const DocsDrive = dynamic(() => import('./drive/DocsDrive'), { ssr: false });
 
 interface Form {
   id: string;
@@ -30,11 +31,18 @@ interface Props {
   onToast: (msg: string) => void;
   agentPrefill?: Record<string, string>;
   isMobile?: boolean;
+  /** Docs (beta): the live-documents Drive is shown to the account owner only for now. */
+  isSuperAdmin?: boolean;
+  currentUser?: { id: string; name: string };
+  profiles?: Array<{ id: string; first_name?: string | null; last_name?: string | null; role?: string | null }>;
 }
 
 const ACTIVE_STAGES = ['Active', 'LOI', 'In Contract'];
 
-export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast, agentPrefill, isMobile = false }: Props) {
+export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast, agentPrefill, isMobile = false, isSuperAdmin = false, currentUser, profiles }: Props) {
+  const driveOn = isSuperAdmin && !!currentUser;
+  const [tab, setTab] = useRememberedState<'docs' | 'forms'>(`${businessUnit}:txdocs-tab`, 'docs', ['docs', 'forms']);
+  const showDrive = driveOn && tab === 'docs';
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -94,13 +102,30 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
   const activeDeals = useMemo(() => (deals ?? []).filter(d => !d.stage || ACTIVE_STAGES.includes(d.stage)), [deals]);
 
   return (
-    <div style={{ maxWidth: 1100 }}>
+    <div style={{ maxWidth: showDrive ? 1280 : 1100 }}>
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 26, fontWeight: 600, color: 'var(--k-1a1a1a)', margin: 0 }}>Transaction Docs</h2>
         <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 2 }}>
-          Pick a form to fill, or attach a use-case packet to a deal below.
+          {showDrive ? 'Folders and live documents your team edits together.' : 'Pick a form to fill, or attach a use-case packet to a deal below.'}
         </div>
       </div>
+
+      {driveOn && (
+        <div role="tablist" aria-label="Transaction Docs" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          {([['docs', 'Docs', 'BETA'], ['forms', 'Forms & deals', '']] as const).map(([k, label, badge]) => (
+            <button key={k} role="tab" aria-selected={tab === k} type="button" onClick={() => setTab(k)}
+              style={{ minHeight: isMobile ? 44 : 36, padding: '0 16px', borderRadius: 20, border: `1px solid ${tab === k ? '#c9922c' : 'var(--k-e5e7eb)'}`, background: tab === k ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: tab === k ? 'var(--k-a06a12)' : 'var(--k-374151)', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+              {label}{badge && <span style={{ marginLeft: 7, fontSize: 9.5, letterSpacing: .8, background: '#c9922c', color: '#fff', borderRadius: 8, padding: '1px 6px', verticalAlign: 'middle' }}>{badge}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showDrive && currentUser && (
+        <DocsDrive businessUnit={businessUnit} authToken={authToken} currentUser={currentUser} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={isMobile} onToast={onToast} />
+      )}
+
+      {!showDrive && (<>
 
       {(() => {
         const cats = Array.from(new Set(filtered.map(f => f.category || 'Other')));
@@ -251,6 +276,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
           onClose={() => setEditing(null)}
         />
       )}
+      </>)}
     </div>
   );
 }
