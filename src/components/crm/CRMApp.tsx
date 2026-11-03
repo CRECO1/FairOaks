@@ -14,6 +14,7 @@ import { MessageFrame } from './MessageFrame';
 import type { LiveMessage } from '@/lib/gmail-live';
 import { useInbox } from '@/lib/use-inbox';
 import CardDrafts from './CardDrafts';
+import ThreadAssist from './ThreadAssist';
 import { htmlToText } from '@/lib/html-text';
 import { gmailSignatureBlock } from '@/lib/agent-signature';
 import type { CrmAttachItem } from '@/lib/crm-attachments';
@@ -11928,6 +11929,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {/* Expanded thread emails */}
                             {isExpanded && (
                               <div style={{ borderTop: '1px solid var(--k-f0f0f0)' }}>
+                                {(() => {
+                                  const sorted = sortedEmails(threadEmails);
+                                  const lastEmail = sorted[sorted.length - 1];
+                                  const canReply = !!(gmailConnected && activeDeal?.client_email);
+                                  return (
+                                    <ThreadAssist isMobile={isMobile} canReply={canReply} onNotify={showToast}
+                                      contact={{ label: activeDeal?.client ?? undefined, role: activeDeal?.type ?? undefined, sub: activeDeal?.property ?? undefined }}
+                                      messages={sorted.slice(-6).map(m => ({ from: m.from_email, date: m.email_date, text: cleanEmailBody(m.body ?? '') }))}
+                                      onDraft={html => {
+                                        const all = hasReplyAll(lastEmail, threadEmails, activeDeal?.client_email ?? '');
+                                        startDealReply(lastEmail, threadEmails, all);
+                                        setTimeout(() => { const el = composeBodyRef.current; if (el) { el.innerHTML = html + el.innerHTML; el.dispatchEvent(new Event('input', { bubbles: true })); } }, 320);
+                                      }} />
+                                  );
+                                })()}
                                 {sortedEmails(threadEmails).map((e, idx, arr) => (
                                   <ThreadMessage key={e.id} e={e} isMobile={isMobile} dealId={activeDeal?.id} onNote={showToast} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
                                     onReply={gmailConnected && activeDeal?.client_email ? () => startDealReply(e, threadEmails, false) : undefined}

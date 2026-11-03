@@ -8,6 +8,10 @@
  * reply" follow-up task. It never sends anything and never stores mail from people who aren't contacts —
  * except someone Cc'd/Bcc'd who answers INSIDE a conversation already on a contact's or deal's card (same Gmail
  * thread), which is filed with it so the whole team sees it and can reply all.
+ *
+ * It also files mail the agent SENT from Gmail itself (phone, Gmail tab) to a CRM contact, so the deal's Email Log is
+ * complete without anyone having to send from the CRM. Mail sent from the CRM is already logged and is skipped
+ * (same Gmail id). A message to more than 10 people, or to nobody who is a contact, is never filed.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { extractEmailText, extractEmailHtml } from '@/lib/gmail-body';
@@ -120,6 +124,32 @@ async function backfillEmailTimes(db: ReturnType<typeof adminClient>, mailbox: s
   return done;
 }
 
+
+const OPEN_STAGE_EXCLUDE = ['Closed', 'Lost'];
+// Which open deal does mail with this contact belong to? The deal on the contact's property folder, else the contact's own
+// deal — but only when it is unambiguous (exactly one), so mail never lands on a guess.
+async function autoDealFor(db: ReturnType<typeof adminClient>, contactId: string, cache: Map<string, string | null>): Promise<string | null> {
+  if (cache.has(contactId)) return cache.get(contactId)!;
+  let found: string | null = null;
+  try {
+    const { data: lc } = await db.from('crm_listing_contacts').select('listing_id').eq('client_id', contactId).limit(50);
+    const listingIds = [...new Set((lc ?? []).map((r: { listing_id: string }) => r.listing_id))];
+    const open = (rows: Array<{ id: string; stage: string | null }> | null) => (rows ?? []).filter(d => !OPEN_STAGE_EXCLUDE.includes(d.stage ?? ''));
+    if (listingIds.length) {
+      const { data: viaListing } = await db.from('crm_deals').select('id, stage').in('listing_id', listingIds).limit(20);
+      const o = open(viaListing as Array<{ id: string; stage: string | null }> | null);
+      if (o.length === 1) found = o[0].id;
+    }
+    if (!found) {
+      const { data: own } = await db.from('crm_deals').select('id, stage').eq('client_id', contactId).limit(20);
+      const o = open(own as Array<{ id: string; stage: string | null }> | null);
+      if (o.length === 1) found = o[0].id;
+    }
+  } catch { /* leave it on the contact card only */ }
+  cache.set(contactId, found);
+  return found;
+}
+
 const addrOf = (h: string) => (h.match(/<([^>]+)>/)?.[1] ?? h).trim().toLowerCase();
 const hdr = (msg: any, name: string): string => (msg?.payload?.headers ?? []).find((h: { name: string }) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 
@@ -149,6 +179,8 @@ export async function GET(req: NextRequest) {
   const { data: team } = await db.from('crm_profiles').select('email');
   const own = new Set<string>([...(team ?? []).map((p: { email: string | null }) => (p.email ?? '').toLowerCase()), ...conns.map(c => (c.gmail_email ?? '').toLowerCase())].filter(Boolean));
 
+  const dealCache = new Map<string, string | null>();
+  let filedSent = 0;
   let filed = 0, scanned = 0, tokenFailures = 0, healed = 0, attachmentsChecked = 0, timesSet = 0;
   const errors: string[] = [];
 
@@ -159,6 +191,67 @@ export async function GET(req: NextRequest) {
     try { healed += await healBodies(db, conn.gmail_email ?? '', auth, req.nextUrl.searchParams.get('heal') === 'all'); } catch (e) { errors.push(`heal ${conn.gmail_email}: ${e instanceof Error ? e.message : String(e)}`); }
     try { timesSet += await backfillEmailTimes(db, conn.gmail_email ?? '', token, req.nextUrl.searchParams.get('times') === 'all'); } catch (e) { errors.push(`times ${conn.gmail_email}: ${e instanceof Error ? e.message : String(e)}`); }
     try { attachmentsChecked += await backfillAttachments(db, conn.gmail_email ?? '', token, req.nextUrl.searchParams.get('attachments') === 'all'); } catch (e) { errors.push(`attachments ${conn.gmail_email}: ${e instanceof Error ? e.message : String(e)}`); }
+    // Mail this agent sent from Gmail itself to a CRM contact (the CRM's own sends are already logged: same Gmail id).
+    try {
+      const list = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(`in:sent ${LOOKBACK}`)}&maxResults=${MAX_MESSAGES}`, { headers: auth });
+      if (!list.ok) errors.push(`sent list ${conn.gmail_email}: ${list.status}`);
+      const ids: string[] = list.ok ? ((await list.json()).messages ?? []).map((m: { id: string }) => m.id) : [];
+      if (ids.length) {
+        const { data: have } = await db.from('crm_deal_emails').select('gmail_message_id').in('gmail_message_id', ids);
+        const haveSet = new Set((have ?? []).map((r: { gmail_message_id: string | null }) => r.gmail_message_id));
+        for (const id of ids.filter(i => !haveSet.has(i))) {
+          const metaRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Message-ID`, { headers: auth });
+          if (!metaRes.ok) continue;
+          const meta = await metaRes.json();
+          const sentTo = [...hdr(meta, 'To').split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/), ...hdr(meta, 'Cc').split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)].map(addrOf).filter(a => a.includes('@'));
+          if (!sentTo.length || sentTo.length > 10) continue;
+          // Which card? A conversation already on one wins; otherwise the first recipient who is a contact.
+          let contact: ContactRow | undefined;
+          let dealId: string | null = null;
+          if (meta.threadId) {
+            const { data: sib } = await db.from('crm_deal_emails').select('client_id, deal_id').eq('gmail_thread_id', meta.threadId).limit(1);
+            const sr = sib?.[0] as { client_id: string | null; deal_id: string | null } | undefined;
+            if (sr) {
+              dealId = sr.deal_id;
+              let cid = sr.client_id;
+              if (!cid && sr.deal_id) cid = ((await db.from('crm_deals').select('client_id').eq('id', sr.deal_id).maybeSingle()).data?.client_id as string | null) ?? null;
+              if (cid) contact = ((await db.from('crm_clients').select('id, first_name, last_name, email, extra_emails, agent_id').eq('id', cid).maybeSingle()).data as ContactRow | null) ?? undefined;
+            }
+          }
+          if (!contact) for (const a of sentTo) { if (!own.has(a) && byEmail.has(a)) { contact = byEmail.get(a); break; } }
+          if (!contact) continue;
+          const rfc = hdr(meta, 'Message-ID') || null;
+          if (rfc) { const { data: dup } = await db.from('crm_deal_emails').select('id').eq('rfc_message_id', rfc).limit(1); if (dup?.length) continue; }
+          const fullRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`, { headers: auth });
+          if (!fullRes.ok) continue;
+          const msg = await fullRes.json();
+          const dateStr = hdr(msg, 'Date');
+          if (!dealId) dealId = await autoDealFor(db, contact.id, dealCache);
+          const { data: insRow, error: insErr } = await db.from('crm_deal_emails').insert({
+            gmail_message_id: id,
+            client_id: contact.id,
+            ...(dealId ? { deal_id: dealId } : {}),
+            direction: 'sent',
+            from_email: hdr(msg, 'From'),
+            to_email: hdr(msg, 'To'),
+            ...(hdr(msg, 'Cc').trim() ? { cc_emails: hdr(msg, 'Cc').trim() } : {}),
+            ...(hdr(msg, 'Bcc').trim() ? { bcc_emails: hdr(msg, 'Bcc').trim() } : {}),
+            subject: hdr(msg, 'Subject') || '(no subject)',
+            body: cleanBody(extractBody(msg.payload)).slice(0, 4000),
+            ...(extractEmailHtml(msg.payload) ? { body_html: extractEmailHtml(msg.payload) } : {}),
+            email_date: chicagoToday(dateStr ? new Date(dateStr) : new Date()),
+            ...(Number(msg.internalDate) ? { email_at: new Date(Number(msg.internalDate)).toISOString() } : {}),
+            gmail_thread_id: msg.threadId ?? null,
+            rfc_message_id: rfc,
+          }).select('id').single();
+          if (insErr) { errors.push(`insert sent ${id}: ${insErr.message}`); continue; }
+          filedSent++;
+          if (insRow?.id) { try { await storeGmailAttachments(insRow.id as string, id, token, msg.payload); } catch (e) { errors.push(`attachments ${id}: ${e instanceof Error ? e.message : String(e)}`); } }
+        }
+      }
+    } catch (e) {
+      errors.push(`sent ${conn.gmail_email}: ${e instanceof Error ? e.message : String(e)}`);
+    }
     try {
       const list = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(`in:inbox ${LOOKBACK}`)}&maxResults=${MAX_MESSAGES}`, { headers: auth });
       if (!list.ok) { errors.push(`list ${conn.gmail_email}: ${list.status}`); continue; }
@@ -212,6 +305,7 @@ export async function GET(req: NextRequest) {
           const { data: sib } = await db.from('crm_deal_emails').select('deal_id').eq('gmail_thread_id', threadId).not('deal_id', 'is', null).limit(1);
           dealId = (sib?.[0]?.deal_id as string | undefined) ?? null;
         }
+        if (!dealId) dealId = await autoDealFor(db, contact.id, dealCache);
         const { data: insRow, error: insErr } = await db.from('crm_deal_emails').insert({
           gmail_message_id: id,
           client_id: contact.id,
@@ -265,5 +359,5 @@ export async function GET(req: NextRequest) {
   if (errors.length) console.error('[cron/gmail-replies]', errors.join(' | '));
   // A run where every inbox failed to authorise must show up as a failure in Vercel, not a quiet 200.
   const status = tokenFailures === conns.length ? 500 : 200;
-  return NextResponse.json({ ok: status === 200, connections: conns.length, scanned, filed, healed, attachmentsChecked, timesSet, errors: errors.slice(0, 5) }, { status });
+  return NextResponse.json({ ok: status === 200, connections: conns.length, scanned, filed, filedSent, healed, attachmentsChecked, timesSet, errors: errors.slice(0, 5) }, { status });
 }

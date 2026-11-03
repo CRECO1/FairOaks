@@ -131,14 +131,24 @@ export async function POST(req: NextRequest) {
     const emailsOf = (v: unknown): string[] => (Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,;\s]+/) : [])
       .map(x => String(x).trim().toLowerCase()).filter(Boolean);
     let knownEmails: string[] = [];
+    const extraDealEmails: string[] = []; // other deal contacts: searched, but not valid as the requested address on their own
     if (dealId) {
       const deal = await assertOwnsResource('crm_deals', dealId, ctx, { ownerColumns: ['agent_id'], requireOwner: false });
       if (!deal) return forbidden('You do not have access to this deal');
-      const { data: d } = await adminClient().from('crm_deals').select('client_email, client_id').eq('id', dealId).maybeSingle();
+      const { data: d } = await adminClient().from('crm_deals').select('client_email, client_id, listing_id').eq('id', dealId).maybeSingle();
       knownEmails = emailsOf(d?.client_email);
       if (d?.client_id) {
         const { data: c } = await adminClient().from('crm_clients').select('email, extra_emails').eq('id', d.client_id).maybeSingle();
         knownEmails.push(...emailsOf(c?.email), ...emailsOf(c?.extra_emails));
+      }
+      // Everyone else on the deal: the contacts linked to its property folder (owner, landlord, attorney, lender…).
+      // They are searched too, so the Email Log is the whole deal and not just one person's thread.
+      if (d?.listing_id) {
+        const { data: lc } = await adminClient().from('crm_listing_contacts').select('crm_clients(email, extra_emails)').eq('listing_id', d.listing_id).limit(25);
+        for (const row of (lc ?? []) as unknown as Array<{ crm_clients: { email: string | null; extra_emails: string[] | null } | { email: string | null; extra_emails: string[] | null }[] | null }>) {
+          const c = Array.isArray(row.crm_clients) ? row.crm_clients[0] : row.crm_clients;
+          if (c) { extraDealEmails.push(...emailsOf(c.email), ...emailsOf(c.extra_emails)); }
+        }
       }
     } else {
       const client = await assertOwnsResource('crm_clients', clientId, ctx, { ownerColumns: ['agent_id'], requireOwner: false });
@@ -169,8 +179,19 @@ export async function POST(req: NextRequest) {
       }, { status: 401 });
     }
 
+    // The team's own addresses (never searched as a "contact": that would pull in all internal mail).
+    const { data: teamRows } = await adminClient().from('crm_profiles').select('email');
+    const ownAddrs = new Set<string>([
+      ...(teamRows ?? []).map((r: { email: string | null }) => (r.email ?? '').toLowerCase()),
+      ...allConns.map(c => (c.agentEmail ?? '').toLowerCase()),
+    ].filter(Boolean));
+    // The requested address plus (for a deal) the other contacts on it, capped so the Gmail query stays small.
+    const ADDR_OK = /^[^\s@<>"',;:()]+@[^\s@<>"',;:()]+\.[^\s@<>"',;:()]{2,}$/;
+    const searchEmails = [...new Set([clientEmail, ...(dealId ? [...knownEmails, ...extraDealEmails] : [])])]
+      .filter(a => ADDR_OK.test(a) && (a === clientEmail || !ownAddrs.has(a))).slice(0, 8);
+
     // Search every connected Gmail account and aggregate message stubs
-    const query = encodeURIComponent(`from:${clientEmail} OR to:${clientEmail}`);
+    const query = encodeURIComponent(searchEmails.map(a => `from:${a} OR to:${a}`).join(' OR '));
     // Map of gmailMsgId → { conn, msgId } so we know which token to use when fetching full message
     const msgConnMap = new Map<string, { accessToken: string; agentEmail: string | null }>();
     for (const conn of allConns) {
@@ -201,12 +222,7 @@ export async function POST(req: NextRequest) {
     }
     if (msgConnMap.size === 0) return NextResponse.json({ synced: 0 });
 
-    // The team's own addresses: a message from one of them is "sent", from anyone else on the thread "received".
-    const { data: teamRows } = await adminClient().from('crm_profiles').select('email');
-    const ownAddrs = new Set<string>([
-      ...(teamRows ?? []).map((r: { email: string | null }) => (r.email ?? '').toLowerCase()),
-      ...allConns.map(c => (c.agentEmail ?? '').toLowerCase()),
-    ].filter(Boolean));
+    // ownAddrs (above): a message from one of the team's addresses is "sent", from anyone else on the thread "received".
 
     // Fetch already-synced IDs for this deal/contact to avoid duplicates
     // Check both gmail_message_id (per-account) and rfc_message_id (universal) so two
@@ -254,12 +270,11 @@ export async function POST(req: NextRequest) {
       const fromLower = from.toLowerCase();
       const toLower = to.toLowerCase();
       const ccLower = get('Cc').toLowerCase();
-      const clientLower = clientEmail.toLowerCase();
 
-      // Check if client appears anywhere in From, To, or Cc
-      const clientInFrom = fromLower.includes(clientLower);
-      const clientInTo = toLower.includes(clientLower);
-      const clientInCc = ccLower.includes(clientLower);
+      // Check if the client — or, on a deal, any other contact on it — appears anywhere in From, To, or Cc
+      const clientInFrom = searchEmails.some(a => fromLower.includes(a));
+      const clientInTo = searchEmails.some(a => toLower.includes(a));
+      const clientInCc = searchEmails.some(a => ccLower.includes(a));
       const inKnownThread = !!msgData.threadId && threadIds.has(msgData.threadId);
       if (!clientInFrom && !clientInTo && !clientInCc && !inKnownThread) continue;
 
