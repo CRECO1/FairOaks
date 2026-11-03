@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound, forbidden, assertOwnsResource } from '@/lib/crm-auth';
 import { driveContext, type DriveContext } from '@/lib/drive-server';
-import { logDocEvent } from '@/lib/drive-events';
+import { logDocEvent, mirrorDocToFeeds } from '@/lib/drive-events';
 
 // A Drive document shown on a deal card or a contact card AS ITSELF (live — not a PDF copy).
 //   GET    ?deal_id= | ?client_id=  → the live documents on that card (the caller must be able to open the card)
@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
   if (kind === 'deal') { const { data: d } = await dc.admin.from('crm_deals').select('client,property').eq('id', cardId).maybeSingle(); label = [d?.client, d?.property].filter(Boolean).join(' · ') || label; }
   else { const { data: c } = await dc.admin.from('crm_clients').select('first_name,last_name,business_name').eq('id', cardId).maybeSingle(); label = [[c?.first_name, c?.last_name].filter(Boolean).join(' '), c?.business_name].filter(Boolean).join(' · ') || label; }
   await logDocEvent(dc.admin, { docId: b.doc_id, bu: dc.bu, actor: dc.ctx.userId, kind: 'linked', detail: { kind, label } });
+  await mirrorDocToFeeds(dc.admin, { docId: b.doc_id, actor: dc.ctx.userId, only: kind === 'deal' ? { dealId: cardId } : { clientId: cardId }, text: (title, who) => `Live document “${title}” linked from My Drive by ${who}` });
   return NextResponse.json({ ok: true, id: data.id });
 }
 
@@ -101,6 +102,7 @@ export async function DELETE(req: NextRequest) {
   const kind = l.deal_id ? 'deal' : 'client';
   if (!(await canOpenCard(dc, kind, (l.deal_id ?? l.client_id) as string))) return notFound('Not found');
   if (!(dc.isAdmin || l.created_by === dc.ctx.userId || doc?.created_by === dc.ctx.userId)) return forbidden('Only the person who linked it, the document’s owner or an admin can unlink it');
+  await mirrorDocToFeeds(dc.admin, { docId: l.doc_id as string, actor: dc.ctx.userId, only: l.deal_id ? { dealId: l.deal_id as string } : { clientId: l.client_id as string }, text: (title, who) => `Live document “${title}” removed from this card by ${who}` });
   await dc.admin.from('crm_drive_doc_links').delete().eq('id', id);
   await logDocEvent(dc.admin, { docId: l.doc_id as string, bu: dc.bu, actor: dc.ctx.userId, kind: 'unlinked', detail: { kind } });
   return NextResponse.json({ ok: true });

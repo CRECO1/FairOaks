@@ -3,7 +3,7 @@ import * as Y from 'yjs';
 import { unauthorized, notFound } from '@/lib/crm-auth';
 import { driveContext, mergeYState } from '@/lib/drive-server';
 import { applyDocOp, broadcastDocUpdate, type DocOp } from '@/lib/drive-edit';
-import { logDocEvent } from '@/lib/drive-events';
+import { logDocEvent, mirrorDocToFeeds } from '@/lib/drive-events';
 
 // Server-side edits to an existing live document (the Copilot uses these).
 //   GET  → { title, text, words, version }       the document's current plain text, to read before editing
@@ -66,6 +66,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (ok && ok.length) {
         const charsBefore = ((cur.content_text as string | null) ?? '').length;
         await logDocEvent(dc.admin, { docId: id, bu: dc.bu, actor: dc.ctx.userId, kind: 'edited', detail: { via: 'copilot', op: op.op, chars_before: charsBefore, chars_after: merged.text.length, words_after: merged.text.split(/\s+/).filter(Boolean).length } });
+        const dl = merged.text.length - charsBefore;
+        await mirrorDocToFeeds(dc.admin, { docId: id, actor: dc.ctx.userId, text: (title, who) => `Live document “${title}” edited by ${who} using the Copilot — ${op.op === 'rewrite' ? 'rewritten' : op.op === 'append' ? `added about ${Math.max(0, dl).toLocaleString()} characters` : 'one passage replaced'}` });
         await broadcastDocUpdate(id, update);
         return NextResponse.json({ ok: true, version: ok[0].version, chars_before: charsBefore, chars_after: merged.text.length });
       }
