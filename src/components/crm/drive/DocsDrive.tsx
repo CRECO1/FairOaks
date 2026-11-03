@@ -355,7 +355,7 @@ export default function DocsDrive({ businessUnit, authToken, currentUser, profil
       {preview && <DocPreviewModal file={preview} onClose={() => setPreview(null)} />}
 
       {openDocId && (
-        <LiveDocEditor docId={openDocId} authToken={authToken} user={currentUser} isMobile={isMobile}
+        <LiveDocEditor docId={openDocId} authToken={authToken} user={currentUser} isMobile={isMobile} people={profiles} isAdmin={isAdmin}
           onClose={() => { setOpenDocId(null); refresh(); }}
           onShare={doc => { if (canManage(doc)) setDlg({ t: 'share', kind: 'doc', item: doc }); else onToast('Only the owner or an admin can change who this is shared with'); }}
           onToast={onToast}

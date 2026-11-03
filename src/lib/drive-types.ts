@@ -75,3 +75,27 @@ export const DRIVE_FILE_TYPES: Record<string, string> = {
   txt: 'text/plain',
 };
 export const DRIVE_FILE_MAX = 50 * 1024 * 1024;
+
+/** A comment or reply on a live document. A top-level comment's id is also the id of its highlight mark in the document. */
+export interface DriveComment {
+  id: string;
+  doc_id: string;
+  parent_id: string | null;
+  author_id: string | null;
+  body: string;
+  mentions: string[];
+  anchor_text: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  created_at: string;
+}
+
+export interface DriveVersion {
+  id: string;
+  doc_id: string;
+  label: string | null;
+  kind: 'auto' | 'manual' | 'restore';
+  size: number | null;
+  created_by: string | null;
+  created_at: string;
+}

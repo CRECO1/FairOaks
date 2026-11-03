@@ -6325,6 +6325,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   // A note tag on a property (Internal Notes / Rent Roll): open that property's card.
                   rememberView(`${businessUnit}:listing`, n.entity_id);
                   setPage('properties'); setPropertiesTab('listings'); setPropLinkNonce(x => x + 1);
+                } else if (n.entity_type === 'drive_doc' && n.entity_id) {
+                  // @mention in a My Drive document: open it (the Drive reopens whatever was last open on mount).
+                  rememberView(`${businessUnit}:drive-doc`, n.entity_id);
+                  setPage('transaction-docs');
                 } else if (n.entity_type === 'suite') {
                   setPage('properties'); setPropertiesTab('floorplan');
                 } else if (n.entity_type === 'deal' && n.entity_id) {

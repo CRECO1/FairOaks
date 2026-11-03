@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { unauthorized, notFound } from '@/lib/crm-auth';
 import { driveContext, mergeYState } from '@/lib/drive-server';
 import { DOC_COLS } from '@/lib/drive-types';
@@ -8,6 +9,20 @@ import { DOC_COLS } from '@/lib/drive-types';
 // (Yjs updates commute) and writes it with an optimistic version check, so two people saving at once never overwrite each other.
 
 export const maxDuration = 30;
+
+// Version history: take an automatic snapshot of what was just saved when the last one is 10+ minutes old (so a long editing
+// session leaves a trail, not a row per keystroke), and keep only the newest 60 automatic ones. Best effort — a failure here must
+// never fail the save itself (and the history table may not exist yet on an older database).
+async function autoSnapshot(admin: SupabaseClient, docId: string, merged: { state: string; text: string }, userId: string) {
+  try {
+    if (!merged.text.trim()) return;
+    const { data: last } = await admin.from('crm_drive_versions').select('created_at').eq('doc_id', docId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (last && Date.now() - new Date(last.created_at as string).getTime() < 10 * 60_000) return;
+    await admin.from('crm_drive_versions').insert({ doc_id: docId, ystate: merged.state, content_text: merged.text, size: merged.state.length, kind: 'auto', created_by: userId });
+    const { data: autos } = await admin.from('crm_drive_versions').select('id').eq('doc_id', docId).eq('kind', 'auto').order('created_at', { ascending: false }).range(60, 200);
+    if (autos?.length) await admin.from('crm_drive_versions').delete().in('id', autos.map(a => a.id as string));
+  } catch (e) { console.error('[drive] auto snapshot', e); }
+}
 const MAX_UPDATE_B64 = 4_000_000; // ~3 MB of binary, under the platform's request limit
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -44,7 +59,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .update({ ystate: merged.state, content_text: merged.text, version: (cur.version as number) + 1, updated_by: dc.ctx.userId, updated_at: new Date().toISOString() })
       .eq('id', id).eq('version', cur.version).select('version');
     if (upErr) return NextResponse.json({ error: 'Could not save' }, { status: 500 });
-    if (ok && ok.length) return NextResponse.json({ ok: true, version: ok[0].version });
+    if (ok && ok.length) {
+      await autoSnapshot(dc.admin, id, merged, dc.ctx.userId);
+      return NextResponse.json({ ok: true, version: ok[0].version });
+    }
     // Someone else saved between our read and write — merge onto their result and try again.
   }
   return NextResponse.json({ error: 'Busy — try again' }, { status: 409 });

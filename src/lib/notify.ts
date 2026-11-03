@@ -30,7 +30,7 @@ export async function notifyAssignment(
 }
 
 /** Which CRM page a bell notification opens (the CRM reads the hash on load). */
-const PAGE_FOR_ENTITY: Record<string, string> = { calls: 'tasks', task: 'tasks', contact: 'contacts', deal: 'deals', listing: 'properties', suite: 'properties' };
+const PAGE_FOR_ENTITY: Record<string, string> = { calls: 'tasks', task: 'tasks', contact: 'contacts', deal: 'deals', listing: 'properties', suite: 'properties', drive_doc: 'transaction-docs' };
 
 /**
  * The same notification, as a phone alert. The bell row is the record; this is the tap on the shoulder.

@@ -16,24 +16,16 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import * as Y from 'yjs';
 import { toBase64, fromBase64 } from 'lib0/buffer';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
-import Link from '@tiptap/extension-link';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
-import TableHeader from '@tiptap/extension-table-header';
 import Placeholder from '@tiptap/extension-placeholder';
-import Highlight from '@tiptap/extension-highlight';
-import TextAlign from '@tiptap/extension-text-align';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { createClient } from '@/lib/supabase/client';
 import { acquireDoc, releaseDoc, type CollabHandle } from '@/lib/collab/doc-registry';
 import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
-import type { DriveDoc } from '@/lib/drive-types';
+import type { DriveComment, DriveDoc } from '@/lib/drive-types';
+import { docExtensions } from './doc-extensions';
+import { CommentsPanel, HistoryPanel } from './DocPanel';
+import type { DrivePerson } from './DocsDrive';
 
 export interface DocUser { id: string; name: string }
 interface Peer { name: string; color: string }
@@ -52,9 +44,12 @@ interface Props {
   onToast: (msg: string) => void;
   /** Tell the list the title changed so it isn't stale when the doc is closed. */
   onTitle?: (id: string, title: string) => void;
+  /** Teammates, for @mentions and for naming who wrote a comment or saved a version. */
+  people?: DrivePerson[];
+  isAdmin?: boolean;
 }
 
-export default function LiveDocEditor({ docId, authToken, user, isMobile, onClose, onShare, onToast, onTitle }: Props) {
+export default function LiveDocEditor({ docId, authToken, user, isMobile, onClose, onShare, onToast, onTitle, people = [], isAdmin = false }: Props) {
   const [doc, setDoc] = useState<DriveDoc | null>(null);
   const [state, setState] = useState<Uint8Array | null | undefined>(undefined);
   const [err, setErr] = useState<string | null>(null);
@@ -85,16 +80,22 @@ export default function LiveDocEditor({ docId, authToken, user, isMobile, onClos
     );
   }
   if (!doc || state === undefined) return <Frame isMobile={isMobile}><div style={{ padding: 28, color: 'var(--k-9ca3af)', fontSize: 14 }}>Opening…</div></Frame>;
-  return <DocWorkspace key={docId} doc={doc} initialState={state} authToken={authToken} user={user} isMobile={isMobile} onClose={onClose} onShare={onShare} onToast={onToast} onTitle={onTitle} />;
+  return <DocWorkspace key={docId} doc={doc} initialState={state} authToken={authToken} user={user} isMobile={isMobile} onClose={onClose} onShare={onShare} onToast={onToast} onTitle={onTitle} people={people} isAdmin={isAdmin} />;
 }
 
-function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, onShare, onToast, onTitle }: Omit<Props, 'docId'> & { doc: DriveDoc; initialState: Uint8Array | null }) {
+function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, onShare, onToast, onTitle, people = [], isAdmin = false }: Omit<Props, 'docId'> & { doc: DriveDoc; initialState: Uint8Array | null }) {
   const [handle, setHandle] = useState<CollabHandle | null>(null);
   const [status, setStatus] = useState<CollabStatus>('connecting');
   const [peers, setPeers] = useState<Peer[]>([]);
   const [save, setSave] = useState<SaveState>('saved');
   const [title, setTitle] = useState(doc.title);
   const me = useMemo<Peer>(() => ({ name: user.name || 'Teammate', color: colorFor(user.id) }), [user.id, user.name]);
+  const [panel, setPanel] = useState<null | 'comments' | 'history'>(null);
+  const [comments, setComments] = useState<DriveComment[]>([]);
+  const [anchor, setAnchor] = useState<{ from: number; to: number; text: string } | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const flushRef = useRef<() => Promise<void>>(async () => {});
+  const commentsReload = useRef<() => Promise<void>>(async () => {});
   const authRef = useRef(authToken); authRef.current = authToken;
   const toastRef = useRef(onToast); toastRef.current = onToast;
 
@@ -120,13 +121,24 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
 
     // Live title: peers see a rename as it happens. (The first title shown is always the saved one, so a stale value left in
     // the shared state can never override a rename made from the list.)
-    const meta = h.ydoc.getMap<string>('meta');
-    const onMeta = (ev: Y.YMapEvent<string>) => {
+    const meta = h.ydoc.getMap<unknown>('meta');
+    const onMeta = (ev: Y.YMapEvent<unknown>) => {
       if (ev.transaction.local) return;
+      if (ev.keysChanged.has('commentsRev')) void loadComments();   // a teammate commented, replied or resolved
+      if (!ev.keysChanged.has('title')) return;
       const t = meta.get('title');
       if (typeof t === 'string') { setTitle(t); onTitle?.(doc.id, t); }
     };
     meta.observe(onMeta);
+    const loadComments = async () => {
+      try {
+        const r = await fetch(`/api/crm/drive/comments/${doc.id}`, { headers: authRef.current ? { Authorization: `Bearer ${authRef.current}` } : {} });
+        if (r.ok) setComments(((await r.json()) as { comments: DriveComment[] }).comments ?? []);
+      } catch { /* the panel retries when it opens */ }
+    };
+    void loadComments();
+    commentsReload.current = loadComments;
+    const poll = setInterval(() => { if (document.visibilityState === 'visible') void loadComments(); }, 30_000);
 
     // Saving: collect every update (not the initial seed), merge, send after typing pauses (or every 8 s while typing).
     const pending: Uint8Array[] = [];
@@ -160,6 +172,11 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
         if ((again || pending.length) && !retry) { again = false; timer = setTimeout(() => void flush(), 400); }
       }
     };
+    // "Save now and wait until it's really on the server" — used before saving a named version or restoring one.
+    flushRef.current = async () => {
+      await flush();
+      for (let i = 0; i < 30 && (saving || pending.length); i++) { await new Promise(r => setTimeout(r, 150)); if (!saving && pending.length) await flush(); }
+    };
     const onUpdate = (u: Uint8Array, origin: unknown) => {
       if (origin === 'seed') return;
       pending.push(u);
@@ -183,7 +200,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('beforeunload', onBeforeUnload);
-      clearTimeout(retry);
+      clearTimeout(retry); clearInterval(poll);
       void flush(true);
       releaseDoc(doc.id);
     };
@@ -233,6 +250,12 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
           ))}
           {peers.length > 4 && <span style={{ fontSize: 11, marginLeft: 4, color: 'var(--k-6b7280)' }}>+{peers.length - 4}</span>}
         </div>
+        <button type="button" onClick={() => setPanel(p => (p === 'comments' ? null : 'comments'))} aria-pressed={panel === 'comments'} aria-label="Comments" title="Comments"
+          style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'comments' ? 'var(--k-fdf6e9)' : 'var(--k-fff)', position: 'relative' }}>
+          💬{comments.some(c => !c.parent_id && !c.resolved_at) && <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--k-a06a12)' }}>{comments.filter(c => !c.parent_id && !c.resolved_at).length}</span>}
+        </button>
+        <button type="button" onClick={() => setPanel(p => (p === 'history' ? null : 'history'))} aria-pressed={panel === 'history'} aria-label="Version history" title="Version history"
+          style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'history' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>🕘</button>
         {onShare && <button type="button" onClick={() => onShare(doc)} style={{ ...btnStyle(isMobile), background: '#c9922c', color: '#fff', border: 'none' }}>Share</button>}
       </header>
       {status === 'denied' && (
@@ -240,33 +263,51 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
           Live editing isn’t available for you on this document. What you type is saved, but others won’t see it until they reload.
         </div>
       )}
-      {handle ? <DocSurface handle={handle} me={me} isMobile={isMobile} /> : <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Connecting…</div>}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        {handle ? (
+          <DocSurface handle={handle} me={me} isMobile={isMobile} onEditor={setEditor}
+            onComment={() => {
+              if (!editor) return;
+              const { from, to } = editor.state.selection;
+              const text = from !== to ? editor.state.doc.textBetween(from, to, ' ').trim() : '';
+              setAnchor(text ? { from, to, text: text.slice(0, 500) } : null);
+              setPanel('comments'); void commentsReload.current();
+            }}
+            onHighlightClick={() => { setPanel('comments'); void commentsReload.current(); }} />
+        ) : <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Connecting…</div>}
+        {handle && panel === 'comments' && (
+          <CommentsPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} isAdmin={isAdmin} onToast={onToast} onClose={() => { setPanel(null); setAnchor(null); }}
+            editor={editor} comments={comments} reload={() => commentsReload.current()} anchor={anchor} clearAnchor={() => setAnchor(null)}
+            bump={() => handle.ydoc.getMap<unknown>('meta').set('commentsRev', Date.now())} />
+        )}
+        {handle && panel === 'history' && (
+          <HistoryPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} onToast={onToast} onClose={() => setPanel(null)} ydoc={handle.ydoc} flush={() => flushRef.current()} />
+        )}
+      </div>
     </Frame>
   );
 }
 
-function DocSurface({ handle, me, isMobile }: { handle: CollabHandle; me: Peer; isMobile: boolean }) {
+function DocSurface({ handle, me, isMobile, onEditor, onComment, onHighlightClick }: { handle: CollabHandle; me: Peer; isMobile: boolean; onEditor: (e: Editor | null) => void; onComment: () => void; onHighlightClick: () => void }) {
+  const clickRef = useRef(onHighlightClick); clickRef.current = onHighlightClick;
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      StarterKit.configure({ history: false, heading: { levels: [1, 2, 3] } }), // Yjs owns undo/redo
-      Underline,
-      Highlight,
-      Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' } }),
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      Table.configure({ resizable: true }), TableRow, TableHeader, TableCell,
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      ...docExtensions(),
       Placeholder.configure({ placeholder: 'Start typing — or press “/” … everyone on this doc sees it live.' }),
       Collaboration.configure({ document: handle.ydoc }),
       CollaborationCursor.configure({ provider: { awareness: handle.awareness }, user: me }),
     ],
-    editorProps: { attributes: { class: 'drive-doc', spellcheck: 'true' } },
+    editorProps: {
+      attributes: { class: 'drive-doc', spellcheck: 'true' },
+      handleClick: (_v, _pos, ev) => { if ((ev.target as HTMLElement | null)?.closest?.('.comment-hl')) clickRef.current(); return false; },
+    },
   }, [handle.ydoc]);
+  useEffect(() => { onEditor(editor); return () => onEditor(null); }, [editor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <Toolbar editor={editor} isMobile={isMobile} />
+    <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <Toolbar editor={editor} isMobile={isMobile} onComment={onComment} />
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--k-f3f4f6)', padding: isMobile ? '0' : '24px 16px 60px' }}>
         <div style={{ maxWidth: 816, margin: '0 auto', minHeight: isMobile ? '100%' : 1056, background: 'var(--k-fff)', boxShadow: isMobile ? 'none' : '0 1px 3px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.05)', borderRadius: isMobile ? 0 : 4, padding: isMobile ? '18px 16px 80px' : '56px 72px 80px' }}>
           <EditorContent editor={editor} />
@@ -279,7 +320,7 @@ function DocSurface({ handle, me, isMobile }: { handle: CollabHandle; me: Peer; 
 
 // ── toolbar ────────────────────────────────────────────────────────────────
 
-function Toolbar({ editor, isMobile }: { editor: Editor | null; isMobile: boolean }) {
+function Toolbar({ editor, isMobile, onComment }: { editor: Editor | null; isMobile: boolean; onComment: () => void }) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [, force] = useState(0);
@@ -323,6 +364,7 @@ function Toolbar({ editor, isMobile }: { editor: Editor | null; isMobile: boolea
         <B on={() => c().toggleStrike().run()} active={editor.isActive('strike')} label={<s>S</s>} title="Strikethrough" />
         <B on={() => c().toggleHighlight().run()} active={editor.isActive('highlight')} label="🖍" title="Highlight" />
         <B on={openLink} active={editor.isActive('link')} label="🔗" title="Link" />
+        <B on={onComment} label="💬＋" title="Comment on the selected words" />
         <Sep />
         <B on={() => c().toggleBulletList().run()} active={editor.isActive('bulletList')} label="•≡" title="Bulleted list" />
         <B on={() => c().toggleOrderedList().run()} active={editor.isActive('orderedList')} label="1≡" title="Numbered list" />
@@ -402,6 +444,7 @@ function DocStyles() {
       .drive-doc .selectedCell::after { content: ''; position: absolute; inset: 0; background: rgba(201,146,44,.18); pointer-events: none; }
       .drive-doc .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: -2px; width: 4px; background: #c9922c; pointer-events: none; }
       .drive-doc .tableWrapper { overflow-x: auto; }
+      .drive-doc .comment-hl { background: rgba(250, 204, 21, .32); border-bottom: 2px solid #eab308; cursor: pointer; border-radius: 2px; }
       .collaboration-cursor__caret { position: relative; margin-left: -1px; margin-right: -1px; border-left: 1px solid #0d0d0d; border-right: 1px solid #0d0d0d; word-break: normal; pointer-events: none; }
       .collaboration-cursor__label { position: absolute; top: -1.45em; left: -1px; font-size: 11px; font-style: normal; font-weight: 600; line-height: normal; user-select: none; color: #fff; padding: 1px 6px; border-radius: 4px 4px 4px 0; white-space: nowrap; }
     `}</style>
