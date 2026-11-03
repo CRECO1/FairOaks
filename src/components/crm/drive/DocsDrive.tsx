@@ -479,7 +479,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
             <input value={q} onChange={e => { setQ(e.target.value); setView(e.target.value.trim().length >= 2 ? 'search' : view === 'search' ? 'folder' : view); }} placeholder="Search documents" aria-label="Search documents"
               style={{ width: '100%', boxSizing: 'border-box', height: isMobile ? 44 : 38, border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '0 12px 0 34px', fontSize: 14, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)' }} />
           </div>
-          {!inTrash && view !== 'templates' && (
+          {!inTrash && view !== 'templates' && view !== 'shared' && (
             <div style={{ position: 'relative' }}>
               <button type="button" onClick={() => setNewOpen(o => !o)} aria-haspopup="menu" aria-expanded={newOpen}
                 style={{ height: isMobile ? 44 : 38, padding: '0 16px 0 13px', border: 'none', borderRadius: 10, background: GOLD, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 7, boxShadow: '0 1px 2px rgba(0,0,0,.12)' }}><DI n="plus" size={16} />New</button>
