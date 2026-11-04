@@ -6073,9 +6073,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   style={{ background: 'rgba(201,146,44,.16)', border: '1px solid rgba(201,146,44,.5)', borderRadius: 8, color: '#c9922c', cursor: 'pointer', fontSize: 19, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✦</button>
               )}
               {draftCount + gmailDraftCount > 0 && (
-                <button onClick={() => openCompose({ view: 'drafts' })} aria-label={`Drafts (${draftCount + gmailDraftCount})`} title="Drafts"
-                  style={{ position: 'relative', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.85)', cursor: 'pointer', fontSize: 17, padding: 0, lineHeight: 1, width: 44, height: 44, flexShrink: 0 }}>
-                  ✎<span style={{ position: 'absolute', top: 3, right: 3, background: '#c9922c', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, lineHeight: '16px', borderRadius: 8 }}>{draftCount + gmailDraftCount}</span>
+                // Same pill as the desktop top bar (white, dark text, gold count) so the Drafts button looks the same at every window size; phones drop the word to save room.
+                <button onClick={() => openCompose({ view: 'drafts' })} aria-label={`Drafts (${draftCount + gmailDraftCount})`} title="Your saved email drafts"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, height: 44, padding: isMobile ? '0 12px' : '0 16px', borderRadius: 22, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  ✎{!isMobile && ' Drafts'} <span style={{ background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '0 7px', borderRadius: 10, lineHeight: '18px' }}>{draftCount + gmailDraftCount}</span>
                 </button>
               )}
               <button onClick={() => { setShowSearch(true); setSearchQuery(''); }} aria-label="Search"
