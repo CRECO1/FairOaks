@@ -1720,6 +1720,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { live = false; clearTimeout(t); };
   }, [searchQuery, showSearch]);
 
+  // ⌘K also searches My Drive: document titles and text, uploaded file names and folder names the caller may open (the Drive API decides
+  // who sees what). Debounced; a stale answer is dropped.
+  type DriveHit = { kind: 'doc' | 'file' | 'folder'; id: string; title: string; snippet: string; folderId: string | null };
+  const [driveHits, setDriveHits] = useState<DriveHit[]>([]);
+  useEffect(() => {
+    const term = searchQuery.replace(/\s+/g, ' ').trim();
+    if (!showSearch || term.length < 2 || !session?.access_token) { setDriveHits([]); return; }
+    let live = true;
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/crm/drive?view=search&q=${encodeURIComponent(term)}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+        if (!r.ok) { if (live) setDriveHits([]); return; }
+        const j = await r.json() as { docs?: Array<{ id: string; title: string; snippet?: string; folder_id: string | null }>; files?: Array<{ id: string; name: string; folder_id: string | null }>; folders?: Array<{ id: string; name: string; parent_id: string | null }> };
+        const hits: DriveHit[] = [
+          ...(j.docs ?? []).map(d => ({ kind: 'doc' as const, id: d.id, title: d.title, snippet: d.snippet ?? 'Live document', folderId: d.folder_id })),
+          ...(j.files ?? []).map(f => ({ kind: 'file' as const, id: f.id, title: f.name, snippet: 'Uploaded file', folderId: f.folder_id })),
+          ...(j.folders ?? []).map(f => ({ kind: 'folder' as const, id: f.id, title: f.name, snippet: 'Folder', folderId: f.id })),
+        ].slice(0, 6);
+        if (live) setDriveHits(hits);
+      } catch { if (live) setDriveHits([]); }
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [searchQuery, showSearch, session?.access_token]);
+
   // Notification center
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -14748,7 +14772,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         const campaignResults = q.length >= 1 ? campaigns.filter(c =>
           `${c.name} ${c.description}`.toLowerCase().includes(q)
         ).slice(0, 3) : [];
-        const hasResults = contactResults.length + dealResults.length + campaignResults.length + emailHits.length > 0;
+        const hasResults = contactResults.length + dealResults.length + campaignResults.length + emailHits.length + driveHits.length > 0;
+        const openDriveHit = (h: DriveHit) => {
+          setShowSearch(false); setSearchQuery('');
+          rememberView(`${businessUnit}:drive-folder`, h.folderId);
+          if (h.kind === 'doc') rememberView(`${businessUnit}:drive-doc`, h.id);
+          setPage('transaction-docs');
+          // If My Drive is already on screen it won't remount, so also tell it directly.
+          if (h.kind === 'doc') setTimeout(() => window.dispatchEvent(new CustomEvent('crm:open-drive-doc', { detail: { id: h.id } })), 350);
+        };
         const openEmailHit = (h: EmailHit) => {
           const c = h.client_id ? clients.find(x => x.id === h.client_id) : undefined;
           const d = h.deal_id ? deals.find(x => x.id === h.deal_id) : undefined;
@@ -14777,7 +14809,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   ref={searchRef}
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search contacts, deals, emails, campaigns…"
+                  placeholder="Search contacts, deals, emails, documents…"
                   style={{ flex: 1, border: 'none', outline: 'none', fontSize: 16, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-111)', background: 'transparent' }}
                 />
                 <kbd style={{ fontSize: 11, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 4, padding: '2px 6px', color: 'var(--k-6b7280)', fontFamily: 'monospace' }}>ESC</kbd>
@@ -14786,7 +14818,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ maxHeight: isMobile ? '60vh' : 420, overflowY: 'auto', flex: 1 }}>
                 {!q && (
                   <div style={{ padding: '20px 18px', color: 'var(--k-9ca3af)', fontSize: 14, textAlign: 'center' }}>
-                    Start typing to search contacts, deals, emails and campaigns
+                    Start typing to search contacts, deals, emails, documents and campaigns
                   </div>
                 )}
                 {q && !hasResults && (
@@ -14862,6 +14894,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </button>
                       );
                     })}
+                  </div>
+                )}
+                {driveHits.length > 0 && (
+                  <div>
+                    <div style={{ padding: '8px 18px 4px', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 }}>My Drive</div>
+                    {driveHits.map(h => (
+                      <button key={`${h.kind}${h.id}`} onClick={() => openDriveHit(h)}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-f9fafb)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                        <span style={{ fontSize: 20 }}>{h.kind === 'folder' ? '📁' : h.kind === 'file' ? '📎' : '📄'}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.title}</div>
+                          <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.snippet}</div>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 )}
                 {hasResults && (

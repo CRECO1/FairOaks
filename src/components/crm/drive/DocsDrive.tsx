@@ -143,6 +143,12 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
 
   const go = (id: string | null) => { setQ(''); setView('folder'); setFolderId(id); setDlg(null); };
   const refresh = () => { void load(); void loadTree(); };
+  // The CRM-wide search (⌘K) picked a document: open it.
+  useEffect(() => {
+    const h = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) setOpenDocId(id); };
+    window.addEventListener('crm:open-drive-doc', h);
+    return () => window.removeEventListener('crm:open-drive-doc', h);
+  }, []);
   // The Copilot filed something into My Drive: reload what is on screen.
   useEffect(() => { const f = () => { void load(); void loadTree(); }; window.addEventListener('crm:drive-updated', f); return () => window.removeEventListener('crm:drive-updated', f); }, [load, loadTree]);
 
