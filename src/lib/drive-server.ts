@@ -5,6 +5,7 @@ import { createClient as createSsrClient } from '@/lib/supabase/server';
 import { getCrmContext, isAdminRole, type CrmContext } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { FORM_LINK_COLS, type DriveFormItem } from '@/lib/drive-types';
+import { sheetText } from '@/lib/drive-sheet';
 
 const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
@@ -67,7 +68,9 @@ export function mergeYState(existingB64: string | null, updateB64: string): { st
   try {
     if (existingB64) Y.applyUpdate(doc, b64ToBytes(existingB64));
     Y.applyUpdate(doc, b64ToBytes(updateB64));
-    return { state: bytesToB64(Y.encodeStateAsUpdate(doc)), text: fragmentText(doc.getXmlFragment('default')).slice(0, 200_000) };
+    // A spreadsheet keeps its cells in the 'tabs' map instead of the text fragment; search needs their text.
+    const text = doc.share.has('tabs') ? sheetText(doc) : fragmentText(doc.getXmlFragment('default')).slice(0, 200_000);
+    return { state: bytesToB64(Y.encodeStateAsUpdate(doc)), text };
   } finally {
     doc.destroy();
   }

@@ -29,13 +29,14 @@ import { LetterheadHeader, LetterheadFooter } from './Letterhead';
 import { exportDocPdf, exportDocDocx } from './doc-export';
 import { ActivityPanel, CommentsPanel, HistoryPanel } from './DocPanel';
 import type { DrivePerson } from './DocsDrive';
+import { Frame, btnStyle, iconBtn, colorFor } from './DocChrome';
+import SheetWorkspace from './SheetEditor';
 
 export interface DocUser { id: string; name: string }
 interface Peer { name: string; color: string }
 type SaveState = 'saved' | 'dirty' | 'saving' | 'error';
 
-const COLORS = ['#c9922c', '#2563eb', '#16a34a', '#db2777', '#7c3aed', '#0891b2', '#ea580c', '#4f46e5'];
-export const colorFor = (id: string) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return COLORS[h % COLORS.length]; };
+export { colorFor };
 
 interface Props {
   docId: string;
@@ -85,6 +86,7 @@ export default function LiveDocEditor({ docId, authToken, user, isMobile, onClos
     );
   }
   if (!doc || state === undefined) return <Frame isMobile={isMobile}><div style={{ padding: 28, color: 'var(--k-9ca3af)', fontSize: 14 }}>Opening…</div></Frame>;
+  if (doc.kind === 'sheet') return <SheetWorkspace key={docId} doc={doc} initialState={state} authToken={authToken} user={user} isMobile={isMobile} onClose={onClose} onShare={onShare} onToast={onToast} onTitle={onTitle} people={people} />;
   return <DocWorkspace key={docId} doc={doc} initialState={state} authToken={authToken} user={user} isMobile={isMobile} onClose={onClose} onShare={onShare} onSign={onSign} onToast={onToast} onTitle={onTitle} people={people} isAdmin={isAdmin} />;
 }
 
@@ -459,15 +461,3 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { ed
   );
 }
 
-// ── chrome + styles ────────────────────────────────────────────────────────
-
-function Frame({ isMobile, children }: { isMobile: boolean; children: ReactNode }) {
-  return (
-    <div role="dialog" aria-label="Document" style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', flexDirection: 'column', background: 'var(--k-f3f4f6)', paddingTop: isMobile ? 'env(safe-area-inset-top, 0px)' : 0 }}>
-      {children}
-    </div>
-  );
-}
-
-const btnStyle = (isMobile: boolean): React.CSSProperties => ({ height: isMobile ? 40 : 32, padding: isMobile ? '0 10px' : '0 14px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 });
-const iconBtn = (isMobile: boolean): React.CSSProperties => ({ width: isMobile ? 40 : 34, height: isMobile ? 40 : 34, border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--k-374151)', cursor: 'pointer', flexShrink: 0 });

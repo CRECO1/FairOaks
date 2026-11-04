@@ -68,7 +68,7 @@ function Tile({ n, color, size = 36 }: { n: DIName; color: string; size?: number
 }
 const initials = (name: string) => (name.replace(/[^A-Za-z ]/g, '').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2) || '·').toUpperCase();
 /** Files that can become a live document. */
-const canEditFile = (name: string) => /\.(docx|txt)$/i.test(name);
+const canEditFile = (name: string) => /\.(docx|txt|csv|xlsx)$/i.test(name);
 const fmtSize = (n: number | null) => (n == null ? '' : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 function fmtWhen(iso: string) {
@@ -159,10 +159,10 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const createFolder = (name: string) => act(async () => {
     await api('/api/crm/drive', { method: 'POST', body: JSON.stringify({ type: 'folder', name, parent_id: view === 'folder' ? folderId : null }) });
   }, 'Folder created').then(ok => { if (ok) setDlg(null); });
-  const createDoc = async () => {
+  const createDoc = async (kind: 'doc' | 'sheet' = 'doc', feeds?: string[]) => {
     setNewOpen(false);
     try {
-      const j = await api<{ item: DriveDoc }>('/api/crm/drive', { method: 'POST', body: JSON.stringify({ type: 'doc', parent_id: view === 'folder' ? folderId : null }) });
+      const j = await api<{ item: DriveDoc }>('/api/crm/drive', { method: 'POST', body: JSON.stringify({ type: kind, feeds, title: feeds ? 'Elkhorn Point call tracker' : undefined, parent_id: view === 'folder' ? folderId : null }) });
       refresh(); setOpenDocId(j.item.id);
     } catch (e) { onToast((e as Error).message); }
   };
@@ -467,7 +467,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   // Trash keeps things for 30 days (a daily job then removes them for good).
   const daysLeft = (it: Item) => Math.max(0, 30 - Math.floor((Date.now() - new Date(it.trashed_at ?? it.updated_at).getTime()) / 86_400_000));
   const rowSub = (kind: Kind, it: Item) => `${who(it.created_by)} · ${kind === 'file' && (it as DriveFile).size ? `${fmtSize((it as DriveFile).size)} · ` : ''}${kind === 'form' ? `${(it as DriveFormItem).form_code ? `${(it as DriveFormItem).form_code} · ` : ''}${(it as DriveFormItem).has_pdf ? 'saved' : 'in progress'} · ` : ''}${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}${inTrash ? ` · ${daysLeft(it)} d left` : ''}`;
-  const tone = (kind: Kind, it: Item) => toneFor(kind, kind === 'file' ? { name: (it as DriveFile).name, mime: (it as DriveFile).mime } : { visibility: it.visibility, deal_id: it.deal_id });
+  const tone = (kind: Kind, it: Item) => toneFor(kind, kind === 'file' ? { name: (it as DriveFile).name, mime: (it as DriveFile).mime } : { visibility: it.visibility, deal_id: it.deal_id, sheet: kind === 'doc' && (it as DriveDoc).kind === 'sheet' });
   const ownerChip = (id: string | null) => {
     const n = who(id);
     return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
@@ -503,7 +503,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           <span style={{ width: 118 }}>{accessPill(it)}</span>
           <span style={{ width: 84, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}{inTrash && <span style={{ display: 'block', fontSize: 10.5, color: daysLeft(it) <= 3 ? 'var(--k-dc2626)' : 'var(--k-9ca3af)' }}>{daysLeft(it)} d left</span>}</span>
         </>}
-        {kind === 'doc' && !isMobile && !inTrash && (
+        {kind === 'doc' && !isMobile && !inTrash && (it as DriveDoc).kind !== 'sheet' && (
           <button type="button" className="dd-dots" aria-label={`Quick look at ${title}`} title="Quick look — preview without opening" onClick={() => setQuickDocId(it.id)}
             style={{ width: 32, height: 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-9ca3af)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="eye" size={17} /></button>
         )}
@@ -511,7 +511,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           <button type="button" className="dd-dots" aria-label={`Edit ${title} as a live document`} title="Edit as a live document" onClick={() => void editFile(it as DriveFile)}
             style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: GOLD, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="pen" size={17} /></button>
         )}
-        {!(kind === 'doc' && !isMobile && !inTrash) && !isMobile && !inTrash && !(kind === 'file' && canEditFile((it as DriveFile).name)) && <span style={{ width: 32, flexShrink: 0 }} />}
+        {!(kind === 'doc' && !isMobile && !inTrash && (it as DriveDoc).kind !== 'sheet') && !isMobile && !inTrash && !(kind === 'file' && canEditFile((it as DriveFile).name)) && <span style={{ width: 32, flexShrink: 0 }} />}
         {dotsBtn(kind, it, title)}
       </div>
     );
@@ -594,6 +594,8 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                   <div onClick={() => setNewOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
                   <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 41, minWidth: 190, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.14)', padding: 6 }}>
                     <MenuBtn onClick={() => void createDoc()} icon="📄" label="Document" isMobile={isMobile} />
+                    <MenuBtn onClick={() => void createDoc('sheet')} icon="▦" label="Spreadsheet" isMobile={isMobile} />
+                    <MenuBtn onClick={() => void createDoc('sheet', ['elkhorn_tenants', 'elkhorn_calls'])} icon="▦" label="Elkhorn call tracker (live)" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'template' }); }} icon="📋" label="From template…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'newFolder' }); }} icon="📁" label="Folder" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); if (!canAddForm) { onToast('Forms can only be added to team folders (not private ones)'); return; } setDlg({ t: 'form' }); }} icon="📝" label="Form…" isMobile={isMobile} />
@@ -704,13 +706,13 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
             <>
               {dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template && <MenuBtn icon="📋" label="Use this template" isMobile={isMobile} onClick={() => void startFromTemplate(dlg.item.id)} />}
               <MenuBtn icon="↗" label={dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template ? 'Edit the template' : 'Open'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); if (d.kind === 'doc') setOpenDocId(d.item.id); else openItem(d.kind, d.item); }} />
-              {dlg.kind === 'doc' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); setQuickDocId(d.item.id); }} />}
+               {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); setQuickDocId(d.item.id); }} />}
               {dlg.kind === 'form' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void quickLookForm(d.item as DriveFormItem); }} />}
               {dlg.kind === 'form' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFormPdf(d.item as DriveFormItem); }} />}
               {(dlg.kind === 'file' || dlg.kind === 'form' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label={dlg.kind === 'doc' ? 'Link to a deal…' : 'Add to a deal…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
               {(dlg.kind === 'file' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && contacts.length > 0 && <MenuBtn icon="👤" label={dlg.kind === 'doc' ? 'Link to a contact…' : 'Add to a contact…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toContact', kind: dlg.kind, item: dlg.item })} />}
-              {dlg.kind === 'doc' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
-              {dlg.kind === 'doc' && <MenuBtn icon="⬇" label="Download as Word (.docx)" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocWord(d.item as DriveDoc); }} />}
+               {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
+               {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as Word (.docx)" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocWord(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && canEditFile((dlg.item as DriveFile).name) && <MenuBtn icon="✎" label="Edit as a live document" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void editFile(d.item as DriveFile); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
@@ -718,7 +720,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                 <MenuBtn icon="📁" label="Move to…" isMobile={isMobile} onClick={() => setDlg({ t: 'move', kind: dlg.kind, item: dlg.item })} />
                 {dlg.kind !== 'form' && <MenuBtn icon="👥" label="Share…" isMobile={isMobile} onClick={() => setDlg({ t: 'share', kind: dlg.kind, item: dlg.item })} />}
               </>}
-              {dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template && !dlg.item.deal_id && <MenuBtn icon="📋" label="Save as template…" isMobile={isMobile} onClick={() => setDlg({ t: 'saveTpl', item: dlg.item as DriveDoc })} />}
+              {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && !(dlg.item as DriveDoc).is_template && !dlg.item.deal_id && <MenuBtn icon="📋" label="Save as template…" isMobile={isMobile} onClick={() => setDlg({ t: 'saveTpl', item: dlg.item as DriveDoc })} />}
               <MenuBtn icon="🗑" label="Move to trash" danger isMobile={isMobile} onClick={() => setDlg({ t: 'trash', kind: dlg.kind, item: dlg.item })} />
             </>
           )}
@@ -792,7 +794,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
 
 const crumb = (current: boolean): React.CSSProperties => ({ background: 'none', border: 'none', padding: '6px 6px', borderRadius: 6, cursor: current ? 'default' : 'pointer', fontSize: 'inherit', fontWeight: current ? 700 : 600, color: current ? 'var(--k-1a1a1a)' : 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif", maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 
-const MENU_ICON: Record<string, DIName> = { '📄': 'doc', '📋': 'template', '📁': 'folder', '📝': 'form', '⬆': 'upload', '↩': 'restore', '🗑': 'trash', '↗': 'open', '👁': 'eye', '⬇': 'download', '↓': 'download', '💼': 'briefcase', '👤': 'user', '✎': 'pen', '👥': 'users' };
+const MENU_ICON: Record<string, DIName> = { '▦': 'sheet', '📄': 'doc', '📋': 'template', '📁': 'folder', '📝': 'form', '⬆': 'upload', '↩': 'restore', '🗑': 'trash', '↗': 'open', '👁': 'eye', '⬇': 'download', '↓': 'download', '💼': 'briefcase', '👤': 'user', '✎': 'pen', '👥': 'users' };
 function MenuBtn({ icon, label, onClick, danger, isMobile }: { icon: string; label: string; onClick: () => void; danger?: boolean; isMobile: boolean }) {
   return (
     <button type="button" role="menuitem" onClick={onClick}

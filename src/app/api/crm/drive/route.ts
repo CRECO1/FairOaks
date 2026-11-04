@@ -5,6 +5,9 @@ import { driveContext, hydrateDriveForms, likePattern, mergeYState, stripComment
 import { fillMergeFields } from '@/lib/drive-edit';
 import { logDocEvent } from '@/lib/drive-events';
 import { markdownToDriveState } from '@/lib/drive-markdown';
+import * as YY from 'yjs';
+import { applyFeed, blankSheetState, newTabMap, sheetText, tabsMap } from '@/lib/drive-sheet';
+import { FEEDS, isFeed } from '@/lib/drive-sheet-feeds';
 import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS, type DriveDoc, type DriveFile, type DriveFolder, type DriveListing } from '@/lib/drive-types';
 
 // Transaction Docs "Drive": list folders + live documents, and create new ones.
@@ -147,10 +150,11 @@ export async function POST(req: NextRequest) {
   const dc = await driveContext(req);
   if (!dc) return unauthorized();
   const { userDb, admin, bu, ctx } = dc;
-  const body = await req.json().catch(() => ({})) as { type?: string; name?: string; title?: string; parent_id?: string | null; deal_id?: string | null; template_id?: string; from_doc_id?: string; as_template?: boolean; markdown?: string; letterhead?: boolean };
-  const type = body.type === 'doc' ? 'doc' : body.type === 'folder' ? 'folder' : null;
-  if (!type) return NextResponse.json({ error: 'type must be folder or doc' }, { status: 400 });
-  const label = ((type === 'folder' ? body.name : body.title) ?? '').trim().slice(0, type === 'folder' ? 200 : 300) || (type === 'folder' ? 'New folder' : 'Untitled document');
+  const body = await req.json().catch(() => ({})) as { type?: string; name?: string; title?: string; parent_id?: string | null; deal_id?: string | null; template_id?: string; from_doc_id?: string; as_template?: boolean; markdown?: string; letterhead?: boolean; feeds?: unknown };
+  const isSheet = body.type === 'sheet';
+  const type = body.type === 'doc' || isSheet ? 'doc' : body.type === 'folder' ? 'folder' : null;
+  if (!type) return NextResponse.json({ error: 'type must be folder, doc or sheet' }, { status: 400 });
+  const label = ((type === 'folder' ? body.name : body.title) ?? '').trim().slice(0, type === 'folder' ? 200 : 300) || (type === 'folder' ? 'New folder' : isSheet ? 'Untitled spreadsheet' : 'Untitled document');
 
   // A new item takes on the visibility (and deal link) of the folder it is created in. At the top level an agent's items start PRIVATE
   // (only them, until they share with someone); admins and the owner start with team items.
@@ -215,7 +219,22 @@ export async function POST(req: NextRequest) {
   const base = { business_unit: bu, created_by: ctx.userId, visibility, shared_with, deal_id };
   // A document created with content (the Copilot writes these): markdown becomes the live document's starting text.
   let initial: { ystate: string; content_text: string; version: number } | null = null;
-  if (type === 'doc' && typeof body.markdown === 'string' && body.markdown.trim()) {
+  if (isSheet) {
+    // A sheet can start with live CRM tabs (one per requested feed), filled right away from the CRM.
+    const wantedFeeds = (Array.isArray(body.feeds) ? body.feeds : []).filter(isFeed);
+    if (wantedFeeds.length) {
+      const ydoc = new YY.Doc();
+      try {
+        const built = await Promise.all(wantedFeeds.map(k => FEEDS[k].build(dc)));
+        ydoc.transact(() => built.forEach((f, i) => { const m = newTabMap(f.title, i); m.set('feed', f.feed); tabsMap(ydoc).set(i === 0 ? 'tab1' : `feed${i}`, m); applyFeed(m, f); }));
+        initial = { ystate: Buffer.from(YY.encodeStateAsUpdate(ydoc)).toString('base64'), content_text: sheetText(ydoc), version: 1 };
+      } catch (e) { console.error('[drive] sheet feeds', e); return NextResponse.json({ error: 'Could not read the CRM data for that spreadsheet' }, { status: 500 }); }
+      finally { ydoc.destroy(); }
+    } else {
+      const b = blankSheetState();
+      initial = { ystate: b.ystate, content_text: b.text, version: 1 };
+    }
+  } else if (type === 'doc' && typeof body.markdown === 'string' && body.markdown.trim()) {
     try {
       const built = markdownToDriveState(body.markdown, { letterhead: body.letterhead === true });
       initial = { ystate: built.ystate, content_text: built.text, version: 1 };
@@ -223,8 +242,8 @@ export async function POST(req: NextRequest) {
   }
   const { data, error } = type === 'folder'
     ? await admin.from('crm_drive_folders').insert({ ...base, parent_id: parentId, name: label }).select(FOLDER_COLS).single()
-    : await admin.from('crm_drive_docs').insert({ ...base, folder_id: parentId, title: label, updated_by: ctx.userId, ...(initial ?? {}) }).select(DOC_COLS).single();
+    : await admin.from('crm_drive_docs').insert({ ...base, folder_id: parentId, title: label, updated_by: ctx.userId, ...(isSheet ? { kind: 'sheet' } : {}), ...(initial ?? {}) }).select(DOC_COLS).single();
   if (error || !data) return NextResponse.json({ error: `Could not create the ${type}` }, { status: 500 });
-  if (type === 'doc') await logDocEvent(admin, { docId: data.id as string, bu, actor: ctx.userId, kind: 'created', detail: { via: initial ? 'text' : 'blank', title: label } });
+  if (type === 'doc') await logDocEvent(admin, { docId: data.id as string, bu, actor: ctx.userId, kind: 'created', detail: { via: isSheet ? 'sheet' : initial ? 'text' : 'blank', title: label } });
   return NextResponse.json({ type, item: data });
 }

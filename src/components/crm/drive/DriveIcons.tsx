@@ -47,9 +47,9 @@ export default function DI({ n, size = 18, style }: { n: DIName; size?: number; 
 }
 
 /** Which icon + colour a Drive item gets. Colours are applied with a low-alpha tint behind the icon, so they read in light and dark. */
-export function toneFor(kind: 'folder' | 'doc' | 'form' | 'file', o: { visibility?: string; deal_id?: string | null; name?: string; mime?: string | null } = {}): { icon: DIName; color: string } {
+export function toneFor(kind: 'folder' | 'doc' | 'form' | 'file', o: { visibility?: string; deal_id?: string | null; name?: string; mime?: string | null; sheet?: boolean } = {}): { icon: DIName; color: string } {
   if (kind === 'folder') return o.visibility === 'private' ? { icon: 'folderLock', color: '#6b7280' } : o.deal_id ? { icon: 'folderDeal', color: '#2563eb' } : { icon: 'folder', color: '#c9922c' };
-  if (kind === 'doc') return { icon: 'doc', color: '#2563eb' };
+  if (kind === 'doc') return o.sheet ? { icon: 'sheet', color: '#16a34a' } : { icon: 'doc', color: '#2563eb' };
   if (kind === 'form') return { icon: 'form', color: '#7c3aed' };
   const n = (o.name ?? '').toLowerCase();
   if (o.mime === 'application/pdf' || n.endsWith('.pdf')) return { icon: 'file', color: '#dc2626' };
