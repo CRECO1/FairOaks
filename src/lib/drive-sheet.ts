@@ -528,6 +528,7 @@ export interface FeedData {
   freezeCols?: number;
 }
 
+const DEF_W_FEED = 120;
 export function applyFeed(tab: Y.Map<unknown>, data: FeedData) {
   const cells = tCells(tab), bold = tBold(tab), cols = tCols(tab);
   const nSys = data.header.length;
@@ -536,11 +537,25 @@ export function applyFeed(tab: Y.Map<unknown>, data: FeedData) {
   let keys = tab.get('feedKeys') as Y.Map<number> | undefined;
   if (!(keys instanceof Y.Map)) { keys = new Y.Map<number>(); tab.set('feedKeys', keys); }
   // what the team typed to the right of the feed's columns, per record
+  // a person's own column order (set by moving columns) wins over the feed's; columns the person never placed follow in the feed's order
+  let hdr = data.header, widthsIn = data.widths ?? [], rowsIn = data.rows;
+  try {
+    const savedCols = tab.get('feedColOrder'); const names = typeof savedCols === 'string' ? (JSON.parse(savedCols) as string[]) : null;
+    if (names && names.length) {
+      const used = new Set<number>(); const perm: number[] = [];
+      for (const n of names) { const i = data.header.findIndex((h, k) => h === n && !used.has(k)); if (i >= 0) { used.add(i); perm.push(i); } }
+      data.header.forEach((_h, i) => { if (!used.has(i)) perm.push(i); });
+      hdr = perm.map(i => data.header[i]); widthsIn = perm.map(i => (data.widths ?? [])[i] ?? DEF_W_FEED); rowsIn = data.rows.map(r => ({ ...r, cells: perm.map(i => r.cells[i] ?? '') }));
+    }
+  } catch { /* keep the feed's column order */ }
   // a person's own row order (set by moving rows) wins over the feed's order; rows the person never placed follow after
-  let rowsIn = data.rows;
   try {
     const saved = tab.get('feedOrder'); const manual = typeof saved === 'string' ? (JSON.parse(saved) as string[]) : null;
-    if (manual && manual.length) { const idx = new Map(manual.map((k, i) => [k, i])); const placed = rowsIn.filter(r => idx.has(r.key)).sort((x, y) => idx.get(x.key)! - idx.get(y.key)!); const rest = rowsIn.filter(r => !idx.has(r.key)); rowsIn = [...placed, ...rest].map((r, i) => (data.header[0] === '#' ? { ...r, cells: [String(i + 1), ...r.cells.slice(1)] } : r)); }
+    if (manual && manual.length) {
+      const idx = new Map(manual.map((k, i) => [k, i])); const placed = rowsIn.filter(r => idx.has(r.key)).sort((x, y) => idx.get(x.key)! - idx.get(y.key)!); const rest = rowsIn.filter(r => !idx.has(r.key));
+      const numCol = hdr.indexOf('#');
+      rowsIn = [...placed, ...rest].map((r, i) => (numCol >= 0 ? { ...r, cells: r.cells.map((v, c) => (c === numCol ? String(i + 1) : v)) } : r));
+    }
   } catch { /* keep the feed's order */ }
   const keep = new Map<string, Map<number, string>>();
   let maxC = oldN - 1;
@@ -564,7 +579,7 @@ export function applyFeed(tab: Y.Map<unknown>, data: FeedData) {
   const oldKeys = [...cells.keys()];
   for (const k of oldKeys) cells.delete(k);
   keys.forEach((_, key) => keys!.delete(key));
-  data.header.forEach((h, c) => { cells.set(cellKey(0, c), h); bold.set(cellKey(0, c), true); });
+  hdr.forEach((h, c) => { cells.set(cellKey(0, c), h); bold.set(cellKey(0, c), true); });
   headerExtra.forEach((v, c) => { cells.set(cellKey(0, c), v); bold.set(cellKey(0, c), true); });
   rowsIn.forEach((row, i) => {
     const r = i + 1;
@@ -575,7 +590,7 @@ export function applyFeed(tab: Y.Map<unknown>, data: FeedData) {
   if (!tab.get('feedAt')) tab.set('frozen', 1);   // the header row is frozen the first time only — after that it is the team's choice
   tab.set('rows', Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, rowsIn.length + 30)));
   tab.set('ncols', Math.min(MAX_COLS, Math.max(DEFAULT_COLS, nSys + Math.max(1, headerExtra.size) + 2)));
-  (data.widths ?? []).forEach((w, c) => cols.set(String(c), w));
+  widthsIn.forEach((w, c) => cols.set(String(c), w));
   if (data.layout && tab.get('feedLayout') !== data.layout) { tab.set('frozenCols', data.freezeCols ?? 0); tab.set('feedLayout', data.layout); }
   tab.set('feedCols', nSys);
   tab.set('feedAt', Date.now());
@@ -850,5 +865,42 @@ export function swapRows(doc: Y.Doc, tab: TabInfo, allTabs: TabInfo[], a: number
     keys.forEach((r, key) => { if (r === a) keys.set(key, b); else if (r === b) keys.set(key, a); });
     const order: string[] = []; keys.forEach((r, key) => order.push(`${String(r).padStart(6, '0')}|${key}`));
     tab.map.set('feedOrder', JSON.stringify(order.sort().map(x => x.slice(7))));
+  }
+}
+
+// ── moving columns ──────────────────────────────────────────────────────────────────────
+
+export function swapFormulaCols(formula: string, formulaTab: string, targetTab: string, a: number, b: number): string {
+  return rewrite(formula, p => {
+    if ((p.tab ? unq(p.tab) : formulaTab) !== targetTab) return p;
+    const m = (c: number) => (c === a ? b : c === b ? a : c);
+    if (p.range) { const lo = Math.min(p.c1, p.c2), hi = Math.max(p.c1, p.c2); if (lo <= Math.min(a, b) && hi >= Math.max(a, b)) return p; }
+    const q = { ...p, c1: m(p.c1), c2: p.range ? m(p.c2) : p.c2 } as RefParts;
+    if (q.range && q.c1 > q.c2) { const t = q.c1; q.c1 = q.c2; q.c2 = t; }
+    return q;
+  });
+}
+
+/** Trade two columns of a tab (values, bold, formats, rules, notes, widths, hidden state), keeping formulas pointed at the same data. */
+export function swapCols(doc: Y.Doc, tab: TabInfo, allTabs: TabInfo[], a: number, b: number) {
+  if (a === b) return;
+  const swapSparse = (m: Y.Map<unknown>, keyOf: (r: number, c: number) => string, parse: (k: string) => [number, number] | null) => {
+    const colA = new Map<number, unknown>(), colB = new Map<number, unknown>();
+    m.forEach((v, k) => { const p = parse(k); if (!p) return; if (p[1] === a) colA.set(p[0], v); else if (p[1] === b) colB.set(p[0], v); });
+    for (const r of colA.keys()) m.delete(keyOf(r, a)); for (const r of colB.keys()) m.delete(keyOf(r, b));
+    colA.forEach((v, r) => m.set(keyOf(r, b), v)); colB.forEach((v, r) => m.set(keyOf(r, a), v));
+  };
+  swapSparse(tCells(tab.map) as Y.Map<unknown>, cellKey, k => parseKey(k));
+  swapSparse(tBold(tab.map) as Y.Map<unknown>, cellKey, k => parseKey(k));
+  const pre = tab.id + '|';
+  for (const m of [fmtMap(doc), validMap(doc), notesMap(doc)]) swapSparse(m as Y.Map<unknown>, (r, c) => mkey(tab.id, r, c), k => (k.startsWith(pre) ? parseKey(k.slice(pre.length)) : null));
+  const cw = tCols(tab.map), wa = cw.get(String(a)), wb = cw.get(String(b));
+  if (wa === undefined) cw.delete(String(b)); else cw.set(String(b), wa); if (wb === undefined) cw.delete(String(a)); else cw.set(String(a), wb);
+  const e = extMap(doc); const ka = `${tab.id}|hc|${a}`, kb = `${tab.id}|hc|${b}`, va = e.get(ka), vb = e.get(kb);
+  if (va === undefined) e.delete(kb); else e.set(kb, va); if (vb === undefined) e.delete(ka); else e.set(ka, vb);
+  for (const t of allTabs) { const cm = tCells(t.map); cm.forEach((v, k) => { if (v.startsWith('=')) { const nv = swapFormulaCols(v, t.name, tab.name, a, b); if (nv !== v) cm.set(k, nv); } }); }
+  const nSys = Number(tab.map.get('feedCols') ?? 0);
+  if (nSys && a < nSys && b < nSys) {   // a live-feed tab remembers its column order by header names so the next refresh keeps it
+    const names: string[] = []; for (let c = 0; c < nSys; c++) names.push(tCells(tab.map).get(cellKey(0, c)) ?? ''); tab.map.set('feedColOrder', JSON.stringify(names));
   }
 }

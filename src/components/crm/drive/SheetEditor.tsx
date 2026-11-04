@@ -19,7 +19,7 @@ import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
 import type { DriveDoc } from '@/lib/drive-types';
 import {
   Evaluator, IMPORT_RE, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, buildPivot, cellKey, chartList, checkValid, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, formatVal, getNote, getValid, hasRichMarks, listTabs, lockList, mergeList, mkey, newId, newTabMap, cloneTabMap, parseRich, readRangeFromDoc, stripRich,
-  notesMap, parseKey, patchFmt, renameTabRefs, shiftFormula, shiftMeta, swapRows, tBold, tCells, tCols, tabGrid, tabsMap, validMap,
+  notesMap, parseKey, patchFmt, renameTabRefs, shiftFormula, shiftMeta, swapCols, swapRows, tBold, tCells, tCols, tabGrid, tabsMap, validMap,
   type CellFmt, type CondOp, type CondRule, type ChartDef, type FeedData, type LockRange, type MergeRange, type NoteInfo, type PivotDef, type TabInfo, type ValidRule, type Val,
 } from '@/lib/drive-sheet';
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
@@ -273,6 +273,8 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const [find, setFind] = useState<{ q: string; rep: string; idx: number; replace: boolean } | null>(null);
   const [hoverRow, setHoverRow] = useState<number | null>(null);
   const [rowDrag, setRowDrag] = useState<{ from: number; to: number } | null>(null);
+  const [hoverCol, setHoverCol] = useState<number | null>(null);
+  const [colDrag, setColDrag] = useState<{ from: number; to: number } | null>(null);
   const suppressClick = useRef(false);
   const [ctx, setCtx] = useState<{ x: number; y: number; r: number; c: number; head?: 'col' | 'row' } | null>(null);
   const [dlg, setDlg] = useState<null | 'cond' | 'valid' | 'note' | 'chart' | 'protect'>(null);
@@ -833,6 +835,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     }
     const S = selRef.current;
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && S.r === S.r2) { e.preventDefault(); moveRowBy(S.r, e.key === 'ArrowUp' ? -1 : 1); return; }
+    if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && S.c === S.c2 && S.r === 0 && S.r2 >= rows - 1) { e.preventDefault(); moveColBy(S.c, e.key === 'ArrowLeft' ? -1 : 1); return; }
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
     if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) undo.redo(); else undo.undo(); return; }
@@ -970,6 +973,26 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); if (dragging) { suppressClick.current = true; setTimeout(() => { suppressClick.current = false; }, 0); setRowDrag(null); moveRowTo(r, to); } };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   };
+  const feedCols = Number(tab?.map.get('feedCols') ?? 0);    // on a live-feed tab: how many columns the CRM fills (the rest are the team's own)
+  const movableCol = (c: number) => !!tab && !isPivot && canEditCell(Math.max(frozen, 0), c);
+  const moveColTo = (from: number, to0: number) => {
+    if (!tab || from === to0 || !movableCol(from)) return;
+    let to = Math.max(0, Math.min(ncols - 1, to0));
+    if (feedCols) { if (from < feedCols) to = Math.min(to, feedCols - 1); else to = Math.max(to, feedCols); }   // CRM columns and the team's columns stay apart
+    if (to === from) { onToast('The CRM’s columns and your own columns can’t be mixed — move it within its own side'); return; }
+    const dir = to > from ? 1 : -1; const steps = Math.abs(to - from);
+    tx(() => { for (let k = 0; k < steps; k++) swapCols(ydoc, tab, tabs, from + dir * k, from + dir * (k + 1)); });
+    const next = { r: selRef.current.r, c: to, r2: selRef.current.r2, c2: to }; selRef.current = next; setSel(next);
+  };
+  const moveColBy = (c: number, dir: -1 | 1) => { let n = c + dir; while (n > 0 && n < ncols - 1 && !widths[n]) n += dir; moveColTo(c, n); };
+  const beginColDrag = (c: number, e: React.MouseEvent) => {
+    if (e.button !== 0 || !movableCol(c)) return;
+    const startX = e.clientX; let dragging = false; let to = c;
+    const colAtClientX = (cx: number) => { const el = body.current; if (!el) return c; const x = cx - el.getBoundingClientRect().left; const xx = x < fcW ? x : x + el.scrollLeft; let k = 0; while (k < ncols - 1 && lefts[k + 1] <= xx) k++; return k; };
+    const move = (ev: MouseEvent) => { if (!dragging && Math.abs(ev.clientX - startX) < 5) return; dragging = true; to = colAtClientX(ev.clientX); setColDrag({ from: c, to }); };
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); if (dragging) { suppressClick.current = true; setTimeout(() => { suppressClick.current = false; }, 0); setColDrag(null); moveColTo(c, to); } };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  };
   const autoFit = (c: number) => { if (!tab) return; let m = colName(c).length; for (let r = 0; r < Math.min(rows, 400); r++) m = Math.max(m, shown(r, c).length); tx(() => tCols(tab.map).set(String(c), Math.max(MIN_W, Math.min(520, Math.round(m * 7.4 + 22))))); };
 
   const activeRaw = edit ? edit.text : bar ?? raw(sel.r, sel.c);
@@ -1066,7 +1089,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             <Item checked={bandOn} onClick={() => { toggleBand(); close(); }}>Alternating row colors</Item>
             <Item onClick={() => { hide('row'); close(); }}>Hide row{R.r2 > R.r1 ? 's' : ''} {R.r1 + 1}{R.r2 > R.r1 ? `–${R.r2 + 1}` : ''}</Item>
             <Item onClick={() => { hide('col'); close(); }}>Hide column{R.c2 > R.c1 ? 's' : ''} {colName(R.c1)}{R.c2 > R.c1 ? `–${colName(R.c2)}` : ''}</Item>
-            {hasFeed && !!tab?.map.get('feedOrder') && <Item onClick={() => { tx(() => tab?.map.delete('feedOrder')); void refreshFeed(false); close(); }}>Automatic row order (undo my moves)</Item>}
+            {hasFeed && !!(tab?.map.get('feedOrder') || tab?.map.get('feedColOrder')) && <Item onClick={() => { tx(() => { tab?.map.delete('feedOrder'); tab?.map.delete('feedColOrder'); }); void refreshFeed(false); close(); }}>Automatic row &amp; column order (undo my moves)</Item>}
             <Item disabled={!hiddenCount} onClick={() => { unhideAll(); close(); }}>Show hidden rows and columns{hiddenCount ? ` (${hiddenCount})` : ''}</Item>
             <Divider />
             <Item onClick={() => { setDlg('valid'); close(); }}>Data validation (dropdown, checkbox, rules)…</Item>
@@ -1122,10 +1145,14 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         <div style={{ position: 'absolute', top: 0, left: 0, width: NUM_W, height: HEAD_H, background: 'var(--k-f3f4f6)', borderRight: '1px solid var(--k-d1d5db)', borderBottom: '1px solid var(--k-d1d5db)', zIndex: 6, boxSizing: 'border-box' }} onClick={() => setSel({ r: 0, c: 0, r2: rows - 1, c2: ncols - 1 })} />
         {(() => {
           const head = (c: number) => (
-            <div key={c} onClick={e => { setSel(e.shiftKey ? { ...sel, c2: c } : { r: 0, c, r2: rows - 1, c2: c }); wrap.current?.focus(); }}
+            <div key={c} onMouseDown={e => beginColDrag(c, e)} onMouseEnter={() => setHoverCol(c)} onMouseLeave={() => setHoverCol(h => (h === c ? null : h))} onClick={e => { if (suppressClick.current) return; setSel(e.shiftKey ? { ...sel, c2: c } : { r: 0, c, r2: rows - 1, c2: c }); wrap.current?.focus(); }}
               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!(c >= R.c1 && c <= R.c2)) setSel({ r: 0, c, r2: rows - 1, c2: c }); setCtx({ x: e.clientX, y: e.clientY, r: 0, c, head: 'col' }); }}
-              style={{ position: 'absolute', left: lefts[c], width: widths[c], height: HEAD_H, lineHeight: `${HEAD_H}px`, textAlign: 'center', fontSize: 12, fontWeight: 600, color: c >= R.c1 && c <= R.c2 ? '#a06a12' : 'var(--k-6b7280)', background: c >= R.c1 && c <= R.c2 ? 'var(--k-fdf6e9)' : 'var(--k-f3f4f6)', borderRight: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: 'pointer' }}>
+              style={{ position: 'absolute', left: lefts[c], width: widths[c], height: HEAD_H, lineHeight: `${HEAD_H}px`, textAlign: 'center', fontSize: 12, fontWeight: 600, color: c >= R.c1 && c <= R.c2 ? '#a06a12' : 'var(--k-6b7280)', background: c >= R.c1 && c <= R.c2 ? 'var(--k-fdf6e9)' : 'var(--k-f3f4f6)', borderRight: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: movableCol(c) ? 'grab' : 'pointer' }}>
               {colName(c)}
+              {(hoverCol === c || (R.c1 === R.c2 && R.c1 === c && R.r1 === 0 && R.r2 >= rows - 1)) && movableCol(c) && widths[c] > 30 && (<>
+                <span role="button" aria-label="Move column left" title="Move column left" onMouseDown={e => { e.stopPropagation(); e.preventDefault(); moveColBy(c, -1); }} onClick={e => e.stopPropagation()} style={{ position: 'absolute', left: 2, top: 0, width: 14, height: HEAD_H, fontSize: 9, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>◀</span>
+                <span role="button" aria-label="Move column right" title="Move column right" onMouseDown={e => { e.stopPropagation(); e.preventDefault(); moveColBy(c, 1); }} onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 8, top: 0, width: 14, height: HEAD_H, fontSize: 9, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>▶</span>
+              </>)}
               <span onMouseDown={e => beginResize(c, e)} onDoubleClick={e => { e.stopPropagation(); autoFit(c); }} title="Drag to resize, double-click to fit" style={{ position: 'absolute', right: -3, top: 0, width: 7, height: HEAD_H, cursor: 'col-resize', zIndex: 2 }} />
             </div>
           );
@@ -1144,8 +1171,8 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!inS) setSel({ r, c: 0, r2: r, c2: ncols - 1 }); setCtx({ x: e.clientX, y: e.clientY, r, c: 0, head: 'row' }); }}
                 style={{ position: 'absolute', top: tops[i], height: heights[i], width: NUM_W, lineHeight: `${Math.min(heights[i], ROW_H)}px`, textAlign: 'center', fontSize: 11.5, color: inS ? '#a06a12' : 'var(--k-9ca3af)', background: inS ? 'var(--k-fdf6e9)' : undefined, borderBottom: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: movable(r) ? 'grab' : 'pointer' }}>{r + 1}
                 {(hoverRow === r || (R.r1 === R.r2 && R.r1 === r)) && movable(r) && (<>
-                  <span role="button" aria-label="Move row up" title="Move row up" onMouseDown={e => { e.stopPropagation(); e.preventDefault(); moveRowBy(r, -1); }} style={{ position: 'absolute', left: 0, top: 0, width: 13, height: Math.min(heights[i], ROW_H), lineHeight: `${Math.min(heights[i], ROW_H)}px`, fontSize: 9, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>▲</span>
-                  <span role="button" aria-label="Move row down" title="Move row down" onMouseDown={e => { e.stopPropagation(); e.preventDefault(); moveRowBy(r, 1); }} style={{ position: 'absolute', right: 0, top: 0, width: 13, height: Math.min(heights[i], ROW_H), lineHeight: `${Math.min(heights[i], ROW_H)}px`, fontSize: 9, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>▼</span>
+                  <span role="button" aria-label="Move row up" title="Move row up" onMouseDown={e => { e.stopPropagation(); e.preventDefault(); moveRowBy(r, -1); }} onClick={e => e.stopPropagation()} style={{ position: 'absolute', left: 0, top: 0, width: 13, height: Math.min(heights[i], ROW_H), lineHeight: `${Math.min(heights[i], ROW_H)}px`, fontSize: 9, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>▲</span>
+                  <span role="button" aria-label="Move row down" title="Move row down" onMouseDown={e => { e.stopPropagation(); e.preventDefault(); moveRowBy(r, 1); }} onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, width: 13, height: Math.min(heights[i], ROW_H), lineHeight: `${Math.min(heights[i], ROW_H)}px`, fontSize: 9, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>▼</span>
                 </>)}
                 <span onMouseDown={e => beginRowResize(r, e)} onDoubleClick={e => { e.stopPropagation(); tx(() => extMap(ydoc).delete(`${tabId}|rh|${r}`)); }} title="Drag to change the row height, double-click to reset" style={{ position: 'absolute', left: 0, right: 0, bottom: -3, height: 7, cursor: 'row-resize', zIndex: 2 }} />
               </div>); })}
@@ -1205,6 +1232,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
           </div>
           {fill && <div style={{ position: 'absolute', top: sy(Math.max(0, idxOf(Math.min(R.r1, fill.r)))), left: sx(Math.min(R.c1, fill.c)), width: lefts[Math.max(R.c2, fill.c) + 1] - lefts[Math.min(R.c1, fill.c)], height: tops[Math.max(0, idxOf(Math.max(R.r2, fill.r))) + 1] - tops[Math.max(0, idxOf(Math.min(R.r1, fill.r)))], border: '2px dashed #c9922c', boxSizing: 'border-box' }} />}
           {peerBoxes}
+          {colDrag && <div style={{ position: 'absolute', top: 0, bottom: 0, left: sx(colDrag.to) + (colDrag.to > colDrag.from ? widths[colDrag.to] : 0) - 1, width: 3, background: '#c9922c', pointerEvents: 'none', zIndex: 7 }} />}
           {rowDrag && idxOf(rowDrag.to) >= 0 && <div style={{ position: 'absolute', left: 0, right: 0, top: sy(idxOf(rowDrag.to)) + (idxOf(rowDrag.to) > idxOf(rowDrag.from) ? heights[idxOf(rowDrag.to)] : 0) - 1, height: 3, background: '#c9922c', pointerEvents: 'none', zIndex: 7 }} />}
           {selValid?.t === 'list' && !edit && <button type="button" onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setDd({ r: sel.r, c: sel.c }); }} aria-label="Choose from the list" style={{ position: 'absolute', top: act.top + 3, left: act.left + act.w - 24, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(201,146,44,.18)', color: '#a06a12', fontSize: 11, cursor: 'pointer', pointerEvents: 'auto', padding: 0 }}>▾</button>}
           {dd && (() => { const v = getValid(ydoc, tabId, dd.r, dd.c); const i = Math.max(0, idxOf(dd.r)); return v?.t === 'list' ? (
@@ -1272,6 +1300,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             <Item onClick={() => { const t = doCopy(true); void navigator.clipboard?.writeText(t).catch(() => {}); setCtx(null); }}>Cut</Item>
             <Item onClick={() => { setCtx(null); void navigator.clipboard?.readText().then(paste).catch(() => onToast('Use Ctrl+V to paste — the browser blocked reading the clipboard')); }}>Paste</Item>
             <Divider />
+            {ctx.head === 'col' && movableCol(ctx.c) && R.c1 === R.c2 && <><Item onClick={() => { moveColBy(ctx.c, -1); setCtx(null); }}>Move column left</Item><Item onClick={() => { moveColBy(ctx.c, 1); setCtx(null); }}>Move column right</Item><Item onClick={() => { moveColTo(ctx.c, feedCols && ctx.c >= feedCols ? feedCols : 0); setCtx(null); }}>Move column to the front</Item><Item onClick={() => { moveColTo(ctx.c, feedCols && ctx.c < feedCols ? feedCols - 1 : ncols - 1); setCtx(null); }}>Move column to the end</Item><Divider /></>}
             {ctx.head !== 'col' && movable(ctx.r) && R.r1 === R.r2 && <><Item onClick={() => { moveRowBy(ctx.r, -1); setCtx(null); }}>Move row up</Item><Item onClick={() => { moveRowBy(ctx.r, 1); setCtx(null); }}>Move row down</Item><Item onClick={() => { moveRowTo(ctx.r, order[Math.min(frozen, nRows - 1)]); setCtx(null); }}>Move row to the top</Item><Item onClick={() => { moveRowTo(ctx.r, lastUsedRow()); setCtx(null); }}>Move row to the bottom</Item><Divider /></>}
             {ctx.head !== 'col' && <><Item onClick={() => { insertMany('row', R.r1, R.r2 - R.r1 + 1); setCtx(null); }}>Insert row above</Item><Item onClick={() => { insertMany('row', R.r2 + 1, R.r2 - R.r1 + 1); setCtx(null); }}>Insert row below</Item></>}
             {ctx.head !== 'row' && <><Item onClick={() => { insertMany('col', R.c1, R.c2 - R.c1 + 1); setCtx(null); }}>Insert column left</Item><Item onClick={() => { insertMany('col', R.c2 + 1, R.c2 - R.c1 + 1); setCtx(null); }}>Insert column right</Item></>}
