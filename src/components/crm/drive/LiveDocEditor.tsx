@@ -96,6 +96,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
   const [title, setTitle] = useState(doc.title);
   const me = useMemo<Peer>(() => ({ name: user.name || 'Teammate', color: colorFor(user.id) }), [user.id, user.name]);
   const [panel, setPanel] = useState<null | 'comments' | 'history' | 'activity'>(null);
+  const [dlOpen, setDlOpen] = useState(false);   // phones: PDF and Word share one ⬇ menu so the header stays on two rows
   const [comments, setComments] = useState<DriveComment[]>([]);
   const [anchor, setAnchor] = useState<{ from: number; to: number; text: string } | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -263,10 +264,32 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
           style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'activity' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>📜</button>
         <button type="button" onClick={() => setPanel(p => (p === 'history' ? null : 'history'))} aria-pressed={panel === 'history'} aria-label="Version history" title="Version history"
           style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'history' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>🕘</button>
-        <button type="button" disabled={!editor} onClick={async () => { if (!editor) return; try { await flushRef.current(); await exportDocPdf(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the PDF'); } }}
-          aria-label="Download as PDF" title="Download as PDF" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇ PDF</button>
-        <button type="button" disabled={!editor} onClick={async () => { if (!editor) return; try { await flushRef.current(); await exportDocDocx(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the Word file'); } }}
-          aria-label="Download as Word" title="Download as a Word (.docx) file you can edit in Word" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇ Word</button>
+        {(() => {
+          const doPdf = async () => { if (!editor) return; try { await flushRef.current(); await exportDocPdf(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the PDF'); } };
+          const doWord = async () => { if (!editor) return; try { await flushRef.current(); await exportDocDocx(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the Word file'); } };
+          if (!isMobile) return (
+            <>
+              <button type="button" disabled={!editor} onClick={() => void doPdf()} aria-label="Download as PDF" title="Download as PDF" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇ PDF</button>
+              <button type="button" disabled={!editor} onClick={() => void doWord()} aria-label="Download as Word" title="Download as a Word (.docx) file you can edit in Word" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇ Word</button>
+            </>
+          );
+          return (
+            <div style={{ position: 'relative' }}>
+              <button type="button" disabled={!editor} onClick={() => setDlOpen(o => !o)} aria-haspopup="menu" aria-expanded={dlOpen} aria-label="Download" title="Download as PDF or Word" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇</button>
+              {dlOpen && (
+                <>
+                  <div onClick={() => setDlOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                  <div role="menu" style={{ position: 'absolute', left: 0, top: 'calc(100% + 4px)', zIndex: 41, minWidth: 190, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 6 }}>
+                    {([['PDF', doPdf], ['Word (.docx)', doWord]] as Array<[string, () => Promise<void>]>).map(([label, fn]) => (
+                      <button key={label} type="button" role="menuitem" onClick={() => { setDlOpen(false); void fn(); }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', minHeight: 46, padding: '0 14px', border: 'none', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 15, fontWeight: 600, color: 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }}>⬇ {label}</button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
         {onSign && (
           <button type="button" disabled={!editor} aria-label="Send for signature" title="Turn this document into a PDF and send it for e-signature"
             onClick={async () => { if (!editor) return; try { await flushRef.current(); onSign(doc); } catch (e) { onToast((e as Error).message || 'Could not prepare the document'); } }}
@@ -370,7 +393,7 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { ed
   const B = ({ on, label, title, active, disabled }: { on: () => void; label: ReactNode; title: string; active?: boolean; disabled?: boolean }) => (
     <button type="button" title={title} aria-label={title} aria-pressed={!!active} disabled={disabled}
       onMouseDown={e => e.preventDefault()} onClick={on}
-      style={{ minWidth: isMobile ? 40 : 32, height: isMobile ? 40 : 32, padding: '0 8px', border: 'none', borderRadius: 6, cursor: disabled ? 'default' : 'pointer', flexShrink: 0, fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: active ? 'var(--k-fdf6e9)' : 'transparent', color: disabled ? 'var(--k-d1d5db)' : active ? 'var(--k-a06a12)' : 'var(--k-374151)' }}>
+      style={{ minWidth: isMobile ? 36 : 32, height: isMobile ? 40 : 32, padding: '0 6px', border: 'none', borderRadius: 6, cursor: disabled ? 'default' : 'pointer', flexShrink: 0, fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: active ? 'var(--k-fdf6e9)' : 'transparent', color: disabled ? 'var(--k-d1d5db)' : active ? 'var(--k-a06a12)' : 'var(--k-374151)' }}>
       {label}
     </button>
   );
@@ -446,5 +469,5 @@ function Frame({ isMobile, children }: { isMobile: boolean; children: ReactNode 
   );
 }
 
-const btnStyle = (isMobile: boolean): React.CSSProperties => ({ height: isMobile ? 40 : 32, padding: '0 14px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 });
+const btnStyle = (isMobile: boolean): React.CSSProperties => ({ height: isMobile ? 40 : 32, padding: isMobile ? '0 10px' : '0 14px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 });
 const iconBtn = (isMobile: boolean): React.CSSProperties => ({ width: isMobile ? 40 : 34, height: isMobile ? 40 : 34, border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--k-374151)', cursor: 'pointer', flexShrink: 0 });
