@@ -438,7 +438,8 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const stepCol = (c: number, dir: number) => { let n = c + dir; while (n > 0 && n < ncols - 1 && !widths[n]) n += dir; return Math.max(0, Math.min(ncols - 1, n)); };
   const moveTo = (r: number, c: number, extend = false) => {
     const rr = Math.max(0, Math.min(MAX_ROWS - 1, r)), cc = Math.max(0, Math.min(MAX_COLS - 1, c));
-    setSel(s => (extend ? { ...s, r2: rr, c2: cc } : { r: rr, c: cc, r2: rr, c2: cc }));
+    const next = extend ? { ...selRef.current, r2: rr, c2: cc } : { r: rr, c: cc, r2: rr, c2: cc };
+    selRef.current = next; setSel(next);   // the ref moves at once so keys pressed in quick succession build on each other
     const el = body.current; if (!el) return;
     const i = Math.max(0, idxOf(rr));
     const top = tops[i], bottom = tops[i + 1], left = lefts[cc] ?? cc * DEF_W, right = left + (widths[cc] ?? DEF_W);
@@ -702,6 +703,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
       else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setEdit({ ...open, text: open.text + e.key }); }
       return;
     }
+    const S = selRef.current;
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
     if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) undo.redo(); else undo.undo(); return; }
@@ -717,23 +719,23 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     if (mod && k === 'r') { e.preventDefault(); fillDir('right'); return; }
     if (mod) return; // copy / cut / paste are handled by their own events
     const ext = e.shiftKey;
-    const cr = ext ? sel.r2 : sel.r, cc = ext ? sel.c2 : sel.c;
+    const cr = ext ? S.r2 : S.r, cc = ext ? S.c2 : S.c;
     switch (e.key) {
       case 'ArrowDown': e.preventDefault(); moveTo(step(cr, 1), cc, ext); return;
       case 'ArrowUp': e.preventDefault(); moveTo(step(cr, -1), cc, ext); return;
       case 'ArrowLeft': e.preventDefault(); moveTo(cr, stepCol(cc, -1), ext); return;
       case 'ArrowRight': e.preventDefault(); moveTo(cr, stepCol(cc, 1), ext); return;
-      case 'Tab': e.preventDefault(); moveTo(sel.r, stepCol(sel.c, e.shiftKey ? -1 : 1)); return;
-      case 'Enter': e.preventDefault(); startEdit(sel.r, sel.c); return;
-      case 'F2': e.preventDefault(); startEdit(sel.r, sel.c); return;
-      case ' ': if (getValid(ydoc, tabId, sel.r, sel.c)?.t === 'check') { e.preventDefault(); toggleCheck(sel.r, sel.c); return; } break;
+      case 'Tab': e.preventDefault(); moveTo(S.r, stepCol(S.c, e.shiftKey ? -1 : 1)); return;
+      case 'Enter': e.preventDefault(); startEdit(S.r, S.c); return;
+      case 'F2': e.preventDefault(); startEdit(S.r, S.c); return;
+      case ' ': if (getValid(ydoc, tabId, S.r, S.c)?.t === 'check') { e.preventDefault(); toggleCheck(S.r, S.c); return; } break;
       case 'Delete': case 'Backspace': e.preventDefault(); clearRange(); return;
-      case 'Home': e.preventDefault(); moveTo(sel.r, 0); return;
-      case 'PageDown': e.preventDefault(); moveTo(step(sel.r, 20), sel.c); return;
-      case 'PageUp': e.preventDefault(); moveTo(step(sel.r, -20), sel.c); return;
+      case 'Home': e.preventDefault(); moveTo(S.r, 0); return;
+      case 'PageDown': e.preventDefault(); moveTo(step(S.r, 20), S.c); return;
+      case 'PageUp': e.preventDefault(); moveTo(step(S.r, -20), S.c); return;
       case 'Escape': setSel(s => ({ ...s, r2: s.r, c2: s.c })); setFind(null); setCtx(null); return;
     }
-    if (e.key.length === 1 && !e.altKey) { e.preventDefault(); startEdit(sel.r, sel.c, e.key); }
+    if (e.key.length === 1 && !e.altKey) { e.preventDefault(); startEdit(S.r, S.c, e.key); }
   };
 
   // ── drawing ──
