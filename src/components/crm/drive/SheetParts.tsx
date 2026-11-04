@@ -16,19 +16,19 @@ const primary: CSSProperties = { height: 34, padding: '0 16px', border: 'none', 
 const plain: CSSProperties = { height: 34, padding: '0 14px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontWeight: 600, fontSize: 13.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
 
 /** A button that opens a small floating panel under it. */
-export function Pop({ label, title, children, style, active, align = 'left', className }: { label: ReactNode; title: string; children: (close: () => void) => ReactNode; style?: CSSProperties; active?: boolean; align?: 'left' | 'right'; className?: string }) {
+export function Pop({ label, title, children, style, active, align = 'left', className, up }: { label: ReactNode; title: string; children: (close: () => void) => ReactNode; style?: CSSProperties; active?: boolean; align?: 'left' | 'right'; className?: string; up?: boolean }) {
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState({ top: 0, left: 0, right: 0 });
+  const [pos, setPos] = useState({ top: 0, left: 0, right: 0, bottom: 0 });
   // The toolbar scrolls sideways (which clips anything absolutely positioned inside it), so the menu is placed on the page itself.
-  const toggle = () => { const r = btn.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 4, left: r.left, right: Math.max(8, window.innerWidth - r.right) }); setOpen(o => !o); };
+  const toggle = () => { const r = btn.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 4, left: r.left, right: Math.max(8, window.innerWidth - r.right), bottom: window.innerHeight - r.top + 4 }); setOpen(o => !o); };
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
       <button ref={btn} type="button" title={title} aria-label={title} aria-haspopup="menu" aria-expanded={open} onMouseDown={e => e.preventDefault()} onClick={toggle} className={`${className ?? ''} ${active || open ? 'on' : ''}`} style={style ? { ...style, background: active || open ? 'var(--k-fdf6e9)' : style.background } : undefined}>{label}</button>
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
-          <div role="menu" style={{ position: 'fixed', top: pos.top, ...(align === 'right' ? { right: pos.right } : { left: Math.max(8, Math.min(pos.left, window.innerWidth - 360)) }), zIndex: 1301, minWidth: 180, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 6, maxHeight: '70vh', overflowY: 'auto' }}>{children(() => setOpen(false))}</div>
+          <div role="menu" style={{ position: 'fixed', ...(up ? { bottom: pos.bottom } : { top: pos.top }), ...(align === 'right' ? { right: pos.right } : { left: Math.max(8, Math.min(pos.left, window.innerWidth - 360)) }), zIndex: 1301, minWidth: 180, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 6, maxHeight: up ? '60vh' : '70vh', overflowY: 'auto' }}>{children(() => setOpen(false))}</div>
         </>
       )}
     </div>
@@ -307,8 +307,11 @@ export function HistoryDialog({ docId, authToken, ydoc, people, flush, onToast, 
 
 export const MenuLabel = ({ children }: { children: ReactNode }) => <div style={{ padding: '8px 12px 3px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--k-9ca3af)' }}>{children}</div>;
 
-export type IcoName = 'undo' | 'redo' | 'brush' | 'clear' | 'left' | 'center' | 'right' | 'wrap' | 'borders' | 'merge' | 'freeze' | 'filter' | 'sort' | 'chart' | 'search' | 'plus' | 'download' | 'refresh' | 'zoom' | 'dollar' | 'percent' | 'dec-' | 'dec+' | 'more' | 'table';
+export type IcoName = 'menus' | 'list' | 'print' | 'undo' | 'redo' | 'brush' | 'clear' | 'left' | 'center' | 'right' | 'wrap' | 'borders' | 'merge' | 'freeze' | 'filter' | 'sort' | 'chart' | 'search' | 'plus' | 'download' | 'refresh' | 'zoom' | 'dollar' | 'percent' | 'dec-' | 'dec+' | 'more' | 'table';
 const ICO: Record<IcoName, ReactNode> = {
+  menus: <><path d="M4 6h12M4 12h7M4 18h5" /><circle cx="16.5" cy="15.5" r="3.5" /><path d="M19 18l2.5 2.5" /></>,
+  list: <path d="M5 6h14M5 12h14M5 18h14" />,
+  print: <><path d="M7 9V4h10v5" /><rect x="4" y="9" width="16" height="8" rx="1.5" /><path d="M7 14h10v6H7z" /></>,
   undo: <><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 010 12h-3" /></>,
   redo: <><path d="M15 14l5-5-5-5" /><path d="M20 9H10a6 6 0 000 12h3" /></>,
   brush: <><path d="M14 4l6 6-8 8-3 1-4-4 1-3z" /><path d="M10 8l6 6" /></>,
@@ -390,6 +393,71 @@ export function SplitDialog({ onRun, onClose }: { onRun: (delim: string) => stri
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
         <button type="button" style={plain} onClick={onClose}>Cancel</button>
         <button type="button" style={primary} onClick={() => { const e = onRun(kind === 'custom' ? custom : D[kind]); if (e) setErr(e); else onClose(); }}>Split</button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── search the menus, keyboard shortcuts, function list ───────────────────────────────────
+
+export interface Command { label: string; group: string; hint?: string; run: () => void }
+export function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
+  const [q, setQ] = useState(''); const [i, setI] = useState(0);
+  const list = commands.filter(c => (c.group + ' ' + c.label).toLowerCase().includes(q.toLowerCase().trim())).slice(0, 40);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); }, []);
+  const go = (c: Command | undefined) => { if (!c) return; onClose(); setTimeout(() => c.run(), 0); };
+  return (
+    <div role="dialog" aria-label="Search the menus" style={{ position: 'fixed', inset: 0, zIndex: 1450, background: 'rgba(0,0,0,.3)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '12vh' }} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ width: 520, maxWidth: '94vw', background: 'var(--k-fff)', borderRadius: 14, boxShadow: '0 24px 60px rgba(0,0,0,.35)', overflow: 'hidden' }}>
+        <input ref={ref} value={q} onChange={e => { setQ(e.target.value); setI(0); }} placeholder="Search the menus — try “border”, “freeze”, “duplicates”…"
+          onKeyDown={e => { if (e.key === 'Escape') onClose(); else if (e.key === 'ArrowDown') { e.preventDefault(); setI(x => Math.min(list.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setI(x => Math.max(0, x - 1)); } else if (e.key === 'Enter') { e.preventDefault(); go(list[i]); } }}
+          style={{ width: '100%', boxSizing: 'border-box', height: 48, border: 'none', borderBottom: '1px solid var(--k-e5e7eb)', padding: '0 16px', fontSize: 15, fontFamily: "'DM Sans',sans-serif", outline: 'none', background: 'var(--k-fff)', color: 'var(--k-1a1a1a)' }} />
+        <div style={{ maxHeight: '50vh', overflowY: 'auto', padding: 6 }}>
+          {list.length === 0 && <div style={{ padding: 16, color: 'var(--k-9ca3af)', fontSize: 13.5 }}>Nothing matches “{q}”.</div>}
+          {list.map((c, k) => (
+            <div key={c.group + c.label} onMouseEnter={() => setI(k)} onMouseDown={e => { e.preventDefault(); go(c); }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: k === i ? 'var(--k-fdf6e9)' : undefined, fontSize: 13.5 }}>
+              <span style={{ width: 58, fontSize: 10.5, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--k-9ca3af)' }}>{c.group}</span>
+              <span style={{ flex: 1, color: 'var(--k-1a1a1a)' }}>{c.label}</span>
+              {c.hint && <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>{c.hint}</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SHORTCUTS: Array<[string, Array<[string, string]>]> = [
+  ['Move around', [['Arrow keys', 'Move one cell'], ['Tab / Shift+Tab', 'Next / previous cell'], ['Enter', 'Edit the cell (Enter again saves, moves down)'], ['Home', 'First column of the row'], ['Page Up / Down', 'Up / down 20 rows'], ['Ctrl+A', 'Select everything']]],
+  ['Edit', [['Ctrl+Z / Ctrl+Y', 'Undo / redo'], ['Ctrl+C / X / V', 'Copy / cut / paste'], ['Delete', 'Clear the selected cells'], ['Ctrl+D / Ctrl+R', 'Fill down / right'], ['Ctrl+F', 'Find and replace'], ['Esc', 'Cancel what you are typing']]],
+  ['Format', [['Ctrl+B / I / U', 'Bold / italic / underline'], ['Ctrl+Shift+X', 'Strikethrough'], ['Drag the little square', 'Autofill a series or formulas']]],
+  ['Rows and columns', [['Alt+↑ / Alt+↓', 'Move the selected row up / down'], ['Alt+← / Alt+→', 'Move the selected column left / right'], ['Drag a row number / letter', 'Reorder by dragging'], ['Right-click', 'Insert, delete, hide, sort, move']]],
+  ['Formulas', [['=', 'Start a formula; function names suggest as you type'], ['Tab', 'Accept the highlighted function'], ['Click a cell', 'Put its address in the formula (Shift+click for a range)'], ['F2', 'Edit the cell']]],
+  ['Everything else', [['Alt+/', 'Search the menus'], ['Ctrl+P', 'Print this tab'], ['Ctrl+click a link', 'Open it']]],
+];
+export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal title="Keyboard shortcuts" onClose={onClose} wide>
+      {SHORTCUTS.map(([group, rows]) => (
+        <div key={group} style={{ marginBottom: 12 }}>
+          <MenuLabel>{group}</MenuLabel>
+          {rows.map(([k, d]) => <div key={k} style={{ display: 'flex', gap: 12, padding: '4px 12px', fontSize: 13.5 }}><span style={{ width: 190, fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 12.5, color: '#a06a12' }}>{k}</span><span style={{ flex: 1, color: 'var(--k-374151)' }}>{d}</span></div>)}
+        </div>
+      ))}
+    </Modal>
+  );
+}
+
+export function FunctionsDialog({ docs, onClose }: { docs: Array<{ name: string; sig: string; desc: string }>; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const list = docs.filter(f => (f.name + ' ' + f.desc).toLowerCase().includes(q.toLowerCase().trim()));
+  return (
+    <Modal title="Function list" onClose={onClose} wide>
+      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search functions" style={{ ...field, width: '100%', marginBottom: 8 }} />
+      <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+        {list.map(f => <div key={f.name} style={{ padding: '7px 4px', borderBottom: '1px solid var(--k-e5e7eb)' }}><div style={{ fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 12.5, fontWeight: 700 }}>{f.sig}</div><div style={{ fontSize: 12.5, color: 'var(--k-6b7280)' }}>{f.desc}</div></div>)}
+        {list.length === 0 && <div style={{ padding: 12, color: 'var(--k-9ca3af)' }}>No function matches.</div>}
       </div>
     </Modal>
   );

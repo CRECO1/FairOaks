@@ -135,7 +135,7 @@ function dateSerialRaw(s: string): number | null {
 }
 export const fmtDate = (serial: number) => { const d = dateOf(serial); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}/${d.getUTCFullYear()}`; };
 
-export interface CellFmt { i?: 1; u?: 1; s?: 1; bg?: string; fg?: string; al?: 'l' | 'c' | 'r'; nf?: 'plain' | 'num' | 'cur' | 'pct' | 'date' | 'text'; dp?: number; wr?: 1; bd?: string; /** rich text: words inside the cell carry their own bold / colour marks */ rt?: 1 }
+export interface CellFmt { i?: 1; u?: 1; s?: 1; bg?: string; fg?: string; al?: 'l' | 'c' | 'r'; nf?: 'plain' | 'num' | 'cur' | 'pct' | 'date' | 'text'; dp?: number; wr?: 1; bd?: string; /** font family (a name from FONT_FAMILIES) and size in px (13 is the default) */ ff?: string; fs?: number; /** rich text: words inside the cell carry their own bold / colour marks */ rt?: 1 }
 
 const withCommas = (n: number, dp: number) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 /** What a cell shows, after its number format (the typed text / formula is unchanged). */
@@ -963,3 +963,10 @@ export function refsIn(text: string): Array<{ r1: number; c1: number; r2: number
   }
   return out.slice(0, 12);
 }
+
+export const FONT_FAMILIES: Array<[string, string]> = [
+  ['Default', "'DM Sans', sans-serif"], ['Arial', 'Arial, Helvetica, sans-serif'], ['Verdana', 'Verdana, Geneva, sans-serif'], ['Trebuchet', "'Trebuchet MS', sans-serif"],
+  ['Georgia', 'Georgia, serif'], ['Times New Roman', "'Times New Roman', Times, serif"], ['Courier New', "'Courier New', Courier, monospace"], ['Comic Sans', "'Comic Sans MS', cursive"],
+];
+export const fontCss = (name: string | undefined) => FONT_FAMILIES.find(f => f[0] === name)?.[1];
+export const FONT_SIZES = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];

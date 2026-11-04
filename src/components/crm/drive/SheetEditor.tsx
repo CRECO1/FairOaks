@@ -18,13 +18,13 @@ import { acquireDoc, releaseDoc, type CollabHandle } from '@/lib/collab/doc-regi
 import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
 import type { DriveDoc } from '@/lib/drive-types';
 import {
-  Evaluator, FUNCTION_DOCS, IMPORT_RE, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, buildPivot, cellKey, chartList, checkValid, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, formatVal, getNote, getValid, hasRichMarks, listTabs, lockList, mergeList, mkey, newId, newTabMap, cloneTabMap, parseRich, readRangeFromDoc, refsIn, stripRich, formulaContext,
+  Evaluator, FONT_FAMILIES, FONT_SIZES, FUNCTION_DOCS, IMPORT_RE, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, buildPivot, cellKey, chartList, checkValid, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, fontCss, formatVal, getNote, getValid, hasRichMarks, listTabs, lockList, mergeList, mkey, newId, newTabMap, cloneTabMap, parseRich, readRangeFromDoc, refsIn, stripRich, formulaContext,
   notesMap, parseKey, patchFmt, renameTabRefs, shiftFormula, shiftMeta, swapCols, swapRows, tBold, tCells, tCols, tabGrid, tabsMap, validMap,
   type CellFmt, type CondOp, type CondRule, type ChartDef, type FeedData, type LockRange, type MergeRange, type NoteInfo, type PivotDef, type TabInfo, type ValidRule, type Val,
 } from '@/lib/drive-sheet';
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
 import { ActivityPanel } from './DocPanel';
-import { CondDialog, DedupeDialog, Divider, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, SplitDialog, TBtn, TSep, ValidDialog, type LockInfo, type PivotForm } from './SheetParts';
+import { CommandPalette, CondDialog, DedupeDialog, Divider, FunctionsDialog, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, ShortcutsDialog, SplitDialog, TBtn, TSep, ValidDialog, type Command, type LockInfo, type PivotForm } from './SheetParts';
 import { ChartDialog, ChartSvg, type ChartData } from './SheetChart';
 import type { DrivePerson } from './DocsDrive';
 
@@ -271,6 +271,8 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const [filters, setFilters] = useState<Record<number, string[]>>({});     // column -> hidden values (this person only)
   const [filterMenu, setFilterMenu] = useState<{ c: number; q: string } | null>(null);
   const [find, setFind] = useState<{ q: string; rep: string; idx: number; replace: boolean } | null>(null);
+  const [palette, setPalette] = useState(false);
+  const [helpDlg, setHelpDlg] = useState<null | 'keys' | 'funcs'>(null);
   const [caret, setCaret] = useState(0);
   const [acIdx, setAcIdx] = useState(-1);
   const [acOff, setAcOff] = useState(false);
@@ -386,11 +388,16 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const wrapH = useMemo(() => {
     const m = new Map<number, number>();
     fmtMap(ydoc).forEach((sv, k) => {
-      if (!k.startsWith(tabId + '|') || !sv.includes('"wr"')) return;
-      const [r, c] = parseKey(k.slice(tabId.length + 1)); const w = Math.max(30, (widths[c] ?? DEF_W) / Z - 14); if (!widths[c]) return;
-      const txt = formatVal(evaluator.value(null, r, c), fmtOf(r, c));
-      const lines = txt.split('\n').reduce((a, part) => a + Math.max(1, Math.ceil((part.length * 7.1) / w)), 0);
-      m.set(r, Math.max(m.get(r) ?? 0, (lines * 17 + 9) * Z));
+      if (!k.startsWith(tabId + '|') || !(sv.includes('"wr"') || sv.includes('"fs"'))) return;
+      const [r, c] = parseKey(k.slice(tabId.length + 1)); const f = fmtOf(r, c); const fs = f.fs ?? 13; const lh = Math.max(17, Math.round(fs * 1.3));
+      let h = fs > 13 ? Math.round(fs * 1.5 + 8) : 0;
+      const w = Math.max(30, (widths[c] ?? DEF_W) / Z - 14);
+      if (f.wr && widths[c]) {
+        const txt = formatVal(evaluator.value(null, r, c), f);
+        const lines = txt.split('\n').reduce((a, part) => a + Math.max(1, Math.ceil((part.length * 7.1 * fs / 13) / w)), 0);
+        h = Math.max(h, lines * lh + 9);
+      }
+      if (h) m.set(r, Math.max(m.get(r) ?? 0, h * Z));
     });
     return m;
   }, [ydoc, tabId, widths, evaluator, version, Z]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -783,15 +790,15 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   }, [importKeys, authToken]);
 
   // ── export ──
+  const textOf = (t: TabInfo) => { const ev = new Evaluator(getter, t.name, extData); return (r: number, c: number) => { const sv = fmtMap(ydoc).get(mkey(t.id, r, c)); let f: CellFmt = {}; try { f = sv ? JSON.parse(sv) : {}; } catch { /* plain */ } const out = formatVal(ev.value(null, r, c), f); return out.startsWith('\u0001spark:') ? '' : f.rt ? stripRich(out) : out; }; };
+  const gridOf = (t: TabInfo): string[][] => { const pg = pivotGrids.get(t.name); return pg ?? tabGrid(t.map, textOf(t)); };
   const download = async (kind: 'csv' | 'xlsx') => {
     if (!tab) return;
     const base = (title || 'spreadsheet').replace(/[^\w\- ]+/g, '').trim() || 'spreadsheet';
-    const textOf = (t: TabInfo) => { const ev = new Evaluator(getter, t.name, extData); return (r: number, c: number) => { const s = fmtMap(ydoc).get(mkey(t.id, r, c)); let f: CellFmt = {}; try { f = s ? JSON.parse(s) : {}; } catch { /* plain */ } const out = formatVal(ev.value(null, r, c), f); return out.startsWith('\u0001spark:') ? '' : f.rt ? stripRich(out) : out; }; };
-    const gridOf = (t: TabInfo): string[][] => { const pg = pivotGrids.get(t.name); return pg ?? tabGrid(t.map, textOf(t)); };
     try {
       if (kind === 'csv') {
         const csv = gridOf(tab).map(r => r.map(csvEscape).join(',')).join('\n');
-        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = `${base} - ${tab.name}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' })); a.download = `${base} - ${tab.name}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       } else {
         const XLSX = await import('xlsx');
         const wb = XLSX.utils.book_new();
@@ -799,6 +806,17 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         XLSX.writeFile(wb, `${base}.xlsx`);
       }
     } catch { onToast('Could not make that download'); }
+  };
+  // Print: this tab's used cells as a clean table on its own page (landscape), opened in a new window.
+  const printTab = () => {
+    if (!tab) return;
+    const g = gridOf(tab); if (!g.length) { onToast('Nothing to print on this tab'); return; }
+    const esc = (v: string) => v.replace(/[&<>]/g, ch => (ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : '&gt;'));
+    const head = Math.max(1, frozen) ;
+    const cell = (v: string, tag: 'td' | 'th') => `<${tag}${/^-?[\d,.$%]+$/.test(v) && v !== '' ? ' class="n"' : ''}>${esc(v)}</${tag}>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)} — ${esc(tab.name)}</title><style>@page{size:landscape;margin:12mm}body{font:11px/1.35 Arial,Helvetica,sans-serif;color:#111;margin:0}h1{font-size:14px;margin:0 0 2px}p{margin:0 0 8px;color:#666}table{border-collapse:collapse;width:100%}thead{display:table-header-group}tr{break-inside:avoid}td,th{border:1px solid #bbb;padding:3px 5px;text-align:left;vertical-align:top;word-break:break-word}th{background:#efefef}tbody tr:nth-child(even) td{background:#fafafa}.n{text-align:right}</style></head><body><h1>${esc(title)}</h1><p>${esc(tab.name)} · printed ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago' })}</p><table><thead>${g.slice(0, head).map(r => `<tr>${r.map(v => cell(v, 'th')).join('')}</tr>`).join('')}</thead><tbody>${g.slice(head).map(r => `<tr>${r.map(v => cell(v, 'td')).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+    const w = window.open('', '_blank'); if (!w) { onToast('Allow pop-ups for this site to print'); return; }
+    w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
   };
 
   // Feed tabs: ask the server for the latest CRM rows and write them into the shared sheet (everyone sees it live).
@@ -916,8 +934,10 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     const S = selRef.current;
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && S.r === S.r2) { e.preventDefault(); moveRowBy(S.r, e.key === 'ArrowUp' ? -1 : 1); return; }
     if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && S.c === S.c2 && S.r === 0 && S.r2 >= rows - 1) { e.preventDefault(); moveColBy(S.c, e.key === 'ArrowLeft' ? -1 : 1); return; }
+    if (e.altKey && (e.key === '/' || e.code === 'Slash')) { e.preventDefault(); setPalette(true); return; }
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
+    if (mod && k === 'p') { e.preventDefault(); printTab(); return; }
     if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) undo.redo(); else undo.undo(); return; }
     if (mod && k === 'y') { e.preventDefault(); undo.redo(); return; }
     if (mod && k === 'b') { e.preventDefault(); toggleBold(); return; }
@@ -991,7 +1011,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     const wrap_ = !!f.wr;
     return (
       <div key={key} title={note ? (JSON.parse(note) as NoteInfo).t : undefined} style={{
-        position: 'absolute', top: tops[i], left: lefts[c], width, height, boxSizing: 'border-box', padding: wrap_ ? '4px 6px' : '0 6px', lineHeight: wrap_ ? `${17 * Z}px` : `${Math.max(14, Math.min(height, ROW_H * Z) - 1)}px`, fontSize: 13 * Z,
+        position: 'absolute', top: tops[i], left: lefts[c], width, height, boxSizing: 'border-box', padding: wrap_ ? '4px 6px' : '0 6px', lineHeight: wrap_ ? `${Math.max(17, Math.round((f.fs ?? 13) * 1.3)) * Z}px` : (f.fs ?? 13) > 13 ? `${Math.max(14, height - 1)}px` : `${Math.max(14, Math.min(height, ROW_H * Z) - 1)}px`, fontSize: (f.fs ?? 13) * Z, fontFamily: fontCss(f.ff),
         overflow: 'hidden', whiteSpace: wrap_ ? 'pre-wrap' : 'nowrap', wordBreak: wrap_ ? 'break-word' : undefined, textOverflow: wrap_ ? 'clip' : 'ellipsis', textAlign: al === 'r' ? 'right' : al === 'c' ? 'center' : 'left',
         fontWeight: bold?.get(key) || cb || r < frozen ? 700 : 400, fontStyle: f.i ? 'italic' : undefined, textDecoration: [f.u || link ? 'underline' : '', f.s ? 'line-through' : ''].filter(Boolean).join(' ') || undefined,
         color: v instanceof SheetError ? 'var(--k-dc2626)' : link ? '#1a56db' : cfg ?? f.fg ?? 'var(--k-1a1a1a)', cursor: link ? 'pointer' : undefined,
@@ -1116,6 +1136,44 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     for (let r = R.r1; r <= Math.min(R.r2, rows - 1) && seen < 20000; r++) for (let c = R.c1; c <= R.c2 && seen < 20000; c++) { seen++; const v = evaluator.value(null, r, c); if (v !== null && v !== '') { count++; if (typeof v === 'number') { n++; sum += v; } } }
     return { n, sum, count };
   })();
+  const stepFont = (dir: 1 | -1) => {
+    const now = cur.fs ?? 13; let i = FONT_SIZES.findIndex(n => n >= now); if (i < 0) i = FONT_SIZES.length - 1;
+    const j = Math.max(0, Math.min(FONT_SIZES.length - 1, dir > 0 ? (FONT_SIZES[i] === now ? i + 1 : i) : i - 1));
+    applyFmt({ fs: FONT_SIZES[j] === 13 ? null : FONT_SIZES[j] });
+  };
+  const commands: Command[] = tab ? [
+    { group: 'Edit', label: 'Undo', hint: 'Ctrl+Z', run: () => undo.undo() }, { group: 'Edit', label: 'Redo', hint: 'Ctrl+Y', run: () => undo.redo() },
+    { group: 'Edit', label: 'Find and replace', hint: 'Ctrl+F', run: () => setFind({ q: '', rep: '', idx: 0, replace: false }) },
+    { group: 'Edit', label: 'Fill down', hint: 'Ctrl+D', run: () => fillDir('down') }, { group: 'Edit', label: 'Fill right', hint: 'Ctrl+R', run: () => fillDir('right') },
+    { group: 'Edit', label: 'Clear contents', hint: 'Delete', run: clearRange }, { group: 'Edit', label: 'Clear formatting', run: clearFormat },
+    { group: 'Edit', label: 'Move row up', hint: 'Alt+↑', run: () => moveRowBy(R.r1, -1) }, { group: 'Edit', label: 'Move row down', hint: 'Alt+↓', run: () => moveRowBy(R.r1, 1) },
+    { group: 'Edit', label: 'Move column left', hint: 'Alt+←', run: () => moveColBy(R.c1, -1) }, { group: 'Edit', label: 'Move column right', hint: 'Alt+→', run: () => moveColBy(R.c1, 1) },
+    { group: 'View', label: 'Freeze first row', run: () => tx(() => tab.map.set('frozen', 1)) }, { group: 'View', label: 'Unfreeze rows', run: () => tx(() => tab.map.set('frozen', 0)) },
+    { group: 'View', label: 'Freeze first column', run: () => tx(() => tab.map.set('frozenCols', 1)) }, { group: 'View', label: 'Unfreeze columns', run: () => tx(() => tab.map.set('frozenCols', 0)) },
+    ...[0.5, 0.75, 1, 1.25, 1.5, 2].map(z => ({ group: 'View', label: `Zoom ${Math.round(z * 100)}%`, run: () => setZoom(z) })),
+    { group: 'View', label: 'Turn the filter on or off', run: () => { setFiltersOn(o => !o); setFilters({}); setCondFilters({}); } }, { group: 'View', label: 'Alternating row colors', run: toggleBand },
+    { group: 'View', label: 'Hide the selected rows', run: () => hide('row') }, { group: 'View', label: 'Hide the selected columns', run: () => hide('col') }, { group: 'View', label: 'Show hidden rows and columns', run: unhideAll },
+    { group: 'Insert', label: 'Row above', run: () => insertMany('row', R.r1, R.r2 - R.r1 + 1) }, { group: 'Insert', label: 'Row below', run: () => insertMany('row', R.r2 + 1, R.r2 - R.r1 + 1) },
+    { group: 'Insert', label: 'Column left', run: () => insertMany('col', R.c1, R.c2 - R.c1 + 1) }, { group: 'Insert', label: 'Column right', run: () => insertMany('col', R.c2 + 1, R.c2 - R.c1 + 1) },
+    { group: 'Insert', label: 'Chart', run: () => { setChartEdit(null); setDlg('chart'); } }, { group: 'Insert', label: 'Pivot table', run: () => setPivotDlg({}) },
+    { group: 'Insert', label: 'Dropdown or checkbox', run: () => setDlg('valid') }, { group: 'Insert', label: 'Note', run: () => setDlg('note') }, { group: 'Insert', label: 'Data from another spreadsheet', run: () => setImportDlg(true) },
+    { group: 'Insert', label: 'New tab', run: addTab }, { group: 'Insert', label: 'Delete the selected rows', run: () => deleteMany('row', R.r1, R.r2) }, { group: 'Insert', label: 'Delete the selected columns', run: () => deleteMany('col', R.c1, R.c2) },
+    { group: 'Format', label: 'Bold', hint: 'Ctrl+B', run: toggleBold }, { group: 'Format', label: 'Italic', hint: 'Ctrl+I', run: () => toggleFmt('i') }, { group: 'Format', label: 'Underline', hint: 'Ctrl+U', run: () => toggleFmt('u') }, { group: 'Format', label: 'Strikethrough', run: () => toggleFmt('s') },
+    { group: 'Format', label: 'Wrap text', run: toggleWrap }, { group: 'Format', label: 'Merge or unmerge cells', run: toggleMerge }, { group: 'Format', label: 'Bigger text', run: () => stepFont(1) }, { group: 'Format', label: 'Smaller text', run: () => stepFont(-1) },
+    ...FONT_FAMILIES.map(([name]) => ({ group: 'Format', label: `Font: ${name}`, run: () => applyFmt({ ff: name === 'Default' ? null : name }) })),
+    { group: 'Format', label: 'All borders', run: () => setBorders('all') }, { group: 'Format', label: 'Outer border', run: () => setBorders('outer') }, { group: 'Format', label: 'No borders', run: () => setBorders('none') },
+    { group: 'Format', label: 'Number format: Currency', run: () => applyFmt({ nf: 'cur', dp: null }) }, { group: 'Format', label: 'Number format: Percent', run: () => applyFmt({ nf: 'pct', dp: null }) }, { group: 'Format', label: 'Number format: Number', run: () => applyFmt({ nf: 'num', dp: null }) },
+    { group: 'Format', label: 'Number format: Date', run: () => applyFmt({ nf: 'date', dp: null }) }, { group: 'Format', label: 'Number format: Automatic', run: () => applyFmt({ nf: null, dp: null }) },
+    { group: 'Format', label: 'Align left', run: () => applyFmt({ al: 'l' }) }, { group: 'Format', label: 'Align center', run: () => applyFmt({ al: 'c' }) }, { group: 'Format', label: 'Align right', run: () => applyFmt({ al: 'r' }) },
+    { group: 'Format', label: 'Conditional formatting', run: () => setDlg('cond') },
+    { group: 'Data', label: 'Sort the sheet A → Z by this column', run: () => sortBy(sel.c, 1) }, { group: 'Data', label: 'Sort the sheet Z → A by this column', run: () => sortBy(sel.c, -1) },
+    { group: 'Data', label: 'Data validation', run: () => setDlg('valid') }, { group: 'Data', label: 'Protect a range', run: () => setDlg('protect') },
+    { group: 'Data', label: 'Trim extra spaces', run: trimSel }, { group: 'Data', label: 'Change to UPPERCASE', run: () => caseSel('upper') }, { group: 'Data', label: 'Change to lowercase', run: () => caseSel('lower') }, { group: 'Data', label: 'Capitalize Each Word', run: () => caseSel('proper') },
+    { group: 'Data', label: 'Turn text into numbers', run: numbersSel }, { group: 'Data', label: 'Split text into columns', run: () => setCleanDlg('split') }, { group: 'Data', label: 'Highlight duplicate rows', run: highlightDuplicates }, { group: 'Data', label: 'Remove duplicate rows', run: () => setCleanDlg('dedupe') },
+    ...(hasFeed ? [{ group: 'Data', label: 'Refresh from the CRM', run: () => void refreshFeed(false) }] : []),
+    { group: 'File', label: 'Print this tab', hint: 'Ctrl+P', run: printTab }, { group: 'File', label: 'Download as CSV', run: () => void download('csv') }, { group: 'File', label: 'Download as Excel', run: () => void download('xlsx') }, { group: 'File', label: 'Version history', run: onHistory },
+    { group: 'Help', label: 'Keyboard shortcuts', run: () => setHelpDlg('keys') }, { group: 'Help', label: 'Function list', run: () => setHelpDlg('funcs') },
+  ] : [];
   if (!tab) return <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Opening…</div>;
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)' }}>
@@ -1124,6 +1182,8 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
       <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: isMobile ? '4px 8px 0' : '4px 10px 0', overflowX: 'auto', flexWrap: 'nowrap' }}>
         <Pop className="sx-mb" title="File" label="File">
           {close => (<>
+            <Item hint="Ctrl+P" onClick={() => { printTab(); close(); }}>Print this tab</Item>
+            <Divider />
             <Item onClick={() => { void download('csv'); close(); }}>Download this tab as CSV</Item>
             <Item onClick={() => { void download('xlsx'); close(); }}>Download as Excel (.xlsx)</Item>
             <Divider />
@@ -1250,6 +1310,13 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             {hasFeed && !!(tab?.map.get('feedOrder') || tab?.map.get('feedColOrder')) && <Item onClick={() => { tx(() => { tab?.map.delete('feedOrder'); tab?.map.delete('feedColOrder'); }); void refreshFeed(false); close(); }}>Automatic row &amp; column order (undo my moves)</Item>}
           </>)}
         </Pop>
+        <Pop className="sx-mb" title="Help" label="Help">
+          {close => (<>
+            <Item hint="Alt+/" onClick={() => { setPalette(true); close(); }}>Search the menus</Item>
+            <Item onClick={() => { setHelpDlg('keys'); close(); }}>Keyboard shortcuts</Item>
+            <Item onClick={() => { setHelpDlg('funcs'); close(); }}>Function list</Item>
+          </>)}
+        </Pop>
         <span style={{ flex: 1, minWidth: 8 }} />
         {hasFeed && <button type="button" className="sx-gold" disabled={refreshing} onClick={() => void refreshFeed(false)} title="Pull the latest from the CRM into the live columns"><Ico n="refresh" size={15} />{refreshing ? 'Refreshing…' : isMobile ? 'Refresh' : 'Refresh from CRM'}</button>}
         <Pop className="sx-btn" title="Zoom" label={<><Ico n="zoom" size={16} />{Math.round(Z * 100)}%</>} align="right">
@@ -1261,8 +1328,10 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
       </div>
       {/* icon toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: '3px 10px 5px', borderBottom: '1px solid var(--k-e5e7eb)', flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', rowGap: 2 }}>
+        <TBtn title="Search the menus (Alt+/)" onClick={() => setPalette(true)}><Ico n="menus" /></TBtn>
         <TBtn title="Undo (Ctrl+Z)" onClick={() => undo.undo()}><Ico n="undo" /></TBtn>
         <TBtn title="Redo (Ctrl+Y)" onClick={() => undo.redo()}><Ico n="redo" /></TBtn>
+        <TBtn title="Print this tab (Ctrl+P)" onClick={printTab}><Ico n="print" /></TBtn>
         <TBtn title="Paint format: copy this cell's look, then select the cells to give it to" on={!!painter} onClick={() => (painter ? setPainter(null) : startPainter())}><Ico n="brush" /></TBtn>
         <TBtn title="Clear formatting" onClick={clearFormat}><Ico n="clear" /></TBtn>
         <TSep />
@@ -1277,6 +1346,15 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             ))}
           </>)}
         </Pop>
+        <TSep />
+        <Pop className="sx-btn" title="Font" label={<span style={{ minWidth: 62, textAlign: 'left', fontFamily: fontCss(cur.ff) }}>{cur.ff ?? 'Default'} ▾</span>}>
+          {close => (<>{FONT_FAMILIES.map(([name, css]) => <Item key={name} checked={(cur.ff ?? 'Default') === name} onClick={() => { applyFmt({ ff: name === 'Default' ? null : name }); close(); }}><span style={{ fontFamily: css }}>{name}</span></Item>)}</>)}
+        </Pop>
+        <TBtn title="Smaller text" onClick={() => stepFont(-1)}>−</TBtn>
+        <Pop className="sx-btn" title="Text size" label={<span style={{ minWidth: 20 }}>{cur.fs ?? 13}</span>}>
+          {close => (<>{FONT_SIZES.map(n => <Item key={n} checked={(cur.fs ?? 13) === n} onClick={() => { applyFmt({ fs: n === 13 ? null : n }); close(); }}>{n}{n === 13 ? ' (default)' : ''}</Item>)}</>)}
+        </Pop>
+        <TBtn title="Bigger text" onClick={() => stepFont(1)}>+</TBtn>
         <TSep />
         <TBtn title="Bold (Ctrl+B)" on={boldOn} onClick={toggleBold} style={{ fontWeight: 800 }}>B</TBtn>
         <TBtn title="Italic (Ctrl+I)" on={!!cur.i} onClick={() => toggleFmt('i')} style={{ fontStyle: 'italic', fontFamily: 'Georgia,serif' }}>I</TBtn>
@@ -1490,7 +1568,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
                 e.stopPropagation();
               }}
               onBlur={() => { if (editor.current && document.activeElement?.getAttribute('aria-label') === 'Cell contents') return; commitEdit('stay'); }}
-              style={{ position: 'absolute', pointerEvents: 'auto', top: sy(Math.max(0, idxOf(edit.r))), left: sx(edit.c), width: Math.max(widths[edit.c], 140), height: Math.max(ROW_H, heights[Math.max(0, idxOf(edit.r))]), boxSizing: 'border-box', border: '2px solid #c9922c', outline: 'none', padding: '0 5px', fontSize: 13 * Z, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', zIndex: 6, userSelect: 'text' }} />
+              style={{ position: 'absolute', pointerEvents: 'auto', top: sy(Math.max(0, idxOf(edit.r))), left: sx(edit.c), width: Math.max(widths[edit.c], 140), height: Math.max(ROW_H, heights[Math.max(0, idxOf(edit.r))]), boxSizing: 'border-box', border: '2px solid #c9922c', outline: 'none', padding: '0 5px', fontSize: (fmtOf(edit.r, edit.c).fs ?? 13) * Z, fontFamily: fontCss(fmtOf(edit.r, edit.c).ff) ?? "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', zIndex: 6, userSelect: 'text' }} />
           )}
         </div>
       </div>
@@ -1590,6 +1668,9 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
           onSave={f => savePivot(f, editTab, srcTab)} />;
       })()}
       {importDlg && <ImportDialog onClose={() => setImportDlg(false)} onInsert={(nm, rg_) => { const t = `=IMPORTRANGE("${nm.replace(/"/g, '')}","${rg_.replace(/"/g, '')}")`; setCell(sel.r, sel.c, t); }} />}
+      {palette && <CommandPalette commands={commands} onClose={() => setPalette(false)} />}
+      {helpDlg === 'keys' && <ShortcutsDialog onClose={() => setHelpDlg(null)} />}
+      {helpDlg === 'funcs' && <FunctionsDialog docs={FUNCTION_DOCS} onClose={() => setHelpDlg(null)} />}
       {cleanDlg === 'dedupe' && <DedupeDialog headers={Array.from({ length: R.c2 - R.c1 + 1 }, (_, i) => shown(R.r1, R.c1 + i))} onRun={removeDuplicates} onClose={() => setCleanDlg(null)} />}
       {cleanDlg === 'split' && <SplitDialog onRun={splitText} onClose={() => setCleanDlg(null)} />}
       {dlg === 'chart' && (
@@ -1602,6 +1683,9 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
       {/* tabs along the bottom */}
       <div style={{ display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--k-d1d5db)', background: 'var(--k-f3f4f6)', flexShrink: 0, overflowX: 'auto', minHeight: isMobile ? 44 : 36 }}>
         <button type="button" onClick={addTab} title="Add a tab" aria-label="Add a tab" style={{ width: 40, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, color: 'var(--k-6b7280)' }}>＋</button>
+        <Pop up className="sx-btn" title="All sheets" label={<Ico n="list" />}>
+          {close => (<>{tabs.map(t => <Item key={t.id} checked={t.id === tab.id} onClick={() => { setActiveId(t.id); setSel({ r: 0, c: 0, r2: 0, c2: 0 }); setEdit(null); close(); }}>{t.map.get('feed') ? '● ' : t.map.get('pivot') ? '▦ ' : ''}{t.name}</Item>)}</>)}
+        </Pop>
         {tabs.map(t => {
           const onT = t.id === tab.id;
           return (
