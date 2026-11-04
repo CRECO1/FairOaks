@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { escapeLike } from '@/lib/like-escape';
 import { createClient } from '@supabase/supabase-js';
+import { createHash } from 'node:crypto';
 import { rateLimit } from '@/lib/ratelimit';
 import { pushEmailOpen } from '@/lib/notify';
 
 const AUTO_OPEN_WINDOW_MS = 20_000;
+// One "open" = a burst of loads. The pixel is marked no-store, so Gmail's proxy (and phone / desktop clients) re-fetch it every time the
+// message is shown — a day of that read as "opened 208×". A load only counts as a new open after this long with no loads at all.
+const OPEN_SESSION_GAP_MS = 30 * 60_000;
+
+function classifyAgent(ua: string | null): string {
+  if (!ua) return 'other';
+  if (/GoogleImageProxy/i.test(ua)) return 'gmail-proxy';
+  if (/YahooMailProxy|Yahoo Ad monitoring/i.test(ua)) return 'yahoo-proxy';
+  if (/proofpoint|mimecast|barracuda|symantec|forcepoint|trendmicro|bot\b|crawl|spider|scan/i.test(ua)) return 'security-scanner';
+  return 'other';
+}
 
 // 1×1 transparent GIF
 const TRANSPARENT_GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
@@ -93,7 +105,7 @@ export async function GET(req: NextRequest) {
         // Original deal email tracking
         const { data: rows } = await supabase
           .from('crm_deal_emails')
-          .select('id, opened_at, open_count, created_at, email_at, from_email, to_email, subject, deal_id, client_id')
+          .select('id, opened_at, last_opened_at, open_count, created_at, email_at, from_email, to_email, subject, deal_id, client_id')
           .eq('tracking_id', trackingId)
           .limit(1);
 
@@ -102,7 +114,28 @@ export async function GET(req: NextRequest) {
         // own first look at the sent copy does too — none of that is the recipient reading it. A hit within the first
         // 20 seconds is ignored; a person opening it takes longer than that.
         const sentAt = row ? new Date((row.email_at as string | null) ?? (row.created_at as string)).getTime() : 0;
+        let isNewOpen = false;
         if (row && Date.now() - sentAt >= AUTO_OPEN_WINDOW_MS) {
+          // A new open = no load of this email in the last 30 minutes. (Fall back to last_opened_at if the hit log isn't there yet.)
+          let lastHitMs: number | null = row.last_opened_at ? new Date(row.last_opened_at as string).getTime() : null;
+          try {
+            const { data: lastHit, error } = await supabase.from('crm_email_open_hits').select('at').eq('email_id', row.id).order('at', { ascending: false }).limit(1);
+            if (!error) lastHitMs = lastHit?.[0]?.at ? new Date(lastHit[0].at as string).getTime() : lastHitMs;
+          } catch { /* log table missing — fall back */ }
+          isNewOpen = lastHitMs === null || Date.now() - lastHitMs >= OPEN_SESSION_GAP_MS;
+        }
+        // Record every load (including the ones ignored as scanner pre-fetches) so people can be told apart from proxies later.
+        if (row) {
+          try {
+            const ua = req.headers.get('user-agent')?.slice(0, 300) ?? null;
+            const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim();
+            await supabase.from('crm_email_open_hits').insert([{
+              email_id: row.id, user_agent: ua, agent_kind: classifyAgent(ua), counted: isNewOpen,
+              ip_hash: ip ? createHash('sha256').update(ip).digest('hex').slice(0, 12) : null,
+            }]);
+          } catch { /* non-fatal */ }
+        }
+        if (row && isNewOpen) {
           // last_opened_at (2026-10-27) lets the deal card say "opened 3× · last Tue 2:14 PM".
           await supabase.from('crm_deal_emails').update({
             open_count: (row.open_count ?? 0) + 1,
