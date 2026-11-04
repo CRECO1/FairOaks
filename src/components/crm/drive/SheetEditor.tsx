@@ -12,19 +12,19 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import * as Y from 'yjs';
-import { toBase64 } from 'lib0/buffer';
+import { fromBase64, toBase64 } from 'lib0/buffer';
 import { createClient } from '@/lib/supabase/client';
 import { acquireDoc, releaseDoc, type CollabHandle } from '@/lib/collab/doc-registry';
 import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
 import type { DriveDoc } from '@/lib/drive-types';
 import {
-  Evaluator, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, cellKey, chartList, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, formatVal, getNote, getValid, listTabs, mergeList, mkey, newId, newTabMap, cloneTabMap,
+  Evaluator, IMPORT_RE, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, buildPivot, cellKey, chartList, checkValid, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, formatVal, getNote, getValid, hasRichMarks, listTabs, lockList, mergeList, mkey, newId, newTabMap, cloneTabMap, parseRich, readRangeFromDoc, stripRich,
   notesMap, parseKey, patchFmt, renameTabRefs, shiftFormula, shiftMeta, tBold, tCells, tCols, tabGrid, tabsMap, validMap,
-  type CellFmt, type CondOp, type CondRule, type ChartDef, type FeedData, type MergeRange, type NoteInfo, type TabInfo, type ValidRule,
+  type CellFmt, type CondOp, type CondRule, type ChartDef, type FeedData, type LockRange, type MergeRange, type NoteInfo, type PivotDef, type TabInfo, type ValidRule, type Val,
 } from '@/lib/drive-sheet';
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
 import { ActivityPanel } from './DocPanel';
-import { CondDialog, Divider, HistoryDialog, Item, NoteDialog, Palette, Pop, ValidDialog } from './SheetParts';
+import { CondDialog, Divider, HistoryDialog, Item, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, ValidDialog, type LockInfo, type PivotForm } from './SheetParts';
 import { ChartDialog, ChartSvg, type ChartData } from './SheetChart';
 import type { DrivePerson } from './DocsDrive';
 
@@ -39,6 +39,7 @@ interface Props {
   onToast: (msg: string) => void;
   onTitle?: (id: string, title: string) => void;
   people?: DrivePerson[];
+  isAdmin?: boolean;
 }
 interface Peer { name: string; color: string; cell?: { tab: string; r: number; c: number } }
 type SaveState = 'saved' | 'dirty' | 'saving' | 'error';
@@ -51,7 +52,7 @@ const ROW_H = 26, HEAD_H = 26, NUM_W = 48, DEF_W = 120, MIN_W = 36;
 const LOCAL = 'sheet-local';
 const LINK = /^(https?:\/\/\S+|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
 
-export default function SheetWorkspace({ doc, initialState, authToken, user, isMobile, onClose, onShare, onToast, onTitle, people = [] }: Props) {
+export default function SheetWorkspace({ doc, initialState, authToken, user, isMobile, onClose, onShare, onToast, onTitle, people = [], isAdmin = false }: Props) {
   const [handle, setHandle] = useState<CollabHandle | null>(null);
   const [status, setStatus] = useState<CollabStatus>('connecting');
   const [save, setSave] = useState<SaveState>('saved');
@@ -193,12 +194,38 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {handle ? <Grid handle={handle} me={me} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} />
+        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} />
           : <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Connecting…</div>}
         {panel === 'activity' && <ActivityPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} onToast={onToast} onClose={() => setPanel(null)} />}
       </div>
       {history && handle && <HistoryDialog docId={doc.id} authToken={authToken} ydoc={handle.ydoc} people={people} flush={() => flushRef.current()} onToast={onToast} onClose={() => setHistory(false)} />}
     </Frame>
+  );
+}
+
+function SparkSvg({ kind, nums, w, h }: { kind: string; nums: number[]; w: number; h: number }) {
+  if (nums.length < 1) return null;
+  const lo = Math.min(0, ...nums), hi = Math.max(...nums), span = hi - lo || 1, n = nums.length;
+  const y = (v: number) => h - 2 - ((v - lo) / span) * (h - 4);
+  if (kind === 'bar') { const bw = Math.max(1.5, w / n - 1.5); return <svg width={w} height={h} style={{ display: 'block' }}>{nums.map((v, i) => <rect key={i} x={i * (w / n)} y={Math.min(y(v), y(0))} width={bw} height={Math.max(1, Math.abs(y(v) - y(0)))} fill="#c9922c" />)}</svg>; }
+  const pts = nums.map((v, i) => `${n === 1 ? w / 2 : (i * (w - 4)) / (n - 1) + 2},${y(v)}`).join(' ');
+  return <svg width={w} height={h} style={{ display: 'block' }}><polyline points={pts} fill="none" stroke="#c9922c" strokeWidth={1.6} />{n > 0 && <circle cx={n === 1 ? w / 2 : w - 2} cy={y(nums[n - 1])} r={2.2} fill="#c9922c" />}</svg>;
+}
+
+function ImportDialog({ onInsert, onClose }: { onInsert: (name: string, range: string) => void; onClose: () => void }) {
+  const [name, setName] = useState(''); const [rg, setRg] = useState('Sheet1!A1:D20');
+  const f = { height: 34, border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '0 10px', fontSize: 13.5, width: '100%', boxSizing: 'border-box' as const, background: 'var(--k-fff)', color: 'var(--k-1a1a1a)' };
+  const l = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', margin: '10px 0 4px' };
+  return (
+    <Modal title="Import from another spreadsheet" onClose={onClose}>
+      <div style={{ fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>Puts a live copy of another My Drive spreadsheet’s cells here, starting at the selected cell. It refreshes every couple of minutes and only works for sheets you can open.</div>
+      <label style={l}>Spreadsheet name (exactly as it is called) or its link</label><input value={name} onChange={e => setName(e.target.value)} style={f} placeholder="Elkhorn Point call tracker" />
+      <label style={l}>Range to bring in</label><input value={rg} onChange={e => setRg(e.target.value)} style={f} placeholder="Emailed Tenants!A1:H200" />
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+        <button type="button" onClick={onClose} style={{ height: 34, padding: '0 14px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', cursor: 'pointer', fontWeight: 600, fontSize: 13.5 }}>Cancel</button>
+        <button type="button" disabled={!name.trim() || !rg.trim()} onClick={() => { onInsert(name.trim(), rg.trim()); onClose(); }} style={{ height: 34, padding: '0 16px', border: 'none', borderRadius: 8, background: '#c9922c', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>Import</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -221,10 +248,15 @@ const moveKeys = (m: Y.Map<unknown>, axis: 'row' | 'col', at: number, delta: 1 |
   for (const [, to, v] of moves) if (to) m.set(to, v);
 };
 
-function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }: { handle: CollabHandle; me: Peer; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void }) {
+function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, title, onToast }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void }) {
   const ydoc = handle.ydoc;
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const Z = zoom;
+  const [extData, setExtData] = useState<Map<string, Val[][]>>(new Map());
+  const [pivotDlg, setPivotDlg] = useState<null | { edit?: string }>(null);
+  const [importDlg, setImportDlg] = useState(false);
   const [sel, setSel] = useState<Sel>({ r: 0, c: 0, r2: 0, c2: 0 });
   const [edit, setEditState] = useState<Edit>(null);
   const editRef = useRef<Edit>(null);   // always current, so keys typed before React re-renders are not lost
@@ -240,7 +272,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const [filterMenu, setFilterMenu] = useState<{ c: number; q: string } | null>(null);
   const [find, setFind] = useState<{ q: string; rep: string; idx: number; replace: boolean } | null>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; r: number; c: number; head?: 'col' | 'row' } | null>(null);
-  const [dlg, setDlg] = useState<null | 'cond' | 'valid' | 'note' | 'chart'>(null);
+  const [dlg, setDlg] = useState<null | 'cond' | 'valid' | 'note' | 'chart' | 'protect'>(null);
   const [chartEdit, setChartEdit] = useState<ChartDef | null>(null);
   const [painter, setPainter] = useState<{ fmt: string; bold: boolean } | null>(null);
   const painterRef = useRef<typeof painter>(null); painterRef.current = painter;
@@ -252,13 +284,13 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const dragging = useRef(false);
   const clip = useRef<Clip | null>(null);
   const fmtCache = useRef(new Map<string, CellFmt>());
-  const undo = useMemo(() => new Y.UndoManager([tabsMap(ydoc), fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), condList(ydoc), extMap(ydoc), mergeList(ydoc), chartList(ydoc)], { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 }), [ydoc]);
+  const undo = useMemo(() => new Y.UndoManager([tabsMap(ydoc), fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), condList(ydoc), extMap(ydoc), mergeList(ydoc), chartList(ydoc), lockList(ydoc)], { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 }), [ydoc]);
   useEffect(() => () => undo.destroy(), [undo]);
 
   // Re-render whenever anything in the sheet changes (mine or a teammate's).
   useEffect(() => {
     const on = () => bump();
-    const shared = [tabsMap(ydoc), fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), condList(ydoc), extMap(ydoc), mergeList(ydoc), chartList(ydoc)] as Array<Y.AbstractType<unknown>>;
+    const shared = [tabsMap(ydoc), fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), condList(ydoc), extMap(ydoc), mergeList(ydoc), chartList(ydoc), lockList(ydoc)] as Array<Y.AbstractType<unknown>>;
     shared.forEach(t => t.observeDeep(on));
     return () => shared.forEach(t => t.unobserveDeep(on));
   }, [ydoc]);
@@ -266,32 +298,54 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const tabs = useMemo(() => listTabs(ydoc), [ydoc, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const tab: TabInfo | undefined = tabs.find(t => t.id === activeId) ?? tabs[0];
   const tabId = tab?.id ?? '';
-  const rows = Math.min(MAX_ROWS, Number(tab?.map.get('rows') ?? 100));
-  const ncols = Math.min(MAX_COLS, Number(tab?.map.get('ncols') ?? 12));
+  // ── what each cell holds: typed text, imported data (IMPORTRANGE spills into the cells next to it), or a pivot table's computed grid ──
+  const parsePivot = (x: unknown): PivotDef | null => { try { return typeof x === 'string' ? (JSON.parse(x) as PivotDef) : null; } catch { return null; } };
+  const byName = useMemo(() => new Map(tabs.map(t => [t.name, t.map])), [tabs]);
+  const baseEval = useMemo(() => new Evaluator((tn, r, c) => (byName.get(tn ?? '')?.get('cells') as Y.Map<string> | undefined)?.get(cellKey(r, c)) ?? '', tab?.name ?? '', extData), [byName, tab?.name, version, extData]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pivotGrids = useMemo(() => {
+    const m = new Map<string, string[][]>();
+    for (const t of tabs) { const d = parsePivot(t.map.get('pivot')); if (d && byName.has(d.src)) m.set(t.name, buildPivot(d, (r, c) => baseEval.value(d.src, r, c))); }
+    return m;
+  }, [tabs, byName, baseEval]); // eslint-disable-line react-hooks/exhaustive-deps
+  const spill = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of tabs) tCells(t.map).forEach((v, k) => {
+      const mt = IMPORT_RE.exec(v); if (!mt) return; const mat = extData.get(`${mt[1]}|${mt[2]}`); if (!mat) return;
+      const [r, c] = parseKey(k);
+      mat.forEach((row, i) => row.forEach((x, j) => { if ((i || j) && (tCells(t.map).get(cellKey(r + i, c + j)) ?? '') === '') m.set(`${t.name}!${r + i}:${c + j}`, x instanceof SheetError ? x.code : x === null ? '' : String(x)); }));
+    });
+    return m;
+  }, [tabs, extData, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const getter = useCallback((tn: string | null, r: number, c: number) => {
+    const g = pivotGrids.get(tn ?? ''); if (g) return g[r]?.[c] ?? '';
+    const own = (byName.get(tn ?? '')?.get('cells') as Y.Map<string> | undefined)?.get(cellKey(r, c)) ?? '';
+    return own !== '' ? own : spill.get(`${tn}!${r}:${c}`) ?? '';
+  }, [pivotGrids, byName, spill]);
+  const evaluator = useMemo(() => new Evaluator(getter, tab?.name ?? '', extData), [getter, tab?.name, extData]);
+  const pivotGrid = tab ? pivotGrids.get(tab.name) : undefined;
+  const isPivot = !!pivotGrid;
+  const raw = useCallback((r: number, c: number) => (tab ? getter(tab.name, r, c) : ''), [tab, getter]);
+
+  const rows = pivotGrid ? Math.min(MAX_ROWS, Math.max(40, pivotGrid.length + 20)) : Math.min(MAX_ROWS, Number(tab?.map.get('rows') ?? 100));
+  const ncols = pivotGrid ? Math.min(MAX_COLS, Math.max(12, (pivotGrid[0]?.length ?? 0) + 3)) : Math.min(MAX_COLS, Number(tab?.map.get('ncols') ?? 12));
   const frozen = Math.min(rows, Number(tab?.map.get('frozen') ?? 0));
   const fc = Math.min(ncols - 1, Number(tab?.map.get('frozenCols') ?? 0));
   const widths = useMemo(() => {
     const w: number[] = [];
-    for (let c = 0; c < ncols; c++) w.push(extMap(ydoc).get(`${tabId}|hc|${c}`) ? 0 : Math.max(MIN_W, Number(tab ? tCols(tab.map).get(String(c)) : 0) || DEF_W));
+    for (let c = 0; c < ncols; c++) w.push(extMap(ydoc).get(`${tabId}|hc|${c}`) ? 0 : Math.round(Math.max(MIN_W, Number(tab ? tCols(tab.map).get(String(c)) : 0) || DEF_W) * Z));
     return w;
-  }, [tab, ncols, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, ncols, version, Z]); // eslint-disable-line react-hooks/exhaustive-deps
   const lefts = useMemo(() => { const l = [0]; widths.forEach((w, i) => l.push(l[i] + w)); return l; }, [widths]);
   const totalW = lefts[lefts.length - 1];
   const fcW = lefts[fc];
 
-  const evaluator = useMemo(() => {
-    const byName = new Map(tabs.map(t => [t.name, t.map]));
-    return new Evaluator((tn, r, c) => (byName.get(tn ?? '')?.get('cells') as Y.Map<string> | undefined)?.get(cellKey(r, c)) ?? '', tab?.name ?? '');
-  }, [tabs, tab?.name, version]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const raw = useCallback((r: number, c: number) => (tab ? tCells(tab.map).get(cellKey(r, c)) ?? '' : ''), [tab, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const fmtOf = (r: number, c: number): CellFmt => {
     const s = fmtMap(ydoc).get(mkey(tabId, r, c)); if (!s) return {};
     let f = fmtCache.current.get(s); if (!f) { try { f = JSON.parse(s) as CellFmt; } catch { f = {}; } fmtCache.current.set(s, f); }
     return f;
   };
   const rules = useMemo(() => condList(ydoc).toArray().map(s => { try { return JSON.parse(s) as CondRule; } catch { return null; } }).filter((x): x is CondRule => !!x && x.tab === tabId), [ydoc, tabId, version]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shown = (r: number, c: number) => formatVal(evaluator.value(null, r, c), fmtOf(r, c));
+  const shown = (r: number, c: number) => { const f = fmtOf(r, c); const t = formatVal(evaluator.value(null, r, c), f); return f.rt ? stripRich(t) : t; };
 
   // ── which rows are visible (hidden rows and filters), and how tall each one is (display index ↔ sheet row) ──
   const hdrRows = Math.max(frozen, 1);
@@ -317,14 +371,14 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     const m = new Map<number, number>();
     fmtMap(ydoc).forEach((sv, k) => {
       if (!k.startsWith(tabId + '|') || !sv.includes('"wr"')) return;
-      const [r, c] = parseKey(k.slice(tabId.length + 1)); const w = Math.max(30, (widths[c] ?? DEF_W) - 14); if (!widths[c]) return;
+      const [r, c] = parseKey(k.slice(tabId.length + 1)); const w = Math.max(30, (widths[c] ?? DEF_W) / Z - 14); if (!widths[c]) return;
       const txt = formatVal(evaluator.value(null, r, c), fmtOf(r, c));
       const lines = txt.split('\n').reduce((a, part) => a + Math.max(1, Math.ceil((part.length * 7.1) / w)), 0);
-      m.set(r, Math.max(m.get(r) ?? 0, lines * 17 + 9));
+      m.set(r, Math.max(m.get(r) ?? 0, (lines * 17 + 9) * Z));
     });
     return m;
-  }, [ydoc, tabId, widths, evaluator, version]); // eslint-disable-line react-hooks/exhaustive-deps
-  const heights = useMemo(() => order.map(r => Math.max(Number(extMap(ydoc).get(`${tabId}|rh|${r}`)) || ROW_H, wrapH.get(r) ?? 0)), [order, wrapH, ydoc, tabId, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ydoc, tabId, widths, evaluator, version, Z]); // eslint-disable-line react-hooks/exhaustive-deps
+  const heights = useMemo(() => order.map(r => Math.round(Math.max((Number(extMap(ydoc).get(`${tabId}|rh|${r}`)) || ROW_H) * Z, wrapH.get(r) ?? 0))), [order, wrapH, ydoc, tabId, version, Z]); // eslint-disable-line react-hooks/exhaustive-deps
   const tops = useMemo(() => { const t = [0]; heights.forEach((h, i) => t.push(t[i] + h)); return t; }, [heights]);
   const idxAtY = (y: number) => { let lo = 0, hi = nRows - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (tops[mid] <= y) lo = mid; else hi = mid - 1; } return lo; };
   const frozenH = tops[Math.min(frozen, nRows)];
@@ -343,26 +397,50 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   useEffect(() => { handle.awareness.setLocalStateField('cell', { tab: tabId, r: sel.r, c: sel.c }); }, [handle, tabId, sel.r, sel.c]);
 
   // ── edits (every change is one transaction tagged LOCAL so Undo only undoes my own) ──
+  // protected ranges: only the person who set one (and admins) may change its cells. This is checked in the editor — it guards against
+  // accidents, not against someone deliberately bypassing the page.
+  const locks = useMemo(() => lockList(ydoc).toArray().map(x => { try { return JSON.parse(x) as LockRange; } catch { return null; } }).filter((x): x is LockRange => !!x && x.tab === tabId), [ydoc, tabId, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lockAt = (r: number, c: number) => locks.find(l => r >= l.r1 && r <= l.r2 && c >= l.c1 && c <= l.c2);
+  const canEditCell = (r: number, c: number) => { if (isPivot) return false; const l = lockAt(r, c); return !l || l.by === userId || isAdmin; };
+  const denyMsg = (r: number, c: number) => (isPivot ? 'Pivot tables are read-only — change them with Data → Pivot table…' : `That range is protected by ${lockAt(r, c)?.byName ?? 'someone'}`);
+  const choicesOf = (rule: ValidRule): string[] | undefined => {
+    if (!rule.src) return rule.o;
+    const m = /^\s*(?:'?([^'!]+)'?!)?([A-Za-z]{1,3})(\d{1,5})(?::([A-Za-z]{1,3})(\d{1,5}))?\s*$/.exec(rule.src); if (!m) return [];
+    const tn = m[1] ?? tab?.name ?? ''; const c1 = colIndex(m[2]), r1 = Number(m[3]) - 1, c2 = m[4] ? colIndex(m[4]) : c1, r2 = m[5] ? Number(m[5]) - 1 : r1; const out: string[] = [];
+    for (let r = Math.min(r1, r2); r <= Math.min(Math.max(r1, r2), Math.min(r1, r2) + 300); r++) for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) { const t = formatVal(evaluator.value(tn, r, c), {}); if (t) out.push(t); }
+    return out;
+  };
   const tx = useCallback((fn: () => void) => { ydoc.transact(fn, LOCAL); }, [ydoc]);
-  const setCell = useCallback((r: number, c: number, text: string) => {
+  const setCell = (r: number, c: number, text: string, opts?: { silent?: boolean }) => {
     if (!tab) return;
+    if (!canEditCell(r, c)) { if (!opts?.silent) onToast(denyMsg(r, c)); return; }
+    const rule = getValid(ydoc, tabId, r, c);
+    if (rule && rule.t !== 'check') { const msg = checkValid(rule, text, choicesOf(rule)); if (msg) { if (rule.warn) onToast(`⚠ ${msg}`); else { onToast(msg); return; } } }
     tx(() => {
       const cells = tCells(tab.map), k = cellKey(r, c);
       if (text === '') cells.delete(k); else cells.set(k, text);
       if (r >= Number(tab.map.get('rows') ?? 100) - 1) tab.map.set('rows', Math.min(MAX_ROWS, r + 21));
       if (c >= Number(tab.map.get('ncols') ?? 12) - 1) tab.map.set('ncols', Math.min(MAX_COLS, c + 3));
     });
-  }, [tab, tx]);
+  };
 
   const range = (s: Sel) => ({ r1: Math.min(s.r, s.r2), r2: Math.max(s.r, s.r2), c1: Math.min(s.c, s.c2), c2: Math.max(s.c, s.c2) });
   const R = range(sel);
   const forEachSel = (fn: (r: number, c: number) => void) => { for (let r = R.r1; r <= Math.min(R.r2, rows - 1); r++) for (let c = R.c1; c <= R.c2; c++) fn(r, c); };
 
-  const clearRange = () => { if (!tab) return; tx(() => forEachSel((r, c) => tCells(tab.map).delete(cellKey(r, c)))); };
-  const toggleBold = () => { if (!tab) return; const b = tBold(tab.map); const on = !b.get(cellKey(R.r1, R.c1)); tx(() => forEachSel((r, c) => { if (on) b.set(cellKey(r, c), true); else b.delete(cellKey(r, c)); })); };
+  const clearRange = () => { if (!tab) return; if (isPivot) { onToast(denyMsg(0, 0)); return; } let blocked = false; tx(() => forEachSel((r, c) => { if (canEditCell(r, c)) tCells(tab.map).delete(cellKey(r, c)); else blocked = true; })); if (blocked) onToast('Some cells are protected and were left as they are'); };
+  const toggleBold = () => { if (wrapEditSel('**', '**')) return; if (!tab) return; const b = tBold(tab.map); const on = !b.get(cellKey(R.r1, R.c1)); tx(() => forEachSel((r, c) => { if (on) b.set(cellKey(r, c), true); else b.delete(cellKey(r, c)); })); };
   const applyFmt = (patch: { [K in keyof CellFmt]?: CellFmt[K] | null }) => { tx(() => forEachSel((r, c) => patchFmt(ydoc, tabId, r, c, patch))); };
-  const toggleFmt = (k: 'i' | 'u' | 's') => { const on = !fmtOf(R.r1, R.c1)[k]; applyFmt({ [k]: on ? 1 : null }); };
+  const toggleFmt = (k: 'i' | 'u' | 's') => { if (wrapEditSel(k === 'i' ? '*' : k === 'u' ? '__' : '~~', k === 'i' ? '*' : k === 'u' ? '__' : '~~')) return; const on = !fmtOf(R.r1, R.c1)[k]; applyFmt({ [k]: on ? 1 : null }); };
   const selRef = useRef(sel); selRef.current = sel;
+  // while a cell is being edited with some words selected, B / I / U / S and the colours apply to just those words
+  const editSel = () => { const el = editor.current; const e = editRef.current; return el && e && el.selectionStart !== null && el.selectionEnd !== null && el.selectionStart !== el.selectionEnd ? { el, e, a: el.selectionStart, b: el.selectionEnd } : null; };
+  const wrapEditSel = (open: string, close: string) => {
+    const x = editSel(); if (!x) return false;
+    const t = x.e.text; setEdit({ ...x.e, text: t.slice(0, x.a) + open + t.slice(x.a, x.b) + close + t.slice(x.b) });
+    setTimeout(() => { const el = editor.current; if (el) { el.focus(); el.setSelectionRange(x.a + open.length, x.b + open.length); } }, 0);
+    return true;
+  };
   const toggleWrap = () => applyFmt({ wr: fmtOf(R.r1, R.c1).wr ? null : 1 });
   const setBorders = (mode: 'all' | 'outer' | 'top' | 'bottom' | 'left' | 'right' | 'none') => {
     tx(() => forEachSel((r, c) => {
@@ -411,7 +489,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   };
   const saveChart = (v: { type: ChartDef['type']; title: string; range: string; hdr: boolean }, existing?: ChartDef | null): string | null => {
     const rg = parseRange(v.range); if (!rg) return 'Type a range like A1:C10';
-    const def: ChartDef = existing ? { ...existing, type: v.type, title: v.title.slice(0, 80), hdr: v.hdr, ...rg } : { id: newId(), tab: tabId, type: v.type, title: v.title.slice(0, 80), hdr: v.hdr, ...rg, x: Math.round((lefts[rg.c2 + 1] ?? 0) + 30), y: Math.round(tops[Math.max(0, idxOf(rg.r1))] ?? 0), w: 460, h: 300 };
+    const def: ChartDef = existing ? { ...existing, type: v.type, title: v.title.slice(0, 80), hdr: v.hdr, ...rg } : { id: newId(), tab: tabId, type: v.type, title: v.title.slice(0, 80), hdr: v.hdr, ...rg, x: Math.round((lefts[rg.c2 + 1] ?? 0) / Z + 30), y: Math.round((tops[Math.max(0, idxOf(rg.r1))] ?? 0) / Z), w: 460, h: 300 };
     tx(() => { const l = chartList(ydoc); const i = l.toArray().findIndex(x => { try { return (JSON.parse(x) as ChartDef).id === def.id; } catch { return false; } }); if (i >= 0) { l.delete(i, 1); l.insert(i, [JSON.stringify(def)]); } else l.push([JSON.stringify(def)]); });
     return null;
   };
@@ -421,7 +499,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const dragChart = (d: ChartDef, mode: 'move' | 'size', e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     const sx0 = e.clientX, sy0 = e.clientY; let last = { x: d.x, y: d.y, w: d.w, h: d.h };
-    const move = (ev: MouseEvent) => { const dx = ev.clientX - sx0, dy = ev.clientY - sy0; last = mode === 'move' ? { ...last, x: Math.max(0, d.x + dx), y: Math.max(0, d.y + dy) } : { ...last, w: Math.max(240, d.w + dx), h: Math.max(160, d.h + dy) }; setChartTmp(t => ({ ...t, [d.id]: last })); };
+    const move = (ev: MouseEvent) => { const dx = (ev.clientX - sx0) / Z, dy = (ev.clientY - sy0) / Z; last = mode === 'move' ? { ...last, x: Math.max(0, d.x + dx), y: Math.max(0, d.y + dy) } : { ...last, w: Math.max(240, d.w + dx), h: Math.max(160, d.h + dy) }; setChartTmp(t => ({ ...t, [d.id]: last })); };
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); patchChart({ ...d, ...last }); setChartTmp(t => { const n = { ...t }; delete n[d.id]; return n; }); };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   };
@@ -447,13 +525,14 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
     if (cc >= fc) { if (left < el.scrollLeft + fcW) el.scrollLeft = left - fcW; else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth; }
   };
-  const startEdit = (r: number, c: number, text?: string) => { const v = getValid(ydoc, tabId, r, c); if (v?.t === 'check' && text === undefined) { toggleCheck(r, c); return; } setEdit({ r, c, text: text ?? raw(r, c) }); };
+  const startEdit = (r: number, c: number, text?: string) => { if (!canEditCell(r, c)) { onToast(denyMsg(r, c)); return; } const v = getValid(ydoc, tabId, r, c); if (v?.t === 'check' && text === undefined) { toggleCheck(r, c); return; } setEdit({ r, c, text: text ?? raw(r, c) }); };
   const toggleCheck = (r: number, c: number) => { const on = /^true$/i.test(raw(r, c)); setCell(r, c, on ? 'FALSE' : 'TRUE'); };
   const commitEdit = (then?: 'down' | 'right' | 'stay') => {
     const e = editRef.current; if (!e) return;
     const { r, c, text } = e;
     setEdit(null);
     if (text !== raw(r, c)) setCell(r, c, text);
+    if (!text.startsWith('=') && canEditCell(r, c)) { const marks = hasRichMarks(text); if (marks && !fmtOf(r, c).rt) tx(() => patchFmt(ydoc, tabId, r, c, { rt: 1 })); else if (!marks && fmtOf(r, c).rt) tx(() => patchFmt(ydoc, tabId, r, c, { rt: null })); }
     if (then === 'down') moveTo(step(r, 1), c); else if (then === 'right') moveTo(r, c + 1);
     setTimeout(() => wrap.current?.focus(), 0);
   };
@@ -478,7 +557,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     const dr = mine ? R.r1 - mine.r1 : 0, dc = mine ? R.c1 - mine.c1 : 0;
     tx(() => {
       lines.forEach((cols, i) => cols.forEach((v, j) => {
-        const r = R.r1 + i, c = R.c1 + j; if (r >= MAX_ROWS || c >= MAX_COLS) return;
+        const r = R.r1 + i, c = R.c1 + j; if (r >= MAX_ROWS || c >= MAX_COLS || !canEditCell(r, c)) return;
         const cells = tCells(tab.map), k = cellKey(r, c);
         const val = mine && v.startsWith('=') ? shiftFormula(v, dr, dc) : v;
         if (val === '') cells.delete(k); else cells.set(k, val);
@@ -519,6 +598,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
         let v = raw(sr, sc);
         if (step_ !== null && !v.startsWith('=')) { const base = vertical ? (r < src.r1 ? Number(raw(src.r1, c)) - step_ * (src.r1 - r) : Number(raw(src.r2, c)) + step_ * (r - src.r2)) : (c < src.c1 ? Number(raw(r, src.c1)) - step_ * (src.c1 - c) : Number(raw(r, src.c2)) + step_ * (c - src.c2)); v = String(Math.round(base * 1e9) / 1e9); }
         else if (v.startsWith('=')) v = shiftFormula(v, r - sr, c - sc);
+        if (!canEditCell(r, c)) continue;
         const k = cellKey(r, c); if (v === '') cells.delete(k); else cells.set(k, v);
         const f = fmtMap(ydoc).get(mkey(tabId, sr, sc)); if (f) fmtMap(ydoc).set(mkey(tabId, r, c), f); else fmtMap(ydoc).delete(mkey(tabId, r, c));
         const vr = validMap(ydoc).get(mkey(tabId, sr, sc)); if (vr) validMap(ydoc).set(mkey(tabId, r, c), vr); else validMap(ydoc).delete(mkey(tabId, r, c));
@@ -590,19 +670,64 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     setActiveId(nid);
   };
 
+  // ── pivot tables: a tab whose cells are computed from another range (see lib buildPivot) ──
+  const savePivot = (f: PivotForm, editTab: TabInfo | undefined, srcTab: TabInfo | undefined): string | null => {
+    const rg = parseRange(f.range); if (!rg || !srcTab) return 'Type a range like A1:H200';
+    if (rg.r2 <= rg.r1) return 'The range needs a header row and at least one data row';
+    if (parsePivot(srcTab.map.get('pivot'))) return 'Pick a range on a normal sheet, not on another pivot table';
+    const def: PivotDef = { src: srcTab.name, ...rg, rowCol: rg.c1 + f.rowCol, colCol: f.colCol === null ? null : rg.c1 + f.colCol, valCol: rg.c1 + f.valCol, agg: f.agg };
+    if (editTab) { tx(() => editTab.map.set('pivot', JSON.stringify(def))); return null; }
+    const id = newId(); let n = 1; while (tabs.some(x => x.name === `Pivot ${n}`)) n++;
+    tx(() => { const m = newTabMap(`Pivot ${n}`, (tabs[tabs.length - 1]?.order ?? 0) + 1, 100, 12, 1); m.set('pivot', JSON.stringify(def)); tabsMap(ydoc).set(id, m); });
+    setActiveId(id); setSel({ r: 0, c: 0, r2: 0, c2: 0 });
+    return null;
+  };
+
+  // ── data from other spreadsheets: =IMPORTRANGE("name or link","Sheet1!A1:D20"), re-read every couple of minutes ──
+  const importKeys = useMemo(() => { const k = new Set<string>(); for (const t of tabs) tCells(t.map).forEach(v => { const m = IMPORT_RE.exec(v); if (m) k.add(`${m[1]}\u0000${m[2]}`); }); return [...k].sort().join('\n'); }, [tabs, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const extCache = useRef(new Map<string, { at: number; data: Val[][] }>());
+  useEffect(() => {
+    if (!importKeys) return;
+    let off = false;
+    const hdr: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+    const load = async (a: string, b: string): Promise<Val[][]> => {
+      try {
+        let id = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(a)?.[0];
+        if (!id) { const r = await fetch(`/api/crm/drive?view=search&q=${encodeURIComponent(a)}`, { headers: hdr }); const j = await r.json(); id = (j.docs as Array<{ id: string; title: string; kind?: string }> | undefined)?.find(d => d.kind === 'sheet' && d.title.trim().toLowerCase() === a.trim().toLowerCase())?.id; }
+        if (!id) return [[new SheetError('#REF!')]];
+        const r = await fetch(`/api/crm/drive/doc-state/${id}`, { headers: hdr }); const j = await r.json();
+        if (!r.ok || !j.state || j.doc?.kind !== 'sheet') return [[new SheetError('#REF!')]];
+        const tmp = new Y.Doc(); try { Y.applyUpdate(tmp, fromBase64(j.state)); return readRangeFromDoc(tmp, b); } finally { tmp.destroy(); }
+      } catch { return [[new SheetError('#REF!')]]; }
+    };
+    const run = async () => {
+      let changed = false;
+      for (const k of importKeys.split('\n')) {
+        const [a, b] = k.split('\u0000'); const key = `${a}|${b}`; const hit = extCache.current.get(key);
+        if (hit && Date.now() - hit.at < 110_000) continue;
+        const data = await load(a, b); if (off) return;
+        extCache.current.set(key, { at: Date.now(), data }); changed = true;
+      }
+      if (changed && !off) setExtData(new Map([...extCache.current].map(([k, v]) => [k, v.data])));
+    };
+    void run(); const iv = setInterval(() => { if (document.visibilityState === 'visible') void run(); }, 120_000);
+    return () => { off = true; clearInterval(iv); };
+  }, [importKeys, authToken]);
+
   // ── export ──
   const download = async (kind: 'csv' | 'xlsx') => {
     if (!tab) return;
     const base = (title || 'spreadsheet').replace(/[^\w\- ]+/g, '').trim() || 'spreadsheet';
-    const textOf = (t: TabInfo) => { const ev = new Evaluator((tn, r, c) => (tabs.find(x => x.name === tn)?.map.get('cells') as Y.Map<string> | undefined)?.get(cellKey(r, c)) ?? '', t.name); return (r: number, c: number) => { const s = fmtMap(ydoc).get(mkey(t.id, r, c)); let f: CellFmt = {}; try { f = s ? JSON.parse(s) : {}; } catch { /* plain */ } return formatVal(ev.value(null, r, c), f); }; };
+    const textOf = (t: TabInfo) => { const ev = new Evaluator(getter, t.name, extData); return (r: number, c: number) => { const s = fmtMap(ydoc).get(mkey(t.id, r, c)); let f: CellFmt = {}; try { f = s ? JSON.parse(s) : {}; } catch { /* plain */ } const out = formatVal(ev.value(null, r, c), f); return out.startsWith('\u0001spark:') ? '' : f.rt ? stripRich(out) : out; }; };
+    const gridOf = (t: TabInfo): string[][] => { const pg = pivotGrids.get(t.name); return pg ?? tabGrid(t.map, textOf(t)); };
     try {
       if (kind === 'csv') {
-        const csv = tabGrid(tab.map, textOf(tab)).map(r => r.map(csvEscape).join(',')).join('\n');
+        const csv = gridOf(tab).map(r => r.map(csvEscape).join(',')).join('\n');
         const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = `${base} - ${tab.name}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       } else {
         const XLSX = await import('xlsx');
         const wb = XLSX.utils.book_new();
-        for (const t of tabs) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tabGrid(t.map, textOf(t)).map(r => r.map(v => (v !== '' && !Number.isNaN(Number(v.replace(/,/g, ''))) && !/^0\d/.test(v) ? Number(v.replace(/,/g, '')) : v)))), t.name.slice(0, 31).replace(/[\\/?*[\]:]/g, ' '));
+        for (const t of tabs) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gridOf(t).map(r => r.map(v => (v !== '' && !Number.isNaN(Number(v.replace(/,/g, ''))) && !/^0\d/.test(v) ? Number(v.replace(/,/g, '')) : v)))), t.name.slice(0, 31).replace(/[\\/?*[\]:]/g, ' '));
         XLSX.writeFile(wb, `${base}.xlsx`);
       }
     } catch { onToast('Could not make that download'); }
@@ -642,7 +767,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const matchSet = useMemo(() => new Set(matches.map(m => cellKey(m.r, m.c))), [matches]);
   const goMatch = (i: number) => { if (!matches.length) return; const k = ((i % matches.length) + matches.length) % matches.length; setFind(f => (f ? { ...f, idx: k } : f)); moveTo(matches[k].r, matches[k].c); };
   const replaceOne = () => { if (!find || !matches.length) return; const m = matches[find.idx % matches.length]; const v = raw(m.r, m.c); setCell(m.r, m.c, v.replace(new RegExp(find.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), find.rep)); };
-  const replaceAll = () => { if (!find || !tab || !matches.length) return; const re = new RegExp(find.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'); tx(() => { for (const m of matches) { const v = raw(m.r, m.c); tCells(tab.map).set(cellKey(m.r, m.c), v.replace(re, find.rep)); } }); onToast(`Replaced in ${matches.length} cell${matches.length === 1 ? '' : 's'}`); };
+  const replaceAll = () => { if (!find || !tab || !matches.length) return; const re = new RegExp(find.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'); tx(() => { for (const m of matches) { if (!canEditCell(m.r, m.c)) continue; const v = raw(m.r, m.c); tCells(tab.map).set(cellKey(m.r, m.c), v.replace(re, find.rep)); } }); onToast(`Replaced in ${matches.length} cell${matches.length === 1 ? '' : 's'}`); };
 
   // ── pointer + keyboard ──
   const cellAt = (clientX: number, clientY: number): { r: number; c: number } | null => {
@@ -760,6 +885,10 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     const note = notesMap(ydoc).get(mkey(tabId, r, c));
     const isCheck = valid?.t === 'check';
     const text = isCheck ? (v === true ? '☑' : '☐') : formatVal(v, f);
+    const spark = typeof v === 'string' && v.startsWith('\u0001spark:') ? v.slice(7).split(':') : null;
+    const rich = !!f.rt && !spark && typeof v === 'string' && !raw(r, c).startsWith('=');
+    const locked = !!lockAt(r, c) && !canEditCell(r, c);
+    const badEntry = !!valid && valid.t !== 'check' && v !== null && v !== '' && !!checkValid(valid, typeof v === 'string' ? v : String(v), choicesOf(valid));
     let cbg: string | undefined, cfg: string | undefined, cb = false;
     for (const rule of rules) if (r >= rule.r1 && r <= rule.r2 && c >= rule.c1 && c <= rule.c2 && condMatch(v, rule.op as CondOp, rule.val)) { cbg = rule.bg ?? cbg; cfg = rule.fg ?? cfg; cb = cb || !!rule.b; }
     const inSel = r >= R.r1 && r <= R.r2 && c >= R.c1 && c <= R.c2 && !(r === sel.r && c === sel.c);
@@ -775,14 +904,15 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     const wrap_ = !!f.wr;
     return (
       <div key={key} title={note ? (JSON.parse(note) as NoteInfo).t : undefined} style={{
-        position: 'absolute', top: tops[i], left: lefts[c], width, height, boxSizing: 'border-box', padding: wrap_ ? '4px 6px' : '0 6px', lineHeight: wrap_ ? '17px' : `${ROW_H - 1}px`, fontSize: 13,
+        position: 'absolute', top: tops[i], left: lefts[c], width, height, boxSizing: 'border-box', padding: wrap_ ? '4px 6px' : '0 6px', lineHeight: wrap_ ? `${17 * Z}px` : `${Math.max(14, Math.min(height, ROW_H * Z) - 1)}px`, fontSize: 13 * Z,
         overflow: 'hidden', whiteSpace: wrap_ ? 'pre-wrap' : 'nowrap', wordBreak: wrap_ ? 'break-word' : undefined, textOverflow: wrap_ ? 'clip' : 'ellipsis', textAlign: al === 'r' ? 'right' : al === 'c' ? 'center' : 'left',
         fontWeight: bold?.get(key) || cb || r < frozen ? 700 : 400, fontStyle: f.i ? 'italic' : undefined, textDecoration: [f.u || link ? 'underline' : '', f.s ? 'line-through' : ''].filter(Boolean).join(' ') || undefined,
         color: v instanceof SheetError ? 'var(--k-dc2626)' : link ? '#1a56db' : cfg ?? f.fg ?? 'var(--k-1a1a1a)', cursor: link ? 'pointer' : undefined,
         borderRight: bd.includes('r') ? BD : '1px solid var(--k-e5e7eb)', borderBottom: bd.includes('b') ? BD : '1px solid var(--k-e5e7eb)', borderTop: bd.includes('t') ? BD : undefined, borderLeft: bd.includes('l') ? BD : undefined, background: bgc,
-        backgroundImage: inSel ? 'linear-gradient(rgba(201,146,44,.16),rgba(201,146,44,.16))' : undefined, paddingRight: isHdr ? 22 : 6,
+        backgroundImage: inSel ? 'linear-gradient(rgba(201,146,44,.16),rgba(201,146,44,.16))' : locked ? 'repeating-linear-gradient(135deg, rgba(0,0,0,.045) 0 4px, transparent 4px 8px)' : undefined, paddingRight: isHdr ? 22 : 6,
       }}>
-        {text}
+        {spark ? <SparkSvg kind={spark[0]} nums={spark[1] ? spark[1].split(',').map(Number) : []} w={width - 8} h={Math.max(10, height - 6)} /> : rich ? parseRich(String(v)).map((run, k) => <span key={k} style={{ fontWeight: run.b ? 700 : undefined, fontStyle: run.i ? 'italic' : undefined, textDecoration: [run.u ? 'underline' : '', run.s ? 'line-through' : ''].filter(Boolean).join(' ') || undefined, color: run.c }}>{run.t}</span>) : text}
+        {badEntry && <span title="This doesn't match the rule for this cell" style={{ position: 'absolute', top: 0, left: 0, width: 0, height: 0, borderRight: '7px solid transparent', borderTop: '7px solid #f59e0b' }} />}
         {note && <span style={{ position: 'absolute', top: 0, right: 0, width: 0, height: 0, borderLeft: '7px solid transparent', borderTop: '7px solid #dc2626' }} />}
         {isHdr && <span style={{ position: 'absolute', right: 4, top: 0, fontSize: 10, color: (filters[c]?.length ?? 0) ? '#a06a12' : 'var(--k-9ca3af)', fontWeight: 400 }}>{(filters[c]?.length ?? 0) ? '◆' : '▾'}</span>}
       </div>
@@ -804,14 +934,14 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const beginResize = (c: number, e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     const startX = e.clientX, startW = widths[c]; if (!tab) return;
-    const move = (ev: MouseEvent) => { const w = Math.max(MIN_W, Math.round(startW + ev.clientX - startX)); tx(() => tCols(tab.map).set(String(c), w)); };
+    const move = (ev: MouseEvent) => { const w = Math.max(MIN_W, Math.round((startW + ev.clientX - startX) / Z)); tx(() => tCols(tab.map).set(String(c), w)); };
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   };
   const beginRowResize = (r: number, e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     const startY = e.clientY, startH = heights[Math.max(0, idxOf(r))];
-    const move = (ev: MouseEvent) => { const h = Math.max(18, Math.min(400, Math.round(startH + ev.clientY - startY))); tx(() => extMap(ydoc).set(`${tabId}|rh|${r}`, String(h))); };
+    const move = (ev: MouseEvent) => { const h = Math.max(18, Math.min(400, Math.round((startH + ev.clientY - startY) / Z))); tx(() => extMap(ydoc).set(`${tabId}|rh|${r}`, String(h))); };
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   };
@@ -853,7 +983,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
         <button type="button" style={{ ...on(!!cur.i), fontStyle: 'italic' }} onClick={() => toggleFmt('i')} title="Italic (Ctrl+I)">I</button>
         <button type="button" style={{ ...on(!!cur.u), textDecoration: 'underline' }} onClick={() => toggleFmt('u')} title="Underline (Ctrl+U)">U</button>
         <button type="button" style={{ ...on(!!cur.s), textDecoration: 'line-through' }} onClick={() => toggleFmt('s')} title="Strikethrough (Ctrl+Shift+X)">S</button>
-        <Pop title="Text color" style={tb} label={<span style={{ borderBottom: `3px solid ${cur.fg ?? '#000'}`, lineHeight: 1 }}>A</span>}>{close => <Palette onPick={c => { applyFmt({ fg: c }); close(); }} onClear={() => { applyFmt({ fg: null }); close(); }} clearLabel="Default text color" />}</Pop>
+        <Pop title="Text color" style={tb} label={<span style={{ borderBottom: `3px solid ${cur.fg ?? '#000'}`, lineHeight: 1 }}>A</span>}>{close => <Palette onPick={c => { if (!wrapEditSel(`{${c}|`, '}')) applyFmt({ fg: c }); close(); }} onClear={() => { applyFmt({ fg: null }); close(); }} clearLabel="Default text color" />}</Pop>
         <Pop title="Fill color" style={tb} label={<span style={{ display: 'inline-block', width: 14, height: 14, background: cur.bg ?? 'transparent', border: '1px solid #9ca3af', borderRadius: 3, verticalAlign: 'middle' }} />}>{close => <Palette onPick={c => { applyFmt({ bg: c }); close(); }} onClear={() => { applyFmt({ bg: null }); close(); }} clearLabel="No fill" />}</Pop>
         <Pop title="Align" style={tb} label={<>{cur.al === 'c' ? '≡' : cur.al === 'r' ? '☰' : '☷'} ▾</>}>
           {close => (<>{([['l', 'Left'], ['c', 'Center'], ['r', 'Right']] as Array<['l' | 'c' | 'r', string]>).map(([a, l]) => <Item key={a} checked={cur.al === a} onClick={() => { applyFmt({ al: a }); close(); }}>{l}</Item>)}<Item onClick={() => { applyFmt({ al: null }); close(); }}>Automatic</Item></>)}
@@ -913,13 +1043,21 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
             <Item onClick={() => { hide('col'); close(); }}>Hide column{R.c2 > R.c1 ? 's' : ''} {colName(R.c1)}{R.c2 > R.c1 ? `–${colName(R.c2)}` : ''}</Item>
             <Item disabled={!hiddenCount} onClick={() => { unhideAll(); close(); }}>Show hidden rows and columns{hiddenCount ? ` (${hiddenCount})` : ''}</Item>
             <Divider />
-            <Item onClick={() => { setDlg('valid'); close(); }}>Dropdown / checkbox…</Item>
+            <Item onClick={() => { setDlg('valid'); close(); }}>Data validation (dropdown, checkbox, rules)…</Item>
             <Item onClick={() => { setDlg('cond'); close(); }}>Conditional formatting…</Item>
             <Item onClick={() => { setDlg('note'); close(); }}>{selNote ? 'Edit note…' : 'Add a note…'}</Item>
+            <Divider />
+            <Item onClick={() => { setPivotDlg({}); close(); }}>Pivot table…</Item>
+            <Item onClick={() => { setDlg('protect'); close(); }}>Protect range…{locks.length ? ` (${locks.length})` : ''}</Item>
+            <Item onClick={() => { setImportDlg(true); close(); }}>Import from another spreadsheet…</Item>
+            <Item onClick={() => { if (tab && canEditCell(R.r1, R.c2 + 1)) setCell(R.r1, R.c2 + 1, `=SPARKLINE(${rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })})`); close(); }}>Mini chart (sparkline) in the next cell</Item>
           </>)}
         </Pop>
         <span style={{ flex: 1 }} />
         {hasFeed && <button type="button" style={{ ...tb, color: '#a06a12', background: 'var(--k-fdf6e9)', whiteSpace: 'nowrap' }} disabled={refreshing} onClick={() => void refreshFeed(false)} title="Pull the latest from the CRM into the live columns">{refreshing ? 'Refreshing…' : '↻ Refresh from CRM'}</button>}
+        <Pop title="Zoom" style={{ ...tb, whiteSpace: 'nowrap' }} label={<>{Math.round(Z * 100)}% ▾</>} align="right">
+          {close => (<>{[0.5, 0.75, 0.9, 1, 1.25, 1.5, 2].map(z => <Item key={z} checked={z === Z} onClick={() => { setZoom(z); close(); }}>{Math.round(z * 100)}%</Item>)}</>)}
+        </Pop>
         <Pop title="Download" style={{ ...tb, whiteSpace: 'nowrap' }} label={<>⬇ ▾</>} align="right">
           {close => (<><Item onClick={() => { void download('csv'); close(); }}>This tab as CSV</Item><Item onClick={() => { void download('xlsx'); close(); }}>Whole spreadsheet as Excel (.xlsx)</Item></>)}
         </Pop>
@@ -995,7 +1133,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
           <div style={{ position: 'relative', width: totalW, height: tops[nRows] }}>
             {visI(firstI, lastI).flatMap(i => visI(c0, c1).filter(c => widths[c] > 0).map(c => paint(i, c)))}
             {charts.map(d => {
-              const g = chartTmp[d.id] ?? { x: d.x, y: d.y, w: d.w, h: d.h };
+              const g0 = chartTmp[d.id] ?? { x: d.x, y: d.y, w: d.w, h: d.h }; const g = { x: g0.x * Z, y: g0.y * Z, w: g0.w * Z, h: g0.h * Z };
               return (
                 <div key={d.id} onMouseDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onContextMenu={e => e.stopPropagation()}
                   style={{ position: 'absolute', left: g.x, top: g.y, width: g.w, height: g.h, background: 'var(--k-fff)', border: '1px solid var(--k-d1d5db)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.16)', zIndex: 4, overflow: 'hidden', display: 'flex', flexDirection: 'column', userSelect: 'none' }}>
@@ -1042,20 +1180,22 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
             <>
               <div onMouseDown={() => setDd(null)} style={{ position: 'fixed', inset: 0, pointerEvents: 'auto', zIndex: 8 }} />
               <div role="listbox" style={{ position: 'absolute', top: sy(i) + heights[i], left: sx(dd.c), minWidth: Math.max(widths[dd.c], 160), maxHeight: 240, overflowY: 'auto', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 12px 36px rgba(0,0,0,.2)', padding: 4, pointerEvents: 'auto', zIndex: 9 }}>
-                {(v.o ?? []).map(o => <button key={o} type="button" role="option" aria-selected={raw(dd.r, dd.c) === o} onMouseDown={e => { e.preventDefault(); setCell(dd.r, dd.c, o); setDd(null); wrap.current?.focus(); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: raw(dd.r, dd.c) === o ? 'var(--k-fdf6e9)' : 'none', borderRadius: 5, cursor: 'pointer', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-1a1a1a)' }}>{o}</button>)}
+                {(choicesOf(v) ?? []).map(o => <button key={o} type="button" role="option" aria-selected={raw(dd.r, dd.c) === o} onMouseDown={e => { e.preventDefault(); setCell(dd.r, dd.c, o); setDd(null); wrap.current?.focus(); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: raw(dd.r, dd.c) === o ? 'var(--k-fdf6e9)' : 'none', borderRadius: 5, cursor: 'pointer', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-1a1a1a)' }}>{o}</button>)}
                 <button type="button" onMouseDown={e => { e.preventDefault(); setCell(dd.r, dd.c, ''); setDd(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12.5, color: 'var(--k-9ca3af)', fontFamily: "'DM Sans',sans-serif" }}>Clear</button>
               </div>
             </>) : null; })()}
           {edit && (
             <input ref={el => { editor.current = el; if (el && document.activeElement !== el) { el.focus(); const n = el.value.length; el.setSelectionRange(n, n); } }} value={edit.text} onChange={e => setEdit({ ...edit, text: e.target.value })} aria-label="Edit cell"
               onKeyDown={e => {
+                const m_ = e.metaKey || e.ctrlKey, k_ = e.key.toLowerCase();
+                if (m_ && (k_ === 'b' || k_ === 'i' || k_ === 'u' || (e.shiftKey && k_ === 'x'))) { e.preventDefault(); e.stopPropagation(); if (k_ === 'b') toggleBold(); else toggleFmt(k_ === 'i' ? 'i' : k_ === 'u' ? 'u' : 's'); return; }
                 if (e.key === 'Enter') { e.preventDefault(); commitEdit('down'); }
                 else if (e.key === 'Tab') { e.preventDefault(); commitEdit('right'); }
                 else if (e.key === 'Escape') { e.preventDefault(); setEdit(null); wrap.current?.focus(); }
                 e.stopPropagation();
               }}
               onBlur={() => { if (editor.current && document.activeElement?.getAttribute('aria-label') === 'Cell contents') return; commitEdit('stay'); }}
-              style={{ position: 'absolute', pointerEvents: 'auto', top: sy(Math.max(0, idxOf(edit.r))), left: sx(edit.c), width: Math.max(widths[edit.c], 140), height: Math.max(ROW_H, heights[Math.max(0, idxOf(edit.r))]), boxSizing: 'border-box', border: '2px solid #c9922c', outline: 'none', padding: '0 5px', fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', zIndex: 6, userSelect: 'text' }} />
+              style={{ position: 'absolute', pointerEvents: 'auto', top: sy(Math.max(0, idxOf(edit.r))), left: sx(edit.c), width: Math.max(widths[edit.c], 140), height: Math.max(ROW_H, heights[Math.max(0, idxOf(edit.r))]), boxSizing: 'border-box', border: '2px solid #c9922c', outline: 'none', padding: '0 5px', fontSize: 13 * Z, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', zIndex: 6, userSelect: 'text' }} />
           )}
         </div>
       </div>
@@ -1128,6 +1268,22 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
         <ValidDialog rangeText={rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} current={selValid} onClose={() => setDlg(null)}
           onApply={rule => tx(() => forEachSel((r, c) => { const k = mkey(tabId, r, c); if (!rule) validMap(ydoc).delete(k); else validMap(ydoc).set(k, JSON.stringify(rule)); if (rule?.t === 'check' && !/^(true|false)$/i.test(raw(r, c))) tCells(tab.map).set(cellKey(r, c), 'FALSE'); }))} />
       )}
+      {dlg === 'protect' && (
+        <ProtectDialog rangeText={rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} onClose={() => setDlg(null)}
+          locks={locks.map<LockInfo>(l => ({ id: l.id, label: rangeLabel(l), by: l.by, byName: l.byName, mine: l.by === userId }))}
+          canManage={l => l.by === userId || isAdmin}
+          onRemove={id => tx(() => { const li = lockList(ydoc); const i = li.toArray().findIndex(x => { try { return (JSON.parse(x) as LockRange).id === id; } catch { return false; } }); if (i >= 0) li.delete(i, 1); })}
+          onAdd={rg_ => { const rg = parseRange(rg_); if (!rg) return 'Type a range like A1:D1'; tx(() => lockList(ydoc).push([JSON.stringify({ id: newId(), tab: tabId, ...rg, by: userId, byName: me.name } satisfies LockRange)])); return null; }} />
+      )}
+      {pivotDlg && (() => {
+        const editTab = pivotDlg.edit ? tabs.find(x => x.id === pivotDlg.edit) : undefined; const ed = editTab ? parsePivot(editTab.map.get('pivot')) : null;
+        const srcTab = ed ? tabs.find(x => x.name === ed.src) ?? tab : tab;
+        return <PivotDialog rangeText={rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} onClose={() => setPivotDlg(null)}
+          initial={ed ? { range: rangeLabel(ed), rowCol: ed.rowCol - ed.c1, colCol: ed.colCol === null ? null : ed.colCol - ed.c1, valCol: ed.valCol - ed.c1, agg: ed.agg } : undefined}
+          headersOf={rg_ => { const rg = parseRange(rg_); if (!rg || rg.c2 - rg.c1 > 59 || !srcTab) return null; return Array.from({ length: rg.c2 - rg.c1 + 1 }, (_, i) => String(evaluator.value(srcTab.name, rg.r1, rg.c1 + i) ?? '')); }}
+          onSave={f => savePivot(f, editTab, srcTab)} />;
+      })()}
+      {importDlg && <ImportDialog onClose={() => setImportDlg(false)} onInsert={(nm, rg_) => { const t = `=IMPORTRANGE("${nm.replace(/"/g, '')}","${rg_.replace(/"/g, '')}")`; setCell(sel.r, sel.c, t); }} />}
       {dlg === 'chart' && (
         <ChartDialog initial={chartEdit ?? undefined} rangeText={chartEdit ? rangeLabel(chartEdit) : rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} onClose={() => { setDlg(null); setChartEdit(null); }} onSave={v => saveChart(v, chartEdit)} />
       )}
@@ -1149,7 +1305,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
               ) : (
                 <button type="button" onClick={() => { setActiveId(t.id); setSel({ r: 0, c: 0, r2: 0, c2: 0 }); setEdit(null); }} onDoubleClick={() => setRenaming({ id: t.id, text: t.name })}
                   style={{ border: 'none', background: 'transparent', padding: '0 4px 0 14px', height: '100%', fontSize: 13, fontWeight: onT ? 700 : 500, color: onT ? 'var(--k-1a1a1a)' : 'var(--k-6b7280)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
-                  {t.map.get('feed') ? '● ' : ''}{t.name}
+                  {t.map.get('feed') ? '● ' : t.map.get('pivot') ? '▦ ' : ''}{t.name}
                 </button>
               )}
               <button type="button" aria-label={`${t.name} options`} onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setTabMenu(m => (m?.id === t.id ? null : { id: t.id, left: Math.max(8, Math.min(r.left, window.innerWidth - 180)), bottom: window.innerHeight - r.top + 4 })); }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '0 8px', color: 'var(--k-9ca3af)', height: '100%' }}>▾</button>
@@ -1157,7 +1313,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
                 <>
                   <div onClick={() => setTabMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
                   <div role="menu" style={{ position: 'fixed', bottom: tabMenu.bottom, left: tabMenu.left, zIndex: 1301, minWidth: 160, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 4 }}>
-                    {([['Rename', () => setRenaming({ id: t.id, text: t.name })], ['Duplicate', () => dupTab(t.id)], ['Move left', () => moveTab(t.id, -1)], ['Move right', () => moveTab(t.id, 1)], ['Delete', () => deleteTab(t.id)]] as Array<[string, () => void]>).map(([label, fn]) => (
+                    {([...(parsePivot(t.map.get('pivot')) ? [['Edit pivot…', () => { setActiveId(t.id); setPivotDlg({ edit: t.id }); }] as [string, () => void]] : []), ['Rename', () => setRenaming({ id: t.id, text: t.name })], ['Duplicate', () => dupTab(t.id)], ['Move left', () => moveTab(t.id, -1)], ['Move right', () => moveTab(t.id, 1)], ['Delete', () => deleteTab(t.id)]] as Array<[string, () => void]>).map(([label, fn]) => (
                       <button key={label} type="button" role="menuitem" onClick={() => { setTabMenu(null); fn(); }}
                         style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13.5, borderRadius: 6, color: label === 'Delete' ? 'var(--k-dc2626)' : 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }}>{label}</button>
                     ))}

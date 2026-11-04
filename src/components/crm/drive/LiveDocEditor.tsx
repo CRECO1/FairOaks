@@ -86,7 +86,7 @@ export default function LiveDocEditor({ docId, authToken, user, isMobile, onClos
     );
   }
   if (!doc || state === undefined) return <Frame isMobile={isMobile}><div style={{ padding: 28, color: 'var(--k-9ca3af)', fontSize: 14 }}>Opening…</div></Frame>;
-  if (doc.kind === 'sheet') return <SheetWorkspace key={docId} doc={doc} initialState={state} authToken={authToken} user={user} isMobile={isMobile} onClose={onClose} onShare={onShare} onToast={onToast} onTitle={onTitle} people={people} />;
+  if (doc.kind === 'sheet') return <SheetWorkspace key={docId} doc={doc} initialState={state} authToken={authToken} user={user} isMobile={isMobile} onClose={onClose} onShare={onShare} onToast={onToast} onTitle={onTitle} people={people} isAdmin={isAdmin} />;
   return <DocWorkspace key={docId} doc={doc} initialState={state} authToken={authToken} user={user} isMobile={isMobile} onClose={onClose} onShare={onShare} onSign={onSign} onToast={onToast} onTitle={onTitle} people={people} isAdmin={isAdmin} />;
 }
 

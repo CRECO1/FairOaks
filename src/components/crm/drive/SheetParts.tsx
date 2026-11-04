@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import * as Y from 'yjs';
 import { fromBase64 } from 'lib0/buffer';
-import type { CondOp, CondRule, ValidRule } from '@/lib/drive-sheet';
+import type { CondOp, CondRule, PivotAgg, ValidRule } from '@/lib/drive-sheet';
 import { replaceSheetContents } from '@/lib/drive-sheet';
 import type { DriveVersion } from '@/lib/drive-types';
 import type { DrivePerson } from './DocsDrive';
@@ -132,22 +132,108 @@ export function CondDialog({ rangeText, rules, onAdd, onDelete, onClose }: { ran
 const rangeName = (r: { r1: number; c1: number; r2: number; c2: number }) => `${colLetters(r.c1)}${r.r1 + 1}:${colLetters(r.c2)}${r.r2 + 1}`;
 function colLetters(c: number) { let s = ''; for (let n = c + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; }
 
-// ── dropdowns / checkboxes ──────────────────────────────────────────────────────────────
+// ── dropdowns, checkboxes and other entry rules ─────────────────────────────────────────
+
+const KINDS: Array<[string, string]> = [['none', 'Normal cell (no rule)'], ['list', 'Dropdown — my own choices'], ['listrange', 'Dropdown — choices from a range'], ['check', 'Checkbox'], ['num', 'Number'], ['int', 'Whole number'], ['date', 'Date'], ['len', 'Text length'], ['email', 'Email address'], ['url', 'Web address']];
+const OPS_V: Array<[string, string]> = [['between', 'between'], ['gt', 'greater than'], ['lt', 'less than'], ['ge', 'greater than or equal to'], ['le', 'less than or equal to'], ['eq', 'equal to'], ['ne', 'not equal to']];
 
 export function ValidDialog({ rangeText, current, onApply, onClose }: { rangeText: string; current: ValidRule | undefined; onApply: (rule: ValidRule | null) => void; onClose: () => void }) {
-  const [kind, setKind] = useState<'none' | 'list' | 'check'>(current?.t ?? 'none');
+  const initKind = !current ? 'none' : current.t === 'list' && current.src ? 'listrange' : current.t;
+  const [kind, setKind] = useState<string>(initKind);
   const [opts, setOpts] = useState((current?.o ?? ['Yes', 'No']).join('\n'));
+  const [src, setSrc] = useState(current?.src ?? '');
+  const [op, setOp] = useState<string>(current?.op ?? 'between');
+  const [a, setA] = useState(current?.a ?? '');
+  const [b, setB] = useState(current?.b ?? '');
+  const [warn, setWarn] = useState(!!current?.warn);
+  const hasOp = kind === 'num' || kind === 'int' || kind === 'date' || kind === 'len';
   return (
-    <Modal title="Dropdowns and checkboxes" onClose={onClose}>
+    <Modal title="Data validation" onClose={onClose}>
       <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginBottom: 6 }}>Applies to {rangeText}</div>
-      <label style={lab}>Show as</label>
-      <select value={kind} onChange={e => setKind(e.target.value as 'none' | 'list' | 'check')} style={{ ...field, width: '100%' }}>
-        <option value="none">Normal cell</option><option value="list">Dropdown list</option><option value="check">Checkbox</option>
-      </select>
+      <label style={lab}>Rule</label>
+      <select value={kind} onChange={e => setKind(e.target.value)} style={{ ...field, width: '100%' }}>{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
       {kind === 'list' && (<><label style={lab}>Choices (one per line)</label><textarea value={opts} onChange={e => setOpts(e.target.value)} rows={6} style={{ ...field, width: '100%', height: 'auto', padding: 10 }} /></>)}
+      {kind === 'listrange' && (<><label style={lab}>Range with the choices, e.g. Sheet1!A2:A20</label><input value={src} onChange={e => setSrc(e.target.value)} style={{ ...field, width: '100%' }} placeholder="Sheet1!A2:A20" /></>)}
+      {hasOp && (<>
+        <label style={lab}>{kind === 'len' ? 'Text length' : kind === 'date' ? 'Date (optional limit)' : 'Value'} must be</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select value={op} onChange={e => setOp(e.target.value)} style={{ ...field, flex: 1 }}>{OPS_V.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+          <input value={a} onChange={e => setA(e.target.value)} placeholder={kind === 'date' ? '1/1/2026' : '0'} style={{ ...field, width: 100 }} />
+          {op === 'between' && <input value={b} onChange={e => setB(e.target.value)} placeholder={kind === 'date' ? '12/31/2026' : '100'} style={{ ...field, width: 100 }} />}
+        </div>
+      </>)}
+      {kind !== 'none' && kind !== 'check' && (<><label style={lab}>If someone types something else</label>
+        <select value={warn ? 'warn' : 'reject'} onChange={e => setWarn(e.target.value === 'warn')} style={{ ...field, width: '100%' }}><option value="reject">Refuse the entry</option><option value="warn">Accept it but show a warning</option></select></>)}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
         <button type="button" style={plain} onClick={onClose}>Cancel</button>
-        <button type="button" style={primary} onClick={() => { onApply(kind === 'none' ? null : kind === 'check' ? { t: 'check' } : { t: 'list', o: opts.split('\n').map(x => x.trim()).filter(Boolean).slice(0, 100) }); onClose(); }}>Apply</button>
+        <button type="button" style={primary} onClick={() => {
+          if (kind === 'none') onApply(null);
+          else if (kind === 'check') onApply({ t: 'check' });
+          else if (kind === 'list') onApply({ t: 'list', o: opts.split('\n').map(x => x.trim()).filter(Boolean).slice(0, 100), ...(warn ? { warn: 1 as const } : {}) });
+          else if (kind === 'listrange') onApply({ t: 'list', src: src.trim(), ...(warn ? { warn: 1 as const } : {}) });
+          else if (kind === 'email' || kind === 'url') onApply({ t: kind, ...(warn ? { warn: 1 as const } : {}) });
+          else onApply({ t: kind as ValidRule['t'], op: op as ValidRule['op'], a, ...(op === 'between' ? { b } : {}), ...(warn ? { warn: 1 as const } : {}) });
+          onClose();
+        }}>Apply</button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── pivot table ─────────────────────────────────────────────────────────────────────────
+
+export interface PivotForm { range: string; rowCol: number; colCol: number | null; valCol: number; agg: PivotAgg }
+export function PivotDialog({ rangeText, headersOf, initial, onSave, onClose }: { rangeText: string; headersOf: (range: string) => string[] | null; initial?: PivotForm; onSave: (f: PivotForm) => string | null; onClose: () => void }) {
+  const [range, setRange] = useState(initial?.range ?? rangeText);
+  const [rowCol, setRowCol] = useState(initial?.rowCol ?? 0);
+  const [colCol, setColCol] = useState<number | null>(initial?.colCol ?? null);
+  const [valCol, setValCol] = useState(initial?.valCol ?? 1);
+  const [agg, setAgg] = useState<PivotAgg>(initial?.agg ?? 'sum');
+  const [err, setErr] = useState('');
+  const heads = headersOf(range);
+  const opts = (heads ?? []).map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>);
+  return (
+    <Modal title={initial ? 'Edit pivot table' : 'Create a pivot table'} onClose={onClose}>
+      <label style={lab}>Source range (first row = column names)</label>
+      <input value={range} onChange={e => setRange(e.target.value)} style={{ ...field, width: '100%' }} placeholder="A1:H200" />
+      {!heads ? <div style={{ color: 'var(--k-dc2626)', fontSize: 12.5, marginTop: 8 }}>Type a range like A1:H200</div> : (<>
+        <label style={lab}>Rows — group by</label><select value={rowCol} onChange={e => setRowCol(Number(e.target.value))} style={{ ...field, width: '100%' }}>{opts}</select>
+        <label style={lab}>Columns — split by (optional)</label><select value={colCol ?? ''} onChange={e => setColCol(e.target.value === '' ? null : Number(e.target.value))} style={{ ...field, width: '100%' }}><option value="">(none)</option>{opts}</select>
+        <label style={lab}>Values</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select value={agg} onChange={e => setAgg(e.target.value as PivotAgg)} style={{ ...field, width: 130 }}><option value="sum">Sum of</option><option value="count">Count of</option><option value="avg">Average of</option><option value="min">Min of</option><option value="max">Max of</option></select>
+          <select value={valCol} onChange={e => setValCol(Number(e.target.value))} style={{ ...field, flex: 1 }}>{opts}</select>
+        </div>
+      </>)}
+      {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+        <button type="button" style={plain} onClick={onClose}>Cancel</button>
+        <button type="button" style={primary} disabled={!heads} onClick={() => { const e = onSave({ range, rowCol, colCol, valCol, agg }); if (e) setErr(e); else onClose(); }}>{initial ? 'Save' : 'Create'}</button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── protected ranges ────────────────────────────────────────────────────────────────────
+
+export interface LockInfo { id: string; label: string; by: string; byName: string; mine: boolean }
+export function ProtectDialog({ rangeText, locks, canManage, onAdd, onRemove, onClose }: { rangeText: string; locks: LockInfo[]; canManage: (l: LockInfo) => boolean; onAdd: (range: string) => string | null; onRemove: (id: string) => void; onClose: () => void }) {
+  const [range, setRange] = useState(rangeText);
+  const [err, setErr] = useState('');
+  return (
+    <Modal title="Protected ranges" onClose={onClose}>
+      {locks.length > 0 && <div style={{ marginBottom: 12 }}>{locks.map(l => (
+        <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--k-e5e7eb)', fontSize: 13 }}>
+          <span>🔒</span><span style={{ flex: 1 }}>{l.label} <span style={{ color: 'var(--k-9ca3af)' }}>· only {l.mine ? 'you' : l.byName} can edit</span></span>
+          {canManage(l) && <button type="button" onClick={() => onRemove(l.id)} style={{ border: 'none', background: 'none', color: 'var(--k-dc2626)', cursor: 'pointer', fontSize: 13 }}>Remove</button>}
+        </div>))}</div>}
+      <div style={{ fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>Protect cells so only you (and admins) can change them — everyone else can still see them. Good for headers, formulas and reference data.</div>
+      <label style={lab}>Range to protect</label>
+      <input value={range} onChange={e => setRange(e.target.value)} style={{ ...field, width: '100%' }} placeholder="A1:D1" />
+      {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+        <button type="button" style={plain} onClick={onClose}>Done</button>
+        <button type="button" style={primary} onClick={() => { const e = onAdd(range); if (e) setErr(e); else setErr(''); }}>Protect range</button>
       </div>
     </Modal>
   );

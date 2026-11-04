@@ -120,6 +120,12 @@ export const serialOf = (y: number, m: number, d: number) => Math.round((Date.UT
 export const dateOf = (serial: number) => new Date(EPOCH + Math.round(serial) * DAY_MS);
 /** "10/14/2026", "2026-10-14" → a day number (days since 1899-12-30, like Excel / Sheets). */
 export function dateSerial(s: string): number | null {
+  const n = dateSerialRaw(s); if (n === null) return null;
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s.trim()) ?? /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s.trim()); const d = dateOf(n);
+  const [mo, da] = /^\d{4}/.test(s.trim()) ? [+m![2], +m![3]] : [+m![1], +m![2]];
+  return d.getUTCMonth() + 1 === mo && d.getUTCDate() === da ? n : null;
+}
+function dateSerialRaw(s: string): number | null {
   const t = s.trim();
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T].*)?$/.exec(t);
   if (m) return serialOf(+m[1], +m[2], +m[3]);
@@ -129,7 +135,7 @@ export function dateSerial(s: string): number | null {
 }
 export const fmtDate = (serial: number) => { const d = dateOf(serial); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}/${d.getUTCFullYear()}`; };
 
-export interface CellFmt { i?: 1; u?: 1; s?: 1; bg?: string; fg?: string; al?: 'l' | 'c' | 'r'; nf?: 'plain' | 'num' | 'cur' | 'pct' | 'date' | 'text'; dp?: number; wr?: 1; bd?: string }
+export interface CellFmt { i?: 1; u?: 1; s?: 1; bg?: string; fg?: string; al?: 'l' | 'c' | 'r'; nf?: 'plain' | 'num' | 'cur' | 'pct' | 'date' | 'text'; dp?: number; wr?: 1; bd?: string; /** rich text: words inside the cell carry their own bold / colour marks */ rt?: 1 }
 
 const withCommas = (n: number, dp: number) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 /** What a cell shows, after its number format (the typed text / formula is unchanged). */
@@ -196,7 +202,7 @@ export class Evaluator {
   private cache = new Map<string, Val>();
   private stack = new Set<string>();
   curRow: number | null = null; curCol: number | null = null;
-  constructor(private raw: RawGetter, private currentTab: string) {}
+  constructor(private raw: RawGetter, private currentTab: string, public ext?: Map<string, Val[][]>) {}
 
   /** The value shown for a cell: the formula's result, or the typed value. */
   value(tab: string | null, r: number, c: number): Val {
@@ -343,6 +349,8 @@ export class Evaluator {
       IFS: (a: Arg[]) => { for (let i = 0; i + 1 < a.length; i += 2) { const c = scalar(a[i]); if (c === true || (typeof c === 'number' && c !== 0)) return scalar(a[i + 1]); } throw ERR('#N/A'); },
       SWITCH: (a: Arg[]) => { const v = scalar(a[0]); let i = 1; for (; i + 1 < a.length; i += 2) if (same(v, scalar(a[i]))) return scalar(a[i + 1]); if (i < a.length) return scalar(a[i]); throw ERR('#N/A'); },
       PMT: (a: Arg[]) => { const r = sNum(a[0]), n = sNum(a[1]), pv = sNum(a[2]), fv = sNum(a[3], 0); if (r === 0) return -(pv + fv) / n; const k = (1 + r) ** n; return -(pv * k + fv) * r / (k - 1); },
+      IMPORTRANGE: (a: Arg[]) => { const m = self.ext?.get(`${sStr(a[0])}|${sStr(a[1])}`); if (!m) throw ERR('#LOADING'); const v = m[0]?.[0]; if (v instanceof SheetError) throw v; return v ?? ''; },
+      SPARKLINE: (a: Arg[]) => { const nums_ = flat(a[0]).filter((v): v is number => typeof v === 'number'); const kind = a[1] === undefined ? 'line' : sStr(a[1]).toLowerCase(); return `\u0001spark:${/bar|col/.test(kind) ? 'bar' : 'line'}:${nums_.slice(0, 200).join(',')}`; },
       ROW: (a: Arg[]) => (a[0] && isRange(a[0]) ? a[0].r1 + 1 : (self.curRow ?? 0) + 1),
       COLUMN: (a: Arg[]) => (a[0] && isRange(a[0]) ? a[0].c1 + 1 : (self.curCol ?? 0) + 1),
     });
@@ -624,10 +632,12 @@ export const condList = (d: Y.Doc) => d.getArray<string>('cond');
 export const extMap = (d: Y.Doc) => d.getMap<string>('ext');
 export const mergeList = (d: Y.Doc) => d.getArray<string>('merges');
 export const chartList = (d: Y.Doc) => d.getArray<string>('charts');
+export const lockList = (d: Y.Doc) => d.getArray<string>('locks');
+export interface LockRange { id: string; tab: string; r1: number; c1: number; r2: number; c2: number; by: string; byName: string }
 export interface MergeRange { tab: string; r1: number; c1: number; r2: number; c2: number }
 export interface ChartDef { id: string; tab: string; type: 'bar' | 'line' | 'pie'; title: string; r1: number; c1: number; r2: number; c2: number; hdr: boolean; x: number; y: number; w: number; h: number }
 
-export interface ValidRule { t: 'list' | 'check'; o?: string[] }
+export interface ValidRule { t: ValidKind; o?: string[]; /** a range such as Sheet1!A2:A20 to take the choices from */ src?: string; op?: ValidOp; a?: string; b?: string; /** show a warning instead of refusing the entry */ warn?: 1 }
 export interface NoteInfo { t: string; by: string; at: number }
 export interface CondRule { id: string; tab: string; r1: number; c1: number; r2: number; c2: number; op: CondOp; val: string; bg?: string; fg?: string; b?: 1 }
 
@@ -686,6 +696,108 @@ export function replaceSheetContents(target: Y.Doc, source: Y.Doc) {
     for (const [get] of [[fmtMap], [validMap], [notesMap]] as Array<[(d: Y.Doc) => Y.Map<string>]>) { const tm = get(target); [...tm.keys()].forEach(k => tm.delete(k)); get(source).forEach((v, k) => tm.set(k, v)); }
     const cl = condList(target); if (cl.length) cl.delete(0, cl.length); cl.push(condList(source).toArray());
     const em = extMap(target); [...em.keys()].forEach(k => em.delete(k)); extMap(source).forEach((v, k) => em.set(k, v));
-    for (const get of [mergeList, chartList]) { const l = get(target); if (l.length) l.delete(0, l.length); l.push(get(source).toArray()); }
+    for (const get of [mergeList, chartList, lockList]) { const l = get(target); if (l.length) l.delete(0, l.length); l.push(get(source).toArray()); }
   }, 'sheet-local');
+}
+
+// ── data validation (dropdown, number, date, text length, email, url) ───────────────────
+
+export type ValidKind = 'list' | 'check' | 'num' | 'int' | 'date' | 'len' | 'email' | 'url';
+export type ValidOp = 'between' | 'gt' | 'lt' | 'ge' | 'le' | 'eq' | 'ne';
+
+/** The message to show when a typed value breaks the rule, or null when it is fine. `listFromRange` supplies the choices of a range-based list. */
+export function checkValid(rule: { t: ValidKind; o?: string[]; op?: ValidOp; a?: string; b?: string }, value: string, listFromRange?: string[]): string | null {
+  const v = value.trim(); if (v === '' || v.startsWith('=')) return null;
+  const cmp = (x: number, lo: number, hi: number) => { const op = rule.op ?? 'between'; return op === 'between' ? x >= Math.min(lo, hi) && x <= Math.max(lo, hi) : op === 'gt' ? x > lo : op === 'lt' ? x < lo : op === 'ge' ? x >= lo : op === 'le' ? x <= lo : op === 'eq' ? x === lo : x !== lo; };
+  const opText = () => { const op = rule.op ?? 'between'; return op === 'between' ? `between ${rule.a} and ${rule.b}` : `${({ gt: 'greater than', lt: 'less than', ge: 'at least', le: 'at most', eq: 'equal to', ne: 'not equal to' } as Record<string, string>)[op]} ${rule.a}`; };
+  switch (rule.t) {
+    case 'list': { const opts = listFromRange ?? rule.o ?? []; return opts.some(o => o.toLowerCase() === v.toLowerCase()) ? null : `Pick one of: ${opts.slice(0, 8).join(', ')}${opts.length > 8 ? '…' : ''}`; }
+    case 'check': return /^(true|false)$/i.test(v) ? null : 'Use the checkbox';
+    case 'num': case 'int': { const n = Number(v.replace(/,/g, '')); if (Number.isNaN(n)) return 'Enter a number'; if (rule.t === 'int' && !Number.isInteger(n)) return 'Enter a whole number'; return cmp(n, Number(rule.a), Number(rule.b ?? rule.a)) ? null : `Enter a number ${opText()}`; }
+    case 'date': { const d = dateSerial(v); if (d === null) return 'Enter a date like 10/14/2026'; if (rule.a === undefined || rule.a === '') return null; const lo = dateSerial(rule.a), hi = dateSerial(rule.b ?? rule.a); if (lo === null) return null; return cmp(d, lo, hi ?? lo) ? null : `Enter a date ${opText()}`; }
+    case 'len': return cmp(v.length, Number(rule.a), Number(rule.b ?? rule.a)) ? null : `Text length must be ${opText()}`;
+    case 'email': return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'Enter an email address';
+    case 'url': return /^https?:\/\/\S+\.\S+/.test(v) ? null : 'Enter a web address starting with http';
+    default: return null;
+  }
+}
+
+// ── rich text inside a cell: **bold**, *italic*, __underline__, ~~strike~~, {#c9922c|coloured words} ─────
+
+export interface RichRun { t: string; b?: boolean; i?: boolean; u?: boolean; s?: boolean; c?: string }
+export function parseRich(text: string): RichRun[] {
+  const out: RichRun[] = []; let b = false, i = false, u = false, st = false; const colors: string[] = []; let buf = '';
+  const flush = () => { if (buf) { out.push({ t: buf, b, i, u, s: st, c: colors[colors.length - 1] }); buf = ''; } };
+  for (let k = 0; k < text.length;) {
+    const rest = text.slice(k);
+    const col = /^\{(#[0-9a-fA-F]{6})\|/.exec(rest);
+    if (col) { flush(); colors.push(col[1]); k += col[0].length; continue; }
+    if (rest[0] === '}' && colors.length) { flush(); colors.pop(); k++; continue; }
+    if (rest.startsWith('**')) { flush(); b = !b; k += 2; continue; }
+    if (rest.startsWith('__')) { flush(); u = !u; k += 2; continue; }
+    if (rest.startsWith('~~')) { flush(); st = !st; k += 2; continue; }
+    if (rest[0] === '*') { flush(); i = !i; k++; continue; }
+    buf += rest[0]; k++;
+  }
+  flush();
+  return out;
+}
+export const stripRich = (text: string) => parseRich(text).map(r => r.t).join('');
+export const hasRichMarks = (text: string) => /\*\*|__|~~|\{#[0-9a-fA-F]{6}\||(^|[^*])\*[^*\s][^*]*\*/.test(text);
+
+// ── external ranges (IMPORTRANGE) ───────────────────────────────────────────────────────
+
+/** Read a range such as "Emailed Tenants!A1:D20" (or just "A1:D20") out of another spreadsheet's Yjs doc, formulas evaluated. */
+export function readRangeFromDoc(doc: Y.Doc, spec: string): Val[][] {
+  const m = /^\s*(?:'?([^'!]+)'?!)?\$?([A-Za-z]{1,3})\$?(\d{1,5})(?::\$?([A-Za-z]{1,3})\$?(\d{1,5}))?\s*$/.exec(spec);
+  if (!m) return [[ERR('#REF!')]];
+  const tabs = listTabs(doc); const t = (m[1] ? tabs.find(x => x.name.toLowerCase() === m[1].toLowerCase()) : tabs[0]); if (!t) return [[ERR('#REF!')]];
+  const c1 = colIndex(m[2]), r1 = Number(m[3]) - 1, c2 = m[4] ? colIndex(m[4]) : c1, r2 = m[5] ? Number(m[5]) - 1 : r1;
+  const byName = new Map(tabs.map(x => [x.name, x.map]));
+  const ev = new Evaluator((tn, r, c) => (byName.get(tn ?? '')?.get('cells') as Y.Map<string> | undefined)?.get(cellKey(r, c)) ?? '', t.name);
+  const out: Val[][] = [];
+  for (let r = Math.min(r1, r2); r <= Math.min(Math.max(r1, r2), Math.min(r1, r2) + 1999); r++) { const row: Val[] = []; for (let c = Math.min(c1, c2); c <= Math.min(Math.max(c1, c2), MAX_COLS - 1); c++) row.push(ev.value(null, r, c)); out.push(row); }
+  return out;
+}
+export const IMPORT_RE = /^=\s*IMPORTRANGE\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)\s*$/i;
+
+// ── pivot tables ──────────────────────────────────────────────────────────────────────
+
+export type PivotAgg = 'sum' | 'count' | 'avg' | 'min' | 'max';
+export interface PivotDef { src: string; r1: number; c1: number; r2: number; c2: number; rowCol: number; colCol: number | null; valCol: number; agg: PivotAgg }
+
+/** The pivot's table, as text. `get` reads the source sheet's values (row 0 of the range is the header). */
+export function buildPivot(def: PivotDef, get: (r: number, c: number) => Val): string[][] {
+  const label = (v: Val) => { const t = displayVal(v); return t === '' ? '(blank)' : t; };
+  const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+  const rowKeys = new Set<string>(), colKeys = new Set<string>();
+  const cells = new Map<string, number[]>(), rowTot = new Map<string, number[]>(), colTot = new Map<string, number[]>(); const all: number[] = [];
+  const counts = new Map<string, number>(), rowCnt = new Map<string, number>(), colCnt = new Map<string, number>(); let allCnt = 0;
+  for (let r = def.r1 + 1; r <= def.r2; r++) {
+    const rk = label(get(r, def.rowCol)); const ck = def.colCol === null ? '' : label(get(r, def.colCol));
+    const v = get(r, def.valCol); const n = typeof v === 'number' ? v : (v !== null && v !== '' && !Number.isNaN(Number(v)) ? Number(v) : null);
+    rowKeys.add(rk); colKeys.add(ck);
+    const k = `${rk}\u0000${ck}`;
+    counts.set(k, (counts.get(k) ?? 0) + (v !== null && v !== '' ? 1 : 0)); rowCnt.set(rk, (rowCnt.get(rk) ?? 0) + (v !== null && v !== '' ? 1 : 0)); colCnt.set(ck, (colCnt.get(ck) ?? 0) + (v !== null && v !== '' ? 1 : 0)); if (v !== null && v !== '') allCnt++;
+    if (n !== null) { (cells.get(k) ?? cells.set(k, []).get(k)!).push(n); (rowTot.get(rk) ?? rowTot.set(rk, []).get(rk)!).push(n); (colTot.get(ck) ?? colTot.set(ck, []).get(ck)!).push(n); all.push(n); }
+  }
+  const agg = (nums: number[], cnt: number): string => {
+    if (def.agg === 'count') return String(cnt);
+    if (!nums.length) return '';
+    const x = def.agg === 'sum' ? nums.reduce((a, b) => a + b, 0) : def.agg === 'avg' ? nums.reduce((a, b) => a + b, 0) / nums.length : def.agg === 'min' ? Math.min(...nums) : Math.max(...nums);
+    return String(Math.round(x * 1e6) / 1e6);
+  };
+  const rks = [...rowKeys].sort(natural), cks = [...colKeys].sort(natural);
+  const hdr = label(get(def.r1, def.rowCol)), vname = label(get(def.r1, def.valCol)), what = `${def.agg === 'avg' ? 'Average' : def.agg[0].toUpperCase() + def.agg.slice(1)} of ${vname}`;
+  const grid: string[][] = [];
+  if (def.colCol === null) {
+    grid.push([hdr, what]);
+    for (const rk of rks) grid.push([rk, agg(cells.get(`${rk}\u0000`) ?? [], counts.get(`${rk}\u0000`) ?? 0)]);
+    grid.push(['Grand total', agg(all, allCnt)]);
+  } else {
+    grid.push([`${what} · ${hdr} ↓ ${label(get(def.r1, def.colCol))} →`, ...cks, 'Grand total']);
+    for (const rk of rks) grid.push([rk, ...cks.map(ck => agg(cells.get(`${rk}\u0000${ck}`) ?? [], counts.get(`${rk}\u0000${ck}`) ?? 0)), agg(rowTot.get(rk) ?? [], rowCnt.get(rk) ?? 0)]);
+    grid.push(['Grand total', ...cks.map(ck => agg(colTot.get(ck) ?? [], colCnt.get(ck) ?? 0)), agg(all, allCnt)]);
+  }
+  return grid;
 }
