@@ -107,7 +107,7 @@ export function brandedSignature(signature: string): string {
       return `<tr><td style="padding:0 10px 0 0;color:${GOLD};font-weight:700;font-size:11px;letter-spacing:1px;width:14px">${lab ? esc(lab[1].toUpperCase()) : '&nbsp;'}</td><td style="padding:1px 0;color:#333;font-size:13px">${shown}</td></tr>`;
     };
     return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:${FONT};margin:0"><tr>`
-      + `<td valign="top" style="padding:0 16px 0 0;border-right:3px solid ${GOLD}"><img src="${LOGO_URL}" width="150" alt="CRECO — Commercial Real Estate Company" style="display:block;width:150px;height:auto;border:0"></td>`
+      + `<td valign="middle" align="center" style="padding:0 16px 0 0;border-right:3px solid ${GOLD};vertical-align:middle"><img src="${LOGO_URL}" width="150" alt="CRECO — Commercial Real Estate Company" style="display:block;width:150px;height:auto;border:0"></td>`
       + `<td valign="top" style="padding:0 0 0 16px;font-family:${FONT}">`
       + `<div style="font-size:17px;font-weight:700;color:#111;line-height:1.25">${esc(name)}</div>`
       + (title ? `<div style="font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:${GOLD};margin:2px 0 0">${esc(title)}</div>` : '')
