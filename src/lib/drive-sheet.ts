@@ -129,7 +129,7 @@ export function dateSerial(s: string): number | null {
 }
 export const fmtDate = (serial: number) => { const d = dateOf(serial); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}/${d.getUTCFullYear()}`; };
 
-export interface CellFmt { i?: 1; u?: 1; s?: 1; bg?: string; fg?: string; al?: 'l' | 'c' | 'r'; nf?: 'plain' | 'num' | 'cur' | 'pct' | 'date' | 'text'; dp?: number }
+export interface CellFmt { i?: 1; u?: 1; s?: 1; bg?: string; fg?: string; al?: 'l' | 'c' | 'r'; nf?: 'plain' | 'num' | 'cur' | 'pct' | 'date' | 'text'; dp?: number; wr?: 1; bd?: string }
 
 const withCommas = (n: number, dp: number) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 /** What a cell shows, after its number format (the typed text / formula is unchanged). */
@@ -620,6 +620,12 @@ export const fmtMap = (d: Y.Doc) => d.getMap<string>('fmt');
 export const validMap = (d: Y.Doc) => d.getMap<string>('valid');
 export const notesMap = (d: Y.Doc) => d.getMap<string>('notes');
 export const condList = (d: Y.Doc) => d.getArray<string>('cond');
+/** Row heights, hidden rows / columns and banding: keys "<tabId>|rh|<row>", "<tabId>|hr|<row>", "<tabId>|hc|<col>", "<tabId>|band". */
+export const extMap = (d: Y.Doc) => d.getMap<string>('ext');
+export const mergeList = (d: Y.Doc) => d.getArray<string>('merges');
+export const chartList = (d: Y.Doc) => d.getArray<string>('charts');
+export interface MergeRange { tab: string; r1: number; c1: number; r2: number; c2: number }
+export interface ChartDef { id: string; tab: string; type: 'bar' | 'line' | 'pie'; title: string; r1: number; c1: number; r2: number; c2: number; hdr: boolean; x: number; y: number; w: number; h: number }
 
 export interface ValidRule { t: 'list' | 'check'; o?: string[] }
 export interface NoteInfo { t: string; by: string; at: number }
@@ -650,6 +656,18 @@ export function shiftMeta(d: Y.Doc, tabId: string, axis: 'row' | 'col', at: numb
     for (const [k] of moves) m.delete(k);
     for (const [, to, v] of moves) if (to) m.set(to, v);
   }
+  // row heights / hidden rows (or hidden columns) move with their rows (columns)
+  const kind = axis === 'row' ? ['rh', 'hr'] : ['hc'];
+  const e = extMap(d); const moves: Array<[string, string | null, string]> = [];
+  e.forEach((v, key) => {
+    if (!key.startsWith(tabId + '|')) return;
+    const [k, n] = key.slice(tabId.length + 1).split('|'); if (!kind.includes(k) || n === undefined) return;
+    const i = Number(n);
+    if (delta === 1 && i >= at) moves.push([key, `${tabId}|${k}|${i + 1}`, v]);
+    if (delta === -1) { if (i === at) moves.push([key, null, v]); else if (i > at) moves.push([key, `${tabId}|${k}|${i - 1}`, v]); }
+  });
+  for (const [k] of moves) e.delete(k);
+  for (const [, to, v] of moves) if (to) e.set(to, v);
 }
 
 /** Deep copy of one tab's data (used by "Duplicate tab" and "Restore version"). */
@@ -667,5 +685,7 @@ export function replaceSheetContents(target: Y.Doc, source: Y.Doc) {
     tabsMap(source).forEach((m, id) => t.set(id, cloneTabMap(m)));
     for (const [get] of [[fmtMap], [validMap], [notesMap]] as Array<[(d: Y.Doc) => Y.Map<string>]>) { const tm = get(target); [...tm.keys()].forEach(k => tm.delete(k)); get(source).forEach((v, k) => tm.set(k, v)); }
     const cl = condList(target); if (cl.length) cl.delete(0, cl.length); cl.push(condList(source).toArray());
+    const em = extMap(target); [...em.keys()].forEach(k => em.delete(k)); extMap(source).forEach((v, k) => em.set(k, v));
+    for (const get of [mergeList, chartList]) { const l = get(target); if (l.length) l.delete(0, l.length); l.push(get(source).toArray()); }
   }, 'sheet-local');
 }

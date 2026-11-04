@@ -18,13 +18,14 @@ import { acquireDoc, releaseDoc, type CollabHandle } from '@/lib/collab/doc-regi
 import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
 import type { DriveDoc } from '@/lib/drive-types';
 import {
-  Evaluator, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, cellKey, colIndex, colName, condList, condMatch, csvEscape, fmtMap, formatVal, getFmt, getNote, getValid, listTabs, mkey, newId, newTabMap, cloneTabMap,
+  Evaluator, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, cellKey, chartList, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, formatVal, getNote, getValid, listTabs, mergeList, mkey, newId, newTabMap, cloneTabMap,
   notesMap, parseKey, patchFmt, renameTabRefs, shiftFormula, shiftMeta, tBold, tCells, tCols, tabGrid, tabsMap, validMap,
-  type CellFmt, type CondOp, type CondRule, type FeedData, type NoteInfo, type TabInfo, type ValidRule,
+  type CellFmt, type CondOp, type CondRule, type ChartDef, type FeedData, type MergeRange, type NoteInfo, type TabInfo, type ValidRule,
 } from '@/lib/drive-sheet';
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
 import { ActivityPanel } from './DocPanel';
 import { CondDialog, Divider, HistoryDialog, Item, NoteDialog, Palette, Pop, ValidDialog } from './SheetParts';
+import { ChartDialog, ChartSvg, type ChartData } from './SheetChart';
 import type { DrivePerson } from './DocsDrive';
 
 interface Props {
@@ -239,7 +240,10 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const [filterMenu, setFilterMenu] = useState<{ c: number; q: string } | null>(null);
   const [find, setFind] = useState<{ q: string; rep: string; idx: number; replace: boolean } | null>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; r: number; c: number; head?: 'col' | 'row' } | null>(null);
-  const [dlg, setDlg] = useState<null | 'cond' | 'valid' | 'note'>(null);
+  const [dlg, setDlg] = useState<null | 'cond' | 'valid' | 'note' | 'chart'>(null);
+  const [chartEdit, setChartEdit] = useState<ChartDef | null>(null);
+  const [painter, setPainter] = useState<{ fmt: string; bold: boolean } | null>(null);
+  const painterRef = useRef<typeof painter>(null); painterRef.current = painter;
   const [dd, setDd] = useState<{ r: number; c: number } | null>(null);
   const [fill, setFill] = useState<{ r: number; c: number } | null>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -248,13 +252,13 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const dragging = useRef(false);
   const clip = useRef<Clip | null>(null);
   const fmtCache = useRef(new Map<string, CellFmt>());
-  const undo = useMemo(() => new Y.UndoManager([tabsMap(ydoc), fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), condList(ydoc)], { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 }), [ydoc]);
+  const undo = useMemo(() => new Y.UndoManager([tabsMap(ydoc), fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), condList(ydoc), extMap(ydoc), mergeList(ydoc), chartList(ydoc)], { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 }), [ydoc]);
   useEffect(() => () => undo.destroy(), [undo]);
 
   // Re-render whenever anything in the sheet changes (mine or a teammate's).
   useEffect(() => {
     const on = () => bump();
-    const shared = [tabsMap(ydoc), fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), condList(ydoc)] as Array<Y.AbstractType<unknown>>;
+    const shared = [tabsMap(ydoc), fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), condList(ydoc), extMap(ydoc), mergeList(ydoc), chartList(ydoc)] as Array<Y.AbstractType<unknown>>;
     shared.forEach(t => t.observeDeep(on));
     return () => shared.forEach(t => t.unobserveDeep(on));
   }, [ydoc]);
@@ -268,7 +272,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const fc = Math.min(ncols - 1, Number(tab?.map.get('frozenCols') ?? 0));
   const widths = useMemo(() => {
     const w: number[] = [];
-    for (let c = 0; c < ncols; c++) w.push(Math.max(MIN_W, Number(tab ? tCols(tab.map).get(String(c)) : 0) || DEF_W));
+    for (let c = 0; c < ncols; c++) w.push(extMap(ydoc).get(`${tabId}|hc|${c}`) ? 0 : Math.max(MIN_W, Number(tab ? tCols(tab.map).get(String(c)) : 0) || DEF_W));
     return w;
   }, [tab, ncols, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const lefts = useMemo(() => { const l = [0]; widths.forEach((w, i) => l.push(l[i] + w)); return l; }, [widths]);
@@ -289,24 +293,45 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const rules = useMemo(() => condList(ydoc).toArray().map(s => { try { return JSON.parse(s) as CondRule; } catch { return null; } }).filter((x): x is CondRule => !!x && x.tab === tabId), [ydoc, tabId, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = (r: number, c: number) => formatVal(evaluator.value(null, r, c), fmtOf(r, c));
 
-  // ── filters: which rows are visible (display index ↔ sheet row) ──
+  // ── which rows are visible (hidden rows and filters), and how tall each one is (display index ↔ sheet row) ──
   const hdrRows = Math.max(frozen, 1);
   const filterKey = JSON.stringify(filters);
   const order = useMemo(() => {
-    if (!filtersOn || !Object.keys(filters).length) return null;
-    const hidden = Object.entries(filters).map(([c, v]) => [Number(c), new Set(v)] as [number, Set<string>]);
+    const hiddenSet = new Set<number>();
+    extMap(ydoc).forEach((_v, k) => { if (k.startsWith(tabId + '|hr|')) hiddenSet.add(Number(k.slice(tabId.length + 4))); });
+    const hidden = filtersOn ? Object.entries(filters).map(([c, v]) => [Number(c), new Set(v)] as [number, Set<string>]) : [];
     const out: number[] = [];
     for (let r = 0; r < rows; r++) {
-      if (r < hdrRows) { out.push(r); continue; }
-      if (hidden.every(([c, set]) => !set.has(formatVal(evaluator.value(null, r, c), fmtOf(r, c))))) out.push(r);
+      if (hiddenSet.has(r)) continue;
+      if (r >= hdrRows && hidden.length && !hidden.every(([c, set]) => !set.has(formatVal(evaluator.value(null, r, c), fmtOf(r, c))))) continue;
+      out.push(r);
     }
-    return out;
+    return out.length ? out : [0];
   }, [filtersOn, filterKey, rows, evaluator, tabId, version]); // eslint-disable-line react-hooks/exhaustive-deps
-  const posOf = useMemo(() => { if (!order) return null; const m = new Map<number, number>(); order.forEach((r, i) => m.set(r, i)); return m; }, [order]);
-  const nRows = order ? order.length : rows;
-  const rowAt = (i: number) => (order ? order[Math.max(0, Math.min(order.length - 1, i))] : Math.max(0, Math.min(rows - 1, i)));
-  const idxOf = (r: number) => (posOf ? posOf.get(r) ?? -1 : r);
-  const frozenH = Math.min(frozen, nRows) * ROW_H;
+  const posOf = useMemo(() => { const m = new Map<number, number>(); order.forEach((r, i) => m.set(r, i)); return m; }, [order]);
+  const nRows = order.length;
+  const rowAt = (i: number) => order[Math.max(0, Math.min(nRows - 1, i))];
+  const idxOf = (r: number) => posOf.get(r) ?? -1;
+  // wrapped text makes a row taller (an estimate from the text length and the column width); a person can also drag a row's height
+  const wrapH = useMemo(() => {
+    const m = new Map<number, number>();
+    fmtMap(ydoc).forEach((sv, k) => {
+      if (!k.startsWith(tabId + '|') || !sv.includes('"wr"')) return;
+      const [r, c] = parseKey(k.slice(tabId.length + 1)); const w = Math.max(30, (widths[c] ?? DEF_W) - 14); if (!widths[c]) return;
+      const txt = formatVal(evaluator.value(null, r, c), fmtOf(r, c));
+      const lines = txt.split('\n').reduce((a, part) => a + Math.max(1, Math.ceil((part.length * 7.1) / w)), 0);
+      m.set(r, Math.max(m.get(r) ?? 0, lines * 17 + 9));
+    });
+    return m;
+  }, [ydoc, tabId, widths, evaluator, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const heights = useMemo(() => order.map(r => Math.max(Number(extMap(ydoc).get(`${tabId}|rh|${r}`)) || ROW_H, wrapH.get(r) ?? 0)), [order, wrapH, ydoc, tabId, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tops = useMemo(() => { const t = [0]; heights.forEach((h, i) => t.push(t[i] + h)); return t; }, [heights]);
+  const idxAtY = (y: number) => { let lo = 0, hi = nRows - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (tops[mid] <= y) lo = mid; else hi = mid - 1; } return lo; };
+  const frozenH = tops[Math.min(frozen, nRows)];
+  const bandOn = !!extMap(ydoc).get(`${tabId}|band`);
+  const merges = useMemo(() => mergeList(ydoc).toArray().map(x => { try { return JSON.parse(x) as MergeRange; } catch { return null; } }).filter((x): x is MergeRange => !!x && x.tab === tabId), [ydoc, tabId, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mergeOf = useMemo(() => { const m = new Map<string, { a: MergeRange; anchor: boolean }>(); for (const a of merges) for (let r = a.r1; r <= a.r2; r++) for (let c = a.c1; c <= a.c2; c++) m.set(cellKey(r, c), { a, anchor: r === a.r1 && c === a.c1 }); return m; }, [merges]);
+  const charts = useMemo(() => chartList(ydoc).toArray().map(x => { try { return JSON.parse(x) as ChartDef; } catch { return null; } }).filter((x): x is ChartDef => !!x && x.tab === tabId), [ydoc, tabId, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = body.current; if (!el) return;
@@ -337,6 +362,69 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const toggleBold = () => { if (!tab) return; const b = tBold(tab.map); const on = !b.get(cellKey(R.r1, R.c1)); tx(() => forEachSel((r, c) => { if (on) b.set(cellKey(r, c), true); else b.delete(cellKey(r, c)); })); };
   const applyFmt = (patch: { [K in keyof CellFmt]?: CellFmt[K] | null }) => { tx(() => forEachSel((r, c) => patchFmt(ydoc, tabId, r, c, patch))); };
   const toggleFmt = (k: 'i' | 'u' | 's') => { const on = !fmtOf(R.r1, R.c1)[k]; applyFmt({ [k]: on ? 1 : null }); };
+  const selRef = useRef(sel); selRef.current = sel;
+  const toggleWrap = () => applyFmt({ wr: fmtOf(R.r1, R.c1).wr ? null : 1 });
+  const setBorders = (mode: 'all' | 'outer' | 'top' | 'bottom' | 'left' | 'right' | 'none') => {
+    tx(() => forEachSel((r, c) => {
+      const b = new Set((fmtOf(r, c).bd ?? '').split('').filter(Boolean));
+      const edge: Record<string, boolean> = { t: r === R.r1, b: r === R.r2, l: c === R.c1, r: c === R.c2 };
+      if (mode === 'none') b.clear();
+      else if (mode === 'all') ['t', 'b', 'l', 'r'].forEach(x => b.add(x));
+      else if (mode === 'outer') Object.entries(edge).forEach(([k, v]) => { if (v) b.add(k); });
+      else { const k = mode === 'top' ? 't' : mode === 'bottom' ? 'b' : mode === 'left' ? 'l' : 'r'; if (edge[k]) b.add(k); }
+      patchFmt(ydoc, tabId, r, c, { bd: b.size ? [...b].join('') : null });
+    }));
+  };
+  const clearFormat = () => { if (!tab) return; tx(() => forEachSel((r, c) => { fmtMap(ydoc).delete(mkey(tabId, r, c)); tBold(tab.map).delete(cellKey(r, c)); })); };
+  const startPainter = () => { setPainter({ fmt: fmtMap(ydoc).get(mkey(tabId, sel.r, sel.c)) ?? '', bold: !!(tab && tBold(tab.map).get(cellKey(sel.r, sel.c))) }); onToast('Paint format: now select the cells to format'); };
+  const applyPainter = (pt: { fmt: string; bold: boolean }) => {
+    if (!tab) return; const x = range(selRef.current);
+    tx(() => { for (let r = x.r1; r <= Math.min(x.r2, rows - 1); r++) for (let c = x.c1; c <= x.c2; c++) { const k = mkey(tabId, r, c); if (pt.fmt) fmtMap(ydoc).set(k, pt.fmt); else fmtMap(ydoc).delete(k); if (pt.bold) tBold(tab.map).set(cellKey(r, c), true); else tBold(tab.map).delete(cellKey(r, c)); } });
+  };
+  const toggleMerge = () => {
+    if (!tab) return;
+    const overlapping = merges.filter(m => !(m.r2 < R.r1 || m.r1 > R.r2 || m.c2 < R.c1 || m.c1 > R.c2));
+    tx(() => {
+      const l = mergeList(ydoc);
+      const keep = l.toArray().filter(x => { try { const m = JSON.parse(x) as MergeRange; return !(m.tab === tabId && !(m.r2 < R.r1 || m.r1 > R.r2 || m.c2 < R.c1 || m.c1 > R.c2)); } catch { return true; } });
+      if (l.length) l.delete(0, l.length);
+      l.push(keep);
+      if (!overlapping.length && (R.r1 !== R.r2 || R.c1 !== R.c2)) {
+        l.push([JSON.stringify({ tab: tabId, r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 } satisfies MergeRange)]);
+        forEachSel((r, c) => { if (!(r === R.r1 && c === R.c1)) tCells(tab.map).delete(cellKey(r, c)); });
+      }
+    });
+  };
+  const hide = (axis: 'row' | 'col') => { tx(() => { if (axis === 'row') { for (let r = R.r1; r <= R.r2; r++) extMap(ydoc).set(`${tabId}|hr|${r}`, '1'); } else for (let c = R.c1; c <= R.c2; c++) extMap(ydoc).set(`${tabId}|hc|${c}`, '1'); }); };
+  const hiddenCount = (() => { let n = 0; extMap(ydoc).forEach((_v, k) => { if (k.startsWith(tabId + '|hr|') || k.startsWith(tabId + '|hc|')) n++; }); return n; })();
+  const unhideAll = () => tx(() => { [...extMap(ydoc).keys()].forEach(k => { if (k.startsWith(tabId + '|hr|') || k.startsWith(tabId + '|hc|')) extMap(ydoc).delete(k); }); });
+  const toggleBand = () => tx(() => { const k = `${tabId}|band`; if (extMap(ydoc).get(k)) extMap(ydoc).delete(k); else extMap(ydoc).set(k, '1'); });
+  const chartData = (d: ChartDef): ChartData => {
+    const r0 = d.hdr && d.r2 > d.r1 ? d.r1 + 1 : d.r1; const labels: string[] = []; const cols = Math.max(1, d.c2 - d.c1);
+    const names = Array.from({ length: cols }, (_, i) => (d.hdr && d.r2 > d.r1 ? shown(d.r1, d.c1 + (d.c2 > d.c1 ? i + 1 : 0)) : '') || (cols > 1 ? `Series ${i + 1}` : 'Value'));
+    const series = names.map(name => ({ name, values: [] as number[] }));
+    for (let r = r0; r <= d.r2; r++) {
+      labels.push(d.c2 > d.c1 ? shown(r, d.c1) : String(r - r0 + 1));
+      series.forEach((sr, i) => { const v = evaluator.value(null, r, d.c2 > d.c1 ? d.c1 + 1 + i : d.c1); sr.values.push(typeof v === 'number' ? v : Number(v) || 0); });
+    }
+    return { labels, series };
+  };
+  const saveChart = (v: { type: ChartDef['type']; title: string; range: string; hdr: boolean }, existing?: ChartDef | null): string | null => {
+    const rg = parseRange(v.range); if (!rg) return 'Type a range like A1:C10';
+    const def: ChartDef = existing ? { ...existing, type: v.type, title: v.title.slice(0, 80), hdr: v.hdr, ...rg } : { id: newId(), tab: tabId, type: v.type, title: v.title.slice(0, 80), hdr: v.hdr, ...rg, x: Math.round((lefts[rg.c2 + 1] ?? 0) + 30), y: Math.round(tops[Math.max(0, idxOf(rg.r1))] ?? 0), w: 460, h: 300 };
+    tx(() => { const l = chartList(ydoc); const i = l.toArray().findIndex(x => { try { return (JSON.parse(x) as ChartDef).id === def.id; } catch { return false; } }); if (i >= 0) { l.delete(i, 1); l.insert(i, [JSON.stringify(def)]); } else l.push([JSON.stringify(def)]); });
+    return null;
+  };
+  const patchChart = (d: ChartDef) => tx(() => { const l = chartList(ydoc); const i = l.toArray().findIndex(x => { try { return (JSON.parse(x) as ChartDef).id === d.id; } catch { return false; } }); if (i >= 0) { l.delete(i, 1); l.insert(i, [JSON.stringify(d)]); } });
+  const deleteChart = (id: string) => tx(() => { const l = chartList(ydoc); const i = l.toArray().findIndex(x => { try { return (JSON.parse(x) as ChartDef).id === id; } catch { return false; } }); if (i >= 0) l.delete(i, 1); });
+  const [chartTmp, setChartTmp] = useState<Record<string, { x: number; y: number; w: number; h: number }>>({});
+  const dragChart = (d: ChartDef, mode: 'move' | 'size', e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const sx0 = e.clientX, sy0 = e.clientY; let last = { x: d.x, y: d.y, w: d.w, h: d.h };
+    const move = (ev: MouseEvent) => { const dx = ev.clientX - sx0, dy = ev.clientY - sy0; last = mode === 'move' ? { ...last, x: Math.max(0, d.x + dx), y: Math.max(0, d.y + dy) } : { ...last, w: Math.max(240, d.w + dx), h: Math.max(160, d.h + dy) }; setChartTmp(t => ({ ...t, [d.id]: last })); };
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); patchChart({ ...d, ...last }); setChartTmp(t => { const n = { ...t }; delete n[d.id]; return n; }); };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  };
   const cur = fmtOf(sel.r, sel.c);
   const boldOn = !!(tab && tBold(tab.map).get(cellKey(sel.r, sel.c)));
   const setDecimals = (d: 1 | -1) => {
@@ -347,12 +435,13 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
 
   // a display-index based cursor, so arrows skip rows a filter hides
   const step = (r: number, dir: number) => { const i = idxOf(r); return rowAt((i < 0 ? 0 : i) + dir); };
+  const stepCol = (c: number, dir: number) => { let n = c + dir; while (n > 0 && n < ncols - 1 && !widths[n]) n += dir; return Math.max(0, Math.min(ncols - 1, n)); };
   const moveTo = (r: number, c: number, extend = false) => {
     const rr = Math.max(0, Math.min(MAX_ROWS - 1, r)), cc = Math.max(0, Math.min(MAX_COLS - 1, c));
     setSel(s => (extend ? { ...s, r2: rr, c2: cc } : { r: rr, c: cc, r2: rr, c2: cc }));
     const el = body.current; if (!el) return;
     const i = Math.max(0, idxOf(rr));
-    const top = i * ROW_H, bottom = top + ROW_H, left = lefts[cc] ?? cc * DEF_W, right = left + (widths[cc] ?? DEF_W);
+    const top = tops[i], bottom = tops[i + 1], left = lefts[cc] ?? cc * DEF_W, right = left + (widths[cc] ?? DEF_W);
     if (i >= frozen && top < el.scrollTop + frozenH) el.scrollTop = top - frozenH;
     else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
     if (cc >= fc) { if (left < el.scrollLeft + fcW) el.scrollLeft = left - fcW; else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth; }
@@ -495,7 +584,8 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const dupTab = (id: string) => {
     const t = tabs.find(x => x.id === id); if (!t) return;
     const nid = newId(), m = cloneTabMap(t.map); m.set('name', `${t.name} copy`.slice(0, 60)); m.set('order', (tabs[tabs.length - 1]?.order ?? 0) + 1); m.delete('feed');
-    tx(() => { tabsMap(ydoc).set(nid, m); for (const mp of [fmtMap(ydoc), validMap(ydoc), notesMap(ydoc)]) mp.forEach((v, k) => { if (k.startsWith(id + '|')) mp.set(nid + k.slice(id.length), v); }); });
+    tx(() => { tabsMap(ydoc).set(nid, m); for (const mp of [fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), extMap(ydoc)]) mp.forEach((v, k) => { if (k.startsWith(id + '|')) mp.set(nid + k.slice(id.length), v); });
+      for (const l of [mergeList(ydoc), chartList(ydoc)]) { const add: string[] = []; l.forEach(x => { try { const o = JSON.parse(x) as { tab: string; id?: string }; if (o.tab === id) add.push(JSON.stringify({ ...o, tab: nid, ...(o.id ? { id: newId() } : {}) })); } catch { /* skip */ } }); if (add.length) l.push(add); } });
     setActiveId(nid);
   };
 
@@ -561,13 +651,15 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     if (x < 0 || y < 0) return null;
     const yy = y < frozenH ? y : y + el.scrollTop, xx = x < fcW ? x : x + el.scrollLeft;
     let c = 0; while (c < ncols - 1 && lefts[c + 1] <= xx) c++;
-    return { r: rowAt(Math.floor(yy / ROW_H)), c };
+    return { r: rowAt(idxAtY(yy)), c };
   };
   const onMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     setCtx(null); setDd(null);
     if (edit) commitEdit('stay');
-    const p = cellAt(e.clientX, e.clientY); if (!p) return;
+    let p = cellAt(e.clientX, e.clientY); if (!p) return;
+    const mg0 = mergeOf.get(cellKey(p.r, p.c));
+    if (mg0 && !e.shiftKey) { p = { r: mg0.a.r1, c: mg0.a.c1 }; setSel({ r: mg0.a.r1, c: mg0.a.c1, r2: mg0.a.r2, c2: mg0.a.c2 }); dragging.current = false; wrap.current?.focus(); const pt0 = painterRef.current; if (pt0) setTimeout(() => { applyPainter(pt0); setPainter(null); }, 0); return; }
     const v = getValid(ydoc, tabId, p.r, p.c);
     if (filtersOn && p.r === 0) {   // the little ▾ at the right of a header cell opens its filter
       const rect = body.current!.getBoundingClientRect(); const cx = (p.c < fc ? lefts[p.c + 1] : lefts[p.c + 1] - scroll.left) + rect.left;
@@ -578,7 +670,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     if ((e.metaKey || e.ctrlKey) && LINK.test(shown(p.r, p.c))) { const t = shown(p.r, p.c); window.open(t.includes('@') && !/^https?:/.test(t) ? `mailto:${t}` : t, '_blank', 'noopener'); return; }
     if (e.shiftKey) setSel(s => ({ ...s, r2: p.r, c2: p.c })); else setSel({ r: p.r, c: p.c, r2: p.r, c2: p.c });
     dragging.current = true; wrap.current?.focus();
-    const up = () => { dragging.current = false; window.removeEventListener('mouseup', up); };
+    const up = () => { dragging.current = false; window.removeEventListener('mouseup', up); const pt = painterRef.current; if (pt) setTimeout(() => { applyPainter(pt); setPainter(null); }, 0); };
     window.addEventListener('mouseup', up);
   };
   const onMouseMove = (e: React.MouseEvent) => { if (!dragging.current) return; const p = cellAt(e.clientX, e.clientY); if (p) setSel(s => (s.r2 === p.r && s.c2 === p.c ? s : { ...s, r2: p.r, c2: p.c })); };
@@ -629,9 +721,9 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     switch (e.key) {
       case 'ArrowDown': e.preventDefault(); moveTo(step(cr, 1), cc, ext); return;
       case 'ArrowUp': e.preventDefault(); moveTo(step(cr, -1), cc, ext); return;
-      case 'ArrowLeft': e.preventDefault(); moveTo(cr, cc - 1, ext); return;
-      case 'ArrowRight': e.preventDefault(); moveTo(cr, cc + 1, ext); return;
-      case 'Tab': e.preventDefault(); moveTo(sel.r, sel.c + (e.shiftKey ? -1 : 1)); return;
+      case 'ArrowLeft': e.preventDefault(); moveTo(cr, stepCol(cc, -1), ext); return;
+      case 'ArrowRight': e.preventDefault(); moveTo(cr, stepCol(cc, 1), ext); return;
+      case 'Tab': e.preventDefault(); moveTo(sel.r, stepCol(sel.c, e.shiftKey ? -1 : 1)); return;
       case 'Enter': e.preventDefault(); startEdit(sel.r, sel.c); return;
       case 'F2': e.preventDefault(); startEdit(sel.r, sel.c); return;
       case ' ': if (getValid(ydoc, tabId, sel.r, sel.c)?.t === 'check') { e.preventDefault(); toggleCheck(sel.r, sel.c); return; } break;
@@ -646,18 +738,21 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
 
   // ── drawing ──
   const bold = tab ? tBold(tab.map) : null;
-  const firstI = Math.max(Math.min(frozen, nRows), Math.floor(scroll.top / ROW_H) - 3);
-  const lastI = Math.min(nRows - 1, Math.floor((scroll.top + box.h) / ROW_H) + 3);
+  const firstI = Math.max(Math.min(frozen, nRows), idxAtY(scroll.top) - 2);
+  const lastI = Math.min(nRows - 1, idxAtY(scroll.top + box.h) + 2);
   const visI = (a: number, b: number) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);
   let c0 = 0; while (c0 < ncols - 1 && lefts[c0 + 1] < scroll.left) c0++;
   let c1 = c0; while (c1 < ncols - 1 && lefts[c1] < scroll.left + box.w) c1++;
-  const bodyCols = visI(Math.max(c0, fc), c1);
-  const frozenCols = visI(0, fc - 1);
+  const bodyCols = visI(Math.max(c0, fc), c1).filter(c => widths[c] > 0);
+  const frozenCols = visI(0, fc - 1).filter(c => widths[c] > 0);
   const curMatch = find && matches.length ? matches[find.idx % matches.length] : null;
 
+  const BD = '1px solid #374151';
   const paint = (i: number, c: number) => {
     const r = rowAt(i);
     const key = cellKey(r, c);
+    const mg = mergeOf.get(key);
+    if (mg && !mg.anchor) return null;                          // covered by a merged cell
     const f = fmtOf(r, c), v = evaluator.value(null, r, c);
     const valid = getValid(ydoc, tabId, r, c) as ValidRule | undefined;
     const note = notesMap(ydoc).get(mkey(tabId, r, c));
@@ -671,14 +766,18 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     const link = !isCheck && typeof v === 'string' && LINK.test(v);
     const hit = matchSet.has(key);
     const isHdr = filtersOn && r === 0;
-    const bgc = hit ? (curMatch && curMatch.r === r && curMatch.c === c ? '#ffd966' : '#fff2a8') : cbg ?? f.bg ?? (r < frozen ? 'var(--k-f9fafb)' : 'var(--k-fff)');
+    const bgc = hit ? (curMatch && curMatch.r === r && curMatch.c === c ? '#ffd966' : '#fff2a8') : cbg ?? f.bg ?? (r < frozen ? 'var(--k-f9fafb)' : bandOn && r >= hdrRows && i % 2 === 0 ? 'var(--k-f9fafb)' : 'var(--k-fff)');
+    const width = mg ? lefts[mg.a.c2 + 1] - lefts[mg.a.c1] : widths[c];
+    const height = mg ? Math.max(heights[i], tops[Math.min(nRows, Math.max(i, idxOf(mg.a.r2) < 0 ? i : idxOf(mg.a.r2)) + 1)] - tops[i]) : heights[i];
+    const bd = f.bd ?? '';
+    const wrap_ = !!f.wr;
     return (
       <div key={key} title={note ? (JSON.parse(note) as NoteInfo).t : undefined} style={{
-        position: 'absolute', top: i * ROW_H, left: lefts[c], width: widths[c], height: ROW_H, boxSizing: 'border-box', padding: '0 6px', lineHeight: `${ROW_H - 1}px`, fontSize: 13,
-        overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', textAlign: al === 'r' ? 'right' : al === 'c' ? 'center' : 'left',
+        position: 'absolute', top: tops[i], left: lefts[c], width, height, boxSizing: 'border-box', padding: wrap_ ? '4px 6px' : '0 6px', lineHeight: wrap_ ? '17px' : `${ROW_H - 1}px`, fontSize: 13,
+        overflow: 'hidden', whiteSpace: wrap_ ? 'pre-wrap' : 'nowrap', wordBreak: wrap_ ? 'break-word' : undefined, textOverflow: wrap_ ? 'clip' : 'ellipsis', textAlign: al === 'r' ? 'right' : al === 'c' ? 'center' : 'left',
         fontWeight: bold?.get(key) || cb || r < frozen ? 700 : 400, fontStyle: f.i ? 'italic' : undefined, textDecoration: [f.u || link ? 'underline' : '', f.s ? 'line-through' : ''].filter(Boolean).join(' ') || undefined,
         color: v instanceof SheetError ? 'var(--k-dc2626)' : link ? '#1a56db' : cfg ?? f.fg ?? 'var(--k-1a1a1a)', cursor: link ? 'pointer' : undefined,
-        borderRight: '1px solid var(--k-e5e7eb)', borderBottom: '1px solid var(--k-e5e7eb)', background: bgc,
+        borderRight: bd.includes('r') ? BD : '1px solid var(--k-e5e7eb)', borderBottom: bd.includes('b') ? BD : '1px solid var(--k-e5e7eb)', borderTop: bd.includes('t') ? BD : undefined, borderLeft: bd.includes('l') ? BD : undefined, background: bgc,
         backgroundImage: inSel ? 'linear-gradient(rgba(201,146,44,.16),rgba(201,146,44,.16))' : undefined, paddingRight: isHdr ? 22 : 6,
       }}>
         {text}
@@ -689,13 +788,13 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   };
 
   const sx = (c: number) => (c < fc ? lefts[c] : lefts[c] - scroll.left);
-  const sy = (i: number) => (i < frozen ? i * ROW_H : i * ROW_H - scroll.top);
+  const sy = (i: number) => (i < frozen ? tops[i] : tops[i] - scroll.top);
   const iA = Math.max(0, idxOf(R.r1)), iB = Math.max(0, idxOf(R.r2));
-  const selBox = { top: sy(Math.min(iA, iB)), left: sx(R.c1), width: lefts[R.c2 + 1] - lefts[R.c1], height: (Math.abs(iB - iA) + 1) * ROW_H };
+  const selBox = { top: sy(Math.min(iA, iB)), left: sx(R.c1), width: lefts[R.c2 + 1] - lefts[R.c1], height: tops[Math.max(iA, iB) + 1] - tops[Math.min(iA, iB)] };
   const act = { top: sy(Math.max(0, idxOf(sel.r))), left: sx(sel.c), w: widths[sel.c] ?? DEF_W };
   const peerBoxes = peers.filter(p => p.cell && p.cell.tab === tabId).map((p, i) => {
     const { r, c } = p.cell!; if (r >= rows || c >= ncols || idxOf(r) < 0) return null;
-    return <div key={i} style={{ position: 'absolute', top: sy(idxOf(r)), left: sx(c), width: widths[c], height: ROW_H, border: `2px solid ${p.color}`, boxSizing: 'border-box', pointerEvents: 'none', zIndex: 3 }}>
+    return <div key={i} style={{ position: 'absolute', top: sy(idxOf(r)), left: sx(c), width: widths[c], height: heights[idxOf(r)], border: `2px solid ${p.color}`, boxSizing: 'border-box', pointerEvents: 'none', zIndex: 3 }}>
       <span style={{ position: 'absolute', top: -15, left: -2, background: p.color, color: '#fff', fontSize: 10, padding: '0 4px', borderRadius: 3, whiteSpace: 'nowrap' }}>{p.name}</span>
     </div>;
   });
@@ -704,6 +803,13 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     e.preventDefault(); e.stopPropagation();
     const startX = e.clientX, startW = widths[c]; if (!tab) return;
     const move = (ev: MouseEvent) => { const w = Math.max(MIN_W, Math.round(startW + ev.clientX - startX)); tx(() => tCols(tab.map).set(String(c), w)); };
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  };
+  const beginRowResize = (r: number, e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const startY = e.clientY, startH = heights[Math.max(0, idxOf(r))];
+    const move = (ev: MouseEvent) => { const h = Math.max(18, Math.min(400, Math.round(startH + ev.clientY - startY))); tx(() => extMap(ydoc).set(`${tabId}|rh|${r}`, String(h))); };
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   };
@@ -717,6 +823,12 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const selValid = getValid(ydoc, tabId, sel.r, sel.c);
   const selNote = getNote(ydoc, tabId, sel.r, sel.c);
 
+  const stats = (() => {
+    if (R.r1 === R.r2 && R.c1 === R.c2) return null;
+    let n = 0, sum = 0, count = 0; let seen = 0;
+    for (let r = R.r1; r <= Math.min(R.r2, rows - 1) && seen < 20000; r++) for (let c = R.c1; c <= R.c2 && seen < 20000; c++) { seen++; const v = evaluator.value(null, r, c); if (v !== null && v !== '') { count++; if (typeof v === 'number') { n++; sum += v; } } }
+    return { n, sum, count };
+  })();
   if (!tab) return <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Opening…</div>;
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)' }}>
@@ -744,6 +856,22 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
         <Pop title="Align" style={tb} label={<>{cur.al === 'c' ? '≡' : cur.al === 'r' ? '☰' : '☷'} ▾</>}>
           {close => (<>{([['l', 'Left'], ['c', 'Center'], ['r', 'Right']] as Array<['l' | 'c' | 'r', string]>).map(([a, l]) => <Item key={a} checked={cur.al === a} onClick={() => { applyFmt({ al: a }); close(); }}>{l}</Item>)}<Item onClick={() => { applyFmt({ al: null }); close(); }}>Automatic</Item></>)}
         </Pop>
+        <button type="button" style={on(!!cur.wr)} onClick={toggleWrap} title="Wrap text: show long text on several lines">↵ Wrap</button>
+        <Pop title="Borders" style={tb} label={<>▦ ▾</>}>
+          {close => (<>
+            <Item onClick={() => { setBorders('all'); close(); }}>All borders</Item>
+            <Item onClick={() => { setBorders('outer'); close(); }}>Outer border</Item>
+            <Item onClick={() => { setBorders('top'); close(); }}>Top</Item>
+            <Item onClick={() => { setBorders('bottom'); close(); }}>Bottom</Item>
+            <Item onClick={() => { setBorders('left'); close(); }}>Left</Item>
+            <Item onClick={() => { setBorders('right'); close(); }}>Right</Item>
+            <Divider />
+            <Item onClick={() => { setBorders('none'); close(); }}>No borders</Item>
+          </>)}
+        </Pop>
+        <button type="button" style={on(merges.some(m => !(m.r2 < R.r1 || m.r1 > R.r2 || m.c2 < R.c1 || m.c1 > R.c2)))} onClick={toggleMerge} title="Merge the selected cells into one (click again to unmerge)">⊟ Merge</button>
+        <button type="button" style={on(!!painter)} onClick={() => (painter ? setPainter(null) : startPainter())} title="Paint format: copy this cell's look, then select the cells to give it to">🖌</button>
+        <button type="button" style={tb} onClick={clearFormat} title="Clear formatting on the selected cells">Tx✕</button>
         {sep}
         <Pop title="Freeze rows and columns" style={tb} label={<>❄ ▾</>} active={frozen > 0 || fc > 0}>
           {close => (<>
@@ -775,8 +903,14 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
           </>)}
         </Pop>
         <button type="button" style={on(!!find)} onClick={() => setFind(f => (f ? null : { q: '', rep: '', idx: 0, replace: false }))} title="Find and replace (Ctrl+F)">🔍</button>
+        <button type="button" style={tb} onClick={() => { setChartEdit(null); setDlg('chart'); }} title="Insert a chart from the selected cells">📊</button>
         <Pop title="Dropdowns, checkboxes, notes and rules" style={tb} label={<>Data ▾</>}>
           {close => (<>
+            <Item checked={bandOn} onClick={() => { toggleBand(); close(); }}>Alternating row colors</Item>
+            <Item onClick={() => { hide('row'); close(); }}>Hide row{R.r2 > R.r1 ? 's' : ''} {R.r1 + 1}{R.r2 > R.r1 ? `–${R.r2 + 1}` : ''}</Item>
+            <Item onClick={() => { hide('col'); close(); }}>Hide column{R.c2 > R.c1 ? 's' : ''} {colName(R.c1)}{R.c2 > R.c1 ? `–${colName(R.c2)}` : ''}</Item>
+            <Item disabled={!hiddenCount} onClick={() => { unhideAll(); close(); }}>Show hidden rows and columns{hiddenCount ? ` (${hiddenCount})` : ''}</Item>
+            <Divider />
             <Item onClick={() => { setDlg('valid'); close(); }}>Dropdown / checkbox…</Item>
             <Item onClick={() => { setDlg('cond'); close(); }}>Conditional formatting…</Item>
             <Item onClick={() => { setDlg('note'); close(); }}>{selNote ? 'Edit note…' : 'Add a note…'}</Item>
@@ -838,15 +972,17 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
         })()}
         {/* row numbers */}
         <div style={{ position: 'absolute', top: HEAD_H, left: 0, width: NUM_W, bottom: 0, overflow: 'hidden', zIndex: 4, background: 'var(--k-f3f4f6)', borderRight: '1px solid var(--k-d1d5db)', boxSizing: 'border-box' }}>
-          <div style={{ position: 'relative', height: nRows * ROW_H, transform: `translateY(${-scroll.top}px)` }}>
+          <div style={{ position: 'relative', height: tops[nRows], transform: `translateY(${-scroll.top}px)` }}>
             {visI(firstI, lastI).map(i => { const r = rowAt(i); const inS = r >= R.r1 && r <= R.r2; return (
               <div key={r} onClick={e => { setSel(e.shiftKey ? { ...sel, r2: r } : { r, c: 0, r2: r, c2: ncols - 1 }); wrap.current?.focus(); }}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!inS) setSel({ r, c: 0, r2: r, c2: ncols - 1 }); setCtx({ x: e.clientX, y: e.clientY, r, c: 0, head: 'row' }); }}
-                style={{ position: 'absolute', top: i * ROW_H, height: ROW_H, width: NUM_W, lineHeight: `${ROW_H}px`, textAlign: 'center', fontSize: 11.5, color: inS ? '#a06a12' : 'var(--k-9ca3af)', background: inS ? 'var(--k-fdf6e9)' : undefined, borderBottom: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: 'pointer' }}>{r + 1}</div>); })}
+                style={{ position: 'absolute', top: tops[i], height: heights[i], width: NUM_W, lineHeight: `${Math.min(heights[i], ROW_H)}px`, textAlign: 'center', fontSize: 11.5, color: inS ? '#a06a12' : 'var(--k-9ca3af)', background: inS ? 'var(--k-fdf6e9)' : undefined, borderBottom: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: 'pointer' }}>{r + 1}
+                <span onMouseDown={e => beginRowResize(r, e)} onDoubleClick={e => { e.stopPropagation(); tx(() => extMap(ydoc).delete(`${tabId}|rh|${r}`)); }} title="Drag to change the row height, double-click to reset" style={{ position: 'absolute', left: 0, right: 0, bottom: -3, height: 7, cursor: 'row-resize', zIndex: 2 }} />
+              </div>); })}
           </div>
           {frozen > 0 && (
             <div style={{ position: 'absolute', top: 0, left: 0, width: NUM_W, height: frozenH, background: 'var(--k-f3f4f6)', zIndex: 2 }}>
-              {visI(0, Math.min(frozen, nRows) - 1).map(i => <div key={i} style={{ position: 'absolute', top: i * ROW_H, height: ROW_H, width: NUM_W, lineHeight: `${ROW_H}px`, textAlign: 'center', fontSize: 11.5, color: 'var(--k-9ca3af)', borderBottom: i === frozen - 1 ? '2px solid var(--k-d1d5db)' : '1px solid var(--k-d1d5db)', boxSizing: 'border-box' }}>{rowAt(i) + 1}</div>)}
+              {visI(0, Math.min(frozen, nRows) - 1).map(i => <div key={i} style={{ position: 'absolute', top: tops[i], height: heights[i], width: NUM_W, lineHeight: `${Math.min(heights[i], ROW_H)}px`, textAlign: 'center', fontSize: 11.5, color: 'var(--k-9ca3af)', borderBottom: i === frozen - 1 ? '2px solid var(--k-d1d5db)' : '1px solid var(--k-d1d5db)', boxSizing: 'border-box' }}>{rowAt(i) + 1}</div>)}
             </div>
           )}
         </div>
@@ -854,8 +990,23 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
         <div ref={body} onScroll={e => setScroll({ top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft })}
           onMouseDown={onMouseDown} onMouseMove={onMouseMove} onDoubleClick={onDouble}
           style={{ position: 'absolute', top: HEAD_H, left: NUM_W, right: 0, bottom: 0, overflow: 'auto' }}>
-          <div style={{ position: 'relative', width: totalW, height: nRows * ROW_H }}>
-            {visI(firstI, lastI).flatMap(i => visI(c0, c1).map(c => paint(i, c)))}
+          <div style={{ position: 'relative', width: totalW, height: tops[nRows] }}>
+            {visI(firstI, lastI).flatMap(i => visI(c0, c1).filter(c => widths[c] > 0).map(c => paint(i, c)))}
+            {charts.map(d => {
+              const g = chartTmp[d.id] ?? { x: d.x, y: d.y, w: d.w, h: d.h };
+              return (
+                <div key={d.id} onMouseDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onContextMenu={e => e.stopPropagation()}
+                  style={{ position: 'absolute', left: g.x, top: g.y, width: g.w, height: g.h, background: 'var(--k-fff)', border: '1px solid var(--k-d1d5db)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.16)', zIndex: 4, overflow: 'hidden', display: 'flex', flexDirection: 'column', userSelect: 'none' }}>
+                  <div onMouseDown={e => dragChart(d, 'move', e)} style={{ display: 'flex', alignItems: 'center', padding: '5px 8px', background: 'var(--k-f9fafb)', borderBottom: '1px solid var(--k-e5e7eb)', cursor: 'move', gap: 6 }}>
+                    <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title || 'Chart'}</span>
+                    <button type="button" onMouseDown={e => e.stopPropagation()} onClick={() => { setChartEdit(d); setDlg('chart'); }} aria-label="Edit chart" style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 13 }}>✎</button>
+                    <button type="button" onMouseDown={e => e.stopPropagation()} onClick={() => deleteChart(d.id)} aria-label="Delete chart" style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--k-dc2626)' }}>✕</button>
+                  </div>
+                  <div style={{ flex: 1, minHeight: 0 }}><ChartSvg type={d.type} data={chartData(d)} w={g.w - 2} h={g.h - 32} /></div>
+                  <span onMouseDown={e => dragChart(d, 'size', e)} style={{ position: 'absolute', right: 0, bottom: 0, width: 16, height: 16, cursor: 'nwse-resize', background: 'linear-gradient(135deg, transparent 50%, #9ca3af 50%)' }} />
+                </div>
+              );
+            })}
           </div>
         </div>
         {frozen > 0 && (
@@ -867,7 +1018,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
         )}
         {fc > 0 && (
           <div style={{ position: 'absolute', top: HEAD_H + frozenH, left: NUM_W, width: fcW, bottom: 0, overflow: 'hidden', zIndex: 3, pointerEvents: 'none', borderRight: '2px solid var(--k-d1d5db)', boxSizing: 'content-box', background: 'var(--k-fff)' }}>
-            <div style={{ position: 'relative', width: fcW, height: nRows * ROW_H, transform: `translateY(${-scroll.top - frozenH}px)` }}>
+            <div style={{ position: 'relative', width: fcW, height: tops[nRows], transform: `translateY(${-scroll.top - frozenH}px)` }}>
               {visI(firstI, lastI).flatMap(i => frozenCols.map(c => paint(i, c)))}
             </div>
           </div>
@@ -882,13 +1033,13 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
           <div style={{ position: 'absolute', ...selBox, border: '2px solid #c9922c', boxSizing: 'border-box', pointerEvents: 'none' }}>
             {!edit && <span onMouseDown={beginFill} title="Drag to fill" style={{ position: 'absolute', right: -5, bottom: -5, width: 9, height: 9, background: '#c9922c', border: '1px solid #fff', pointerEvents: 'auto', cursor: 'crosshair' }} />}
           </div>
-          {fill && <div style={{ position: 'absolute', top: sy(Math.max(0, idxOf(Math.min(R.r1, fill.r)))), left: sx(Math.min(R.c1, fill.c)), width: lefts[Math.max(R.c2, fill.c) + 1] - lefts[Math.min(R.c1, fill.c)], height: (Math.abs(Math.max(0, idxOf(Math.max(R.r2, fill.r))) - Math.max(0, idxOf(Math.min(R.r1, fill.r)))) + 1) * ROW_H, border: '2px dashed #c9922c', boxSizing: 'border-box' }} />}
+          {fill && <div style={{ position: 'absolute', top: sy(Math.max(0, idxOf(Math.min(R.r1, fill.r)))), left: sx(Math.min(R.c1, fill.c)), width: lefts[Math.max(R.c2, fill.c) + 1] - lefts[Math.min(R.c1, fill.c)], height: tops[Math.max(0, idxOf(Math.max(R.r2, fill.r))) + 1] - tops[Math.max(0, idxOf(Math.min(R.r1, fill.r)))], border: '2px dashed #c9922c', boxSizing: 'border-box' }} />}
           {peerBoxes}
           {selValid?.t === 'list' && !edit && <button type="button" onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setDd({ r: sel.r, c: sel.c }); }} aria-label="Choose from the list" style={{ position: 'absolute', top: act.top + 3, left: act.left + act.w - 24, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(201,146,44,.18)', color: '#a06a12', fontSize: 11, cursor: 'pointer', pointerEvents: 'auto', padding: 0 }}>▾</button>}
           {dd && (() => { const v = getValid(ydoc, tabId, dd.r, dd.c); const i = Math.max(0, idxOf(dd.r)); return v?.t === 'list' ? (
             <>
               <div onMouseDown={() => setDd(null)} style={{ position: 'fixed', inset: 0, pointerEvents: 'auto', zIndex: 8 }} />
-              <div role="listbox" style={{ position: 'absolute', top: sy(i) + ROW_H, left: sx(dd.c), minWidth: Math.max(widths[dd.c], 160), maxHeight: 240, overflowY: 'auto', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 12px 36px rgba(0,0,0,.2)', padding: 4, pointerEvents: 'auto', zIndex: 9 }}>
+              <div role="listbox" style={{ position: 'absolute', top: sy(i) + heights[i], left: sx(dd.c), minWidth: Math.max(widths[dd.c], 160), maxHeight: 240, overflowY: 'auto', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 12px 36px rgba(0,0,0,.2)', padding: 4, pointerEvents: 'auto', zIndex: 9 }}>
                 {(v.o ?? []).map(o => <button key={o} type="button" role="option" aria-selected={raw(dd.r, dd.c) === o} onMouseDown={e => { e.preventDefault(); setCell(dd.r, dd.c, o); setDd(null); wrap.current?.focus(); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: raw(dd.r, dd.c) === o ? 'var(--k-fdf6e9)' : 'none', borderRadius: 5, cursor: 'pointer', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-1a1a1a)' }}>{o}</button>)}
                 <button type="button" onMouseDown={e => { e.preventDefault(); setCell(dd.r, dd.c, ''); setDd(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12.5, color: 'var(--k-9ca3af)', fontFamily: "'DM Sans',sans-serif" }}>Clear</button>
               </div>
@@ -902,7 +1053,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
                 e.stopPropagation();
               }}
               onBlur={() => { if (editor.current && document.activeElement?.getAttribute('aria-label') === 'Cell contents') return; commitEdit('stay'); }}
-              style={{ position: 'absolute', pointerEvents: 'auto', top: sy(Math.max(0, idxOf(edit.r))), left: sx(edit.c), width: Math.max(widths[edit.c], 140), height: ROW_H, boxSizing: 'border-box', border: '2px solid #c9922c', outline: 'none', padding: '0 5px', fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', zIndex: 6, userSelect: 'text' }} />
+              style={{ position: 'absolute', pointerEvents: 'auto', top: sy(Math.max(0, idxOf(edit.r))), left: sx(edit.c), width: Math.max(widths[edit.c], 140), height: Math.max(ROW_H, heights[Math.max(0, idxOf(edit.r))]), boxSizing: 'border-box', border: '2px solid #c9922c', outline: 'none', padding: '0 5px', fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', zIndex: 6, userSelect: 'text' }} />
           )}
         </div>
       </div>
@@ -953,6 +1104,9 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
             {ctx.head !== 'col' && <Item danger onClick={() => { deleteMany('row', R.r1, R.r2); setCtx(null); }}>Delete row{R.r2 > R.r1 ? 's' : ''}</Item>}
             {ctx.head !== 'row' && <Item danger onClick={() => { deleteMany('col', R.c1, R.c2); setCtx(null); }}>Delete column{R.c2 > R.c1 ? 's' : ''}</Item>}
             <Item onClick={() => { clearRange(); setCtx(null); }}>Clear contents</Item>
+            {ctx.head !== 'col' && <Item onClick={() => { hide('row'); setCtx(null); }}>Hide row{R.r2 > R.r1 ? 's' : ''}</Item>}
+            {ctx.head !== 'row' && <Item onClick={() => { hide('col'); setCtx(null); }}>Hide column{R.c2 > R.c1 ? 's' : ''}</Item>}
+            {hiddenCount > 0 && <Item onClick={() => { unhideAll(); setCtx(null); }}>Show hidden rows and columns</Item>}
             <Divider />
             <Item onClick={() => { sortBy(ctx.c, 1); setCtx(null); }}>Sort sheet by {colName(ctx.c)}, A → Z</Item>
             <Item onClick={() => { sortBy(ctx.c, -1); setCtx(null); }}>Sort sheet by {colName(ctx.c)}, Z → A</Item>
@@ -971,6 +1125,9 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
       {dlg === 'valid' && (
         <ValidDialog rangeText={rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} current={selValid} onClose={() => setDlg(null)}
           onApply={rule => tx(() => forEachSel((r, c) => { const k = mkey(tabId, r, c); if (!rule) validMap(ydoc).delete(k); else validMap(ydoc).set(k, JSON.stringify(rule)); if (rule?.t === 'check' && !/^(true|false)$/i.test(raw(r, c))) tCells(tab.map).set(cellKey(r, c), 'FALSE'); }))} />
+      )}
+      {dlg === 'chart' && (
+        <ChartDialog initial={chartEdit ?? undefined} rangeText={chartEdit ? rangeLabel(chartEdit) : rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} onClose={() => { setDlg(null); setChartEdit(null); }} onSave={v => saveChart(v, chartEdit)} />
       )}
       {dlg === 'note' && (
         <NoteDialog addr={addr(sel.r, sel.c)} initial={selNote?.t ?? ''} onClose={() => setDlg(null)}
@@ -1008,6 +1165,11 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
             </div>
           );
         })}
+        <span style={{ flex: 1 }} />
+        {stats && <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '0 14px', fontSize: 12.5, color: 'var(--k-374151)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {stats.n > 0 && <><span>Sum: <b>{stats.sum.toLocaleString('en-US', { maximumFractionDigits: 4 })}</b></span><span>Avg: <b>{(stats.sum / stats.n).toLocaleString('en-US', { maximumFractionDigits: 4 })}</b></span></>}
+          <span>Count: <b>{stats.count}</b></span>
+        </div>}
       </div>
     </div>
   );
