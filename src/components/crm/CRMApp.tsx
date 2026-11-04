@@ -5617,6 +5617,194 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
+  // The Smart Alerts bell, shared by the wide top bar and the compact (tablet / phone) header so both show the same alerts.
+  const renderBell = (compact: boolean) => {
+            const now = Date.now();
+            // Local calendar day: toISOString() is UTC, which flipped "due today" to "overdue" every evening.
+            const todayStr = today();
+            const listCalls = allTasks.filter(t => !t.completed_at && isListCall(t as never));
+            const overdueTasks = allTasks.filter(t => !t.completed_at && t.due_date && t.due_date < todayStr && !isListCall(t as never));
+            const newLeads = clients.filter(c => (c.tags ?? []).includes('New Lead') && c.created_at && (now - new Date(c.created_at).getTime()) < 7 * 86400000);
+            const upcomingBdays = clients.filter(c => {
+              if (!c.birthday) return false;
+              const bday = new Date(c.birthday + 'T00:00:00');
+              const base = new Date(); base.setHours(0,0,0,0);
+              const thisYearBday = new Date(base.getFullYear(), bday.getMonth(), bday.getDate());
+              const next = thisYearBday < base ? new Date(base.getFullYear() + 1, bday.getMonth(), bday.getDate()) : thisYearBday;
+              return Math.ceil((next.getTime() - now) / 86400000) <= 14;
+            });
+            const lxpUrgent = clients.filter(c => {
+              if (!c.lease_expiration_date) return false;
+              const d = Math.ceil((new Date(c.lease_expiration_date).getTime() - now) / 86400000);
+              return d >= 0 && d <= 30;
+            });
+            // Old unread notifications stop counting after three weeks, so the bell number means "new".
+            const unreadMentions = mentions.filter(n => !n.read_at && (now - new Date(n.created_at).getTime()) < 21 * 86400000);
+            const totalAlerts = overdueTasks.length + newLeads.length + upcomingBdays.length + lxpUrgent.length + unreadMentions.length;
+            return (
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => { setShowNotifications(n => !n); loadMentions(); }} title="Notifications"
+                  aria-label="Notifications" style={{ position: 'relative', width: compact ? 44 : 38, height: compact ? 44 : 38, flexShrink: 0, borderRadius: 8, border: compact ? `1px solid ${totalAlerts > 0 ? 'rgba(201,146,44,.6)' : 'rgba(255,255,255,.15)'}` : `1px solid ${totalAlerts > 0 ? 'var(--c-warn-line)' : 'var(--c-line)'}`, background: compact ? (showNotifications || totalAlerts > 0 ? 'rgba(201,146,44,.18)' : 'rgba(255,255,255,.1)') : (showNotifications ? 'var(--c-warn-soft)' : totalAlerts > 0 ? 'var(--c-warn-soft)' : 'var(--c-surface-2)'), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all .15s' }}>
+                  <Ico n="bell" size={17} style={{ color: compact ? 'rgba(255,255,255,.85)' : 'var(--c-ink-2)' }} />
+                  {totalAlerts > 0 && (
+                    <span style={{ position: 'absolute', top: 3, right: 3, width: 15, height: 15, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: compact ? '1.5px solid #111' : '1.5px solid var(--k-fff)' }}>
+                      {totalAlerts > 9 ? '9+' : totalAlerts}
+                    </span>
+                  )}
+                </button>
+                {showNotifications && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 8999 }} onClick={() => setShowNotifications(false)} />
+                    <div style={{ ...(compact ? { position: 'fixed', top: 64, right: 12 } : { position: 'absolute', top: '100%', right: 0, marginTop: 6 }), zIndex: 9000, width: Math.min(340, windowWidth - 24), background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.15)', overflow: 'hidden' }}>
+                      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--k-f0f0f0)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>🔔 Smart Alerts</span>
+                        {totalAlerts > 0 && <span style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>{totalAlerts} item{totalAlerts !== 1 ? 's' : ''}</span>}
+                      </div>
+                      <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                        {totalAlerts === 0 && (
+                          <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14 }}>
+                            <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+                            All clear — no alerts right now
+                          </div>
+                        )}
+                        {listCalls.length > 0 && (
+                          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--k-f3f4f6)' }}>
+                            <button onClick={() => { setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients(); setShowNotifications(false); }}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", textAlign: 'left' }}>
+                              📞 {listCalls.length} call{listCalls.length === 1 ? '' : 's'} on your list — open Call Queue →
+                            </button>
+                          </div>
+                        )}
+                        {overdueTasks.length > 0 && (
+                          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--k-f9fafb)' }}>
+                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-dc2626)', fontWeight: 700, marginBottom: 8 }}>⚠️ Overdue Tasks ({overdueTasks.length})</div>
+                            {overdueTasks.slice(0, 4).map(t => (
+                              <button key={t.id} onClick={() => { setPage('tasks'); setShowNotifications(false); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#dc2626', flexShrink: 0 }} />
+                                <span style={{ fontSize: 13, color: 'var(--k-111)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+                                <span style={{ fontSize: 11, color: 'var(--k-dc2626)', fontWeight: 600, flexShrink: 0 }}>{t.due_date}</span>
+                              </button>
+                            ))}
+                            {overdueTasks.length > 4 && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', paddingTop: 4 }}>+{overdueTasks.length - 4} more overdue</div>}
+                          </div>
+                        )}
+                        {newLeads.length > 0 && (
+                          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--k-f9fafb)' }}>
+                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-16a34a)', fontWeight: 700, marginBottom: 8 }}>🆕 New Leads — Last 7 Days ({newLeads.length})</div>
+                            {newLeads.slice(0, 3).map(c => (
+                              <button key={c.id} onClick={() => { setPage('contacts'); setActiveClient(c); setShowNotifications(false); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} />
+                                <span style={{ fontSize: 13, color: 'var(--k-111)', flex: 1 }}>{c.first_name} {c.last_name}</span>
+                                <span style={{ fontSize: 11, color: 'var(--k-6b7280)', flexShrink: 0 }}>{c.lead_source || 'Unknown source'}</span>
+                              </button>
+                            ))}
+                            {newLeads.length > 3 && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', paddingTop: 4 }}>+{newLeads.length - 3} more new leads</div>}
+                          </div>
+                        )}
+                        {upcomingBdays.length > 0 && (
+                          <div style={{ padding: '10px 16px', borderBottom: lxpUrgent.length > 0 ? '1px solid var(--k-f9fafb)' : 'none' }}>
+                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 8 }}>🎂 Upcoming Birthdays</div>
+                            {upcomingBdays.slice(0, 3).map(c => {
+                              const bday = new Date(c.birthday! + 'T00:00:00');
+                              const base = new Date(); base.setHours(0,0,0,0);
+                              const thisYearBday = new Date(base.getFullYear(), bday.getMonth(), bday.getDate());
+                              const next = thisYearBday < base ? new Date(base.getFullYear() + 1, bday.getMonth(), bday.getDate()) : thisYearBday;
+                              const daysUntil = Math.ceil((next.getTime() - now) / 86400000);
+                              return (
+                                <button key={c.id} onClick={() => { setPage('contacts'); setActiveClient(c); setShowNotifications(false); }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#c9922c', flexShrink: 0 }} />
+                                  <span style={{ fontSize: 13, color: 'var(--k-111)', flex: 1 }}>{c.first_name} {c.last_name}</span>
+                                  <span style={{ fontSize: 11, color: '#c9922c', fontWeight: 700, flexShrink: 0 }}>{daysUntil === 0 ? '🎉 Today!' : `in ${daysUntil}d`}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {lxpUrgent.length > 0 && (
+                          <div style={{ padding: '10px 16px', borderBottom: mentions.length > 0 ? '1px solid var(--k-f9fafb)' : 'none' }}>
+                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-c2410c)', fontWeight: 700, marginBottom: 8 }}>🗓 LXP Expiring Within 30 Days ({lxpUrgent.length})</div>
+                            {lxpUrgent.slice(0, 3).map(c => {
+                              const daysLeft = Math.ceil((new Date(c.lease_expiration_date!).getTime() - now) / 86400000);
+                              return (
+                                <button key={c.id} onClick={() => { setPage('contacts'); setActiveClient(c); setShowNotifications(false); }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f97316', flexShrink: 0 }} />
+                                  <span style={{ fontSize: 13, color: 'var(--k-111)', flex: 1 }}>{c.first_name} {c.last_name}</span>
+                                  <span style={{ fontSize: 11, color: 'var(--k-c2410c)', fontWeight: 700, flexShrink: 0 }}>{daysLeft}d left</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {mentions.length > 0 && (
+                          <div style={{ padding: '10px 16px' }}>
+                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6d28d9)', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span>🔔 Notifications ({mentions.length})</span>
+                              {unreadMentions.length > 0 && (
+                                <button onClick={markAllMentionsRead} style={{ background: 'none', border: 'none', fontSize: 11, color: 'var(--k-6d28d9)', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Mark all read</button>
+                              )}
+                            </div>
+                            {mentions.slice(0, showAllMentions ? 30 : 5).map(n => (
+                              <button key={n.id} onClick={() => {
+                                markMentionRead(n.id);
+                                if (n.entity_type === 'contact' && n.entity_id) {
+                                  const c = clients.find(cl => cl.id === n.entity_id);
+                                  if (c) { setPage('contacts'); setActiveClient(c); }
+                                } else if (n.entity_type === 'calls') {
+                                  setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients();
+                                } else if (n.entity_type === 'task') {
+                                  setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks();
+                                } else if (n.entity_type === 'listing' && n.entity_id) {
+                  // A note tag on a property (Internal Notes / Rent Roll): open that property's card.
+                  rememberView(`${businessUnit}:listing`, n.entity_id);
+                  setPage('properties'); setPropertiesTab('listings'); setPropLinkNonce(x => x + 1);
+                } else if (n.entity_type === 'drive_doc' && n.entity_id) {
+                  // @mention in a My Drive document: open it (the Drive reopens whatever was last open on mount).
+                  rememberView(`${businessUnit}:drive-doc`, n.entity_id);
+                  setPage('transaction-docs');
+                } else if (n.entity_type === 'drive_folder') {
+                  // Something (a folder or file) was shared with you in My Drive.
+                  setPage('transaction-docs');
+                } else if (n.entity_type === 'suite') {
+                  setPage('properties'); setPropertiesTab('floorplan');
+                } else if (n.entity_type === 'deal' && n.entity_id) {
+                                  // A deal mention used to just mark itself read and go nowhere.
+                                  const d = deals.find(x => x.id === n.entity_id);
+                                  if (d) { setPage('deals'); openDeal(d); }
+                                }
+                                setShowNotifications(false);
+                              }}
+                                style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: n.read_at ? 'var(--k-d1d5db)' : 'var(--k-6d28d9)', flexShrink: 0, marginTop: 4 }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, color: n.read_at ? 'var(--k-6b7280)' : 'var(--k-111)', fontWeight: n.read_at ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.message}</div>
+                                  <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{new Date(n.created_at).toLocaleDateString()}</div>
+                                </div>
+                              </button>
+                            ))}
+                            {mentions.length > 5 && (
+                              <button onClick={() => setShowAllMentions(v => !v)} style={{ background: 'none', border: 'none', padding: '4px 0 0', fontSize: 12, color: 'var(--k-6d28d9)', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                                {showAllMentions ? 'Show fewer' : `Show all (+${mentions.length - 5} more)`}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {businessUnit === 'commercial' && <div style={{ padding: '10px 12px', borderTop: '1px solid var(--k-f0f0f0)' }}><PhoneAlerts token={session?.access_token} visitors={isSuperAdmin} /></div>}
+                      <div style={{ padding: '8px 16px', borderTop: '1px solid var(--k-f0f0f0)', background: 'var(--k-f9fafb)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>Keyboard shortcut: / (search)</span>
+                        <button onClick={() => setShowNotifications(false)} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Close</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+  };
+
   return (
     <div className="crm-app-shell" data-crm-theme={crmTheme} style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: isTabletOrMobile ? '100dvh' : '100vh', overflow: 'hidden', background: 'var(--k-f2f2f2)' }}>
       <CrmShield exempt={isSuperAdmin} name={`${profile.first_name} ${profile.last_name}`.trim()} email={profile.email} token={session?.access_token} page={page} />
@@ -6081,6 +6269,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               )}
               <button onClick={() => { setShowSearch(true); setSearchQuery(''); }} aria-label="Search"
                 style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🔍</button>
+              {!isMobile && (
+                <button onClick={() => setCrmTheme(t => (t === 'dark' ? 'light' : 'dark'))} aria-label={crmTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} title={crmTheme === 'dark' ? 'Light theme' : 'Dark theme'}
+                  style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.85)', cursor: 'pointer', padding: 0, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Ico n={crmTheme === 'dark' ? 'sun' : 'moon'} size={17} />
+                </button>
+              )}
+              {renderBell(true)}
             </div>
           </div>
           {/* Section tab bar: the phone/tablet navigation is pinned to the bottom (CSS order) — one swipeable row,
@@ -6168,6 +6363,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <Ico n="receipt" />Billing <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>↗</span>
                   </a>
                 )}
+                <button className="crm-nav" onClick={() => setCrmTheme(t => (t === 'dark' ? 'light' : 'dark'))}><Ico n={crmTheme === 'dark' ? 'sun' : 'moon'} />{crmTheme === 'dark' ? 'Light theme' : 'Dark theme'}</button>
                 <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
                 {isSuperAdmin && <button className="crm-nav" onClick={() => { setDeletedItemsOpen(true); setMobileMenuOpen(false); }}><Ico n="trash" />Recently Deleted</button>}
                 {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => { setPage('lead-attribution'); setMobileMenuOpen(false); }}><Ico n="chart" />Lead Attribution</button>}
@@ -6238,193 +6434,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             style={{ width: 38, height: 38, borderRadius: 8, border: '1px solid var(--c-line)', background: 'var(--c-surface-2)', color: 'var(--c-ink-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Ico n={crmTheme === 'dark' ? 'sun' : 'moon'} size={17} />
           </button>
-          {/* Notification Bell */}
-          {(() => {
-            const now = Date.now();
-            // Local calendar day: toISOString() is UTC, which flipped "due today" to "overdue" every evening.
-            const todayStr = today();
-            const listCalls = allTasks.filter(t => !t.completed_at && isListCall(t as never));
-            const overdueTasks = allTasks.filter(t => !t.completed_at && t.due_date && t.due_date < todayStr && !isListCall(t as never));
-            const newLeads = clients.filter(c => (c.tags ?? []).includes('New Lead') && c.created_at && (now - new Date(c.created_at).getTime()) < 7 * 86400000);
-            const upcomingBdays = clients.filter(c => {
-              if (!c.birthday) return false;
-              const bday = new Date(c.birthday + 'T00:00:00');
-              const base = new Date(); base.setHours(0,0,0,0);
-              const thisYearBday = new Date(base.getFullYear(), bday.getMonth(), bday.getDate());
-              const next = thisYearBday < base ? new Date(base.getFullYear() + 1, bday.getMonth(), bday.getDate()) : thisYearBday;
-              return Math.ceil((next.getTime() - now) / 86400000) <= 14;
-            });
-            const lxpUrgent = clients.filter(c => {
-              if (!c.lease_expiration_date) return false;
-              const d = Math.ceil((new Date(c.lease_expiration_date).getTime() - now) / 86400000);
-              return d >= 0 && d <= 30;
-            });
-            // Old unread notifications stop counting after three weeks, so the bell number means "new".
-            const unreadMentions = mentions.filter(n => !n.read_at && (now - new Date(n.created_at).getTime()) < 21 * 86400000);
-            const totalAlerts = overdueTasks.length + newLeads.length + upcomingBdays.length + lxpUrgent.length + unreadMentions.length;
-            return (
-              <div style={{ position: 'relative' }}>
-                <button onClick={() => { setShowNotifications(n => !n); loadMentions(); }} title="Notifications"
-                  style={{ position: 'relative', width: 38, height: 38, borderRadius: 8, border: `1px solid ${totalAlerts > 0 ? 'var(--c-warn-line)' : 'var(--c-line)'}`, background: showNotifications ? 'var(--c-warn-soft)' : totalAlerts > 0 ? 'var(--c-warn-soft)' : 'var(--c-surface-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all .15s' }}>
-                  <Ico n="bell" size={17} style={{ color: 'var(--c-ink-2)' }} />
-                  {totalAlerts > 0 && (
-                    <span style={{ position: 'absolute', top: 3, right: 3, width: 15, height: 15, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid var(--k-fff)' }}>
-                      {totalAlerts > 9 ? '9+' : totalAlerts}
-                    </span>
-                  )}
-                </button>
-                {showNotifications && (
-                  <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 8999 }} onClick={() => setShowNotifications(false)} />
-                    <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 9000, marginTop: 6, width: Math.min(340, windowWidth - 32), background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.15)', overflow: 'hidden' }}>
-                      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--k-f0f0f0)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>🔔 Smart Alerts</span>
-                        {totalAlerts > 0 && <span style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>{totalAlerts} item{totalAlerts !== 1 ? 's' : ''}</span>}
-                      </div>
-                      <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-                        {totalAlerts === 0 && (
-                          <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14 }}>
-                            <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
-                            All clear — no alerts right now
-                          </div>
-                        )}
-                        {listCalls.length > 0 && (
-                          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--k-f3f4f6)' }}>
-                            <button onClick={() => { setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients(); setShowNotifications(false); }}
-                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", textAlign: 'left' }}>
-                              📞 {listCalls.length} call{listCalls.length === 1 ? '' : 's'} on your list — open Call Queue →
-                            </button>
-                          </div>
-                        )}
-                        {overdueTasks.length > 0 && (
-                          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--k-f9fafb)' }}>
-                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-dc2626)', fontWeight: 700, marginBottom: 8 }}>⚠️ Overdue Tasks ({overdueTasks.length})</div>
-                            {overdueTasks.slice(0, 4).map(t => (
-                              <button key={t.id} onClick={() => { setPage('tasks'); setShowNotifications(false); }}
-                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#dc2626', flexShrink: 0 }} />
-                                <span style={{ fontSize: 13, color: 'var(--k-111)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
-                                <span style={{ fontSize: 11, color: 'var(--k-dc2626)', fontWeight: 600, flexShrink: 0 }}>{t.due_date}</span>
-                              </button>
-                            ))}
-                            {overdueTasks.length > 4 && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', paddingTop: 4 }}>+{overdueTasks.length - 4} more overdue</div>}
-                          </div>
-                        )}
-                        {newLeads.length > 0 && (
-                          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--k-f9fafb)' }}>
-                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-16a34a)', fontWeight: 700, marginBottom: 8 }}>🆕 New Leads — Last 7 Days ({newLeads.length})</div>
-                            {newLeads.slice(0, 3).map(c => (
-                              <button key={c.id} onClick={() => { setPage('contacts'); setActiveClient(c); setShowNotifications(false); }}
-                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} />
-                                <span style={{ fontSize: 13, color: 'var(--k-111)', flex: 1 }}>{c.first_name} {c.last_name}</span>
-                                <span style={{ fontSize: 11, color: 'var(--k-6b7280)', flexShrink: 0 }}>{c.lead_source || 'Unknown source'}</span>
-                              </button>
-                            ))}
-                            {newLeads.length > 3 && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', paddingTop: 4 }}>+{newLeads.length - 3} more new leads</div>}
-                          </div>
-                        )}
-                        {upcomingBdays.length > 0 && (
-                          <div style={{ padding: '10px 16px', borderBottom: lxpUrgent.length > 0 ? '1px solid var(--k-f9fafb)' : 'none' }}>
-                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 8 }}>🎂 Upcoming Birthdays</div>
-                            {upcomingBdays.slice(0, 3).map(c => {
-                              const bday = new Date(c.birthday! + 'T00:00:00');
-                              const base = new Date(); base.setHours(0,0,0,0);
-                              const thisYearBday = new Date(base.getFullYear(), bday.getMonth(), bday.getDate());
-                              const next = thisYearBday < base ? new Date(base.getFullYear() + 1, bday.getMonth(), bday.getDate()) : thisYearBday;
-                              const daysUntil = Math.ceil((next.getTime() - now) / 86400000);
-                              return (
-                                <button key={c.id} onClick={() => { setPage('contacts'); setActiveClient(c); setShowNotifications(false); }}
-                                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#c9922c', flexShrink: 0 }} />
-                                  <span style={{ fontSize: 13, color: 'var(--k-111)', flex: 1 }}>{c.first_name} {c.last_name}</span>
-                                  <span style={{ fontSize: 11, color: '#c9922c', fontWeight: 700, flexShrink: 0 }}>{daysUntil === 0 ? '🎉 Today!' : `in ${daysUntil}d`}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {lxpUrgent.length > 0 && (
-                          <div style={{ padding: '10px 16px', borderBottom: mentions.length > 0 ? '1px solid var(--k-f9fafb)' : 'none' }}>
-                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-c2410c)', fontWeight: 700, marginBottom: 8 }}>🗓 LXP Expiring Within 30 Days ({lxpUrgent.length})</div>
-                            {lxpUrgent.slice(0, 3).map(c => {
-                              const daysLeft = Math.ceil((new Date(c.lease_expiration_date!).getTime() - now) / 86400000);
-                              return (
-                                <button key={c.id} onClick={() => { setPage('contacts'); setActiveClient(c); setShowNotifications(false); }}
-                                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f97316', flexShrink: 0 }} />
-                                  <span style={{ fontSize: 13, color: 'var(--k-111)', flex: 1 }}>{c.first_name} {c.last_name}</span>
-                                  <span style={{ fontSize: 11, color: 'var(--k-c2410c)', fontWeight: 700, flexShrink: 0 }}>{daysLeft}d left</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {mentions.length > 0 && (
-                          <div style={{ padding: '10px 16px' }}>
-                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6d28d9)', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span>🔔 Notifications ({mentions.length})</span>
-                              {unreadMentions.length > 0 && (
-                                <button onClick={markAllMentionsRead} style={{ background: 'none', border: 'none', fontSize: 11, color: 'var(--k-6d28d9)', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Mark all read</button>
-                              )}
-                            </div>
-                            {mentions.slice(0, showAllMentions ? 30 : 5).map(n => (
-                              <button key={n.id} onClick={() => {
-                                markMentionRead(n.id);
-                                if (n.entity_type === 'contact' && n.entity_id) {
-                                  const c = clients.find(cl => cl.id === n.entity_id);
-                                  if (c) { setPage('contacts'); setActiveClient(c); }
-                                } else if (n.entity_type === 'calls') {
-                                  setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients();
-                                } else if (n.entity_type === 'task') {
-                                  setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks();
-                                } else if (n.entity_type === 'listing' && n.entity_id) {
-                  // A note tag on a property (Internal Notes / Rent Roll): open that property's card.
-                  rememberView(`${businessUnit}:listing`, n.entity_id);
-                  setPage('properties'); setPropertiesTab('listings'); setPropLinkNonce(x => x + 1);
-                } else if (n.entity_type === 'drive_doc' && n.entity_id) {
-                  // @mention in a My Drive document: open it (the Drive reopens whatever was last open on mount).
-                  rememberView(`${businessUnit}:drive-doc`, n.entity_id);
-                  setPage('transaction-docs');
-                } else if (n.entity_type === 'drive_folder') {
-                  // Something (a folder or file) was shared with you in My Drive.
-                  setPage('transaction-docs');
-                } else if (n.entity_type === 'suite') {
-                  setPage('properties'); setPropertiesTab('floorplan');
-                } else if (n.entity_type === 'deal' && n.entity_id) {
-                                  // A deal mention used to just mark itself read and go nowhere.
-                                  const d = deals.find(x => x.id === n.entity_id);
-                                  if (d) { setPage('deals'); openDeal(d); }
-                                }
-                                setShowNotifications(false);
-                              }}
-                                style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: n.read_at ? 'var(--k-d1d5db)' : 'var(--k-6d28d9)', flexShrink: 0, marginTop: 4 }} />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 12, color: n.read_at ? 'var(--k-6b7280)' : 'var(--k-111)', fontWeight: n.read_at ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.message}</div>
-                                  <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{new Date(n.created_at).toLocaleDateString()}</div>
-                                </div>
-                              </button>
-                            ))}
-                            {mentions.length > 5 && (
-                              <button onClick={() => setShowAllMentions(v => !v)} style={{ background: 'none', border: 'none', padding: '4px 0 0', fontSize: 12, color: 'var(--k-6d28d9)', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
-                                {showAllMentions ? 'Show fewer' : `Show all (+${mentions.length - 5} more)`}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {businessUnit === 'commercial' && <div style={{ padding: '10px 12px', borderTop: '1px solid var(--k-f0f0f0)' }}><PhoneAlerts token={session?.access_token} visitors={isSuperAdmin} /></div>}
-                      <div style={{ padding: '8px 16px', borderTop: '1px solid var(--k-f0f0f0)', background: 'var(--k-f9fafb)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>Keyboard shortcut: / (search)</span>
-                        <button onClick={() => setShowNotifications(false)} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Close</button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })()}
+          {renderBell(false)}
 
           {page === 'deals' && <button className="crm-btn crm-btn-gold" onClick={() => setShowAddDeal(true)}>+ New Deal</button>}
           {page === 'contacts' && (
