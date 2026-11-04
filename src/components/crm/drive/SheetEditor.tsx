@@ -231,7 +231,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const [scroll, setScroll] = useState({ top: 0, left: 0 });
   const [box, setBox] = useState({ w: 800, h: 500 });
   const [bar, setBar] = useState<string | null>(null);       // formula bar text while it is focused
-  const [tabMenu, setTabMenu] = useState<string | null>(null);
+  const [tabMenu, setTabMenu] = useState<{ id: string; left: number; bottom: number } | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; text: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [filtersOn, setFiltersOn] = useState(false);
@@ -943,7 +943,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
       {ctx && (
         <>
           <div onMouseDown={() => setCtx(null)} onContextMenu={e => { e.preventDefault(); setCtx(null); }} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
-          <div role="menu" style={{ position: 'fixed', top: Math.min(ctx.y, window.innerHeight - 360), left: Math.min(ctx.x, window.innerWidth - 230), zIndex: 1301, minWidth: 210, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.22)', padding: 6 }}>
+          <div role="menu" style={{ position: 'fixed', top: Math.max(8, Math.min(ctx.y, window.innerHeight - 500)), left: Math.min(ctx.x, window.innerWidth - 230), maxHeight: 'calc(100vh - 16px)', overflowY: 'auto', zIndex: 1301, minWidth: 210, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.22)', padding: 6 }}>
             <Item onClick={() => { const t = doCopy(false); void navigator.clipboard?.writeText(t).catch(() => {}); setCtx(null); }}>Copy</Item>
             <Item onClick={() => { const t = doCopy(true); void navigator.clipboard?.writeText(t).catch(() => {}); setCtx(null); }}>Cut</Item>
             <Item onClick={() => { setCtx(null); void navigator.clipboard?.readText().then(paste).catch(() => onToast('Use Ctrl+V to paste — the browser blocked reading the clipboard')); }}>Paste</Item>
@@ -993,11 +993,11 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
                   {t.map.get('feed') ? '● ' : ''}{t.name}
                 </button>
               )}
-              <button type="button" aria-label={`${t.name} options`} onClick={() => setTabMenu(m => (m === t.id ? null : t.id))} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '0 8px', color: 'var(--k-9ca3af)', height: '100%' }}>▾</button>
-              {tabMenu === t.id && (
+              <button type="button" aria-label={`${t.name} options`} onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setTabMenu(m => (m?.id === t.id ? null : { id: t.id, left: Math.max(8, Math.min(r.left, window.innerWidth - 180)), bottom: window.innerHeight - r.top + 4 })); }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '0 8px', color: 'var(--k-9ca3af)', height: '100%' }}>▾</button>
+              {tabMenu?.id === t.id && (
                 <>
-                  <div onClick={() => setTabMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                  <div role="menu" style={{ position: 'absolute', bottom: '100%', left: 0, zIndex: 41, minWidth: 160, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 4 }}>
+                  <div onClick={() => setTabMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
+                  <div role="menu" style={{ position: 'fixed', bottom: tabMenu.bottom, left: tabMenu.left, zIndex: 1301, minWidth: 160, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 4 }}>
                     {([['Rename', () => setRenaming({ id: t.id, text: t.name })], ['Duplicate', () => dupTab(t.id)], ['Move left', () => moveTab(t.id, -1)], ['Move right', () => moveTab(t.id, 1)], ['Delete', () => deleteTab(t.id)]] as Array<[string, () => void]>).map(([label, fn]) => (
                       <button key={label} type="button" role="menuitem" onClick={() => { setTabMenu(null); fn(); }}
                         style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13.5, borderRadius: 6, color: label === 'Delete' ? 'var(--k-dc2626)' : 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }}>{label}</button>
