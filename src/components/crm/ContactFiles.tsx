@@ -18,7 +18,7 @@ const PREVIEWABLE = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'docx', 'xlsx',
 const kb = (n: number | null) => (n == null ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const icon = (name: string) => (/\.(png|jpe?g|webp|gif)$/i.test(name) ? '🖼' : '📄');
 
-export default function ContactFiles({ clientId, authToken, userId, isAdmin, showToast, onPreview, userName, profiles, isMobile }: {
+export default function ContactFiles({ clientId, authToken, userId, isAdmin, showToast, onPreview, userName, profiles, isMobile, onSignDoc }: {
   clientId: string;
   authToken?: string;
   userId?: string;
@@ -28,6 +28,7 @@ export default function ContactFiles({ clientId, authToken, userId, isAdmin, sho
   userName?: string;
   profiles?: DrivePerson[];
   isMobile?: boolean;
+  onSignDoc?: (docId: string, title: string, dealId?: string) => void;
 }) {
   const [files, setFiles] = useState<ContactFile[] | null>(null);
   const [adding, setAdding] = useState(false);
@@ -71,7 +72,7 @@ export default function ContactFiles({ clientId, authToken, userId, isAdmin, sho
   const label: React.CSSProperties = { fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600 };
   return (
     <>
-    {userId && <LinkedDocs clientId={clientId} authToken={authToken} currentUser={{ id: userId, name: userName ?? '' }} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={!!isMobile} onToast={showToast} />}
+    {userId && <LinkedDocs clientId={clientId} authToken={authToken} currentUser={{ id: userId, name: userName ?? '' }} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={!!isMobile} onToast={showToast} onSignDoc={onSignDoc} />}
     <div style={{ marginBottom: 22 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={label}>Files{list.length ? ` (${list.length})` : ''}</div>

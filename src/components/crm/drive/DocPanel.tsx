@@ -400,7 +400,7 @@ const str = (v: unknown) => (typeof v === 'string' ? v : '');
 function describeEvent(e: DriveDocEvent): string {
   const d = e.detail ?? {};
   switch (e.kind) {
-    case 'created': return d.via === 'word' || d.via === 'text' ? `Created this from the file “${str(d.from)}”` : d.via === 'template' ? `Created this from the template “${str(d.from)}”` : d.via === 'copy' ? `Created this as a copy of “${str(d.from)}”` : 'Created this document';
+    case 'created': return d.via === 'card' ? (d.from === 'blank' ? `Created this from ${str(d.label) || 'a card'}` : `Created this from the template “${str(d.from)}” on ${str(d.label) || 'a card'}`) : d.via === 'word' || d.via === 'text' ? `Created this from the file “${str(d.from)}”` : d.via === 'template' ? `Created this from the template “${str(d.from)}”` : d.via === 'copy' ? `Created this as a copy of “${str(d.from)}”` : 'Created this document';
     case 'edited': {
       if (d.via === 'copilot') { const dl = Number(d.chars_after ?? 0) - Number(d.chars_before ?? 0); return `Used the Copilot to ${d.op === 'append' ? 'add text at the end' : d.op === 'rewrite' ? 'rewrite the whole document' : 'replace a passage'} (${dl >= 0 ? '+' : '−'}${Math.abs(dl).toLocaleString()} characters) — a “Before Copilot edit” version was saved`; }
       const before = Number(d.chars_before ?? 0), after = Number(d.chars_after ?? 0), saves = Number(d.saves ?? 1), delta = after - before;

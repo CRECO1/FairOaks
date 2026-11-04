@@ -30,6 +30,7 @@ interface Props {
   contacts?: Array<{ id: string; first_name?: string | null; last_name?: string | null; business_name?: string | null; email?: string | null; type?: string | null }>;
   onNewDeal?: () => void;
   onToast: (msg: string) => void;
+  onSignDoc?: (docId: string, title: string, dealId?: string) => void;
   agentPrefill?: Record<string, string>;
   isMobile?: boolean;
   isSuperAdmin?: boolean;
@@ -39,7 +40,7 @@ interface Props {
 
 const ACTIVE_STAGES = ['Active', 'LOI', 'In Contract'];
 
-export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast, agentPrefill, isMobile = false, currentUser, profiles, contacts }: Props) {
+export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast, agentPrefill, isMobile = false, currentUser, profiles, contacts, onSignDoc }: Props) {
   const driveOn = !!currentUser;
   const showDrive = driveOn; // the Drive replaces the old forms / active-deals page for everyone
   const [forms, setForms] = useState<Form[]>([]);
@@ -112,7 +113,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
       )}
 
       {showDrive && currentUser && (
-        <DocsDrive deals={deals} contacts={contacts} businessUnit={businessUnit} authToken={authToken} currentUser={currentUser} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={isMobile} onToast={onToast} />
+        <DocsDrive deals={deals} contacts={contacts} onSignDoc={onSignDoc} businessUnit={businessUnit} authToken={authToken} currentUser={currentUser} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={isMobile} onToast={onToast} />
       )}
 
       {!showDrive && (<>

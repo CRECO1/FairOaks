@@ -44,6 +44,8 @@ interface Props {
   isMobile: boolean;
   onClose: () => void;
   onShare?: (doc: DriveDoc) => void;
+  /** Send this document for e-signature: the caller closes the editor and opens the E-Sign flow with the document's PDF. */
+  onSign?: (doc: DriveDoc) => void;
   onToast: (msg: string) => void;
   /** Tell the list the title changed so it isn't stale when the doc is closed. */
   onTitle?: (id: string, title: string) => void;
@@ -52,7 +54,7 @@ interface Props {
   isAdmin?: boolean;
 }
 
-export default function LiveDocEditor({ docId, authToken, user, isMobile, onClose, onShare, onToast, onTitle, people = [], isAdmin = false }: Props) {
+export default function LiveDocEditor({ docId, authToken, user, isMobile, onClose, onShare, onSign, onToast, onTitle, people = [], isAdmin = false }: Props) {
   const [doc, setDoc] = useState<DriveDoc | null>(null);
   const [state, setState] = useState<Uint8Array | null | undefined>(undefined);
   const [err, setErr] = useState<string | null>(null);
@@ -83,10 +85,10 @@ export default function LiveDocEditor({ docId, authToken, user, isMobile, onClos
     );
   }
   if (!doc || state === undefined) return <Frame isMobile={isMobile}><div style={{ padding: 28, color: 'var(--k-9ca3af)', fontSize: 14 }}>Opening…</div></Frame>;
-  return <DocWorkspace key={docId} doc={doc} initialState={state} authToken={authToken} user={user} isMobile={isMobile} onClose={onClose} onShare={onShare} onToast={onToast} onTitle={onTitle} people={people} isAdmin={isAdmin} />;
+  return <DocWorkspace key={docId} doc={doc} initialState={state} authToken={authToken} user={user} isMobile={isMobile} onClose={onClose} onShare={onShare} onSign={onSign} onToast={onToast} onTitle={onTitle} people={people} isAdmin={isAdmin} />;
 }
 
-function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, onShare, onToast, onTitle, people = [], isAdmin = false }: Omit<Props, 'docId'> & { doc: DriveDoc; initialState: Uint8Array | null }) {
+function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, onShare, onSign, onToast, onTitle, people = [], isAdmin = false }: Omit<Props, 'docId'> & { doc: DriveDoc; initialState: Uint8Array | null }) {
   const [handle, setHandle] = useState<CollabHandle | null>(null);
   const [status, setStatus] = useState<CollabStatus>('connecting');
   const [peers, setPeers] = useState<Peer[]>([]);
@@ -265,6 +267,11 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
           aria-label="Download as PDF" title="Download as PDF" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇ PDF</button>
         <button type="button" disabled={!editor} onClick={async () => { if (!editor) return; try { await flushRef.current(); await exportDocDocx(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the Word file'); } }}
           aria-label="Download as Word" title="Download as a Word (.docx) file you can edit in Word" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇ Word</button>
+        {onSign && (
+          <button type="button" disabled={!editor} aria-label="Send for signature" title="Turn this document into a PDF and send it for e-signature"
+            onClick={async () => { if (!editor) return; try { await flushRef.current(); onSign(doc); } catch (e) { onToast((e as Error).message || 'Could not prepare the document'); } }}
+            style={{ ...btnStyle(isMobile), padding: '0 10px', color: '#a06a12', background: 'var(--k-fdf6e9)' }}>✍ Sign</button>
+        )}
         {onShare && <button type="button" onClick={() => onShare(doc)} style={{ ...btnStyle(isMobile), background: '#c9922c', color: '#fff', border: 'none' }}>Share</button>}
       </header>
       {status === 'denied' && (

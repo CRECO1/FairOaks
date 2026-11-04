@@ -30,6 +30,8 @@ export interface DriveContactLite { id: string; first_name?: string | null; last
 interface Props {
   deals?: DriveDealLite[];
   contacts?: DriveContactLite[];
+  /** Send a live document for signature (opens the E-Sign flow with its PDF). */
+  onSignDoc?: (docId: string, title: string, dealId?: string) => void;
   businessUnit: string;
   authToken?: string;
   currentUser: { id: string; name: string };
@@ -75,7 +77,7 @@ function fmtWhen(iso: string) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
 }
 
-export default function DocsDrive({ deals = [], contacts = [], businessUnit, authToken, currentUser, profiles, isAdmin, isMobile, onToast }: Props) {
+export default function DocsDrive({ deals = [], contacts = [], onSignDoc, businessUnit, authToken, currentUser, profiles, isAdmin, isMobile, onToast }: Props) {
   const [view, setView] = useState<View>('folder');
   const [folderId, setFolderId] = useState<string | null>(() => (typeof window === 'undefined' ? null : recallView(`${businessUnit}:drive-folder`)));
   const [q, setQ] = useState('');
@@ -594,7 +596,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
             <button type="button" onClick={() => (selectMode || sel.size ? clearSel() : setSelectMode(true))} aria-pressed={selecting} style={{ height: 44, padding: '0 14px', border: `1px solid ${selecting ? GOLD : 'var(--k-e5e7eb)'}`, borderRadius: 10, background: selecting ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: selecting ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{selecting ? 'Done' : 'Select'}</button>
           ) : null}
           {inTrash && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Items you delete stay here for 30 days, then are removed for good.</span>}
-          {view === 'templates' && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Click a template to use it. To add one: open any document, then ⋯ → Save as template.</span>}
+          {view === 'templates' && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Click a template to use it. To add one: open any document, then ⋯ → Save as template. Type {{client}} {{property}} {{deal_type}} {{stage}} {{contact_name}} {{company}} {{email}} {{phone}} {{agent}} {{date}} in a template and they fill in when it is started from a deal or contact card.</span>}
         </div>
 
         {/* List */}
@@ -768,6 +770,7 @@ export default function DocsDrive({ deals = [], contacts = [], businessUnit, aut
       {openDocId && (
         <LiveDocEditor docId={openDocId} authToken={authToken} user={currentUser} isMobile={isMobile} people={profiles} isAdmin={isAdmin}
           onClose={() => { setOpenDocId(null); refresh(); }}
+          onSign={onSignDoc ? (doc => { setOpenDocId(null); refresh(); onSignDoc(doc.id, doc.title); }) : undefined}
           onShare={doc => { if (canManage(doc)) setDlg({ t: 'share', kind: 'doc', item: doc }); else onToast('Only the owner or an admin can change who this is shared with'); }}
           onToast={onToast}
           onTitle={(id, title) => setData(prev => prev ? { ...prev, docs: prev.docs.map(d => d.id === id ? { ...d, title } : d) } : prev)} />

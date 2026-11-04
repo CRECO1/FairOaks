@@ -2319,6 +2319,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     (path: string) => fetch(path, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} }),
     [session?.access_token],
   );
+  // "Send for signature" on a live document: build its PDF here and hand it to the E-Sign composer (the same flow as the Sign button on
+  // an uploaded PDF). From My Drive, a document that sits on exactly one deal attaches the request to that deal.
+  const signLiveDoc = useCallback(async (docId: string, title: string, dealId?: string) => {
+    try {
+      showToast('Preparing the PDF…');
+      const [{ loadDocJson }, { docToPdf, pdfName }] = await Promise.all([import('@/components/crm/drive/doc-export'), import('@/lib/doc-pdf')]);
+      const j = await loadDocJson(docId, session?.access_token);
+      const bytes = await docToPdf(j.json, j.title || title, { letterhead: j.letterhead });
+      let deal = dealId;
+      if (!deal) {
+        try {
+          const lj = await (await authGet(`/api/crm/drive/links?doc_id=${docId}`)).json();
+          const ds = ((lj.links ?? []) as Array<{ kind: string; can_open: boolean; target_id: string }>).filter(l => l.kind === 'deal' && l.can_open);
+          if (ds.length === 1) deal = ds[0].target_id;
+        } catch { /* no deal link: the request just isn't attached to one */ }
+      }
+      setComposer({ file: new File([bytes as BlobPart], pdfName(j.title || title), { type: 'application/pdf' }), doc: null, dealId: deal });
+    } catch { showToast('Couldn’t prepare that document for signing — try again.'); }
+  }, [showToast, session?.access_token, authGet]);
   const loadClientDocs = useCallback(async (clientId: string) => {
     try {
       const r = await authGet(`/api/crm/form-submissions?client_id=${clientId}`);
@@ -11451,6 +11470,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               currentUser={{ id: profile.id, name: `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() }}
               profiles={profiles}
               onToast={showToast}
+              onSignDoc={signLiveDoc}
               agentPrefill={agentPrefill}
               isMobile={isMobile}
             />
@@ -12245,7 +12265,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       );
                     })()}
                   </div>
-                  <LinkedDocs dealId={activeDeal.id} authToken={session?.access_token} currentUser={{ id: profile.id, name: `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() }} profiles={profiles} isAdmin={isAdmin} isMobile={isMobile} onToast={showToast} />
+                  <LinkedDocs dealId={activeDeal.id} authToken={session?.access_token} currentUser={{ id: profile.id, name: `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() }} profiles={profiles} isAdmin={isAdmin} isMobile={isMobile} onToast={showToast} onSignDoc={signLiveDoc} />
                   <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 10 }}>Uploaded Files</div>
                   {/* Straight to storage — see DealDocUpload for why the file never goes through the API */}
                   <DealDocUpload dealId={activeDeal.id} authToken={session?.access_token} showToast={showToast} onUploaded={() => loadDealDocs(activeDeal.id)} />
@@ -13448,7 +13468,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {/* Files — anything uploaded onto this person, plus the files on their deals' Docs tabs. */}
                 <ContactFiles clientId={c.id} authToken={session?.access_token} userId={profile?.id}
                   isAdmin={isSuperAdmin || profile?.role === 'admin'} showToast={showToast} onPreview={setPreviewFile}
-                  userName={`${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim()} profiles={profiles} isMobile={isMobile} />
+                  userName={`${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim()} profiles={profiles} isMobile={isMobile} onSignDoc={signLiveDoc} />
 
                 {/* Documents — leases and forms tied to this person, whether they were
                     filed on the contact or on one of their deals. */}

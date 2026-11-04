@@ -19,6 +19,16 @@ function textNodes(root: Y.XmlFragment | Y.XmlElement, out: Y.XmlText[] = []): Y
   }
   return out;
 }
+/** The formatting (bold, italic…) of the character at position `i` of a text run. */
+function attrsAt(t: Y.XmlText, i: number): Record<string, unknown> | undefined {
+  let pos = 0;
+  for (const seg of t.toDelta() as Array<{ insert?: unknown; attributes?: Record<string, unknown> }>) {
+    const len = typeof seg.insert === 'string' ? seg.insert.length : 1;
+    if (i < pos + len) return seg.attributes;
+    pos += len;
+  }
+  return undefined;
+}
 const plain = (t: Y.XmlText) => (t.toDelta() as Array<{ insert?: unknown }>).map(d => (typeof d.insert === 'string' ? d.insert : '\u0000')).join('');
 
 /** Applies the edit to `ydoc`. Returns an error string when it can't be done safely (nothing is changed then). */
@@ -34,8 +44,7 @@ export function applyDocOp(ydoc: Y.Doc, op: DocOp): { error: string } | { ok: tr
     if (hits.length > 1) return { error: `That text appears ${hits.length} times — quote a longer passage so it is unique.` };
     const { t, i } = hits[0];
     // The new words take the formatting of the first character they replace (so a replaced bold word stays bold).
-    let attrs: Record<string, unknown> | undefined;
-    { let pos = 0; for (const seg of t.toDelta() as Array<{ insert?: unknown; attributes?: Record<string, unknown> }>) { const len = typeof seg.insert === 'string' ? seg.insert.length : 1; if (i < pos + len) { attrs = seg.attributes; break; } pos += len; } }
+    const attrs = attrsAt(t, i);
     ydoc.transact(() => { t.delete(i, find.length); if (op.replace) t.insert(i, op.replace, attrs ?? {}); });
     return { ok: true };
   }
@@ -69,4 +78,23 @@ export async function broadcastDocUpdate(docId: string, update: Uint8Array): Pro
       body: JSON.stringify({ messages: [{ topic: `drive-doc:${docId}`, event: 'y', private: true, payload: { t: 'update', from: 2147483000 + Math.floor(Math.random() * 400), d } }] }),
     });
   } catch (e) { console.error('[drive] live push', e); }
+}
+
+/**
+ * Fill {{field}} placeholders in a document (a template made into a document from a deal or contact card). Known fields with no value
+ * become a blank (____) so nothing half-filled passes for finished; unknown {{words}} are left exactly as typed. Formatting is kept.
+ */
+export function fillMergeFields(ydoc: Y.Doc, values: Record<string, string>): number {
+  let n = 0;
+  for (const t of textNodes(ydoc.getXmlFragment('default'))) {
+    const hits = [...plain(t).matchAll(/\{\{\s*([a-z_]+)\s*\}\}/gi)].reverse();   // last first, so earlier positions stay valid
+    for (const m of hits) {
+      const key = m[1].toLowerCase();
+      if (!(key in values)) continue;
+      const idx = m.index ?? 0, attrs = attrsAt(t, idx);
+      ydoc.transact(() => { t.delete(idx, m[0].length); t.insert(idx, values[key] || '____', attrs ?? {}); });
+      n++;
+    }
+  }
+  return n;
 }
