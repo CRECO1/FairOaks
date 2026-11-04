@@ -62,6 +62,14 @@ async function emailed(dc: DriveContext): Promise<{ byClient: Map<string, { sent
   }
   const byClient = new Map<string, { sent: number; opened: number; last: string; camps: Set<string> }>();
   for (const s of sends) { const e = byClient.get(s.client_id) ?? { sent: 0, opened: 0, last: '', camps: new Set<string>() }; e.sent++; if (s.opened_at) e.opened++; if (s.sent_at && s.sent_at > e.last) e.last = s.sent_at; e.camps.add(nameOf.get(s.campaign_id) ?? ''); byClient.set(s.client_id, e); }
+  // Personal one-to-one emails about this building (e.g. Robert's from his own mailbox) count too — they are logged on the contact, not as campaign sends.
+  const { data: personal } = await dc.admin.from('crm_deal_emails').select('client_id,created_at,email_at,opened_at,from_email').eq('direction', 'sent').ilike('subject', '%1353 W French Pl%').not('subject', 'ilike', '%SAMPLE%').not('client_id', 'is', null).limit(2000);
+  for (const m of personal ?? []) {
+    const id = m.client_id as string, at = String(m.email_at ?? m.created_at ?? '');
+    const who = String(m.from_email ?? '').match(/[\w.+-]+@/)?.[0]?.replace('@', '') ?? '';
+    const e = byClient.get(id) ?? { sent: 0, opened: 0, last: '', camps: new Set<string>() };
+    e.sent++; if (m.opened_at) e.opened++; if (at > e.last) e.last = at; e.camps.add(`${who ? who[0].toUpperCase() + who.slice(1) + ' · ' : ''}personal email`); byClient.set(id, e);
+  }
   const clients = new Map<string, Client>();
   for (const part of chunk([...byClient.keys()], 100)) { const { data } = await dc.userDb.from('crm_clients').select('id,first_name,last_name,business_name,phone,cell_phone,email,unsubscribed_at,tags,notes').in('id', part); for (const c of (data ?? []) as Client[]) clients.set(c.id, c); }
   const since = sends.reduce((m, s) => (s.sent_at && (!m || s.sent_at < m) ? s.sent_at : m), '');
