@@ -25,7 +25,7 @@ import {
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
 import { ActivityPanel, CellCommentsPanel, parseCellAnchor } from './DocPanel';
 import type { DriveComment } from '@/lib/drive-types';
-import { CommandPalette, CondDialog, DedupeDialog, Divider, FunctionsDialog, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, ShortcutsDialog, SplitDialog, TBtn, TSep, ValidDialog, type Command, type LockInfo, type PivotForm } from './SheetParts';
+import { OverflowRow, CommandPalette, CondDialog, DedupeDialog, Divider, FunctionsDialog, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, ShortcutsDialog, SplitDialog, TBtn, TSep, ValidDialog, type Command, type LockInfo, type PivotForm } from './SheetParts';
 import { ChartDialog, ChartSvg, type ChartData } from './SheetChart';
 import type { DrivePerson } from './DocsDrive';
 
@@ -1382,7 +1382,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         </Pop>
       </div>
       {/* icon toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: '3px 10px 5px', borderBottom: '1px solid var(--k-e5e7eb)', flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', rowGap: 2 }}>
+      <OverflowRow style={{ padding: '3px 10px 5px', borderBottom: '1px solid var(--k-e5e7eb)' }}>
         <TBtn title="Search the menus (Alt+/)" onClick={() => setPalette(true)}><Ico n="menus" /></TBtn>
         <TBtn title="Undo (Ctrl+Z)" onClick={() => undo.undo()}><Ico n="undo" /></TBtn>
         <TBtn title="Redo (Ctrl+Y)" onClick={() => undo.redo()}><Ico n="redo" /></TBtn>
@@ -1457,7 +1457,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         <TBtn title="Insert a chart from the selected cells" onClick={() => { setChartEdit(null); setDlg('chart'); }}><Ico n="chart" /></TBtn>
         <TBtn title="Pivot table from the selected cells" onClick={() => setPivotDlg({})}><Ico n="table" /></TBtn>
         <TBtn title="Find and replace (Ctrl+F)" on={!!find} onClick={() => setFind(f => (f ? null : { q: '', rep: '', idx: 0, replace: false }))}><Ico n="search" /></TBtn>
-      </div>
+      </OverflowRow>
       {/* formula bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderBottom: '1px solid var(--k-e5e7eb)' }}>
         <div style={{ minWidth: 64, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: 'var(--k-6b7280)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '4px 6px', whiteSpace: 'nowrap' }}>{rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })}</div>

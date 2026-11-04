@@ -2,7 +2,7 @@
 
 /** Small building blocks for the spreadsheet editor: popover menus, colour palette, and its dialogs (rules, dropdowns, notes, history). */
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Children, isValidElement, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import * as Y from 'yjs';
 import { fromBase64 } from 'lib0/buffer';
 import type { CondOp, CondRule, PivotAgg, ValidRule } from '@/lib/drive-sheet';
@@ -307,8 +307,25 @@ export function HistoryDialog({ docId, authToken, ydoc, people, flush, onToast, 
 
 export const MenuLabel = ({ children }: { children: ReactNode }) => <div style={{ padding: '8px 12px 3px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--k-9ca3af)' }}>{children}</div>;
 
-export type IcoName = 'menus' | 'list' | 'print' | 'undo' | 'redo' | 'brush' | 'clear' | 'left' | 'center' | 'right' | 'wrap' | 'borders' | 'merge' | 'freeze' | 'filter' | 'sort' | 'chart' | 'search' | 'plus' | 'download' | 'refresh' | 'zoom' | 'dollar' | 'percent' | 'dec-' | 'dec+' | 'more' | 'table';
+export type IcoName = 'bold' | 'italic' | 'underline' | 'strike' | 'highlight' | 'link' | 'image' | 'comment' | 'bullets' | 'numbered' | 'checklist' | 'quote' | 'hr' | 'tag' | 'outline' | 'suggest' | 'pen' | 'menus' | 'list' | 'print' | 'undo' | 'redo' | 'brush' | 'clear' | 'left' | 'center' | 'right' | 'wrap' | 'borders' | 'merge' | 'freeze' | 'filter' | 'sort' | 'chart' | 'search' | 'plus' | 'download' | 'refresh' | 'zoom' | 'dollar' | 'percent' | 'dec-' | 'dec+' | 'more' | 'table';
 const ICO: Record<IcoName, ReactNode> = {
+  bold: <path d="M7 5h6a3.5 3.5 0 010 7H7zM7 12h7a3.5 3.5 0 010 7H7z" />,
+  italic: <path d="M10 5h8M6 19h8M14 5L10 19" />,
+  underline: <><path d="M7 4v7a5 5 0 0010 0V4" /><path d="M5 20h14" /></>,
+  strike: <><path d="M16.5 7.5C16 6 14.3 5 12 5c-2.5 0-4.2 1.2-4.2 3 0 1.4 1.1 2.2 3 2.7" /><path d="M4 12h16" /><path d="M7.5 16.5C8 18 9.7 19 12 19c2.5 0 4.2-1.2 4.2-3 0-1.2-.7-1.9-2-2.4" /></>,
+  highlight: <><path d="M14 4l6 6-8 8H7l-3-3 2-2z" /><path d="M13 5l6 6" /><path d="M4 21h16" /></>,
+  link: <><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1" /></>,
+  image: <><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="9" cy="10" r="1.8" /><path d="M4 18l5-5 4 4 3-3 4 4" /></>,
+  comment: <><path d="M4 5h16v11H9l-5 4z" /><path d="M8 9.5h8M8 12.5h5" /></>,
+  bullets: <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" /><circle cx="4.5" cy="12" r="1" /><circle cx="4.5" cy="18" r="1" /></>,
+  numbered: <><path d="M10 6h10M10 12h10M10 18h10" /><path d="M4 5l1.5-1v4M4 11h2.5L4 14h2.5M4 17.5h2.5v1.5H4.5M6.5 19v1.5H4" /></>,
+  checklist: <><rect x="4" y="5" width="5" height="5" rx="1" /><path d="M5 7.5l1 1 2-2M12 7h8" /><rect x="4" y="14" width="5" height="5" rx="1" /><path d="M12 16.5h8" /></>,
+  quote: <><path d="M5 18v-5a5 5 0 015-5M13 18v-5a5 5 0 015-5" /><path d="M5 13h4v5H5zM13 13h4v5h-4z" /></>,
+  hr: <path d="M4 12h16M4 6h16M4 18h16" strokeDasharray="1 0" />,
+  tag: <><path d="M3 12V4h8l10 10-8 8z" /><circle cx="8" cy="8.5" r="1.3" /></>,
+  outline: <><path d="M4 6h16M8 11h12M8 16h12M12 21h8" /></>,
+  suggest: <><path d="M4 20l4-1 11-11-3-3L5 16z" /><path d="M14 7l3 3" /><path d="M17 19h4M19 17v4" /></>,
+  pen: <path d="M4 20l4-1 11-11-3-3L5 16z" />,
   menus: <><path d="M4 6h12M4 12h7M4 18h5" /><circle cx="16.5" cy="15.5" r="3.5" /><path d="M19 18l2.5 2.5" /></>,
   list: <path d="M5 6h14M5 12h14M5 18h14" />,
   print: <><path d="M7 9V4h10v5" /><rect x="4" y="9" width="16" height="8" rx="1.5" /><path d="M7 14h10v6H7z" /></>,
@@ -339,6 +356,47 @@ const ICO: Record<IcoName, ReactNode> = {
 export function Ico({ n, size = 17 }: { n: IcoName; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink: 0 }}>{ICO[n]}</svg>;
 }
+/**
+ * A toolbar row that never wraps or scrolls: it shows as many groups (split at <TSep />) as fit the width, and the rest wait under a "⋯" button.
+ * The groups are measured in a hidden copy, so it re-fits whenever the row is resized (side panels opening, window resizing, phones).
+ */
+export function OverflowRow({ children, style, moreTitle = 'More tools' }: { children: ReactNode; style?: CSSProperties; moreTitle?: string }) {
+  const items = Children.toArray(children);
+  const groups: ReactNode[][] = [[]];
+  for (const it of items) { if (isValidElement(it) && it.type === TSep) groups.push([]); else groups[groups.length - 1].push(it); }
+  const list = groups.filter(g => g.length);
+  const row = useRef<HTMLDivElement>(null), probe = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState(list.length);
+  const n = list.length;
+  const measure = () => {
+    const r = row.current, p = probe.current; if (!r || !p) return;
+    const avail = r.clientWidth, kids = Array.from(p.children) as HTMLElement[];
+    const w = kids.map(k => k.offsetWidth + 9);   // + the separator that follows a group
+    if (w.reduce((a, b) => a + b, 0) - 9 <= avail) { setFit(kids.length); return; }
+    let used = 40, k = 0;                          // 40 = the "⋯" button
+    while (k < w.length && used + w[k] <= avail) { used += w[k]; k++; }
+    setFit(Math.max(1, k));
+  };
+  const measureRef = useRef(measure); measureRef.current = measure;
+  useLayoutEffect(() => { measureRef.current(); });   // every render: a label (e.g. the font name) may have changed width; setState bails out when nothing moved
+  useLayoutEffect(() => {
+    const ro = new ResizeObserver(() => measureRef.current()); if (row.current) ro.observe(row.current);
+    return () => ro.disconnect();
+  }, []);
+  const shown = Math.min(fit, n);
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', ...style }}>
+      <div ref={row} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1, overflow: 'hidden', height: 32 }}>
+        {list.slice(0, shown).map((g, i) => <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>{i > 0 && <TSep />}{g}</span>)}
+        {shown < n && <><TSep /><Pop className="sx-btn" title={moreTitle} label={<Ico n="more" />} align="right">{() => <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', maxWidth: 'min(340px, 88vw)', padding: 6 }}>{list.slice(shown).map((g, i) => <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>{g}</span>)}</div>}</Pop></>}
+      </div>
+      <div ref={probe} aria-hidden style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none', left: 0, top: 0, height: 0, overflow: 'hidden', display: 'flex', whiteSpace: 'nowrap' }}>
+        {list.map((g, i) => <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>{g}</span>)}
+      </div>
+    </div>
+  );
+}
+
 /** A toolbar button: icon or text, a tooltip with its shortcut, and a gold "on" state. */
 export function TBtn({ title, onClick, on, disabled, children, style }: { title: string; onClick: () => void; on?: boolean; disabled?: boolean; children: ReactNode; style?: CSSProperties }) {
   return <button type="button" className={`sx-btn ${on ? 'on' : ''}`} title={title} aria-label={title} aria-pressed={on} disabled={disabled} onMouseDown={e => e.preventDefault()} onClick={onClick} style={style}>{children}</button>;

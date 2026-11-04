@@ -30,6 +30,7 @@ import { exportDocPdf, exportDocDocx } from './doc-export';
 import { ActivityPanel, CommentsPanel, HistoryPanel } from './DocPanel';
 import { SuggestTracking, listSuggestions, resolveSuggestions, type Suggestion } from '@/lib/collab/suggest-marks';
 import { safeImageSrc } from '@/lib/collab/image-node';
+import { OverflowRow, TBtn, TSep, Ico, Pop, Item, SHEET_CSS, type IcoName } from './SheetParts';
 import { FindReplace, countFind, currentFind, replaceAll, replaceOne, setFind, stepFind } from '@/lib/collab/find-replace';
 import type { DrivePerson } from './DocsDrive';
 import { Frame, btnStyle, iconBtn, colorFor } from './DocChrome';
@@ -395,11 +396,9 @@ function DocSurface({ handle, me, userId, isMobile, onEditor, onComment, onHighl
 // ── toolbar ────────────────────────────────────────────────────────────────
 
 function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, suggesting, onSuggesting, side, onSide, onFind }: { editor: Editor | null; isMobile: boolean; onComment: () => void; letterhead: boolean; onLetterhead: () => void; suggesting: boolean; onSuggesting: (v: boolean) => void; side: null | 'outline' | 'suggestions'; onSide: (v: null | 'outline' | 'suggestions') => void; onFind: () => void }) {
-  const [colorOpen, setColorOpen] = useState(false);
-  const imgInput = useRef<HTMLInputElement>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
-  const [more, setMore] = useState(false);   // phones: the everyday tools fit one row; "⋯" opens the whole toolbar, wrapped (no sideways scrolling)
+  const imgInput = useRef<HTMLInputElement>(null);
   const [, force] = useState(0);
   useEffect(() => {
     if (!editor) return;
@@ -414,68 +413,82 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
   }, [editor]);
   if (!editor) return <div style={{ height: 44, borderBottom: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)' }} />;
   const c = () => editor.chain().focus();
-  const B = ({ on, label, title, active, disabled }: { on: () => void; label: ReactNode; title: string; active?: boolean; disabled?: boolean }) => (
-    <button type="button" title={title} aria-label={title} aria-pressed={!!active} disabled={disabled}
-      onMouseDown={e => e.preventDefault()} onClick={on}
-      style={{ minWidth: isMobile ? 36 : 32, height: isMobile ? 40 : 32, padding: '0 6px', border: 'none', borderRadius: 6, cursor: disabled ? 'default' : 'pointer', flexShrink: 0, fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: active ? 'var(--k-fdf6e9)' : 'transparent', color: disabled ? 'var(--k-d1d5db)' : active ? 'var(--k-a06a12)' : 'var(--k-374151)' }}>
-      {label}
-    </button>
-  );
-  const x = !isMobile || more;   // show the less-used tools
-  const Sep = () => (isMobile && !more ? null : <span aria-hidden style={{ width: 1, height: 20, background: 'var(--k-e5e7eb)', margin: '0 4px', flexShrink: 0 }} />);
   const block = editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p';
   const inTable = editor.isActive('table');
+  const align = editor.isActive({ textAlign: 'center' }) ? 'center' : editor.isActive({ textAlign: 'right' }) ? 'right' : 'left';
+  const T = ({ title, on, onClick, icon, disabled }: { title: string; on?: boolean; onClick: () => void; icon: IcoName; disabled?: boolean }) => <TBtn title={title} on={on} onClick={onClick} disabled={disabled}><Ico n={icon} /></TBtn>;
+  const SWATCHES = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa', '#e9d5ff'];
   return (
-    <div style={{ background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)', flexShrink: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '4px 8px', ...(isMobile && more ? { flexWrap: 'wrap', rowGap: 2 } : { overflowX: 'auto', WebkitOverflowScrolling: 'touch' }) }}>
-        <B on={() => c().undo().run()} label="↶" title="Undo" />
-        {isMobile && <B on={() => setMore(m => !m)} active={more} label={more ? 'Less ▴' : 'More'} title={more ? 'Show fewer tools' : 'Show every formatting tool'} />}
-        {x && <B on={() => c().redo().run()} label="↷" title="Redo" />}
-        <B on={onFind} label="🔍" title="Find and replace (Ctrl+F)" />
-        <Sep />
-        <select aria-label="Text style" value={block} onChange={e => { const v = e.target.value; if (v === 'p') c().setParagraph().run(); else c().toggleHeading({ level: Number(v[1]) as 1 | 2 | 3 }).run(); }}
-          style={{ height: isMobile ? 40 : 32, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13.5, padding: '0 6px', flexShrink: 0 }}>
-          <option value="p">Normal</option><option value="h1">Title</option><option value="h2">Heading</option><option value="h3">Subheading</option>
-        </select>
-        <Sep />
-        <B on={() => c().toggleBold().run()} active={editor.isActive('bold')} label={<b>B</b>} title="Bold" />
-        <B on={() => c().toggleItalic().run()} active={editor.isActive('italic')} label={<i>I</i>} title="Italic" />
-        {x && <B on={() => c().toggleUnderline().run()} active={editor.isActive('underline')} label={<u>U</u>} title="Underline" />}
-        {x && <B on={() => c().toggleStrike().run()} active={editor.isActive('strike')} label={<s>S</s>} title="Strikethrough" />}
-        {x && <B on={() => setColorOpen(o => !o)} active={editor.isActive('highlight') || colorOpen} label="🖍" title="Highlight color" />}
-        <B on={openLink} active={editor.isActive('link')} label="🔗" title="Link" />
-        {x && <B on={() => imgInput.current?.click()} label="🖼" title="Insert a picture" />}
-        {x && <B on={onComment} label="💬＋" title="Comment on the selected words" />}
-        <Sep />
-        <B on={() => c().toggleBulletList().run()} active={editor.isActive('bulletList')} label="•≡" title="Bulleted list" />
-        {x && <B on={() => c().toggleOrderedList().run()} active={editor.isActive('orderedList')} label="1≡" title="Numbered list" />}
-        <B on={() => c().toggleTaskList().run()} active={editor.isActive('taskList')} label="☑" title="Checklist" />
-        {x && <B on={() => c().toggleBlockquote().run()} active={editor.isActive('blockquote')} label="❝" title="Quote" />}
-        <Sep />
-        {x && <>
-          <B on={() => c().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} label="⇤" title="Align left" />
-          <B on={() => c().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} label="↔" title="Center" />
-          <B on={() => c().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} label="⇥" title="Align right" />
-          <Sep />
-          <B on={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} disabled={inTable} label="▦" title="Insert table" />
-        </>}
-        {inTable && <>
-          <B on={() => c().addRowAfter().run()} label="＋row" title="Add row below" />
-          <B on={() => c().addColumnAfter().run()} label="＋col" title="Add column right" />
-          <B on={() => c().deleteRow().run()} label="−row" title="Delete row" />
-          <B on={() => c().deleteColumn().run()} label="−col" title="Delete column" />
-          <B on={() => c().deleteTable().run()} label="🗑▦" title="Delete table" />
-        </>}
-        {x && <>
-          <B on={() => c().setHorizontalRule().run()} label="―" title="Divider line" />
-          <Sep />
-          <B on={onLetterhead} active={letterhead} label="🏷 Letterhead" title="CRECO letterhead — logo header and footer on every page (and on the PDF)" />
-          <Sep />
-          <B on={() => onSide(side === 'outline' ? null : 'outline')} active={side === 'outline'} label="☰ Outline" title="Show the document outline (headings)" />
-          <B on={() => onSide(side === 'suggestions' ? null : 'suggestions')} active={side === 'suggestions'} label="✎ Suggestions" title="Review suggested changes" />
-          <Sep />
-          <B on={() => onSuggesting(!suggesting)} active={suggesting} label={suggesting ? '✎ Suggesting' : '✎ Editing'} title={suggesting ? 'Suggesting — click to go back to editing directly' : 'Editing — click to switch to Suggesting (your changes become suggestions)'} />
-        </>}
+    <div className={isMobile ? 'dx-m' : undefined} style={{ background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)', flexShrink: 0 }}>
+      <style>{SHEET_CSS}{`.dx-m .sx-btn{height:40px;min-width:38px}.dx-m select{height:40px!important}`}</style>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '3px 8px', gap: 6 }}>
+        <OverflowRow style={{ flex: 1, minWidth: 0 }}>
+          <T title="Undo (Ctrl+Z)" icon="undo" onClick={() => c().undo().run()} />
+          <T title="Redo (Ctrl+Y)" icon="redo" onClick={() => c().redo().run()} />
+          <T title="Find and replace (Ctrl+F)" icon="search" onClick={onFind} />
+          <TSep />
+          <select aria-label="Text style" value={block} onChange={e => { const v = e.target.value; if (v === 'p') c().setParagraph().run(); else c().toggleHeading({ level: Number(v[1]) as 1 | 2 | 3 }).run(); }}
+            style={{ height: 30, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 6px', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
+            <option value="p">Normal text</option><option value="h1">Title</option><option value="h2">Heading</option><option value="h3">Subheading</option>
+          </select>
+          <TSep />
+          <T title="Bold (Ctrl+B)" icon="bold" on={editor.isActive('bold')} onClick={() => c().toggleBold().run()} />
+          <T title="Italic (Ctrl+I)" icon="italic" on={editor.isActive('italic')} onClick={() => c().toggleItalic().run()} />
+          <T title="Underline (Ctrl+U)" icon="underline" on={editor.isActive('underline')} onClick={() => c().toggleUnderline().run()} />
+          <T title="Strikethrough" icon="strike" on={editor.isActive('strike')} onClick={() => c().toggleStrike().run()} />
+          <Pop className="sx-btn" title="Highlight color" active={editor.isActive('highlight')} label={<><Ico n="highlight" /><span style={{ fontSize: 9 }}>▾</span></>}>
+            {close => (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 8, flexWrap: 'wrap', maxWidth: 260 }}>
+                {SWATCHES.map(col => <button key={col} type="button" aria-label={`Highlight ${col}`} onMouseDown={e => e.preventDefault()} onClick={() => { c().setHighlight({ color: col }).run(); close(); }} style={{ width: 26, height: 26, borderRadius: '50%', background: col, border: '1px solid var(--k-d1d5db)', cursor: 'pointer' }} />)}
+                <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { c().unsetHighlight().run(); close(); }} style={{ ...btnStyle(false), background: 'none' }}>No highlight</button>
+              </div>
+            )}
+          </Pop>
+          <TSep />
+          <T title="Link" icon="link" on={editor.isActive('link')} onClick={openLink} />
+          <T title="Insert a picture" icon="image" onClick={() => imgInput.current?.click()} />
+          <T title="Comment on the selected words" icon="comment" onClick={onComment} />
+          <TSep />
+          <T title="Bulleted list" icon="bullets" on={editor.isActive('bulletList')} onClick={() => c().toggleBulletList().run()} />
+          <T title="Numbered list" icon="numbered" on={editor.isActive('orderedList')} onClick={() => c().toggleOrderedList().run()} />
+          <T title="Checklist" icon="checklist" on={editor.isActive('taskList')} onClick={() => c().toggleTaskList().run()} />
+          <T title="Quote" icon="quote" on={editor.isActive('blockquote')} onClick={() => c().toggleBlockquote().run()} />
+          <TSep />
+          <Pop className="sx-btn" title="Align" label={<><Ico n={align} /><span style={{ fontSize: 9 }}>▾</span></>}>
+            {close => <>
+              <Item checked={align === 'left'} onClick={() => { c().setTextAlign('left').run(); close(); }}>Left</Item>
+              <Item checked={align === 'center'} onClick={() => { c().setTextAlign('center').run(); close(); }}>Center</Item>
+              <Item checked={align === 'right'} onClick={() => { c().setTextAlign('right').run(); close(); }}>Right</Item>
+            </>}
+          </Pop>
+          <Pop className="sx-btn" title="Table" active={inTable} label={<><Ico n="table" /><span style={{ fontSize: 9 }}>▾</span></>}>
+            {close => <>
+              <Item disabled={inTable} onClick={() => { c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); close(); }}>Insert a 3 × 3 table</Item>
+              <Item disabled={!inTable} onClick={() => { c().addRowAfter().run(); close(); }}>Add row below</Item>
+              <Item disabled={!inTable} onClick={() => { c().addColumnAfter().run(); close(); }}>Add column right</Item>
+              <Item disabled={!inTable} onClick={() => { c().deleteRow().run(); close(); }}>Delete row</Item>
+              <Item disabled={!inTable} onClick={() => { c().deleteColumn().run(); close(); }}>Delete column</Item>
+              <Item disabled={!inTable} danger onClick={() => { c().deleteTable().run(); close(); }}>Delete table</Item>
+            </>}
+          </Pop>
+          <T title="Divider line" icon="hr" onClick={() => c().setHorizontalRule().run()} />
+          <TSep />
+          <Pop className="sx-btn" title="View: outline, suggestions, letterhead" active={!!side || letterhead} label={<><Ico n="outline" />{!isMobile && <span>View</span>}<span style={{ fontSize: 9 }}>▾</span></>}>
+            {close => <>
+              <Item checked={side === 'outline'} onClick={() => { onSide(side === 'outline' ? null : 'outline'); close(); }}>Document outline</Item>
+              <Item checked={side === 'suggestions'} onClick={() => { onSide(side === 'suggestions' ? null : 'suggestions'); close(); }}>Review suggestions</Item>
+              <Item checked={letterhead} onClick={() => { onLetterhead(); close(); }}>CRECO letterhead</Item>
+            </>}
+          </Pop>
+        </OverflowRow>
+        <Pop className="sx-btn" title={suggesting ? 'Suggesting — your changes become suggestions' : 'Editing — your changes apply directly'} active={suggesting}
+          style={{ border: '1px solid var(--k-e5e7eb)', padding: '0 10px', flexShrink: 0 }} align="right"
+          label={<><Ico n={suggesting ? 'suggest' : 'pen'} /><span>{suggesting ? 'Suggesting' : 'Editing'}</span><span style={{ fontSize: 9 }}>▾</span></>}>
+          {close => <>
+            <Item checked={!suggesting} onClick={() => { onSuggesting(false); close(); }}>Editing — changes apply directly</Item>
+            <Item checked={suggesting} onClick={() => { onSuggesting(true); close(); }}>Suggesting — changes are proposed for review</Item>
+          </>}
+        </Pop>
       </div>
       <input ref={imgInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={async e => {
         const f = e.target.files?.[0]; e.target.value = '';
@@ -483,15 +496,6 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
         try { const p = await shrinkImage(f); editor.chain().focus().insertContent({ type: 'image', attrs: { src: p.src, iw: p.w, ih: p.h, alt: f.name.replace(/\.[a-z0-9]+$/i, '') } }).run(); }
         catch (err) { window.alert((err as Error).message || 'Could not add that picture'); }
       }} />
-      {colorOpen && (
-        <div role="group" aria-label="Highlight color" style={{ display: 'flex', gap: 8, padding: '6px 10px 8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa', '#e9d5ff'].map(col => (
-            <button key={col} type="button" aria-label={`Highlight ${col}`} onMouseDown={e => e.preventDefault()} onClick={() => { c().setHighlight({ color: col }).run(); setColorOpen(false); }}
-              style={{ width: isMobile ? 34 : 24, height: isMobile ? 34 : 24, borderRadius: '50%', background: col, border: '1px solid var(--k-d1d5db)', cursor: 'pointer' }} />
-          ))}
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { c().unsetHighlight().run(); setColorOpen(false); }} style={{ ...btnStyle(isMobile), background: 'none' }}>No highlight</button>
-        </div>
-      )}
       {linkOpen && (
         <form onSubmit={e => { e.preventDefault(); const u = linkUrl.trim(); if (!u) c().unsetLink().run(); else c().extendMarkRange('link').setLink({ href: /^(https?:|mailto:|tel:)/i.test(u) ? u : `https://${u}` }).run(); setLinkOpen(false); }}
           style={{ display: 'flex', gap: 6, padding: '6px 8px 8px', alignItems: 'center' }}>
