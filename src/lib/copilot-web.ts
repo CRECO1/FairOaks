@@ -5,6 +5,25 @@ import type Anthropic from '@anthropic-ai/sdk';
 // handler in runTool and nothing to confirm, because they read the public web and
 // change nothing in the CRM. Per-request caps keep a single question from turning
 // into dozens of billed searches.
+// web_fetch can only open pages on these sites (a domain covers its subdomains). It is the one tool here that can reach a URL an attacker
+// might plant in a contact note or an email, so it is restricted; web_search stays open and finds pages anywhere. To allow another site,
+// add its domain here.
+export const FETCH_ALLOWED_DOMAINS = [
+  // listings + commercial real estate
+  'zillow.com', 'realtor.com', 'redfin.com', 'trulia.com', 'har.com', 'sabor.com', 'apartments.com', 'loopnet.com', 'crexi.com', 'costar.com',
+  'commercialcafe.com', 'propertyshark.com', 'landwatch.com', 'land.com', 'landsearch.com', 'compass.com', 'nar.realtor', 'ccim.com',
+  // brokerages + research
+  'cbre.com', 'jll.com', 'cushmanwakefield.com', 'colliers.com', 'marcusmillichap.com', 'lee-associates.com', 'naiglobal.com', 'kwcommercial.com',
+  // county / city / state / federal records
+  'bcad.org', 'kendallad.org', 'comalad.org', 'bexar.org', 'sanantonio.gov', 'boerne-tx.gov', 'ci.boerne.tx.us', 'fairoaksranchtx.org',
+  'texas.gov', 'census.gov', 'fema.gov', 'hud.gov', 'sba.gov',
+  // business + person lookups, news
+  'linkedin.com', 'bizapedia.com', 'opencorporates.com', 'bbb.org', 'google.com/maps', 'wikipedia.org',
+  'expressnews.com', 'bizjournals.com', 'sanantonioreport.org', 'therealdeal.com', 'bisnow.com',
+  // ours
+  'crecotx.com', 'fairoaksrealtygroup.com',
+];
+
 export const WEB_TOOLS: Anthropic.ToolUnion[] = [
   {
     type: 'web_search_20260209',
@@ -17,6 +36,7 @@ export const WEB_TOOLS: Anthropic.ToolUnion[] = [
     type: 'web_fetch_20260209',
     name: 'web_fetch',
     max_uses: 3,
+    allowed_domains: FETCH_ALLOWED_DOMAINS,
     // A listing page or article is plenty at this size; whole sites are not.
     max_content_tokens: 20_000,
   },
