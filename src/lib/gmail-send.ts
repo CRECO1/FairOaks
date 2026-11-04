@@ -301,7 +301,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
         .filter(id => id !== userId && UUID_RE.test(id));
       if (ids.length) {
         const profilesRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/crm_profiles?id=in.(${ids.join(',')})&select=email`,
+          `${SUPABASE_URL}/rest/v1/crm_profiles?id=in.(${ids.join(',')})&select=email${ctx.role !== 'admin' && ctx.role !== 'super_admin' && ctx.businessUnit ? `&business_unit=eq.${encodeURIComponent(ctx.businessUnit)}` : ''}`,   // staff in the sender's own workspace only
           { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } }
         );
         const profiles: { email: string }[] = await profilesRes.json();

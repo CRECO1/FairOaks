@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { writeAuditLog } from '@/lib/audit';
+import { userRateLimit } from '@/lib/user-ratelimit';
 
 /**
  * Records what the CRM's screen protection saw in the browser
@@ -15,6 +16,7 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
+  if (!(await userRateLimit('security-event', ctx.userId, 60, '10 m')).success) return NextResponse.json({ ok: true });   // quietly drop a flood
   const body = await req.json().catch(() => ({} as Record<string, unknown>));
   const kind = body.kind as Kind;
   if (!KINDS.has(kind)) return NextResponse.json({ error: 'Unknown event.' }, { status: 400 });

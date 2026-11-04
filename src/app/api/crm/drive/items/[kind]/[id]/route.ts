@@ -71,6 +71,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
   if (label !== undefined && kind === 'form') {
     const v = label.trim().slice(0, 200);
     if (!v) return NextResponse.json({ error: 'Give it a name' }, { status: 400 });
+    // The form lives on a deal / property whose access rules are RLS on the submission itself: renaming needs the same visibility.
+    const { data: seen } = await dc.userDb.from('crm_form_submissions').select('id').eq('id', row.submission_id as string).maybeSingle();
+    if (!seen) return notFound();
     await dc.admin.from('crm_form_submissions').update({ title: v, updated_at: new Date().toISOString() }).eq('id', row.submission_id as string);
     await dc.admin.from('crm_drive_forms').update({ updated_at: new Date().toISOString() }).eq('id', id);
   } else
@@ -102,6 +105,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
       }
       if (row.deal_id !== adopt.deal_id && !canManage) return forbidden('Only the owner or an admin can move this out of a deal folder');
     }
+    if (!target && row.deal_id && !canManage) return forbidden('Only the owner or an admin can move this out of a deal folder');
     const place = kind === 'folder' ? { parent_id: target } : { folder_id: target }; // docs and files both live in folder_id
     const { error } = await dc.admin.from(t).update({ ...place, updated_at: now }).eq('id', id);
     if (error) return NextResponse.json({ error: 'Could not move' }, { status: 500 });
