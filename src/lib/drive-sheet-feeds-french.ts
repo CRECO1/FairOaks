@@ -63,7 +63,7 @@ async function emailed(dc: DriveContext): Promise<{ byClient: Map<string, { sent
   const byClient = new Map<string, { sent: number; opened: number; last: string; camps: Set<string> }>();
   for (const s of sends) { const e = byClient.get(s.client_id) ?? { sent: 0, opened: 0, last: '', camps: new Set<string>() }; e.sent++; if (s.opened_at) e.opened++; if (s.sent_at && s.sent_at > e.last) e.last = s.sent_at; e.camps.add(nameOf.get(s.campaign_id) ?? ''); byClient.set(s.client_id, e); }
   // Personal one-to-one emails about this building (e.g. Robert's from his own mailbox) count too — they are logged on the contact, not as campaign sends.
-  const { data: personal } = await dc.admin.from('crm_deal_emails').select('client_id,created_at,email_at,opened_at,from_email').eq('direction', 'sent').ilike('subject', '%1353 W French Pl%').not('subject', 'ilike', '%SAMPLE%').not('client_id', 'is', null).limit(2000);
+  const { data: personal } = await dc.admin.from('crm_deal_emails').select('client_id,created_at,email_at,opened_at,from_email').eq('direction', 'sent').or('subject.ilike.%1353 W French Pl%,listing_id.in.(04c7ff50-8b2d-44db-8c38-980160ca9bf3,8c3f682a-3992-43d7-acef-3a4431d7cdf0)').not('subject', 'ilike', '%SAMPLE%').not('client_id', 'is', null).limit(2000);
   for (const m of personal ?? []) {
     const id = m.client_id as string, at = String(m.email_at ?? m.created_at ?? '');
     const who = String(m.from_email ?? '').match(/[\w.+-]+@/)?.[0]?.replace('@', '') ?? '';

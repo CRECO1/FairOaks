@@ -242,6 +242,8 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
 
     // Documents picked from a deal's Docs tab ("Attach from the CRM") are attached here, server-side — each one is
     // authorized by its deal. They share the same count and size caps as uploaded files.
+    // The property whose flyer is attached (if any): the logged email is filed against it so it flows to that property's Prospects list and tracker.
+    let linkedListingId: string | null = null;
     if (crmAttachments !== undefined && crmAttachments !== null) {
       if (!Array.isArray(crmAttachments)) return NextResponse.json({ error: 'crmAttachments is invalid' }, { status: 400 });
       const refs = (crmAttachments as Array<{ kind?: unknown; id?: unknown }>)
@@ -253,6 +255,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
       if (refs.length) {
         const got = await resolveCrmAttachments(refs, ctx);
         if (!got.ok) return NextResponse.json({ error: got.error }, { status: got.status });
+        linkedListingId = refs.find(r => r.kind === 'listing_flyer')?.id ?? null;   // resolved above, so the caller may open this property
         for (const f of got.files) {
           totalB64 += f.data.length;
           if (f.data.length > MAX_ATTACHMENT_B64 || totalB64 > MAX_TOTAL_B64) return NextResponse.json({ error: 'Attachments are too large' }, { status: 413 });
@@ -359,6 +362,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
         headers: { 'Content-Type': 'application/json', apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}`, Prefer: 'return=representation' },
         body: JSON.stringify({
           ...(dealId ? { deal_id: dealId } : {}),
+          ...(linkedListingId ? { listing_id: linkedListingId } : {}),
           // A separately-sent copy is filed on ITS recipient's own contact (so their card shows their copy and opens, and the
           // Gmail sync doesn't log the same message a second time there); everything else stays on the sending card.
           ...(rowClient ? { client_id: rowClient } : {}),

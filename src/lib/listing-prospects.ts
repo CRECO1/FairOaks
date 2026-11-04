@@ -58,7 +58,10 @@ export async function campaignsForListing(db: SupabaseClient, listingId: string)
 export async function listingProspects(db: SupabaseClient, listingId: string) {
   const campaigns = await campaignsForListing(db, listingId);
   const { data: listing } = await db.from('crm_listings').select('name, business_unit').eq('id', listingId).maybeSingle();
-  return buildProspects(db, campaigns, listing ?? null);
+  // Personal one-to-one emails sent with this property's flyer attached are filed against it (crm_deal_emails.listing_id); they count as sends too.
+  const { data: personal } = await db.from('crm_deal_emails').select('client_id, created_at, email_at, opened_at, open_count')
+    .eq('listing_id', listingId).eq('direction', 'sent').not('subject', 'ilike', '%SAMPLE%').not('client_id', 'is', null).limit(2000);
+  return buildProspects(db, campaigns, listing ?? null, (personal ?? []).map(m => ({ client_id: m.client_id as string, sent_at: String(m.email_at ?? m.created_at), opened_at: (m.opened_at as string | null) ?? null, open_count: (m.open_count as number | null) ?? null })));
 }
 
 /**
@@ -91,16 +94,21 @@ async function buildProspects(
   db: SupabaseClient,
   campaigns: { id: string; name: string; status: string; created_at: string }[],
   listing: { name: string; business_unit: string } | null,
+  personal: { client_id: string; sent_at: string; opened_at: string | null; open_count: number | null }[] = [],
 ) {
+  const PERSONAL = 'personal-emails';
+  if (personal.length) campaigns = [...campaigns, { id: PERSONAL, name: 'Personal emails (one-to-one)', status: 'active', created_at: personal.reduce((m, x) => (x.sent_at < m ? x.sent_at : m), personal[0].sent_at) }];
   const campIds = campaigns.map(c => c.id);
   const nameById = new Map(campaigns.map(c => [c.id, c.name]));
   if (!campIds.length) return { campaigns: [], prospects: [] };
 
-  const sends = await all<Send>((a, b) => db.from('crm_campaign_sends')
+  const realIds = campIds.filter(id => id !== PERSONAL);
+  const sends = realIds.length ? await all<Send>((a, b) => db.from('crm_campaign_sends')
     .select('campaign_id, client_id, status, sent_at, opened_at, open_count')
-    .in('campaign_id', campIds).eq('type', 'email').range(a, b));
-  const clicks = await all<{ campaign_id: string; client_id: string; occurred_at: string }>((a, b) => db.from('email_tracking_events')
-    .select('campaign_id, client_id, occurred_at').in('campaign_id', campIds).eq('event_type', 'click').range(a, b));
+    .in('campaign_id', realIds).eq('type', 'email').range(a, b)) : [];
+  for (const m of personal) sends.push({ campaign_id: PERSONAL, client_id: m.client_id, status: 'sent', sent_at: m.sent_at, opened_at: m.opened_at, open_count: m.open_count });
+  const clicks = realIds.length ? await all<{ campaign_id: string; client_id: string; occurred_at: string }>((a, b) => db.from('email_tracking_events')
+    .select('campaign_id, client_id, occurred_at').in('campaign_id', realIds).eq('event_type', 'click').range(a, b)) : [];
 
   const clientIds = [...new Set(sends.map(s => s.client_id).filter(Boolean))];
   const clients = new Map<string, Client>();
