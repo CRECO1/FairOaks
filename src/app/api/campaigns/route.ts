@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { stripActiveContent } from '@/lib/strip-active-content';
 import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildCampaignList } from '@/lib/campaign-list';
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
     send_day_of_month: send_day_of_month !== null && send_day_of_month !== undefined && send_day_of_month !== '' ? parseInt(String(send_day_of_month), 10) : null,
     status: status ?? 'draft',
     email_subject: email_subject ?? null,
-    email_body: email_body ?? null,
+    email_body: typeof email_body === 'string' ? stripActiveContent(email_body) : null,
     sms_body: sms_body ?? null,
     created_by: ctx.userId,
     // Admin-only (PATCH enforces the same): the campaign's "send as" agent is ignored for everyone else.

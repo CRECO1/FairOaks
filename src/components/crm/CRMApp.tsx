@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Session } from '@supabase/supabase-js';
 import { businessMinutesBetween, fmtMins, stlTone, STL_COLORS, STL_LATE_MIN, waitingLabel, isOpenNow, pickedUpHint, bestHours, hourLabel, isConnectNote } from '@/lib/speed-to-lead';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
-import { sanitizeHtml } from '@/lib/sanitize';
+import { sanitizeHtml, sanitizeEmailHtml } from '@/lib/sanitize';
 import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import EmailsSection, { type EmailsTab } from './EmailsSection';
@@ -1945,7 +1945,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Sync editor innerHTML once rich mode + builder are both active
   useLayoutEffect(() => {
     if (campaignView === 'builder' && emailEditorMode === 'rich' && emailEditorRef.current) {
-      emailEditorRef.current.innerHTML = newCampaign.email_body ?? '';
+      emailEditorRef.current.innerHTML = sanitizeEmailHtml(newCampaign.email_body);
     }
   }, [campaignView, emailEditorMode]); // eslint-disable-line
 

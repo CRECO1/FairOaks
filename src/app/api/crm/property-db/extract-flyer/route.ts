@@ -42,7 +42,8 @@ export async function POST(req: NextRequest) {
   }
 
   const ext = isPdf ? 'pdf' : (m.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-  const safe = String(filename || `flyer.${ext}`).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const stem = String(filename || 'flyer').replace(/\.[^.]*$/, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'flyer';
+  const safe = `${stem}.${ext}`;   // extension comes from the validated type, never from the filename
   const storagePath = `property-flyers/${ctx.userId}/${Date.now()}_${safe}`;
 
   const { data, error } = await adminClient().storage.from(BUCKET).createSignedUploadUrl(storagePath);
@@ -61,7 +62,7 @@ export async function PUT(req: NextRequest) {
   const { storage_path, mime } = await req.json().catch(() => ({}));
   if (!storage_path) return NextResponse.json({ error: 'storage_path required' }, { status: 400 });
   // A caller can only process an upload under their own prefix.
-  if (!String(storage_path).startsWith(`property-flyers/${ctx.userId}/`)) {
+  if (!String(storage_path).startsWith(`property-flyers/${ctx.userId}/`) || String(storage_path).includes('..')) {
     return NextResponse.json({ error: 'Upload not found.' }, { status: 404 });
   }
 

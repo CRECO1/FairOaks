@@ -39,12 +39,15 @@ function applyMergeFields(template: string, ctx: {
   // to "Hi ,". Fall back to the business, then to a plain greeting.
   const person = `${ctx.client.first_name ?? ''} ${ctx.client.last_name ?? ''}`.trim();
   const greeting = (ctx.client.first_name || '').trim() || (ctx.client.business_name || '').trim() || 'there';
+  // Names / emails come from the contact record, which lead forms fill with whatever a visitor typed: neutralise tags + quotes
+  // so a name can't inject a link or markup into the branded email.
+  const esc = (v: string) => v.replace(/[<>"]/g, c => (c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;'));
   return template
-    .replaceAll('{{first_name}}', greeting)
-    .replaceAll('{{last_name}}', ctx.client.last_name || '')
-    .replaceAll('{{full_name}}', person || (ctx.client.business_name || '').trim() || 'there')
-    .replaceAll('{{email}}', ctx.client.email || '')
-    .replaceAll('{{client_type}}', ctx.client.type || '')
+    .replaceAll('{{first_name}}', esc(greeting))
+    .replaceAll('{{last_name}}', esc(ctx.client.last_name || ''))
+    .replaceAll('{{full_name}}', esc(person || (ctx.client.business_name || '').trim() || 'there'))
+    .replaceAll('{{email}}', esc(ctx.client.email || ''))
+    .replaceAll('{{client_type}}', esc(ctx.client.type || ''))
     .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
     .replaceAll('{{agent_title}}', ctx.agent.title || 'Associate')
     .replaceAll('{{agent_email}}', ctx.agent.email || '')

@@ -30,13 +30,15 @@ export async function GET(req: NextRequest) {
   // One contact by id, full row — used to open a card from a place the list isn't loaded yet.
   const id = req.nextUrl.searchParams.get('id');
   if (id) {
-    const { data, error } = await adminClient().from('crm_clients').select('*').eq('id', id).eq('business_unit', scopedUnit(req, ctx)).maybeSingle();
+    const { data: found, error } = await adminClient().from('crm_clients').select('*').eq('id', id).eq('business_unit', scopedUnit(req, ctx)).maybeSingle();
     if (error) return dbError('api/crm/contacts GET id', error);
+    const data = found && found.lead_hold && ctx.role !== 'super_admin' ? null : found;   // a held lead is the broker's alone
     await guard.recordRows(data ? 1 : 0);
     return NextResponse.json({ contacts: data ? [data] : [] });
   }
 
   let query = adminClient().from('crm_clients').select(CLIENT_COLS).eq('business_unit', scopedUnit(req, ctx));
+  if (ctx.role !== 'super_admin') query = query.not('lead_hold', 'is', true);   // held leads are the broker's alone
   if (q) {
     // Strip PostgREST filter metacharacters so the search term can't break the or() grammar.
     const like = `%${q.replace(/[%,()*]/g, ' ')}%`;

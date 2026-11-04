@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { stripActiveContent } from '@/lib/strip-active-content';
 import { getCrmContext, getCrmAdmin, unauthorized, forbidden, notFound, isAdminRole, isSuperAdminRole, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { chicagoLocalToUTC } from '@/lib/chicago-time';
@@ -104,6 +105,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (ALLOWED_PATCH_FIELDS.has(key)) safeBody[key] = body[key];
     else if (isAdmin && ADMIN_ONLY_PATCH_FIELDS.has(key)) safeBody[key] = body[key];
   }
+
+  // Campaign HTML is opened in the broker's editor on the app origin: remove scripts / handlers / frames on the way in.
+  if (typeof safeBody.email_body === 'string') safeBody.email_body = stripActiveContent(safeBody.email_body);
 
   // Coerce empty strings to null for date/numeric fields before hitting Postgres
   const patchPayload = { ...safeBody, updated_at: new Date().toISOString() };

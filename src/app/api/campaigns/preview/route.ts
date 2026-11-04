@@ -11,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { userRateLimit } from '@/lib/user-ratelimit';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { agentTitle } from '@/lib/agent-title';
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data: { user } } = await admin.auth.getUser(token);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await userRateLimit('campaign-preview', user.id, 20, '10 m')).success) return NextResponse.json({ error: 'Too many previews. Try again in a few minutes.' }, { status: 429 });
 
   // The caller's own profile — always the delivery target (see toEmail below).
   const { data: profile } = await admin

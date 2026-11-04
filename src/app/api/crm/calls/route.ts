@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mirrorCallNote } from '@/lib/call-note-mirror';
 import { settleOpenCallTasks } from '@/lib/call-task-settle';
-import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, forbidden, notFound, assertOwnsResource, dbError, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, forbidden, notFound, assertOwnsResource, dbError, hiddenDealIds, excludeHiddenDeals, heldClientIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { canAccessLinked } from '@/lib/crm-linked-access';
 import { toE164 } from '@/lib/phone';
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
     // Linked rows plus any whose number is one of the contact's — covers calls that
     // came in before the card existed.
     const { data: c } = await supabase.from('crm_clients').select('phone, cell_phone').eq('id', contactId).eq('business_unit', unit).maybeSingle();
-    if (!c) return notFound('Contact not found');
+    if (!c || (await heldClientIds(ctx)).has(contactId)) return notFound('Contact not found');
     const tails = [c.phone, c.cell_phone].map(n => String(n ?? '').replace(/\D/g, '').slice(-10)).filter(t => t.length === 10);
     const parts = [`contact_id.eq.${contactId}`, ...tails.flatMap(t => [`from_number.like.%${t}`, `to_number.like.%${t}`, `callback_number.like.%${t}`])];
     query = query.or(parts.join(','));
@@ -112,7 +112,9 @@ export async function GET(req: NextRequest) {
   const showInternal = sp.get('include_internal') === '1' || !!contactId;
   const internal = await internalNumbers(supabase, unit);
   const allRows = data ?? [];
-  const rows = showInternal ? allRows : allRows.filter(r => !internal.has(otherParty(r)));
+  const held = await heldClientIds(ctx);   // calls from a lead still on hold stay with the broker
+  const visible = held.size ? allRows.filter(r => !r.contact_id || !held.has(r.contact_id as string)) : allRows;
+  const rows = showInternal ? visible : visible.filter(r => !internal.has(otherParty(r)));
   const internalHidden = allRows.length - rows.length;
 
   // Everything this list's callers did before: one query for the workspace's last year.

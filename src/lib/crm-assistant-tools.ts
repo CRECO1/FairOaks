@@ -3,6 +3,8 @@
 // who have no unit, see everything). Read tools run automatically; WRITE_TOOLS mutate data
 // and are gated behind an explicit confirmation in the API route.
 import { ATT_BUCKET, findAttachmentById } from '@/lib/copilot-attachments';
+import { escapeLike } from '@/lib/like-escape';
+import { stripActiveContent } from '@/lib/strip-active-content';
 import { findIdenticalFile } from '@/lib/dup-files';
 import { editDocx, editPdf } from '@/lib/doc-text-edit';
 import type Anthropic from '@anthropic-ai/sdk';
@@ -147,7 +149,7 @@ async function findDuplicateContact(db: SupabaseClient, ctx: AgentCtx, input: Re
   const unit = ctx.businessUnit ?? 'commercial';
   const email = String(input.email ?? '').trim().toLowerCase();
   if (email) {
-    const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email').eq('business_unit', unit).ilike('email', email).limit(1);
+    const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email').eq('business_unit', unit).ilike('email', escapeLike(email)).limit(1);
     const c = data?.[0];
     if (c) return { id: c.id, label: [c.first_name, c.last_name].filter(Boolean).join(' ') || c.business_name || 'a contact', email: c.email, why: 'the same email address' };
   }
@@ -708,7 +710,7 @@ const driveParts = (p: unknown) => String(p ?? '').split('/').map(x => x.trim().
 export function sendGuard(toolName: string, lastUserText: string): string | null {
   if (toolName !== 'send_for_signature') return null;
   const t = lastUserText.trim();
-  if (t.length >= 40 || /\b(send|sent|sending|signature|sign|signed|e-?sign|docusign|out for)\b/i.test(t)) return null;
+  if (/\b(send|sent|sending|signature|sign|signed|e-?sign|docusign|out for)\b/i.test(t)) return null;
   return JSON.stringify({ error: 'The agent has not said to send this. A vague reply like "do it", "yes" or "go ahead" is NOT permission to send for signature. Say the document is ready and NOT sent, and ask them to reply "send it" (or "send it to <name>") if they want it sent. Do not call send_for_signature again until they do.' });
 }
 
@@ -1676,7 +1678,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const { data, error } = await db.from('crm_campaigns').insert({
           name: String(input.name).trim(), description: input.description ?? null,
           type: 'email', frequency: 'one-time', status: 'draft',
-          email_subject: String(input.email_subject).trim(), email_body: String(input.email_body),
+          email_subject: String(input.email_subject).trim(), email_body: stripActiveContent(String(input.email_body)),
           business_unit: ctx.businessUnit ?? 'commercial', created_by: ctx.userId, sender_agent_id: ctx.userId,
           project_id: projectId, listing_id: listingId, send_date: sendDate, send_time: sendTime,
         }).select('id, name, status, email_subject, project_id').single();
@@ -1907,6 +1909,18 @@ export async function describeWriteRich(name: string, input: Record<string, any>
 }
 
 // A short human-readable summary of a proposed write, for the confirmation prompt.
+/** "field → value; field → value" for a confirm card, so the agent sees WHAT is being written (an email, a phone, a price), not just which fields. */
+function valueList(obj: Record<string, unknown>, skip: string[]): string {
+  return Object.entries(obj ?? {})
+    .filter(([k, v]) => !skip.includes(k) && v !== undefined)
+    .map(([k, v]) => {
+      const raw = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '');
+      const t = raw.replace(/\s+/g, ' ').trim();
+      return `${k.replace(/_/g, ' ')} → ${t.length > 90 ? t.slice(0, 90) + '…' : (t || '(blank)')}`;
+    })
+    .join('; ');
+}
+
 export function describeWrite(name: string, input: Record<string, any>): string {
   switch (name) {
     case 'create_task': return `Create task “${input.title}”${input.due_date ? ` due ${input.due_date}` : ''}`;
@@ -1921,7 +1935,7 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'create_deal': return `Create a ${input.type} deal${input.property ? ` for ${input.property}` : ''}${input.value ? ` at $${Number(input.value).toLocaleString()}` : ''} (stage ${input.stage ?? 'Prospect'})${(input.also_contact_ids ?? []).length ? ` and tag ${(input.also_contact_ids as string[]).length} other contact${(input.also_contact_ids as string[]).length === 1 ? '' : 's'}` : ''}`;
     case 'add_contacts_to_deal': return `Add ${(input.contact_ids ?? []).length || 1} contact${(input.contact_ids ?? []).length === 1 ? '' : 's'} to the deal${input.make_primary_contact_id ? ' (and make one the primary client)' : ''}`;
     case 'remove_contacts_from_deal': return `Remove ${(input.contact_ids ?? []).length} contact${(input.contact_ids ?? []).length === 1 ? '' : 's'} from the deal`;
-    case 'update_deal': return `Update the deal's ${Object.keys(input).filter(k => k !== 'deal_id').map(k => k.replace(/_/g, ' ')).join(', ') || 'details'}`;
+    case 'update_deal': return `Update the deal: ${valueList(input, ['deal_id']) || 'details'}`;
     case 'generate_lease': return `Generate & file the lease${input.values?.tenant_name ? ` for ${input.values.tenant_name}${input.values.suite ? `, suite ${input.values.suite}` : ''}` : ''}`;
     case 'create_drive_folder': return `📁 Create the My Drive folder “${input.path}” (missing levels are created; sharing follows the folder it goes in)`;
     case 'create_drive_doc': return `📄 Create the live My Drive document “${input.title}” ${input.folder_path ? `in “${input.folder_path}”` : input.folder_id ? 'in the chosen folder' : 'at the top level'} — sharing follows the folder${input.letterhead === false ? '' : ', with the CRECO letterhead'}${input.deal_id || input.contact_id ? `, and show it live on ${input.deal_id ? 'the deal’s Docs tab' : ''}${input.deal_id && input.contact_id ? ' and ' : ''}${input.contact_id ? 'the contact’s card' : ''}` : ''}`;
@@ -1936,9 +1950,9 @@ export function describeWrite(name: string, input: Record<string, any>): string 
       return `📅 Add “${input.title}” to your calendar on ${input.date}${input.time ? ` at ${input.time}` : ' (all day)'}${input.time && guests.length ? ` and send a calendar invite to ${guests.join(', ')}` : ' — no one is invited'}`;
     }
     case 'create_contact': return `Add contact ${input.business_name || `${input.first_name ?? ''} ${input.last_name ?? ''}`.trim()} (${input.type})`;
-    case 'update_contact': return `Update this contact's ${Object.keys(input).filter(k => k !== 'contact_id').join(', ') || 'details'}`;
+    case 'update_contact': return `Update this contact: ${valueList(input, ['contact_id']) || 'details'}`;
     case 'create_property': return `Add property “${input.name}”${input.address ? ` — ${input.address}` : ''}${input.asking_price ? ` at $${Number(input.asking_price).toLocaleString()}` : ''}`;
-    case 'fill_document': return `Fill in ${Object.keys(input.fields ?? {}).length || 'the'} field${Object.keys(input.fields ?? {}).length === 1 ? '' : 's'} on this document${input.contact_id ? " from the contact's details" : ''}`;
+    case 'fill_document': return `Fill in ${Object.keys(input.fields ?? {}).length || 'the'} field${Object.keys(input.fields ?? {}).length === 1 ? '' : 's'} on this document${input.contact_id ? " from the contact's details" : ''}${Object.keys(input.fields ?? {}).length ? `: ${valueList(input.fields as Record<string, unknown>, [])}` : ''}`;
     case 'draft_campaign': return `Save “${input.name}” as an UNSENT draft campaign — nothing is emailed`;
     case 'enroll_campaign_contacts': return 'Add recipients to a draft campaign — nothing is emailed';
     case 'duplicate_campaign': return `Copy this campaign as a new DRAFT${input.copy_recipients ? ' with its recipients' : ''} — nothing is emailed`;

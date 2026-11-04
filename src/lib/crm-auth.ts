@@ -23,6 +23,10 @@ type CachedUser = NonNullable<Awaited<ReturnType<ReturnType<typeof createAdminCl
 const userCache = new Map<string, { user: CachedUser; until: number }>();
 const profileCache = new Map<string, { role: string | null; businessUnit: string | null; until: number }>();
 
+/** GET routes that also write, mint a link or reveal owner-only data re-check fresh every time. */
+const NO_AUTH_CACHE = /\/(flyer|leasing-activity|ga4|lead-attribution|live-activity|site-engagement|traffic-funnel|deleted-items|invite|merge-contacts|delete-agent|reset-password|profiles|sync-logins|security-event|export)(\/|$|\?)/;
+const cacheableReq = (req?: NextRequest) => req?.method === 'GET' && !NO_AUTH_CACHE.test(req.nextUrl?.pathname ?? '');
+
 function remember<V extends { until: number }>(m: Map<string, V>, key: string, v: V) {
   if (m.size >= AUTH_CACHE_MAX) {
     const now = Date.now();
@@ -53,7 +57,7 @@ export async function getCrmUser(req?: NextRequest) {
   }
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
-    const cacheable = req?.method === 'GET';
+    const cacheable = cacheableReq(req);
     const key = cacheable ? createHash('sha256').update(token).digest('hex') : '';
     if (cacheable) {
       const hit = userCache.get(key);
@@ -211,7 +215,7 @@ export interface CrmContext {
 export async function getCrmContext(req?: NextRequest): Promise<CrmContext | null> {
   const user = await getCrmUser(req);
   if (!user) return null;
-  const cacheable = req?.method === 'GET';
+  const cacheable = cacheableReq(req);
   if (cacheable) {
     const hit = profileCache.get(user.id);
     if (hit && hit.until > Date.now()) return { userId: user.id, role: hit.role, businessUnit: hit.businessUnit };
@@ -226,6 +230,17 @@ export async function getCrmContext(req?: NextRequest): Promise<CrmContext | nul
   const businessUnit = (data.business_unit as string | undefined) ?? null;
   if (cacheable) remember(profileCache, user.id, { role, businessUnit, until: Date.now() + AUTH_CACHE_MS });
   return { userId: user.id, role, businessUnit };
+}
+
+/**
+ * New inbound leads are on HOLD (supabase/lead-hold.sql): only the broker (super_admin) may see them until he assigns or
+ * releases them. The database enforces that for browser queries; server routes use the service key and bypass RLS, so they
+ * must apply the same rule. Returns the held contact ids the caller may NOT see (empty for the super_admin).
+ */
+export async function heldClientIds(ctx: Pick<CrmContext, 'role'>): Promise<Set<string>> {
+  if (ctx.role === 'super_admin') return new Set();
+  const { data } = await adminClient().from('crm_clients').select('id').eq('lead_hold', true).limit(1000);
+  return new Set((data ?? []).map(r => r.id as string));
 }
 
 /**
@@ -248,11 +263,13 @@ export async function assertOwnsResource(
   opts: { ownerColumns?: string[]; requireOwner?: boolean } = {},
 ): Promise<Record<string, unknown> | null> {
   const { ownerColumns = [], requireOwner = false } = opts;
-  const extra = table === 'crm_deals' ? ['is_restricted', 'agent_id', 'assigned_agent_ids'] : [];
+  const extra = table === 'crm_deals' ? ['is_restricted', 'agent_id', 'assigned_agent_ids'] : table === 'crm_clients' ? ['lead_hold'] : [];
   const select = Array.from(new Set(['id', 'business_unit', ...ownerColumns, ...extra])).join(', ');
   const { data } = await adminClient().from(table).select(select).eq('id', id).maybeSingle();
   const row = data as Record<string, unknown> | null;
   if (!row) return null;
+  // A contact still on new-lead hold is the broker's alone.
+  if (table === 'crm_clients' && row.lead_hold && ctx.role !== 'super_admin') return null;
   // Restricted deals: visible only to the owner, assigned agents and super_admin (mirrors crm_deal_visible()).
   if (table === 'crm_deals' && row.is_restricted && ctx.role !== 'super_admin'
     && row.agent_id !== ctx.userId && !((row.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return null;

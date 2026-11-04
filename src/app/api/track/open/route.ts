@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { escapeLike } from '@/lib/like-escape';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/ratelimit';
 import { pushEmailOpen } from '@/lib/notify';
@@ -114,7 +115,7 @@ export async function GET(req: NextRequest) {
             const sender = String(row.from_email ?? '').match(/<([^>]+)>/)?.[1] ?? String(row.from_email ?? '');
             // Who sent it: the owner of the Gmail account it went out from (a broker's CRM login can differ from the address they
             // send with — Zack logs in as info@… and sends as zack@…), falling back to a profile with that email.
-            const addr = sender.trim().toLowerCase().replace(/[,()%]/g, '');
+            const addr = escapeLike(sender.trim().toLowerCase().replace(/[,()%]/g, ''));
             const { data: conn } = await supabase.from('gmail_connections').select('user_id').or(`gmail_email.ilike.${addr},email.ilike.${addr}`).limit(1);
             let recipientId: string | null = (conn?.[0]?.user_id as string | undefined) ?? null;
             if (!recipientId) recipientId = ((await supabase.from('crm_profiles').select('id').ilike('email', addr).maybeSingle()).data?.id as string | undefined) ?? null;

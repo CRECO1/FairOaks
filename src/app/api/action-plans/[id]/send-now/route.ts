@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { userRateLimit } from '@/lib/user-ratelimit';
 import { tagCampaignLinks, campaignSlug } from '@/lib/campaign-utm';
 import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
@@ -56,6 +57,7 @@ function computeNextStepAt(delayDays: number): string {
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authCtx = await getCrmContext(req);
   if (!authCtx) return unauthorized();
+  if (!(await userRateLimit('action-plan-send-now', authCtx.userId, 60, '1 h')).success) return NextResponse.json({ error: 'Too many sends this hour. Try again later.' }, { status: 429 });
 
   const { id: planId } = await params;
   if (!(await assertOwnsResource('crm_action_plans', planId, authCtx))) return notFound('Plan not found');

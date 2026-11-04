@@ -91,3 +91,27 @@ export async function safeFetch(
   }
   return null;
 }
+
+/** Hosts a browser push service uses; a subscription endpoint anywhere else would make the server POST to an arbitrary host. */
+const PUSH_HOSTS = /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9.-]+\.push\.services\.mozilla\.com|web\.push\.apple\.com|[a-z0-9.-]+\.notify\.windows\.com|android\.googleapis\.com)$/i;
+export function isPushEndpoint(endpoint: string): boolean {
+  try { const u = new URL(endpoint); return u.protocol === 'https:' && PUSH_HOSTS.test(u.hostname) && !u.username && !u.password; } catch { return false; }
+}
+
+/** Social-post media must live in OUR Supabase storage (the publisher fetches / forwards these URLs). Returns the cleaned list, or null if any entry isn't ours. */
+export function ownMediaUrls(urls: unknown): string[] | null {
+  if (urls === undefined || urls === null) return [];
+  if (!Array.isArray(urls) || urls.length > 20) return null;
+  let host = '';
+  try { host = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').hostname; } catch { return null; }
+  const out: string[] = [];
+  for (const u of urls) {
+    if (typeof u !== 'string' || u.length > 2000) return null;
+    try {
+      const p = new URL(u);
+      if (p.protocol !== 'https:' || p.hostname !== host || !p.pathname.startsWith('/storage/v1/')) return null;
+    } catch { return null; }
+    out.push(u);
+  }
+  return out;
+}

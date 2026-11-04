@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { escapeLike } from '@/lib/like-escape';
 import { randomUUID } from 'crypto';
 import { callerNumberOrNull, cleanEmail, matchContact, type LeadType } from '@/lib/voicebot';
 import { backupFor, junkKind, ownerFor, type Profile } from '@/lib/call-routing';
@@ -85,7 +86,7 @@ export async function ensureContactForCall(db: SupabaseClient, callId: string): 
     }
     // Same email as someone already in the book (new phone number): link to them rather than make a twin.
     if (email) {
-      const { data: byEmail } = await db.from('crm_clients').select('id').eq('business_unit', unit).ilike('email', email).limit(1).maybeSingle();
+      const { data: byEmail } = await db.from('crm_clients').select('id').eq('business_unit', unit).ilike('email', escapeLike(email)).limit(1).maybeSingle();
       if (byEmail) {
         await db.from('crm_call_log').update({ contact_id: byEmail.id, updated_at: new Date().toISOString() }).eq('id', call.id);
         return { contactId: byEmail.id as string, created: false };

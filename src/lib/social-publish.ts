@@ -1,4 +1,5 @@
 import 'server-only';
+import { ownMediaUrls } from '@/lib/safe-url';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { adminClient } from '@/lib/supabase-admin';
 
@@ -382,7 +383,8 @@ async function publishToYouTube(connection: SocialConnection, post: PostPayload)
   let videoBuffer: ArrayBuffer;
   let contentType: string;
   try {
-    const videoRes = await fetch(videoUrl);
+    if (!ownMediaUrls([videoUrl])) return { success: false, error: 'Video must be uploaded through the CRM.' };
+    const videoRes = await fetch(videoUrl, { redirect: 'error' });
     if (!videoRes.ok) return { success: false, error: 'Failed to fetch video from storage' };
     contentType = videoRes.headers.get('content-type') || 'video/mp4';
     videoBuffer = await videoRes.arrayBuffer();

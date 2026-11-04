@@ -80,16 +80,13 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**.vercel-storage.com',
-      },
-      {
-        protocol: 'https',
         hostname: 'images.unsplash.com',
       },
       {
-        // Supabase Storage — agent photos, listing images, etc.
+        // Supabase Storage — agent photos, listing images, etc. (our project only: a wildcard would let anyone with
+        // their own Supabase project use /_next/image as an open image proxy)
         protocol: 'https',
-        hostname: '**.supabase.co',
+        hostname: 'bnqdzgypesoythpbeujk.supabase.co',
       },
       {
         protocol: 'https',
@@ -131,6 +128,7 @@ const nextConfig = {
     ],
   },
   reactStrictMode: true, // Enable for better security and debugging
+  poweredByHeader: false, // don't advertise the framework
   experimental: {
     reactCompiler: false,
   },
@@ -153,6 +151,11 @@ const nextConfig = {
       // Private surfaces: never indexed, even when a URL is linked from elsewhere
       // (robots.txt only stops crawling, not indexing of a linked URL).
       // The service worker must never be served stale, or a fix to it takes days to reach agents' phones.
+      // Signed-in API responses must never be stored by a shared cache / proxy.
+      { source: '/api/crm/:path*', headers: [{ key: 'Cache-Control', value: 'private, no-store' }] },
+      { source: '/api/gmail/:path*', headers: [{ key: 'Cache-Control', value: 'private, no-store' }] },
+      { source: '/api/action-plans/:path*', headers: [{ key: 'Cache-Control', value: 'private, no-store' }] },
+      { source: '/api/calendar/:path*', headers: [{ key: 'Cache-Control', value: 'private, no-store' }] },
       { source: '/crm-sw.js', headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }] },
       { source: '/crm', headers: NOINDEX },
       { source: '/crm/:path*', headers: NOINDEX },

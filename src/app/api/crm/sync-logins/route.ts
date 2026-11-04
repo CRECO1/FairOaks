@@ -31,11 +31,18 @@ export async function POST() {
       last_sign_in_at: u.last_sign_in_at,
     }));
 
+  // UPDATE only people who already have a CRM profile. (This used to upsert, which created a full agent profile for anyone who had
+  // ever signed up and logged in — profiles are created by the invite flow only.)
+  let synced = 0;
   if (updates.length > 0) {
-    await supabase
-      .from('crm_profiles')
-      .upsert(updates, { onConflict: 'id', ignoreDuplicates: false });
+    const { data: existing } = await supabase.from('crm_profiles').select('id').in('id', updates.map(u => u.id));
+    const have = new Set((existing ?? []).map(r => r.id as string));
+    for (const u of updates) {
+      if (!have.has(u.id)) continue;
+      const { error } = await supabase.from('crm_profiles').update({ last_sign_in_at: u.last_sign_in_at }).eq('id', u.id);
+      if (!error) synced++;
+    }
   }
 
-  return NextResponse.json({ synced: updates.length });
+  return NextResponse.json({ synced });
 }

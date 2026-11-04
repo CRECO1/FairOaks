@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyAssignment, senderName } from '@/lib/notify';
-import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, dbError, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, dbError, hiddenDealIds, excludeHiddenDeals, heldClientIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { validAssignee } from '@/lib/crm-assignee';
 
@@ -29,7 +29,8 @@ export async function GET(req: NextRequest) {
   q = excludeHiddenDeals(q, await hiddenDealIds(ctx)); // tasks on private deals stay private
   const { data, error } = await q;
   if (error) return dbError('api/crm/tasks', error);
-  return NextResponse.json({ tasks: data ?? [] });
+  const heldTasks = await heldClientIds(ctx);   // tasks on a lead still on hold stay with the broker
+  return NextResponse.json({ tasks: heldTasks.size ? (data ?? []).filter(t => !t.client_id || !heldTasks.has(t.client_id as string)) : (data ?? []) });
 }
 
 export async function POST(req: NextRequest) {

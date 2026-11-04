@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ownMediaUrls } from '@/lib/safe-url';
 import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
@@ -31,7 +32,11 @@ export async function PATCH(
   if (scheduled_at !== undefined) updates.scheduled_at = scheduled_at || null;
   if (status !== undefined) updates.status = status;
   if (platforms !== undefined) updates.platforms = platforms;
-  if (media_urls !== undefined) updates.media_urls = media_urls;
+  if (media_urls !== undefined) {
+    const media = ownMediaUrls(media_urls);
+    if (!media) return NextResponse.json({ error: 'Media must be uploaded through the CRM.' }, { status: 400 });
+    updates.media_urls = media;
+  }
   if (link_url !== undefined) updates.link_url = link_url || null;
   if (hashtags !== undefined) updates.hashtags = hashtags;
   if (first_comment !== undefined) updates.first_comment = first_comment || null;

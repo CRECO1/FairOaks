@@ -14,6 +14,7 @@
  * Max 10 per run; calls older than 24 h are skipped. Progress is stored on the call (ai_meta.confirm_email).
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { escapeLike } from '@/lib/like-escape';
 import { Resend } from 'resend';
 import { esc, resendConfig } from '@/lib/esign';
 import { prettyPhone } from '@/lib/phone';
@@ -96,7 +97,7 @@ export async function sendBotCallEmails(db: SupabaseClient, opts: { dryRun?: boo
     if (seen.has(email)) { skip('duplicate address this run'); continue; }
     seen.add(email);
 
-    const { data: unsub } = await db.from('crm_clients').select('id').ilike('email', email).not('unsubscribed_at', 'is', null).limit(1);
+    const { data: unsub } = await db.from('crm_clients').select('id').ilike('email', escapeLike(email)).not('unsubscribed_at', 'is', null).limit(1);
     if (unsub?.length) { skip('unsubscribed'); await mark('skipped:unsubscribed'); continue; }
     // already emailed this address in the last day (another call)
     const { data: recent } = await db.from('crm_call_log').select('id').eq('source', 'voicebot').neq('id', c.id).filter('ai_meta->confirm_email->>status', 'eq', 'sent').filter('ai_meta->>caller_email', 'ilike', email).gte('started_at', new Date(Date.now() - 86400_000).toISOString()).limit(1);

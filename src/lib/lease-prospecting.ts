@@ -25,6 +25,7 @@ export async function listLeaseClients(businessUnit: string): Promise<LeaseClien
     .from('crm_clients')
     .select(SELECT)
     .eq('business_unit', businessUnit)
+    .not('lead_hold', 'is', true)
     .not('lease_expiration_date', 'is', null)
     .order('lease_expiration_date', { ascending: true });
   return (data ?? []) as LeaseClient[];
@@ -58,6 +59,7 @@ export async function runLeaseProspecting(
 
   let q = supabase.from('crm_clients').select(SELECT)
     .eq('business_unit', businessUnit)
+    .not('lead_hold', 'is', true)
     .not('lease_expiration_date', 'is', null);
   if (opts.clientIds?.length) q = q.in('id', opts.clientIds);
   const rows = ((await q).data ?? []) as LeaseClient[];

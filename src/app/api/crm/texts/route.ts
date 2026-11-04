@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, unauthorized, notFound, dbError } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, notFound, dbError, heldClientIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { refreshTextFollowUps, sendText, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
 import { toE164 } from '@/lib/phone';
@@ -28,6 +28,8 @@ export async function GET(req: NextRequest) {
   if (conversation) {
     const { data, error } = await supabase.from('crm_text_messages').select(COLS).eq('business_unit', unit).eq('conversation_id', conversation).order('sent_at').limit(500);
     if (error) return dbError('api/crm/texts thread', error);
+    const heldT = await heldClientIds(ctx);
+    if ((data ?? []).some(m => m.contact_id && heldT.has(m.contact_id as string))) return notFound('Conversation not found');
     return NextResponse.json({ messages: data ?? [] });
   }
 
@@ -38,7 +40,7 @@ export async function GET(req: NextRequest) {
   let query = supabase.from('crm_text_messages').select(COLS).eq('business_unit', unit).order('sent_at', { ascending: false }).limit(2000);
   if (contactId) {
     const { data: c } = await supabase.from('crm_clients').select('phone, cell_phone').eq('id', contactId).eq('business_unit', unit).maybeSingle();
-    if (!c) return notFound('Contact not found');
+    if (!c || (await heldClientIds(ctx)).has(contactId)) return notFound('Contact not found');
     const tails = [c.phone, c.cell_phone].map(n => String(n ?? '').replace(/\D/g, '').slice(-10)).filter(t => t.length === 10);
     query = query.or([`contact_id.eq.${contactId}`, ...tails.flatMap(t => [`from_number.like.%${t}`, `to_number.like.%${t}`])].join(','));
   }
@@ -50,8 +52,10 @@ export async function GET(req: NextRequest) {
     if (d.length >= 3) parts.push(`from_number.ilike.%${d}%`, `to_number.ilike.%${d}%`);
     query = query.or(parts.join(','));
   }
-  const { data, error } = await query;
+  const { data: allMsgs, error } = await query;
   if (error) return dbError('api/crm/texts GET', error);
+  const heldList = await heldClientIds(ctx);   // texts with a lead still on hold stay with the broker
+  const data = heldList.size ? (allMsgs ?? []).filter(m => !m.contact_id || !heldList.has(m.contact_id as string)) : allMsgs;
 
   // Fold messages into threads: newest message first per conversation.
   const threads = new Map<string, { conversation_id: string; number: string | null; our_number: string | null; contact_id: string | null; last: Record<string, unknown>; count: number; unanswered: boolean; inbound_count: number }>();

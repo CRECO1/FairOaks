@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { userRateLimit } from '@/lib/user-ratelimit';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, isSuperAdminRole, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { canAccessLinked } from '@/lib/crm-linked-access';
@@ -164,6 +165,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  // Signing requests email strangers from the brand domain: throttle per user.
+  const rl = await userRateLimit('envelope-send', ctx.userId, 30, '1 h');
+  if (!rl.success) return NextResponse.json({ error: 'Too many signature requests this hour. Try again later.' }, { status: 429 });
   const b = await req.json().catch(() => ({}));
   const { submission_id, deal_id, listing_id, title, message, signers, business_unit } = b;
   if (!submission_id) return NextResponse.json({ error: 'submission_id required' }, { status: 400 });

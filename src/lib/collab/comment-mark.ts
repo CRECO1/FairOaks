@@ -1,4 +1,4 @@
-import { Mark, mergeAttributes } from '@tiptap/core';
+import { Mark } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 
 /**
@@ -19,7 +19,12 @@ export const CommentMark = Mark.create({
     };
   },
   parseHTML() { return [{ tag: 'span[data-comment-id]' }]; },
-  renderHTML({ HTMLAttributes }) { return ['span', mergeAttributes({ class: 'comment-hl' }, HTMLAttributes), 0]; },
+  // Only the one attribute this mark declares is rendered. (Not tiptap's mergeAttributes: GHSA-cp6q-959q-f8rh lets a "__proto__" key
+  // from shared document state turn into DOM attributes in TipTap < 3.30.4, and this mark renders collaborator-supplied state.)
+  renderHTML({ HTMLAttributes }) {
+    const id = HTMLAttributes && typeof HTMLAttributes['data-comment-id'] === 'string' ? HTMLAttributes['data-comment-id'] : null;
+    return ['span', id ? { class: 'comment-hl', 'data-comment-id': id } : { class: 'comment-hl' }, 0];
+  },
 });
 
 /** Take a comment's highlight off the document (used when it is resolved or deleted). */

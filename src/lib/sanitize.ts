@@ -7,15 +7,47 @@ import DOMPurify from 'isomorphic-dompurify';
  * Sanitize an HTML string, removing all script/event-handler XSS vectors.
  * Works server-side (SSR) and client-side — never returns empty string on the server.
  */
+// Pasted / inbound HTML is shown inside the app's own DOM: keep it from painting over the page (fake login boxes, covers).
+let hooked = false;
+function ensureHooks() {
+  if (hooked) return;
+  hooked = true;
+  DOMPurify.addHook('afterSanitizeAttributes', node => {
+    const el = node as Element;
+    const style = el.getAttribute?.('style');
+    if (style) {
+      el.setAttribute('style', style.replace(/(^|;)\s*(position|z-index|inset|top|left|right|bottom)\s*:[^;]*/gi, '$1'));
+    }
+  });
+}
+
 export function sanitizeHtml(dirty: string | null | undefined): string {
   if (!dirty) return '';
+  ensureHooks();
   return DOMPurify.sanitize(dirty, {
     // Allowlist — explicitly safe tags only. Never include script/style/html/head/body/meta.
     ALLOWED_TAGS: ['p','br','b','i','u','strong','em','a','ul','ol','li','h1','h2','h3','h4','h5','h6','span','div','table','thead','tbody','tfoot','tr','td','th','img','hr','blockquote','pre','code','small','sub','sup','s','strike','del','ins','caption','col','colgroup'],
-    ALLOWED_ATTR: ['href','target','rel','src','alt','width','height','style','class','align','valign','border','cellpadding','cellspacing','colspan','rowspan','id','title'],
+    ALLOWED_ATTR: ['href','target','rel','src','alt','width','height','style','class','align','valign','border','cellpadding','cellspacing','colspan','rowspan','title'],
     // Force all links to be safe
     FORCE_BODY: true,
     // Strip any remaining dangerous protocols
     ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+  });
+}
+
+/**
+ * For loading a campaign's saved HTML into the rich editor (innerHTML on the app origin). Keeps the layout an email needs
+ * (inline styles, <style>, tables, images) but removes scripts, event handlers, frames, forms and javascript: URLs.
+ * Client-side use; the server-side counterpart is stripActiveContent (dependency-free, serverless-safe).
+ */
+export function sanitizeEmailHtml(dirty: string | null | undefined): string {
+  if (!dirty) return '';
+  ensureHooks();
+  return DOMPurify.sanitize(dirty, {
+    ADD_TAGS: ['style'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'textarea', 'select', 'base', 'meta', 'link', 'svg', 'math'],
+    FORBID_ATTR: ['srcdoc', 'formaction', 'action'],
+    FORCE_BODY: true,
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|cid):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
   });
 }

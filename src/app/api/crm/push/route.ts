@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isPushEndpoint } from '@/lib/safe-url';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { cleanCategories, DEFAULT_PUSH_CATEGORIES, pushConfigured, sendPushToProfiles } from '@/lib/push';
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
   const endpoint = typeof body.subscription?.endpoint === 'string' ? body.subscription.endpoint : '';
   const p256dh = typeof body.subscription?.keys?.p256dh === 'string' ? body.subscription.keys.p256dh : '';
   const auth = typeof body.subscription?.keys?.auth === 'string' ? body.subscription.keys.auth : '';
-  if (!endpoint.startsWith('https://') || endpoint.length > 1000 || !p256dh || !auth) return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 });
+  if (!isPushEndpoint(endpoint) || endpoint.length > 1000 || !p256dh || !auth) return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 });
 
   const db = adminClient();
   // Keep what this device already chose when it is simply re-registering.

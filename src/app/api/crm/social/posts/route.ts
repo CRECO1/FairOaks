@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ownMediaUrls } from '@/lib/safe-url';
 import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { publishToplatform } from '@/lib/social-publish';
@@ -37,6 +38,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'platforms array required' }, { status: 400 });
   }
 
+  const media = ownMediaUrls(media_urls);
+  if (!media) return NextResponse.json({ error: 'Media must be uploaded through the CRM.' }, { status: 400 });
+
   const supabase = adminClient();
 
   const { data: post, error } = await supabase
@@ -47,7 +51,7 @@ export async function POST(req: NextRequest) {
       platforms,
       scheduled_at: scheduled_at || null,
       status,
-      media_urls: media_urls || [],
+      media_urls: media,
       link_url: link_url || null,
     })
     .select()
@@ -75,7 +79,7 @@ export async function POST(req: NextRequest) {
 
       publishResults[platform] = await publishToplatform(platform, connection, {
         content,
-        media_urls: media_urls || [],
+        media_urls: media,
         link_url,
       });
     }
