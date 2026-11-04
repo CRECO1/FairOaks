@@ -352,6 +352,7 @@ function DocSurface({ handle, me, isMobile, onEditor, onComment, onHighlightClic
 function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { editor: Editor | null; isMobile: boolean; onComment: () => void; letterhead: boolean; onLetterhead: () => void }) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
+  const [more, setMore] = useState(false);   // phones: the everyday tools fit one row; "⋯" opens the whole toolbar, wrapped (no sideways scrolling)
   const [, force] = useState(0);
   useEffect(() => {
     if (!editor) return;
@@ -373,14 +374,16 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { ed
       {label}
     </button>
   );
-  const Sep = () => <span aria-hidden style={{ width: 1, height: 20, background: 'var(--k-e5e7eb)', margin: '0 4px', flexShrink: 0 }} />;
+  const x = !isMobile || more;   // show the less-used tools
+  const Sep = () => (isMobile && !more ? null : <span aria-hidden style={{ width: 1, height: 20, background: 'var(--k-e5e7eb)', margin: '0 4px', flexShrink: 0 }} />);
   const block = editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p';
   const inTable = editor.isActive('table');
   return (
     <div style={{ background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)', flexShrink: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '4px 8px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '4px 8px', ...(isMobile && more ? { flexWrap: 'wrap', rowGap: 2 } : { overflowX: 'auto', WebkitOverflowScrolling: 'touch' }) }}>
         <B on={() => c().undo().run()} label="↶" title="Undo" />
-        <B on={() => c().redo().run()} label="↷" title="Redo" />
+        {isMobile && <B on={() => setMore(m => !m)} active={more} label={more ? 'Less ▴' : '⋯ More'} title={more ? 'Show fewer tools' : 'Show every formatting tool'} />}
+        {x && <B on={() => c().redo().run()} label="↷" title="Redo" />}
         <Sep />
         <select aria-label="Text style" value={block} onChange={e => { const v = e.target.value; if (v === 'p') c().setParagraph().run(); else c().toggleHeading({ level: Number(v[1]) as 1 | 2 | 3 }).run(); }}
           style={{ height: isMobile ? 40 : 32, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13.5, padding: '0 6px', flexShrink: 0 }}>
@@ -389,22 +392,24 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { ed
         <Sep />
         <B on={() => c().toggleBold().run()} active={editor.isActive('bold')} label={<b>B</b>} title="Bold" />
         <B on={() => c().toggleItalic().run()} active={editor.isActive('italic')} label={<i>I</i>} title="Italic" />
-        <B on={() => c().toggleUnderline().run()} active={editor.isActive('underline')} label={<u>U</u>} title="Underline" />
-        <B on={() => c().toggleStrike().run()} active={editor.isActive('strike')} label={<s>S</s>} title="Strikethrough" />
-        <B on={() => c().toggleHighlight().run()} active={editor.isActive('highlight')} label="🖍" title="Highlight" />
+        {x && <B on={() => c().toggleUnderline().run()} active={editor.isActive('underline')} label={<u>U</u>} title="Underline" />}
+        {x && <B on={() => c().toggleStrike().run()} active={editor.isActive('strike')} label={<s>S</s>} title="Strikethrough" />}
+        {x && <B on={() => c().toggleHighlight().run()} active={editor.isActive('highlight')} label="🖍" title="Highlight" />}
         <B on={openLink} active={editor.isActive('link')} label="🔗" title="Link" />
-        <B on={onComment} label="💬＋" title="Comment on the selected words" />
+        {x && <B on={onComment} label="💬＋" title="Comment on the selected words" />}
         <Sep />
         <B on={() => c().toggleBulletList().run()} active={editor.isActive('bulletList')} label="•≡" title="Bulleted list" />
-        <B on={() => c().toggleOrderedList().run()} active={editor.isActive('orderedList')} label="1≡" title="Numbered list" />
+        {x && <B on={() => c().toggleOrderedList().run()} active={editor.isActive('orderedList')} label="1≡" title="Numbered list" />}
         <B on={() => c().toggleTaskList().run()} active={editor.isActive('taskList')} label="☑" title="Checklist" />
-        <B on={() => c().toggleBlockquote().run()} active={editor.isActive('blockquote')} label="❝" title="Quote" />
+        {x && <B on={() => c().toggleBlockquote().run()} active={editor.isActive('blockquote')} label="❝" title="Quote" />}
         <Sep />
-        <B on={() => c().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} label="⇤" title="Align left" />
-        <B on={() => c().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} label="↔" title="Center" />
-        <B on={() => c().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} label="⇥" title="Align right" />
-        <Sep />
-        <B on={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} disabled={inTable} label="▦" title="Insert table" />
+        {x && <>
+          <B on={() => c().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} label="⇤" title="Align left" />
+          <B on={() => c().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} label="↔" title="Center" />
+          <B on={() => c().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} label="⇥" title="Align right" />
+          <Sep />
+          <B on={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} disabled={inTable} label="▦" title="Insert table" />
+        </>}
         {inTable && <>
           <B on={() => c().addRowAfter().run()} label="＋row" title="Add row below" />
           <B on={() => c().addColumnAfter().run()} label="＋col" title="Add column right" />
@@ -412,9 +417,11 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { ed
           <B on={() => c().deleteColumn().run()} label="−col" title="Delete column" />
           <B on={() => c().deleteTable().run()} label="🗑▦" title="Delete table" />
         </>}
-        <B on={() => c().setHorizontalRule().run()} label="―" title="Divider line" />
-        <Sep />
-        <B on={onLetterhead} active={letterhead} label="🏷 Letterhead" title="CRECO letterhead — logo header and footer on every page (and on the PDF)" />
+        {x && <>
+          <B on={() => c().setHorizontalRule().run()} label="―" title="Divider line" />
+          <Sep />
+          <B on={onLetterhead} active={letterhead} label="🏷 Letterhead" title="CRECO letterhead — logo header and footer on every page (and on the PDF)" />
+        </>}
       </div>
       {linkOpen && (
         <form onSubmit={e => { e.preventDefault(); const u = linkUrl.trim(); if (!u) c().unsetLink().run(); else c().extendMarkRange('link').setLink({ href: /^(https?:|mailto:|tel:)/i.test(u) ? u : `https://${u}` }).run(); setLinkOpen(false); }}
