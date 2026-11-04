@@ -699,6 +699,27 @@ function drivePathOf(tree: DriveFolderRow[], id: string | null): string {
 const driveParts = (p: unknown) => String(p ?? '').split('/').map(x => x.trim().replace(/\s+/g, ' ').slice(0, 120)).filter(Boolean).slice(0, 6);
 
 /** Find (or, with create=true, build) a folder path. id null = the top level. */
+/**
+ * Standing rule: never send for signature without an explicit go. The prompt says a vague "go ahead" / "do it" is not permission, but a
+ * model sometimes queues the send anyway, so this is enforced in code: a SHORT agent message that doesn't mention sending or signing
+ * ("do it", "yes", "ok", "go ahead") can't queue send_for_signature. (The confirm card is still the final checkpoint.) Returns the
+ * error to hand back to the model, or null when it's fine.
+ */
+export function sendGuard(toolName: string, lastUserText: string): string | null {
+  if (toolName !== 'send_for_signature') return null;
+  const t = lastUserText.trim();
+  if (t.length >= 40 || /\b(send|sent|sending|signature|sign|signed|e-?sign|docusign|out for)\b/i.test(t)) return null;
+  return JSON.stringify({ error: 'The agent has not said to send this. A vague reply like "do it", "yes" or "go ahead" is NOT permission to send for signature. Say the document is ready and NOT sent, and ask them to reply "send it" (or "send it to <name>") if they want it sent. Do not call send_for_signature again until they do.' });
+}
+
+/** The live My Drive documents shown on a deal's or contact's card (the caller has already been checked against the card). id works with read_drive_doc / edit_drive_doc. */
+async function liveDocsOn(db: SupabaseClient, col: 'deal_id' | 'client_id', cardId: string) {
+  try {
+    const { data } = await db.from('crm_drive_doc_links').select('crm_drive_docs(id, title, updated_at, trashed_at)').eq(col, cardId);
+    return (data ?? []).flatMap(l => { const raw = l.crm_drive_docs as unknown as { id: string; title: string; updated_at: string; trashed_at: string | null } | Array<{ id: string; title: string; updated_at: string; trashed_at: string | null }> | null; const d = Array.isArray(raw) ? raw[0] : raw; return d && !d.trashed_at ? [{ id: d.id, title: d.title, updated_at: d.updated_at }] : []; });
+  } catch { return []; }
+}
+
 async function resolveDriveFolder(ctx: AgentCtx, a: { folder_id?: unknown; folder_path?: unknown }, create: boolean): Promise<{ id: string | null; path: string; created: string[] } | { error: string }> {
   const tree = await driveTree(ctx);
   if (!tree) return { error: 'Could not read My Drive' };
@@ -786,7 +807,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (ctx.role === 'agent' && c.agent_id !== ctx.userId && !((c.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return j({ error: "That contact isn't assigned to you" });
         const hid = await hiddenDeals(db, ctx);
         const { data: deals } = await db.from('crm_deals').select('id, property, value, stage, type').eq('client_id', input.contact_id).limit(10);
-        return j({ ...c, deals: (deals ?? []).filter(d => !hid.includes(d.id as string)) });
+        return j({ ...c, deals: (deals ?? []).filter(d => !hid.includes(d.id as string)), live_documents: await liveDocsOn(db, 'client_id', String(input.contact_id)) });
       }
       case 'list_tasks': {
         const status = input.status ?? 'open';
@@ -869,7 +890,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const { data: lst } = d.listing_id ? await db.from('crm_listings').select('id, name, address, city, status, type').eq('id', d.listing_id).maybeSingle() : { data: null };
         const { data: docs } = await db.from('crm_form_submissions').select('id, title, status, updated_at').eq('deal_id', d.id).order('updated_at', { ascending: false }).limit(20);
         return j({ ...d, primary_contact: primary ? card(primary) : null, tagged_contacts: (tagRows ?? []).filter(c => tagIds.includes(c.id as string)).map(card), property_record: lst ?? null,
-          documents: (docs ?? []).map(x => ({ id: x.id, title: x.title, status: x.status })) });
+          documents: (docs ?? []).map(x => ({ id: x.id, title: x.title, status: x.status })), live_documents: await liveDocsOn(db, 'deal_id', String(d.id)) });
       }
       case 'create_task': {
         // Don't let a task link to a contact/deal in another workspace.

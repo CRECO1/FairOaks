@@ -10,6 +10,17 @@ import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS, type DriveDoc, type D
 // Transaction Docs "Drive": list folders + live documents, and create new ones.
 // Every read runs as the signed-in user, so the crm_drive_* read policies (crm_drive_can) decide what is visible.
 
+/** Adds `linked_cards` (how many cards each document is on) to a list of documents. A count only — never which cards. */
+async function withLinkCounts<T extends { id: string }>(admin: ReturnType<typeof import('@/lib/supabase-admin').adminClient>, docs: T[]): Promise<Array<T & { linked_cards: number }>> {
+  if (!docs.length) return [];
+  try {
+    const { data } = await admin.from('crm_drive_doc_links').select('doc_id').in('doc_id', docs.map(d => d.id));
+    const n = new Map<string, number>();
+    for (const l of data ?? []) n.set(l.doc_id as string, (n.get(l.doc_id as string) ?? 0) + 1);
+    return docs.map(d => ({ ...d, linked_cards: n.get(d.id) ?? 0 }));
+  } catch { return docs.map(d => ({ ...d, linked_cards: 0 })); }
+}
+
 export async function GET(req: NextRequest) {
   const dc = await driveContext(req);
   if (!dc) return unauthorized();
@@ -30,7 +41,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await userDb.from('crm_drive_docs').select(DOC_COLS)
       .eq('business_unit', bu).is('trashed_at', null).eq('is_template', false).order('updated_at', { ascending: false }).limit(40);
     if (error) return NextResponse.json({ error: 'Could not load documents' }, { status: 500 });
-    return NextResponse.json({ path: [], folder: null, folders: [], docs: data ?? [] } satisfies DriveListing);
+    return NextResponse.json({ path: [], folder: null, folders: [], docs: await withLinkCounts(dc.admin, (data ?? []) as unknown as DriveDoc[]) } satisfies DriveListing);
   }
 
   // Shared with me: what teammates have shared with this user (private items that list them), top of each shared branch only.
@@ -48,7 +59,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       path: [], folder: null,
       folders: folders.filter(x => !x.parent_id || !inShared.has(x.parent_id)),
-      docs: ((d.data ?? []) as DriveDoc[]).filter(x => !x.folder_id || !inShared.has(x.folder_id)),
+      docs: await withLinkCounts(dc.admin, ((d.data ?? []) as DriveDoc[]).filter(x => !x.folder_id || !inShared.has(x.folder_id))),
       files: ((fl.data ?? []) as DriveFile[]).filter(x => !x.folder_id || !inShared.has(x.folder_id)),
     } satisfies DriveListing);
   }
@@ -103,7 +114,7 @@ export async function GET(req: NextRequest) {
       const { content_text, ...rest } = x;
       docs.set(x.id, { ...rest, snippet: `${i > 40 ? '…' : ''}${content_text.slice(Math.max(0, i - 40), i + 100).replace(/\s+/g, ' ')}…` });
     }
-    return NextResponse.json({ path: [], folder: null, folders: (f.data ?? []) as DriveFolder[], docs: [...docs.values()], files: (byFile.data ?? []) as DriveFile[], forms: await hydrateDriveForms(dc, (formLinks.data ?? []) as Array<Record<string, unknown>>, q) } satisfies DriveListing);
+    return NextResponse.json({ path: [], folder: null, folders: (f.data ?? []) as DriveFolder[], docs: await withLinkCounts(dc.admin, [...docs.values()]), files: (byFile.data ?? []) as DriveFile[], forms: await hydrateDriveForms(dc, (formLinks.data ?? []) as Array<Record<string, unknown>>, q) } satisfies DriveListing);
   }
 
   // Default: the contents of one folder (or the top level).
@@ -129,7 +140,7 @@ export async function GET(req: NextRequest) {
     (folderId ? mq.eq('folder_id', folderId) : mq.is('folder_id', null)).order('updated_at', { ascending: false }),
   ]);
   if (f.error || d.error || fl.error || fm.error) return NextResponse.json({ error: 'Could not load this folder' }, { status: 500 });
-  return NextResponse.json({ path, folder, folders: (f.data ?? []) as DriveFolder[], docs: (d.data ?? []) as DriveDoc[], files: (fl.data ?? []) as DriveFile[], forms: await hydrateDriveForms(dc, (fm.data ?? []) as Array<Record<string, unknown>>) } satisfies DriveListing);
+  return NextResponse.json({ path, folder, folders: (f.data ?? []) as DriveFolder[], docs: await withLinkCounts(dc.admin, (d.data ?? []) as DriveDoc[]), files: (fl.data ?? []) as DriveFile[], forms: await hydrateDriveForms(dc, (fm.data ?? []) as Array<Record<string, unknown>>) } satisfies DriveListing);
 }
 
 export async function POST(req: NextRequest) {

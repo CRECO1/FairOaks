@@ -18,6 +18,8 @@ export interface DriveFolder {
 
 export interface DriveDoc {
   id: string;
+  /** How many deal / contact cards this document is shown on (a count only — added by the list API). */
+  linked_cards?: number;
   business_unit: string;
   folder_id: string | null;
   title: string;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
-import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, DRIVE_TOOLS, DRIVE_WRITE_TOOLS, canUseDrive, resolveRecord, DOC_EDIT_TOOLS, DEAL_WRITE_TOOLS, CONTACT_WRITE_TOOLS, runTool, precheckWrite, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
+import { sendGuard, TOOLS, WRITE_TOOLS, CLIENT_TOOLS, DRIVE_TOOLS, DRIVE_WRITE_TOOLS, canUseDrive, resolveRecord, DOC_EDIT_TOOLS, DEAL_WRITE_TOOLS, CONTACT_WRITE_TOOLS, runTool, precheckWrite, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
 import { writeAuditLog } from '@/lib/audit';
 import { systemPrompt } from '@/lib/crm-assistant-prompt';
 import { rateLimit } from '@/lib/ratelimit';
@@ -72,6 +72,18 @@ interface ReqBody {
 /** A UI directive for the browser: navigate, or reload a document the Copilot just edited. */
 type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'open-record'; kind: 'deal' | 'contact'; id: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string } | { type: 'refresh'; scope: 'deals' | 'contacts' | 'drive' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The text of the agent's newest typed message (tool results and attachments don't count). */
+function lastUserText(msgs: Array<{ role: string; content: unknown }>): string {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.role !== 'user') continue;
+    if (typeof m.content === 'string') return m.content;
+    const text = Array.isArray(m.content) ? (m.content as Array<{ type?: string; text?: string }>).filter(b => b.type === 'text').map(b => b.text ?? '').join(' ') : '';
+    if (text.trim()) return text;
+  }
+  return '';
+}
 
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
@@ -216,6 +228,9 @@ export async function POST(req: NextRequest) {
             content = JSON.stringify({ ok: true, opened: t.label, note: 'The screen has switched. Say so in one short line.' });
           }
           await logToolCall(toolCtx, req, block.name, input, 'executed', content);
+        } else if (WRITE_TOOLS.has(block.name) && (content = sendGuard(block.name, lastUserText(incoming)) ?? '')) {
+          // A send the agent never asked for (a vague "do it"): refused here, in code, whatever the model decided.
+          await logToolCall(toolCtx, req, block.name, input, 'rejected_precheck', content);
         } else if (WRITE_TOOLS.has(block.name) && (content = await precheckWrite(block.name, input, toolCtx) ?? '')) {
           // Refused before the agent is ever asked to confirm — the model gets the reason and fixes the call.
           await logToolCall(toolCtx, req, block.name, input, 'rejected_precheck', content);

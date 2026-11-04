@@ -489,7 +489,12 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         <button type="button" onClick={() => openItem(kind, it)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           <Tile n={t.icon} color={t.color} />
           <span style={{ minWidth: 0, flex: 1 }}>
-            <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{title}</span>
+              {kind === 'doc' && !!(it as DriveDoc).linked_cards && (
+                <span title="Shown live on a deal or contact card" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, height: 20, padding: '0 8px', borderRadius: 10, background: '#2563eb1a', color: '#2563eb', fontSize: 11, fontWeight: 700 }}><DI n="briefcase" size={11} />{(it as DriveDoc).linked_cards === 1 ? 'On a card' : `On ${(it as DriveDoc).linked_cards} cards`}</span>
+              )}
+            </span>
             {(isMobile || snippet) && <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet ?? rowSub(kind, it)}</span>}
           </span>
         </button>
