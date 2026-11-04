@@ -33,7 +33,7 @@ export const SuggestTracking = Extension.create<Record<string, never>, SuggestSt
   addStorage() { return { on: false, author: '', authorId: '' }; },
   addProseMirrorPlugins() {
     const ed = this.editor;
-    const st = () => ed.storage.suggest as SuggestStorage;
+    const st = () => (ed.storage as unknown as { suggest: SuggestStorage }).suggest;
     const on = () => st().on && !!st().authorId;
     const addMark = () => ed.schema.marks.suggestAdd.create({ author: st().author, authorId: st().authorId });
     const delMark = () => ed.schema.marks.suggestDel.create({ author: st().author, authorId: st().authorId });

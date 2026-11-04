@@ -365,7 +365,7 @@ function DocSurface({ handle, me, userId, isMobile, onEditor, onComment, onHighl
   const [side, setSide] = useState<null | 'outline' | 'suggestions'>(null);
   useEffect(() => {
     if (!editor) return;
-    const sg = editor.storage.suggest as { on: boolean; author: string; authorId: string };
+    const sg = (editor.storage as unknown as { suggest: { on: boolean; author: string; authorId: string } }).suggest;
     sg.on = suggesting; sg.author = me.name; sg.authorId = userId;
   }, [editor, suggesting, me.name, userId]);
 
