@@ -16,7 +16,7 @@ const primary: CSSProperties = { height: 34, padding: '0 16px', border: 'none', 
 const plain: CSSProperties = { height: 34, padding: '0 14px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontWeight: 600, fontSize: 13.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
 
 /** A button that opens a small floating panel under it. */
-export function Pop({ label, title, children, style, active, align = 'left' }: { label: ReactNode; title: string; children: (close: () => void) => ReactNode; style: CSSProperties; active?: boolean; align?: 'left' | 'right' }) {
+export function Pop({ label, title, children, style, active, align = 'left', className }: { label: ReactNode; title: string; children: (close: () => void) => ReactNode; style?: CSSProperties; active?: boolean; align?: 'left' | 'right'; className?: string }) {
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0, right: 0 });
@@ -24,7 +24,7 @@ export function Pop({ label, title, children, style, active, align = 'left' }: {
   const toggle = () => { const r = btn.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 4, left: r.left, right: Math.max(8, window.innerWidth - r.right) }); setOpen(o => !o); };
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
-      <button ref={btn} type="button" title={title} aria-label={title} aria-haspopup="menu" aria-expanded={open} onMouseDown={e => e.preventDefault()} onClick={toggle} style={{ ...style, background: active || open ? 'var(--k-fdf6e9)' : style.background }}>{label}</button>
+      <button ref={btn} type="button" title={title} aria-label={title} aria-haspopup="menu" aria-expanded={open} onMouseDown={e => e.preventDefault()} onClick={toggle} className={`${className ?? ''} ${active || open ? 'on' : ''}`} style={style ? { ...style, background: active || open ? 'var(--k-fdf6e9)' : style.background } : undefined}>{label}</button>
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
@@ -35,11 +35,11 @@ export function Pop({ label, title, children, style, active, align = 'left' }: {
   );
 }
 
-export function Item({ children, onClick, danger, disabled, checked }: { children: ReactNode; onClick: () => void; danger?: boolean; disabled?: boolean; checked?: boolean }) {
+export function Item({ children, onClick, danger, disabled, checked, hint }: { children: ReactNode; onClick: () => void; danger?: boolean; disabled?: boolean; checked?: boolean; hint?: string }) {
   return (
     <button type="button" role="menuitem" disabled={disabled} onMouseDown={e => e.preventDefault()} onClick={onClick}
       style={{ display: 'flex', width: '100%', textAlign: 'left', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'none', cursor: disabled ? 'default' : 'pointer', fontSize: 13.5, borderRadius: 6, color: disabled ? 'var(--k-9ca3af)' : danger ? 'var(--k-dc2626)' : 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
-      <span style={{ width: 14, color: GOLD }}>{checked ? '✓' : ''}</span>{children}
+      <span style={{ width: 14, color: GOLD }}>{checked ? '✓' : ''}</span><span style={{ flex: 1 }}>{children}</span>{hint && <span style={{ marginLeft: 18, fontSize: 11.5, color: 'var(--k-9ca3af)' }}>{hint}</span>}
     </button>
   );
 }
@@ -304,3 +304,48 @@ export function HistoryDialog({ docId, authToken, ydoc, people, flush, onToast, 
     </Modal>
   );
 }
+
+export const MenuLabel = ({ children }: { children: ReactNode }) => <div style={{ padding: '8px 12px 3px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--k-9ca3af)' }}>{children}</div>;
+
+export type IcoName = 'undo' | 'redo' | 'brush' | 'clear' | 'left' | 'center' | 'right' | 'wrap' | 'borders' | 'merge' | 'freeze' | 'filter' | 'sort' | 'chart' | 'search' | 'plus' | 'download' | 'refresh' | 'zoom' | 'dollar' | 'percent' | 'dec-' | 'dec+' | 'more' | 'table';
+const ICO: Record<IcoName, ReactNode> = {
+  undo: <><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 010 12h-3" /></>,
+  redo: <><path d="M15 14l5-5-5-5" /><path d="M20 9H10a6 6 0 000 12h3" /></>,
+  brush: <><path d="M14 4l6 6-8 8-3 1-4-4 1-3z" /><path d="M10 8l6 6" /></>,
+  clear: <><path d="M5 5h11M10.5 5v9" /><path d="M14 14l6 6M20 14l-6 6" /></>,
+  left: <path d="M4 6h16M4 10h10M4 14h16M4 18h10" />, center: <path d="M4 6h16M7 10h10M4 14h16M7 18h10" />, right: <path d="M4 6h16M10 10h10M4 14h16M10 18h10" />,
+  wrap: <><path d="M4 6h16M4 12h12a3 3 0 010 6h-5" /><path d="M13 15.5L10.5 18 13 20.5" /><path d="M4 18h3" /></>,
+  borders: <><rect x="4" y="4" width="16" height="16" rx="1" /><path d="M12 4v16M4 12h16" /></>,
+  merge: <><rect x="4" y="6" width="16" height="12" rx="1" /><path d="M8 12h8M8 12l2-2M8 12l2 2M16 12l-2-2M16 12l-2 2" /></>,
+  freeze: <><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9" /></>,
+  filter: <path d="M4 5h16l-6 7.5V19l-4-2v-4.5z" />,
+  sort: <><path d="M8 5v14M5 16l3 3 3-3" /><path d="M16 19V5M13 8l3-3 3 3" /></>,
+  chart: <path d="M5 20V11M12 20V4M19 20v-6" />,
+  search: <><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></>,
+  plus: <path d="M12 5v14M5 12h14" />,
+  download: <><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5" /><path d="M5 19h14" /></>,
+  refresh: <><path d="M20 11a8 8 0 00-14-4L4 9" /><path d="M4 4v5h5" /><path d="M4 13a8 8 0 0014 4l2-2" /><path d="M20 20v-5h-5" /></>,
+  zoom: <><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4M11 8.5v5M8.5 11h5" /></>,
+  dollar: <path d="M12 3v18M16.5 7.5c-1-1.3-2.6-2-4.5-2-2.5 0-4 1.2-4 3s1.5 2.5 4 3 4 1.2 4 3-1.5 3-4 3c-2 0-3.8-.8-4.8-2.2" />,
+  percent: <><path d="M18 6L6 18" /><circle cx="7.5" cy="7.5" r="2.2" /><circle cx="16.5" cy="16.5" r="2.2" /></>,
+  'dec-': <><path d="M3 17h2M3 11h6M3 8h0" /><path d="M13 6l-3 3 3 3M10 9h10" /></>,
+  'dec+': <><path d="M3 17h2" /><path d="M17 6l3 3-3 3M20 9H10" /><path d="M9 11v6M13 11v6" /></>,
+  more: <><circle cx="5" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="19" cy="12" r="1.3" /></>,
+  table: <><rect x="4" y="5" width="16" height="14" rx="1.5" /><path d="M4 10h16M10 5v14" /></>,
+};
+export function Ico({ n, size = 17 }: { n: IcoName; size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink: 0 }}>{ICO[n]}</svg>;
+}
+/** A toolbar button: icon or text, a tooltip with its shortcut, and a gold "on" state. */
+export function TBtn({ title, onClick, on, disabled, children, style }: { title: string; onClick: () => void; on?: boolean; disabled?: boolean; children: ReactNode; style?: CSSProperties }) {
+  return <button type="button" className={`sx-btn ${on ? 'on' : ''}`} title={title} aria-label={title} aria-pressed={on} disabled={disabled} onMouseDown={e => e.preventDefault()} onClick={onClick} style={style}>{children}</button>;
+}
+export const TSep = () => <span style={{ width: 1, height: 20, background: 'var(--k-e5e7eb)', margin: '0 4px', flexShrink: 0, alignSelf: 'center' }} />;
+export const SHEET_CSS = `
+.sx-btn{height:30px;min-width:30px;padding:0 7px;border:none;border-radius:6px;background:transparent;color:var(--k-374151);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:600;white-space:nowrap;flex-shrink:0}
+.sx-btn:hover{background:var(--k-f3f4f6)} .sx-btn.on{background:var(--k-fdf6e9);color:#a06a12} .sx-btn:disabled{opacity:.4;cursor:default}
+.sx-mb{height:30px;padding:0 10px;border:none;border-radius:6px;background:transparent;color:var(--k-374151);cursor:pointer;font-size:13.5px;font-weight:500;font-family:'DM Sans',sans-serif;flex-shrink:0}
+.sx-mb:hover{background:var(--k-f3f4f6)} .sx-mb.on{background:var(--k-fdf6e9);color:#a06a12}
+.sx-gold{height:30px;padding:0 12px;border:none;border-radius:6px;background:var(--k-fdf6e9);color:#a06a12;cursor:pointer;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0}
+.sx-gold:hover{background:#f6e6c4} .sx-gold:disabled{opacity:.6;cursor:default}
+`;

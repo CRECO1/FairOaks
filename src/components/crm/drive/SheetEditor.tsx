@@ -24,7 +24,7 @@ import {
 } from '@/lib/drive-sheet';
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
 import { ActivityPanel } from './DocPanel';
-import { CondDialog, Divider, HistoryDialog, Item, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, ValidDialog, type LockInfo, type PivotForm } from './SheetParts';
+import { CondDialog, Divider, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, TBtn, TSep, ValidDialog, type LockInfo, type PivotForm } from './SheetParts';
 import { ChartDialog, ChartSvg, type ChartData } from './SheetChart';
 import type { DrivePerson } from './DocsDrive';
 
@@ -194,7 +194,7 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} />
+        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} onHistory={() => setHistory(true)} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} />
           : <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Connecting…</div>}
         {panel === 'activity' && <ActivityPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} onToast={onToast} onClose={() => setPanel(null)} />}
       </div>
@@ -248,7 +248,7 @@ const moveKeys = (m: Y.Map<unknown>, axis: 'row' | 'col', at: number, delta: 1 |
   for (const [, to, v] of moves) if (to) m.set(to, v);
 };
 
-function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, title, onToast }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void }) {
+function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, title, onToast, onHistory }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; onHistory: () => void; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void }) {
   const ydoc = handle.ydoc;
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -1012,32 +1012,167 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   if (!tab) return <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Opening…</div>;
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)' }}>
-      {/* toolbar */}
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '5px 10px', borderBottom: '1px solid var(--k-e5e7eb)', overflowX: 'auto', flexWrap: 'nowrap' }}>
-        <button type="button" style={tb} onClick={() => undo.undo()} title="Undo (Ctrl+Z)">↶</button>
-        <button type="button" style={tb} onClick={() => undo.redo()} title="Redo (Ctrl+Y)">↷</button>
-        {sep}
-        <Pop title="Number format" style={tb} label={<>{cur.nf === 'cur' ? '$' : cur.nf === 'pct' ? '%' : cur.nf === 'date' ? '📅' : cur.nf === 'num' ? '123' : cur.nf === 'text' ? 'Aa' : '123'} ▾</>}>
+      <style>{SHEET_CSS}</style>
+      {/* menu bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: isMobile ? '4px 8px 0' : '4px 10px 0', overflowX: 'auto', flexWrap: 'nowrap' }}>
+        <Pop className="sx-mb" title="File" label="File">
+          {close => (<>
+            <Item onClick={() => { void download('csv'); close(); }}>Download this tab as CSV</Item>
+            <Item onClick={() => { void download('xlsx'); close(); }}>Download as Excel (.xlsx)</Item>
+            <Divider />
+            <Item onClick={() => { onHistory(); close(); }}>Version history</Item>
+          </>)}
+        </Pop>
+        <Pop className="sx-mb" title="Edit" label="Edit">
+          {close => (<>
+            <Item hint="Ctrl+Z" onClick={() => { undo.undo(); close(); }}>Undo</Item>
+            <Item hint="Ctrl+Y" onClick={() => { undo.redo(); close(); }}>Redo</Item>
+            <Divider />
+            <Item hint="Ctrl+X" onClick={() => { const t = doCopy(true); void navigator.clipboard?.writeText(t).catch(() => {}); close(); }}>Cut</Item>
+            <Item hint="Ctrl+C" onClick={() => { const t = doCopy(false); void navigator.clipboard?.writeText(t).catch(() => {}); close(); }}>Copy</Item>
+            <Item hint="Ctrl+V" onClick={() => { close(); void navigator.clipboard?.readText().then(paste).catch(() => onToast('Use Ctrl+V to paste — the browser blocked reading the clipboard')); }}>Paste</Item>
+            <Divider />
+            <Item hint="Ctrl+F" onClick={() => { setFind({ q: '', rep: '', idx: 0, replace: false }); close(); }}>Find and replace</Item>
+            <Item hint="Ctrl+D" onClick={() => { fillDir('down'); close(); }}>Fill down</Item>
+            <Item hint="Ctrl+R" onClick={() => { fillDir('right'); close(); }}>Fill right</Item>
+            <Divider />
+            <MenuLabel>Move</MenuLabel>
+            <Item hint="Alt+↑" disabled={!movable(R.r1) || R.r1 !== R.r2} onClick={() => { moveRowBy(R.r1, -1); close(); }}>Move row up</Item>
+            <Item hint="Alt+↓" disabled={!movable(R.r1) || R.r1 !== R.r2} onClick={() => { moveRowBy(R.r1, 1); close(); }}>Move row down</Item>
+            <Item hint="Alt+←" disabled={!movableCol(R.c1) || R.c1 !== R.c2} onClick={() => { moveColBy(R.c1, -1); close(); }}>Move column left</Item>
+            <Item hint="Alt+→" disabled={!movableCol(R.c1) || R.c1 !== R.c2} onClick={() => { moveColBy(R.c1, 1); close(); }}>Move column right</Item>
+            <Divider />
+            <Item hint="Delete" onClick={() => { clearRange(); close(); }}>Clear contents</Item>
+            <Item onClick={() => { clearFormat(); close(); }}>Clear formatting</Item>
+          </>)}
+        </Pop>
+        <Pop className="sx-mb" title="View" label="View">
+          {close => (<>
+            <MenuLabel>Freeze</MenuLabel>
+            <Item checked={frozen === 0} onClick={() => { tx(() => tab.map.set('frozen', 0)); close(); }}>No frozen rows</Item>
+            <Item checked={frozen === 1} onClick={() => { tx(() => tab.map.set('frozen', 1)); close(); }}>1 row</Item>
+            <Item checked={frozen === 2} onClick={() => { tx(() => tab.map.set('frozen', 2)); close(); }}>2 rows</Item>
+            <Item onClick={() => { tx(() => tab.map.set('frozen', sel.r + 1)); close(); }}>Up to row {sel.r + 1}</Item>
+            <Item checked={fc === 0} onClick={() => { tx(() => tab.map.set('frozenCols', 0)); close(); }}>No frozen columns</Item>
+            <Item checked={fc === 1} onClick={() => { tx(() => tab.map.set('frozenCols', 1)); close(); }}>1 column</Item>
+            <Item checked={fc === 2} onClick={() => { tx(() => tab.map.set('frozenCols', 2)); close(); }}>2 columns</Item>
+            <Item onClick={() => { tx(() => tab.map.set('frozenCols', sel.c + 1)); close(); }}>Up to column {colName(sel.c)}</Item>
+            <Divider />
+            <Item checked={filtersOn} onClick={() => { setFiltersOn(o => !o); setFilters({}); close(); }}>Filter</Item>
+            <Item checked={bandOn} onClick={() => { toggleBand(); close(); }}>Alternating row colors</Item>
+            <Divider />
+            <Item onClick={() => { hide('row'); close(); }}>Hide row{R.r2 > R.r1 ? 's' : ''} {R.r1 + 1}{R.r2 > R.r1 ? `–${R.r2 + 1}` : ''}</Item>
+            <Item onClick={() => { hide('col'); close(); }}>Hide column{R.c2 > R.c1 ? 's' : ''} {colName(R.c1)}{R.c2 > R.c1 ? `–${colName(R.c2)}` : ''}</Item>
+            <Item disabled={!hiddenCount} onClick={() => { unhideAll(); close(); }}>Show hidden rows and columns{hiddenCount ? ` (${hiddenCount})` : ''}</Item>
+            <Divider />
+            <MenuLabel>Zoom</MenuLabel>
+            {[0.5, 0.75, 0.9, 1, 1.25, 1.5, 2].map(z => <Item key={z} checked={z === Z} onClick={() => { setZoom(z); close(); }}>{Math.round(z * 100)}%</Item>)}
+          </>)}
+        </Pop>
+        <Pop className="sx-mb" title="Insert" label="Insert">
+          {close => (<>
+            <Item onClick={() => { insertMany('row', R.r1, R.r2 - R.r1 + 1); close(); }}>Row above</Item>
+            <Item onClick={() => { insertMany('row', R.r2 + 1, R.r2 - R.r1 + 1); close(); }}>Row below</Item>
+            <Item onClick={() => { insertMany('col', R.c1, R.c2 - R.c1 + 1); close(); }}>Column left</Item>
+            <Item onClick={() => { insertMany('col', R.c2 + 1, R.c2 - R.c1 + 1); close(); }}>Column right</Item>
+            <Divider />
+            <Item onClick={() => { setChartEdit(null); setDlg('chart'); close(); }}>Chart…</Item>
+            <Item onClick={() => { setPivotDlg({}); close(); }}>Pivot table…</Item>
+            <Item onClick={() => { setDlg('valid'); close(); }}>Dropdown or checkbox…</Item>
+            <Item onClick={() => { setDlg('note'); close(); }}>{selNote ? 'Edit note…' : 'Note…'}</Item>
+            <Item onClick={() => { if (tab && canEditCell(R.r1, R.c2 + 1)) setCell(R.r1, R.c2 + 1, `=SPARKLINE(${rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })})`); close(); }}>Mini chart (sparkline) in the next cell</Item>
+            <Item onClick={() => { setImportDlg(true); close(); }}>Data from another spreadsheet…</Item>
+            <Divider />
+            <Item onClick={() => { addTab(); close(); }}>New tab</Item>
+            <Divider />
+            <Item danger onClick={() => { deleteMany('row', R.r1, R.r2); close(); }}>Delete row{R.r2 > R.r1 ? 's' : ''}</Item>
+            <Item danger onClick={() => { deleteMany('col', R.c1, R.c2); close(); }}>Delete column{R.c2 > R.c1 ? 's' : ''}</Item>
+          </>)}
+        </Pop>
+        <Pop className="sx-mb" title="Format" label="Format">
+          {close => (<>
+            <MenuLabel>Number</MenuLabel>
+            {([[undefined, 'Automatic'], ['num', 'Number  1,234.56'], ['cur', 'Currency  $1,234.56'], ['pct', 'Percent  12%'], ['date', 'Date  10/14/2026'], ['text', 'Plain text']] as Array<[CellFmt['nf'], string]>).map(([nf, label]) => (
+              <Item key={label} checked={(cur.nf ?? undefined) === nf} onClick={() => { applyFmt({ nf: nf ?? null, dp: null }); close(); }}>{label}</Item>
+            ))}
+            <Divider />
+            <MenuLabel>Text</MenuLabel>
+            <Item hint="Ctrl+B" checked={boldOn} onClick={() => { toggleBold(); close(); }}>Bold</Item>
+            <Item hint="Ctrl+I" checked={!!cur.i} onClick={() => { toggleFmt('i'); close(); }}>Italic</Item>
+            <Item hint="Ctrl+U" checked={!!cur.u} onClick={() => { toggleFmt('u'); close(); }}>Underline</Item>
+            <Item hint="Ctrl+Shift+X" checked={!!cur.s} onClick={() => { toggleFmt('s'); close(); }}>Strikethrough</Item>
+            <Divider />
+            <MenuLabel>Alignment</MenuLabel>
+            <Item checked={cur.al === 'l'} onClick={() => { applyFmt({ al: 'l' }); close(); }}>Left</Item>
+            <Item checked={cur.al === 'c'} onClick={() => { applyFmt({ al: 'c' }); close(); }}>Center</Item>
+            <Item checked={cur.al === 'r'} onClick={() => { applyFmt({ al: 'r' }); close(); }}>Right</Item>
+            <Item checked={!!cur.wr} onClick={() => { toggleWrap(); close(); }}>Wrap text</Item>
+            <Item onClick={() => { toggleMerge(); close(); }}>{merges.some(m => !(m.r2 < R.r1 || m.r1 > R.r2 || m.c2 < R.c1 || m.c1 > R.c2)) ? 'Unmerge cells' : 'Merge cells'}</Item>
+            <Divider />
+            <MenuLabel>Borders</MenuLabel>
+            <Item onClick={() => { setBorders('all'); close(); }}>All borders</Item>
+            <Item onClick={() => { setBorders('outer'); close(); }}>Outer border</Item>
+            <Item onClick={() => { setBorders('none'); close(); }}>No borders</Item>
+            <Divider />
+            <Item onClick={() => { setDlg('cond'); close(); }}>Conditional formatting…</Item>
+            <Item checked={bandOn} onClick={() => { toggleBand(); close(); }}>Alternating row colors</Item>
+            <Item onClick={() => { clearFormat(); close(); }}>Clear formatting</Item>
+          </>)}
+        </Pop>
+        <Pop className="sx-mb" title="Data" label="Data">
+          {close => (<>
+            <Item onClick={() => { sortBy(sel.c, 1); close(); }}>Sort sheet by {colName(sel.c)}, A → Z</Item>
+            <Item onClick={() => { sortBy(sel.c, -1); close(); }}>Sort sheet by {colName(sel.c)}, Z → A</Item>
+            <Item checked={filtersOn} onClick={() => { setFiltersOn(o => !o); setFilters({}); close(); }}>Filter</Item>
+            <Divider />
+            <Item onClick={() => { setDlg('valid'); close(); }}>Data validation (dropdown, checkbox, rules)…</Item>
+            <Item onClick={() => { setDlg('protect'); close(); }}>Protect range…{locks.length ? ` (${locks.length})` : ''}</Item>
+            <Item onClick={() => { setPivotDlg({}); close(); }}>Pivot table…</Item>
+            <Item onClick={() => { setImportDlg(true); close(); }}>Import from another spreadsheet…</Item>
+            {hasFeed && <><Divider /><Item onClick={() => { void refreshFeed(false); close(); }}>Refresh from the CRM</Item></>}
+            {hasFeed && !!(tab?.map.get('feedOrder') || tab?.map.get('feedColOrder')) && <Item onClick={() => { tx(() => { tab?.map.delete('feedOrder'); tab?.map.delete('feedColOrder'); }); void refreshFeed(false); close(); }}>Automatic row &amp; column order (undo my moves)</Item>}
+          </>)}
+        </Pop>
+        <span style={{ flex: 1, minWidth: 8 }} />
+        {hasFeed && <button type="button" className="sx-gold" disabled={refreshing} onClick={() => void refreshFeed(false)} title="Pull the latest from the CRM into the live columns"><Ico n="refresh" size={15} />{refreshing ? 'Refreshing…' : isMobile ? 'Refresh' : 'Refresh from CRM'}</button>}
+        <Pop className="sx-btn" title="Zoom" label={<><Ico n="zoom" size={16} />{Math.round(Z * 100)}%</>} align="right">
+          {close => (<>{[0.5, 0.75, 0.9, 1, 1.25, 1.5, 2].map(z => <Item key={z} checked={z === Z} onClick={() => { setZoom(z); close(); }}>{Math.round(z * 100)}%</Item>)}</>)}
+        </Pop>
+        <Pop className="sx-btn" title="Download" label={<Ico n="download" />} align="right">
+          {close => (<><Item onClick={() => { void download('csv'); close(); }}>This tab as CSV</Item><Item onClick={() => { void download('xlsx'); close(); }}>Whole spreadsheet as Excel (.xlsx)</Item></>)}
+        </Pop>
+      </div>
+      {/* icon toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: '3px 10px 5px', borderBottom: '1px solid var(--k-e5e7eb)', flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', rowGap: 2 }}>
+        <TBtn title="Undo (Ctrl+Z)" onClick={() => undo.undo()}><Ico n="undo" /></TBtn>
+        <TBtn title="Redo (Ctrl+Y)" onClick={() => undo.redo()}><Ico n="redo" /></TBtn>
+        <TBtn title="Paint format: copy this cell's look, then select the cells to give it to" on={!!painter} onClick={() => (painter ? setPainter(null) : startPainter())}><Ico n="brush" /></TBtn>
+        <TBtn title="Clear formatting" onClick={clearFormat}><Ico n="clear" /></TBtn>
+        <TSep />
+        <TBtn title={`Currency${cur.nf === 'cur' ? ' (click again to undo)' : ''}`} on={cur.nf === 'cur'} onClick={() => applyFmt({ nf: cur.nf === 'cur' ? null : 'cur', dp: null })}><Ico n="dollar" /></TBtn>
+        <TBtn title={`Percent${cur.nf === 'pct' ? ' (click again to undo)' : ''}`} on={cur.nf === 'pct'} onClick={() => applyFmt({ nf: cur.nf === 'pct' ? null : 'pct', dp: null })}><Ico n="percent" /></TBtn>
+        <TBtn title="Fewer decimal places" onClick={() => setDecimals(-1)}><Ico n="dec-" /></TBtn>
+        <TBtn title="More decimal places" onClick={() => setDecimals(1)}><Ico n="dec+" /></TBtn>
+        <Pop className="sx-btn" title="More number formats" label={<span style={{ minWidth: 52, textAlign: 'left' }}>{cur.nf === 'num' ? 'Number' : cur.nf === 'cur' ? 'Currency' : cur.nf === 'pct' ? 'Percent' : cur.nf === 'date' ? 'Date' : cur.nf === 'text' ? 'Text' : 'Auto'} ▾</span>}>
           {close => (<>
             {([[undefined, 'Automatic'], ['num', 'Number  1,234.56'], ['cur', 'Currency  $1,234.56'], ['pct', 'Percent  12%'], ['date', 'Date  10/14/2026'], ['text', 'Plain text']] as Array<[CellFmt['nf'], string]>).map(([nf, label]) => (
               <Item key={label} checked={(cur.nf ?? undefined) === nf} onClick={() => { applyFmt({ nf: nf ?? null, dp: null }); close(); }}>{label}</Item>
             ))}
           </>)}
         </Pop>
-        <button type="button" style={tb} onClick={() => setDecimals(-1)} title="Fewer decimal places">.0←</button>
-        <button type="button" style={tb} onClick={() => setDecimals(1)} title="More decimal places">.00→</button>
-        {sep}
-        <button type="button" style={{ ...on(boldOn), fontWeight: 800 }} onClick={toggleBold} title="Bold (Ctrl+B)">B</button>
-        <button type="button" style={{ ...on(!!cur.i), fontStyle: 'italic' }} onClick={() => toggleFmt('i')} title="Italic (Ctrl+I)">I</button>
-        <button type="button" style={{ ...on(!!cur.u), textDecoration: 'underline' }} onClick={() => toggleFmt('u')} title="Underline (Ctrl+U)">U</button>
-        <button type="button" style={{ ...on(!!cur.s), textDecoration: 'line-through' }} onClick={() => toggleFmt('s')} title="Strikethrough (Ctrl+Shift+X)">S</button>
-        <Pop title="Text color" style={tb} label={<span style={{ borderBottom: `3px solid ${cur.fg ?? '#000'}`, lineHeight: 1 }}>A</span>}>{close => <Palette onPick={c => { if (!wrapEditSel(`{${c}|`, '}')) applyFmt({ fg: c }); close(); }} onClear={() => { applyFmt({ fg: null }); close(); }} clearLabel="Default text color" />}</Pop>
-        <Pop title="Fill color" style={tb} label={<span style={{ display: 'inline-block', width: 14, height: 14, background: cur.bg ?? 'transparent', border: '1px solid #9ca3af', borderRadius: 3, verticalAlign: 'middle' }} />}>{close => <Palette onPick={c => { applyFmt({ bg: c }); close(); }} onClear={() => { applyFmt({ bg: null }); close(); }} clearLabel="No fill" />}</Pop>
-        <Pop title="Align" style={tb} label={<>{cur.al === 'c' ? '≡' : cur.al === 'r' ? '☰' : '☷'} ▾</>}>
+        <TSep />
+        <TBtn title="Bold (Ctrl+B)" on={boldOn} onClick={toggleBold} style={{ fontWeight: 800 }}>B</TBtn>
+        <TBtn title="Italic (Ctrl+I)" on={!!cur.i} onClick={() => toggleFmt('i')} style={{ fontStyle: 'italic', fontFamily: 'Georgia,serif' }}>I</TBtn>
+        <TBtn title="Underline (Ctrl+U)" on={!!cur.u} onClick={() => toggleFmt('u')} style={{ textDecoration: 'underline' }}>U</TBtn>
+        <TBtn title="Strikethrough (Ctrl+Shift+X)" on={!!cur.s} onClick={() => toggleFmt('s')} style={{ textDecoration: 'line-through' }}>S</TBtn>
+        <Pop className="sx-btn" title="Text color" label={<span style={{ borderBottom: `3px solid ${cur.fg ?? '#1a1a1a'}`, lineHeight: 1, fontWeight: 700 }}>A</span>}>{close => <Palette onPick={c => { if (!wrapEditSel(`{${c}|`, '}')) applyFmt({ fg: c }); close(); }} onClear={() => { applyFmt({ fg: null }); close(); }} clearLabel="Default text color" />}</Pop>
+        <Pop className="sx-btn" title="Fill color" label={<span style={{ display: 'inline-block', width: 15, height: 15, background: cur.bg ?? 'transparent', border: '1.5px solid #6b7280', borderRadius: 3 }} />}>{close => <Palette onPick={c => { applyFmt({ bg: c }); close(); }} onClear={() => { applyFmt({ bg: null }); close(); }} clearLabel="No fill" />}</Pop>
+        <TSep />
+        <Pop className="sx-btn" title="Horizontal align" label={<><Ico n={cur.al === 'c' ? 'center' : cur.al === 'r' ? 'right' : 'left'} />▾</>}>
           {close => (<>{([['l', 'Left'], ['c', 'Center'], ['r', 'Right']] as Array<['l' | 'c' | 'r', string]>).map(([a, l]) => <Item key={a} checked={cur.al === a} onClick={() => { applyFmt({ al: a }); close(); }}>{l}</Item>)}<Item onClick={() => { applyFmt({ al: null }); close(); }}>Automatic</Item></>)}
         </Pop>
-        <button type="button" style={on(!!cur.wr)} onClick={toggleWrap} title="Wrap text: show long text on several lines">↵ Wrap</button>
-        <Pop title="Borders" style={tb} label={<>▦ ▾</>}>
+        <TBtn title="Wrap text" on={!!cur.wr} onClick={toggleWrap}><Ico n="wrap" /></TBtn>
+        <Pop className="sx-btn" title="Borders" label={<><Ico n="borders" />▾</>}>
           {close => (<>
             <Item onClick={() => { setBorders('all'); close(); }}>All borders</Item>
             <Item onClick={() => { setBorders('outer'); close(); }}>Outer border</Item>
@@ -1049,11 +1184,13 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             <Item onClick={() => { setBorders('none'); close(); }}>No borders</Item>
           </>)}
         </Pop>
-        <button type="button" style={on(merges.some(m => !(m.r2 < R.r1 || m.r1 > R.r2 || m.c2 < R.c1 || m.c1 > R.c2)))} onClick={toggleMerge} title="Merge the selected cells into one (click again to unmerge)">⊟ Merge</button>
-        <button type="button" style={on(!!painter)} onClick={() => (painter ? setPainter(null) : startPainter())} title="Paint format: copy this cell's look, then select the cells to give it to">🖌</button>
-        <button type="button" style={tb} onClick={clearFormat} title="Clear formatting on the selected cells">Tx✕</button>
-        {sep}
-        <Pop title="Freeze rows and columns" style={tb} label={<>❄ ▾</>} active={frozen > 0 || fc > 0}>
+        <TBtn title="Merge cells (click again to unmerge)" on={merges.some(m => !(m.r2 < R.r1 || m.r1 > R.r2 || m.c2 < R.c1 || m.c1 > R.c2))} onClick={toggleMerge}><Ico n="merge" /></TBtn>
+        <TSep />
+        <TBtn title="Filter: add a ▾ to the header row and hide rows by value" on={filtersOn} onClick={() => { setFiltersOn(o => !o); setFilters({}); }}><Ico n="filter" /></TBtn>
+        <Pop className="sx-btn" title="Sort" label={<><Ico n="sort" />▾</>}>
+          {close => (<><Item onClick={() => { sortBy(sel.c, 1); close(); }}>Sort sheet by {colName(sel.c)}, A → Z</Item><Item onClick={() => { sortBy(sel.c, -1); close(); }}>Sort sheet by {colName(sel.c)}, Z → A</Item></>)}
+        </Pop>
+        <Pop className="sx-btn" title="Freeze rows and columns" active={frozen > 0 || fc > 0} label={<><Ico n="freeze" />▾</>}>
           {close => (<>
             <Item checked={frozen === 0} onClick={() => { tx(() => tab.map.set('frozen', 0)); close(); }}>No frozen rows</Item>
             <Item checked={frozen === 1} onClick={() => { tx(() => tab.map.set('frozen', 1)); close(); }}>1 row</Item>
@@ -1066,50 +1203,10 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             <Item onClick={() => { tx(() => tab.map.set('frozenCols', sel.c + 1)); close(); }}>Up to column {colName(sel.c)}</Item>
           </>)}
         </Pop>
-        <button type="button" style={on(filtersOn)} onClick={() => { setFiltersOn(o => !o); setFilters({}); }} title="Filter: add a ▾ to the header row and hide rows by value">⏷ Filter</button>
-        <Pop title="Sort" style={tb} label={<>A↓Z ▾</>}>
-          {close => (<><Item onClick={() => { sortBy(sel.c, 1); close(); }}>Sort sheet by {colName(sel.c)}, A → Z</Item><Item onClick={() => { sortBy(sel.c, -1); close(); }}>Sort sheet by {colName(sel.c)}, Z → A</Item></>)}
-        </Pop>
-        {sep}
-        <Pop title="Insert or delete rows and columns" style={tb} label={<>＋ ▾</>}>
-          {close => (<>
-            <Item onClick={() => { insertMany('row', R.r1, R.r2 - R.r1 + 1); close(); }}>Insert row above</Item>
-            <Item onClick={() => { insertMany('row', R.r2 + 1, R.r2 - R.r1 + 1); close(); }}>Insert row below</Item>
-            <Item onClick={() => { insertMany('col', R.c1, R.c2 - R.c1 + 1); close(); }}>Insert column left</Item>
-            <Item onClick={() => { insertMany('col', R.c2 + 1, R.c2 - R.c1 + 1); close(); }}>Insert column right</Item>
-            <Divider />
-            <Item danger onClick={() => { deleteMany('row', R.r1, R.r2); close(); }}>Delete row{R.r2 > R.r1 ? 's' : ''}</Item>
-            <Item danger onClick={() => { deleteMany('col', R.c1, R.c2); close(); }}>Delete column{R.c2 > R.c1 ? 's' : ''}</Item>
-          </>)}
-        </Pop>
-        <button type="button" style={on(!!find)} onClick={() => setFind(f => (f ? null : { q: '', rep: '', idx: 0, replace: false }))} title="Find and replace (Ctrl+F)">🔍</button>
-        <button type="button" style={tb} onClick={() => { setChartEdit(null); setDlg('chart'); }} title="Insert a chart from the selected cells">📊</button>
-        <Pop title="Dropdowns, checkboxes, notes and rules" style={tb} label={<>Data ▾</>} align="right">
-          {close => (<>
-            <Item checked={bandOn} onClick={() => { toggleBand(); close(); }}>Alternating row colors</Item>
-            <Item onClick={() => { hide('row'); close(); }}>Hide row{R.r2 > R.r1 ? 's' : ''} {R.r1 + 1}{R.r2 > R.r1 ? `–${R.r2 + 1}` : ''}</Item>
-            <Item onClick={() => { hide('col'); close(); }}>Hide column{R.c2 > R.c1 ? 's' : ''} {colName(R.c1)}{R.c2 > R.c1 ? `–${colName(R.c2)}` : ''}</Item>
-            {hasFeed && !!(tab?.map.get('feedOrder') || tab?.map.get('feedColOrder')) && <Item onClick={() => { tx(() => { tab?.map.delete('feedOrder'); tab?.map.delete('feedColOrder'); }); void refreshFeed(false); close(); }}>Automatic row &amp; column order (undo my moves)</Item>}
-            <Item disabled={!hiddenCount} onClick={() => { unhideAll(); close(); }}>Show hidden rows and columns{hiddenCount ? ` (${hiddenCount})` : ''}</Item>
-            <Divider />
-            <Item onClick={() => { setDlg('valid'); close(); }}>Data validation (dropdown, checkbox, rules)…</Item>
-            <Item onClick={() => { setDlg('cond'); close(); }}>Conditional formatting…</Item>
-            <Item onClick={() => { setDlg('note'); close(); }}>{selNote ? 'Edit note…' : 'Add a note…'}</Item>
-            <Divider />
-            <Item onClick={() => { setPivotDlg({}); close(); }}>Pivot table…</Item>
-            <Item onClick={() => { setDlg('protect'); close(); }}>Protect range…{locks.length ? ` (${locks.length})` : ''}</Item>
-            <Item onClick={() => { setImportDlg(true); close(); }}>Import from another spreadsheet…</Item>
-            <Item onClick={() => { if (tab && canEditCell(R.r1, R.c2 + 1)) setCell(R.r1, R.c2 + 1, `=SPARKLINE(${rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })})`); close(); }}>Mini chart (sparkline) in the next cell</Item>
-          </>)}
-        </Pop>
-        <span style={{ flex: 1 }} />
-        {hasFeed && <button type="button" style={{ ...tb, color: '#a06a12', background: 'var(--k-fdf6e9)', whiteSpace: 'nowrap' }} disabled={refreshing} onClick={() => void refreshFeed(false)} title="Pull the latest from the CRM into the live columns">{refreshing ? 'Refreshing…' : '↻ Refresh from CRM'}</button>}
-        <Pop title="Zoom" style={{ ...tb, whiteSpace: 'nowrap' }} label={<>{Math.round(Z * 100)}% ▾</>} align="right">
-          {close => (<>{[0.5, 0.75, 0.9, 1, 1.25, 1.5, 2].map(z => <Item key={z} checked={z === Z} onClick={() => { setZoom(z); close(); }}>{Math.round(z * 100)}%</Item>)}</>)}
-        </Pop>
-        <Pop title="Download" style={{ ...tb, whiteSpace: 'nowrap' }} label={<>⬇ ▾</>} align="right">
-          {close => (<><Item onClick={() => { void download('csv'); close(); }}>This tab as CSV</Item><Item onClick={() => { void download('xlsx'); close(); }}>Whole spreadsheet as Excel (.xlsx)</Item></>)}
-        </Pop>
+        <TSep />
+        <TBtn title="Insert a chart from the selected cells" onClick={() => { setChartEdit(null); setDlg('chart'); }}><Ico n="chart" /></TBtn>
+        <TBtn title="Pivot table from the selected cells" onClick={() => setPivotDlg({})}><Ico n="table" /></TBtn>
+        <TBtn title="Find and replace (Ctrl+F)" on={!!find} onClick={() => setFind(f => (f ? null : { q: '', rep: '', idx: 0, replace: false }))}><Ico n="search" /></TBtn>
       </div>
       {/* formula bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderBottom: '1px solid var(--k-e5e7eb)' }}>
