@@ -50,7 +50,7 @@ async function loadTouches(dc: DriveContext, ids: string[]): Promise<Map<string,
   return out;
 }
 
-async function emailed(dc: DriveContext): Promise<{ byClient: Map<string, { sent: number; opened: number; last: string; camps: Set<string> }>; clients: Map<string, Client> }> {
+async function emailed(dc: DriveContext): Promise<{ byClient: Map<string, { sent: number; opened: number; last: string; camps: Set<string> }>; clients: Map<string, Client>; since: string }> {
   const { data: camps } = await dc.admin.from('crm_campaigns').select('id,name').or(CAMPAIGN_LIKE.map(l => `name.ilike.${l}`).join(','));
   const live = (camps ?? []).filter(c => !/^\[(TEST|RETIRED)\]/i.test(String(c.name)));
   const nameOf = new Map(live.map(c => [c.id as string, String(c.name).replace(/\s*\(1353 W French Pl\)\s*$/, '').replace(/^Auto Brite\s+–\s+French Pl\s+—\s+/, 'Auto Brite · ').replace(/^Beacon Hill Warehouse\s+—\s+/, 'Beacon Hill · ')]));
@@ -64,16 +64,19 @@ async function emailed(dc: DriveContext): Promise<{ byClient: Map<string, { sent
   for (const s of sends) { const e = byClient.get(s.client_id) ?? { sent: 0, opened: 0, last: '', camps: new Set<string>() }; e.sent++; if (s.opened_at) e.opened++; if (s.sent_at && s.sent_at > e.last) e.last = s.sent_at; e.camps.add(nameOf.get(s.campaign_id) ?? ''); byClient.set(s.client_id, e); }
   const clients = new Map<string, Client>();
   for (const part of chunk([...byClient.keys()], 100)) { const { data } = await dc.userDb.from('crm_clients').select('id,first_name,last_name,business_name,phone,cell_phone,email,unsubscribed_at,tags,notes').in('id', part); for (const c of (data ?? []) as Client[]) clients.set(c.id, c); }
-  return { byClient, clients };
+  const since = sends.reduce((m, s) => (s.sent_at && (!m || s.sent_at < m) ? s.sent_at : m), '');
+  return { byClient, clients, since };
 }
 
 export async function buildFrenchTenants(dc: DriveContext): Promise<FeedData> {
-  const { byClient, clients } = await emailed(dc);
+  const { byClient, clients, since } = await emailed(dc);
   const touches = await loadTouches(dc, [...clients.keys()]);
-  type Row = { id: string; c: Client; e: NonNullable<ReturnType<typeof byClient.get>>; t: Touch[]; last?: Touch; type: string; notInterested: boolean; unsub: boolean; reached: boolean };
+  // Only outreach made after the lease was first emailed counts as "contacted"; older calls to the same people (other leads, other properties) stay visible in Notes as "earlier".
+  const recent = (t: Touch) => !since || t.at >= since;
+  type Row = { earlier: Touch[]; id: string; c: Client; e: NonNullable<ReturnType<typeof byClient.get>>; t: Touch[]; last?: Touch; type: string; notInterested: boolean; unsub: boolean; reached: boolean };
   const all: Row[] = [...clients.values()].map(c => {
-    const t = touches.get(c.id) ?? [], last = t[t.length - 1];
-    return { id: c.id, c, e: byClient.get(c.id)!, t, last, type: typeOf(c.tags), notInterested: NOT_INTERESTED.test(t.map(x => x.text).join(' ')), unsub: !!c.unsubscribed_at || (c.tags ?? []).some(x => /dead email|hard bounce|do not call/i.test(x)), reached: t.some(x => x.reached) };
+    const all_ = touches.get(c.id) ?? [], t = all_.filter(recent), last = t[t.length - 1];
+    return { id: c.id, c, e: byClient.get(c.id)!, t, earlier: all_.filter(x => !recent(x)), last, type: typeOf(c.tags), notInterested: NOT_INTERESTED.test(t.map(x => x.text).join(' ')), unsub: !!c.unsubscribed_at || (c.tags ?? []).some(x => /dead email|hard bounce|do not call/i.test(x)), reached: t.some(x => x.reached) };
   });
   const bottom = (r: Row) => r.notInterested || r.unsub;
   const contacted = all.filter(r => r.t.length && !bottom(r)).sort((a, b) => b.last!.at.localeCompare(a.last!.at));
@@ -83,8 +86,9 @@ export async function buildFrenchTenants(dc: DriveContext): Promise<FeedData> {
   const group = (r: Row) => (bottom(r) ? '3 Not interested / unsubscribed' : r.t.length ? '1 Contacted' : '2 Not yet contacted');
   const status = (r: Row) => (!r.t.length ? 'NOT CONTACTED' : r.reached ? 'Contacted - reached' : 'Contacted - no answer yet');
   const notesOf = (r: Row) => {
-    const mine = r.t.filter(x => x.text).map(x => `${md(x.at)}${x.who ? ' ' + x.who : ''}: ${x.text}`);
-    if (mine.length) return mine.join('  |  ');
+    const fmt = (x: Touch) => `${md(x.at)}${x.who ? ' ' + x.who : ''}: ${x.text}`;
+    const mine = r.t.filter(x => x.text).map(fmt), old = r.earlier.filter(x => x.text).map(fmt);
+    if (mine.length || old.length) return [...mine, ...(old.length ? [`Earlier (before this lease): ${old.join('  |  ')}`] : [])].join('  |  ');
     const crm = (r.c.notes ?? '').trim(); return crm ? `CRM note: ${crm.slice(0, 400)}` : '';
   };
   const followUp = (r: Row) => { if (!r.t.length) return ''; if (bottom(r)) return 'Skip - not interested'; const n = r.t.map(x => x.text).join(' ').toLowerCase(); if (r.reached && /@|send|more info|email|website|flyer|brochure|tour/.test(n)) return 'OWED - asked for / promised info'; return r.reached ? 'Send - reached by phone' : 'Send - voicemail / no answer'; };
@@ -100,10 +104,10 @@ export async function buildFrenchTenants(dc: DriveContext): Promise<FeedData> {
 }
 
 export async function buildFrenchCalls(dc: DriveContext): Promise<FeedData> {
-  const { clients } = await emailed(dc);
+  const { clients, since } = await emailed(dc);
   const touches = await loadTouches(dc, [...clients.keys()]);
   const list: Array<{ id: string; t: Touch; c: Client }> = [];
-  for (const [id, ts] of touches) { const c = clients.get(id); if (c) for (const t of ts) list.push({ id, t, c }); }
+  for (const [id, ts] of touches) { const c = clients.get(id); if (c) for (const t of ts) if (!since || t.at >= since) list.push({ id, t, c }); }
   list.sort((a, b) => b.t.at.localeCompare(a.t.at));
   const rows = list.map((x, i) => ({ key: `${x.id}|${x.t.at}|${i}`, cells: [new Date(x.t.at).toLocaleString('en-CA', { timeZone: 'America/Chicago', hour12: false }).replace(',', '').slice(0, 16), x.t.who, x.c.business_name ?? '', personName(x.c), typeOf(x.c.tags), phone(x.c.phone || x.c.cell_phone), x.t.kind === 'meeting' ? 'meeting' : x.t.outcome, x.t.text] }));
   return { feed: 'french_pl_calls', title: 'Call Log', header: ['Date/Time (CT)', 'By', 'Business', 'Contact', 'Type of business', 'Phone', 'Outcome', 'Notes'], widths: [130, 80, 230, 150, 190, 120, 120, 420], rows, extraHeaders: ['Follow-up'] };
