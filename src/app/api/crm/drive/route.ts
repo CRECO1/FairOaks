@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound } from '@/lib/crm-auth';
-import { driveContext, hydrateDriveForms, likePattern, stripCommentMarks } from '@/lib/drive-server';
+import * as Y from 'yjs';
+import { driveContext, hydrateDriveForms, likePattern, mergeYState, stripCommentMarks } from '@/lib/drive-server';
+import { fillMergeFields } from '@/lib/drive-edit';
 import { logDocEvent } from '@/lib/drive-events';
 import { markdownToDriveState } from '@/lib/drive-markdown';
 import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS, type DriveDoc, type DriveFile, type DriveFolder, type DriveListing } from '@/lib/drive-types';
@@ -168,11 +170,28 @@ export async function POST(req: NextRequest) {
     if (asTemplate && seen.deal_id) return NextResponse.json({ error: 'A document linked to a deal can’t be saved as a template' }, { status: 400 });
     const { data: srcRow } = await admin.from('crm_drive_docs').select('ystate,content_text').eq('id', srcId).single();
     if (!srcRow) return notFound('That document is not available');
+    // A template with {{fields}} used here (no deal or contact involved): the broker and today's date fill in, the rest go back to friendly [blanks].
+    let ystateOut = srcRow.ystate ? stripCommentMarks(srcRow.ystate as string) : null, textOut = (srcRow.content_text as string) ?? '';
+    if (!asTemplate && body.template_id && ystateOut && /\{\{/.test(textOut)) {
+      const ydoc = new Y.Doc();
+      try {
+        const { data: me } = await admin.from('crm_profiles').select('first_name,last_name,email').eq('id', ctx.userId).maybeSingle();
+        Y.applyUpdate(ydoc, new Uint8Array(Buffer.from(ystateOut, 'base64')));
+        fillMergeFields(ydoc, {
+          agent: [me?.first_name, me?.last_name].filter(Boolean).join(' ') || '[agent]', agent_email: String(me?.email ?? '') || '[email]', office_phone: '(210) 817-3443',
+          date: new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric' }),
+          client: '[client]', property: '[property address]', contact_name: '[contact]', deal_type: '[deal type]', stage: '[stage]', company: '[company]', email: '[email]', phone: '[phone]',
+        });
+        const merged = mergeYState(null, Buffer.from(Y.encodeStateAsUpdate(ydoc)).toString('base64'));
+        ystateOut = merged.state; textOut = merged.text;
+      } catch (e) { console.error('[drive] template fill', e); }
+      finally { ydoc.destroy(); }
+    }
     const copy = {
       business_unit: bu, created_by: ctx.userId, updated_by: ctx.userId,
       title: (body.title ?? '').trim().slice(0, 300) || (seen.title as string),
-      ystate: srcRow.ystate ? stripCommentMarks(srcRow.ystate as string) : null,
-      content_text: (srcRow.content_text as string) ?? '', version: srcRow.ystate ? 1 : 0,
+      ystate: ystateOut,
+      content_text: textOut, version: ystateOut ? 1 : 0,
       ...(asTemplate ? { is_template: true, folder_id: null, visibility: 'team', shared_with: [], deal_id: null } : { folder_id: parentId, visibility, shared_with, deal_id }),
     };
     const { data: made, error: e } = await admin.from('crm_drive_docs').insert(copy).select(DOC_COLS).single();
