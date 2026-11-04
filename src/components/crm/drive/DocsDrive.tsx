@@ -41,7 +41,9 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
-type View = 'folder' | 'recent' | 'shared' | 'trash' | 'search' | 'templates';
+type View = 'folder' | 'recent' | 'shared' | 'trash' | 'search' | 'templates' | 'starred';
+type Chip = 'all' | 'doc' | 'sheet' | 'pdf' | 'image' | 'form' | 'folder';
+const CHIPS: Array<[Chip, string]> = [['doc', 'Documents'], ['sheet', 'Spreadsheets'], ['pdf', 'PDFs'], ['image', 'Images'], ['form', 'Forms'], ['folder', 'Folders']];
 type Kind = 'folder' | 'doc' | 'file' | 'form';
 type Item = DriveFolder | DriveDoc | DriveFile | DriveFormItem;
 type Dlg =
@@ -97,6 +99,27 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const [selectMode, setSelectMode] = useState(false);   // phones: tick-boxes only show once you tap Select
   const [bulkBusy, setBulkBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  // Home: stars (kept in this browser, per person), grid/list layout, quick filter chips and the "Suggested" strip.
+  const starKey = `crm-drive-stars:${currentUser.id}`;
+  const [stars, setStars] = useState<Set<string>>(new Set());
+  const [layout, setLayout] = useState<'list' | 'grid'>('list');
+  const [chip, setChip] = useState<Chip>('all');
+  const [mine, setMine] = useState(false);
+  const [week, setWeek] = useState(false);
+  const [suggested, setSuggested] = useState<DriveDoc[]>([]);
+  useEffect(() => {
+    try { setStars(new Set(JSON.parse(localStorage.getItem(starKey) || '[]') as string[])); } catch { /* no storage: stars just last this visit */ }
+    try { if (localStorage.getItem('crm-drive-layout') === 'grid') setLayout('grid'); } catch { /* default list */ }
+  }, [starKey]);
+  const toggleStar = (kind: Kind, it: Item) => setStars(prev => {
+    const n = new Set(prev); const k = `${kind}:${it.id}`;
+    if (n.has(k)) n.delete(k); else n.add(k);
+    try { localStorage.setItem(starKey, JSON.stringify([...n])); } catch { /* ignore */ }
+    return n;
+  });
+  const starsRef = useRef(stars); starsRef.current = stars;
+  const isStar = (kind: Kind, it: Item) => stars.has(`${kind}:${it.id}`);
+  const setLayoutTo = (l: 'list' | 'grid') => { setLayout(l); try { localStorage.setItem('crm-drive-layout', l); } catch { /* ignore */ } };
 
   const headers = useMemo<Record<string, string>>(() => { const h: Record<string, string> = {}; if (authToken) h.Authorization = `Bearer ${authToken}`; return h; }, [authToken]);
   const toastRef = useRef(onToast); toastRef.current = onToast;
@@ -113,7 +136,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = view === 'folder' ? `view=folder&folder=${folderId ?? 'root'}` : view === 'search' ? `view=search&q=${encodeURIComponent(q)}` : `view=${view}`;
+      const qs = view === 'starred' ? `view=starred&ids=${encodeURIComponent([...starsRef.current].join(','))}` : view === 'folder' ? `view=folder&folder=${folderId ?? 'root'}` : view === 'search' ? `view=search&q=${encodeURIComponent(q)}` : `view=${view}`;
       setData(await api<DriveListing>(`/api/crm/drive?${qs}`));
     } catch (e) {
       const msg = (e as Error).message;
@@ -133,6 +156,15 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     void load();
   }, [load, view]);
   useEffect(() => { void loadTree(); }, [loadTree]);
+  const starCount = stars.size;
+  useEffect(() => { if (view === 'starred') void load(); }, [starCount]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Home's "Suggested": the documents you or the team touched most recently, with a peek at what is inside.
+  useEffect(() => {
+    if (view !== 'folder' || folderId !== null) return;
+    let live = true;
+    api<DriveListing>('/api/crm/drive?view=recent').then(r => { if (live) setSuggested(r.docs.slice(0, 6)); }).catch(() => { /* optional */ });
+    return () => { live = false; };
+  }, [api, view, folderId]);
   useEffect(() => { if (view === 'folder') rememberView(`${businessUnit}:drive-folder`, folderId); }, [folderId, view, businessUnit]);
   useEffect(() => { // keep the folders on the current path open in the sidebar tree
     if (data?.path.length) setExpanded(prev => { const n = new Set(prev); data.path.forEach(p => n.add(p.id)); return n; });
@@ -182,10 +214,22 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
 
   const canManage = (item: Item) => isAdmin || item.created_by === currentUser.id;
   const inTrash = view === 'trash';
-  const folders = data?.folders ?? [];
-  const docs = data?.docs ?? [];
-  const files = data?.files ?? [];
-  const forms = data?.forms ?? [];
+  // Quick filter chips (type, owned by me, last 7 days) narrow whatever list is on screen.
+  const chipOk = (kind: Kind, it: Item) => {
+    if (chip === 'all') return true;
+    if (chip === 'folder') return kind === 'folder';
+    if (chip === 'form') return kind === 'form';
+    if (chip === 'doc') return (kind === 'doc' && (it as DriveDoc).kind !== 'sheet') || (kind === 'file' && /\.(docx?|txt)$/i.test((it as DriveFile).name));
+    if (chip === 'sheet') return (kind === 'doc' && (it as DriveDoc).kind === 'sheet') || (kind === 'file' && /\.(xlsx?|csv)$/i.test((it as DriveFile).name));
+    if (chip === 'pdf') return kind === 'file' && /\.pdf$/i.test((it as DriveFile).name);
+    return kind === 'file' && ((it as DriveFile).mime?.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test((it as DriveFile).name));
+  };
+  const keep = (kind: Kind, it: Item) => chipOk(kind, it) && (!mine || it.created_by === currentUser.id) && (!week || Date.now() - new Date(it.updated_at).getTime() < 7 * 86_400_000);
+  const filtering = chip !== 'all' || mine || week;
+  const folders = (data?.folders ?? []).filter(x => keep('folder', x));
+  const docs = (data?.docs ?? []).filter(x => keep('doc', x));
+  const files = (data?.files ?? []).filter(x => keep('file', x));
+  const forms = (data?.forms ?? []).filter(x => keep('form', x));
 
   // ── bulk selection ───────────────────────────────────────────────────────
   const selKey = (kind: Kind, it: Item) => `${kind}:${it.id}`;
@@ -221,7 +265,8 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     clearSel(); refresh();
   };
   const bulkPatch = (body: Record<string, unknown>) => (kind: Kind, it: Item) => api(`/api/crm/drive/items/${kind}/${it.id}`, { method: 'PATCH', body: JSON.stringify(body) });
-  const empty = !loading && data && !folders.length && !docs.length && !files.length && !forms.length;
+  const empty = !loading && data && !folders.length && !docs.length && !files.length && !forms.length && !filtering;
+  const noMatch = !loading && data && !folders.length && !docs.length && !files.length && !forms.length && filtering;
   // Forms are always shared with the team, so they can only be added somewhere the team can see.
   const canAddForm = view !== 'folder' || !data?.folder || (data.folder.visibility === 'team' && !data.folder.deal_id);
   const [formEditor, setFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId: string } | null>(null);
@@ -503,6 +548,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           <span style={{ width: 118 }}>{accessPill(it)}</span>
           <span style={{ width: 84, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}{inTrash && <span style={{ display: 'block', fontSize: 10.5, color: daysLeft(it) <= 3 ? 'var(--k-dc2626)' : 'var(--k-9ca3af)' }}>{daysLeft(it)} d left</span>}</span>
         </>}
+        {!isMobile && !inTrash && starBtn(kind, it)}
         {kind === 'doc' && !isMobile && !inTrash && (
           <button type="button" className="dd-dots" aria-label={`Quick look at ${title}`} title="Quick look — preview without opening" onClick={() => setQuickDocId(it.id)}
             style={{ width: 32, height: 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-9ca3af)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="eye" size={17} /></button>
@@ -513,6 +559,42 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         )}
         {!(kind === 'doc' && !isMobile && !inTrash) && !isMobile && !inTrash && !(kind === 'file' && canEditFile((it as DriveFile).name)) && <span style={{ width: 32, flexShrink: 0 }} />}
         {dotsBtn(kind, it, title)}
+      </div>
+    );
+  };
+  const starBtn = (kind: Kind, it: Item, size = 32) => {
+    const on = isStar(kind, it);
+    return (
+      <button type="button" className={on ? '' : 'dd-dots'} aria-label={on ? `Remove ${nameOf(kind, it)} from Starred` : `Star ${nameOf(kind, it)}`} aria-pressed={on} title={on ? 'Starred — click to remove' : 'Add to Starred'} onClick={e => { e.stopPropagation(); toggleStar(kind, it); }}
+        style={{ width: size, height: size, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: on ? GOLD : 'var(--k-9ca3af)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+        <svg width={17} height={17} viewBox="0 0 24 24" fill={on ? GOLD : 'none'} stroke="currentColor" strokeWidth={1.7} strokeLinejoin="round" aria-hidden><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 17l-5.3 2.7 1.1-5.9L3.5 9.7l5.9-.8z" /></svg>
+      </button>
+    );
+  };
+  // Grid view: a card with a peek at the document (or its big icon), then name, owner and date.
+  const gridCard = (kind: Kind, it: Item) => {
+    const title = nameOf(kind, it);
+    const t = tone(kind, it);
+    const snippet = (it as DriveDoc).snippet;
+    return (
+      <div key={`${kind}${it.id}`} className="dd-card dd-gcard" {...dragProps(kind, it)} style={{ border: `1px solid ${isSel(kind, it) ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 12, background: isSel(kind, it) ? 'var(--k-fdf6e9)' : 'var(--k-fff)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ position: 'relative' }}>
+          <button type="button" onClick={() => openItem(kind, it)} aria-label={`Open ${title}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 112, border: 'none', borderBottom: '1px solid var(--k-f0f0f0)', background: `${t.color}0d`, padding: snippet ? '12px 14px' : 0, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+            {snippet
+              ? <span style={{ display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: 11.5, lineHeight: 1.45, color: 'var(--k-6b7280)', width: '100%' }}>{snippet}</span>
+              : <span style={{ color: t.color }}><DI n={t.icon} size={40} /></span>}
+          </button>
+          <span style={{ position: 'absolute', top: 4, left: 4 }}>{chk(kind, it)}</span>
+          <span style={{ position: 'absolute', top: 4, right: 4 }}>{starBtn(kind, it, 30)}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px 8px 10px' }}>
+          <span style={{ color: t.color, display: 'inline-flex' }}><DI n={t.icon} size={17} /></span>
+          <button type="button" onClick={() => openItem(kind, it)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+            <span style={{ display: 'block', fontSize: 11.5, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{who(it.created_by)} · {fmtWhen(it.updated_at)}</span>
+          </button>
+          {dotsBtn(kind, it, title)}
+        </div>
       </div>
     );
   };
@@ -529,6 +611,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
             <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 1 }}>{accessLabel(f)}</span>
           </span>
         </button>
+        {!isMobile && starBtn('folder', f)}
         {dotsBtn('folder', f, f.name)}
       </div>
     );
@@ -541,14 +624,14 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const sectionLabel = (t: string) => <div style={{ fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, margin: '2px 2px 8px' }}>{t}</div>;
   const cardsView = view === 'folder';
 
-  const heading = view === 'recent' ? 'Recent' : view === 'shared' ? 'Shared with me' : view === 'trash' ? 'Trash' : view === 'templates' ? 'Templates' : view === 'search' ? 'Search results' : null;
+  const heading = view === 'recent' ? 'Recent' : view === 'shared' ? 'Shared with me' : view === 'trash' ? 'Trash' : view === 'templates' ? 'Templates' : view === 'starred' ? 'Starred' : view === 'search' ? 'Search results' : null;
 
   return (
     <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
       {/* Sidebar (desktop) / quick switch (phone) */}
       {isMobile ? (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', width: '100%', paddingBottom: 2 }}>
-          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Shared', view === 'shared', () => { setQ(''); setView('shared'); }], ['Templates', view === 'templates', () => { setQ(''); setView('templates'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
+          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Starred', view === 'starred', () => { setQ(''); setView('starred'); }], ['Shared', view === 'shared', () => { setQ(''); setView('shared'); }], ['Templates', view === 'templates', () => { setQ(''); setView('templates'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
             <button key={l} type="button" onClick={fn} style={{ minHeight: 40, padding: '0 16px', borderRadius: 20, border: `1px solid ${on ? GOLD : 'var(--k-e5e7eb)'}`, background: on ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: on ? 'var(--k-a06a12)' : 'var(--k-374151)', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>{l}</button>
           ))}
         </div>
@@ -556,6 +639,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         <nav aria-label="Folders" style={{ width: 230, flexShrink: 0, background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, padding: 8, maxHeight: '72vh', overflowY: 'auto' }}>
           {navBtn('All files', view === 'folder' && folderId === null, () => go(null), 'grid', true)}
           {navBtn('Recent', view === 'recent', () => { setQ(''); setView('recent'); }, 'clock')}
+          {navBtn('Starred', view === 'starred', () => { setQ(''); setView('starred'); }, 'star')}
           {navBtn('Shared with me', view === 'shared', () => { setQ(''); setView('shared'); }, 'users')}
           {navBtn('Templates', view === 'templates', () => { setQ(''); setView('templates'); }, 'template')}
           {navBtn('Trash', view === 'trash', () => { setQ(''); setView('trash'); }, 'trash')}
@@ -617,6 +701,29 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           onDrop={e => { setDragOver(false); if (!inTrash && view === 'folder' && e.dataTransfer.files.length) { e.preventDefault(); void uploadFiles(e.dataTransfer.files); } }}
           style={{ borderRadius: 14, outline: dragOver ? `2px dashed ${GOLD}` : 'none', outlineOffset: 4, background: dragOver ? `${GOLD}0d` : 'transparent' }}>
           <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}.dd-chk{opacity:0;transition:opacity .1s}.dd-row:hover .dd-chk,.dd-card:hover .dd-chk,.dd-selecting .dd-chk,.dd-chk:focus-within{opacity:1}`}</style>
+          {view === 'folder' && folderId === null && !filtering && suggested.length > 0 && (
+            <div style={{ marginBottom: 18 }}>
+              {sectionLabel('Suggested')}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>{suggested.map(d => gridCard('doc', d))}</div>
+            </div>
+          )}
+          {!inTrash && view !== 'templates' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div role="group" aria-label="Filter" style={{ display: 'flex', gap: 6, flex: '1 1 auto', overflowX: 'auto', paddingBottom: 2 }}>
+                {([...CHIPS, ['mine', 'Owned by me'], ['week', 'Last 7 days']] as Array<[string, string]>).map(([k, l]) => {
+                  const on = k === 'mine' ? mine : k === 'week' ? week : chip === k;
+                  return <button key={k} type="button" aria-pressed={on} onClick={() => (k === 'mine' ? setMine(m => !m) : k === 'week' ? setWeek(w => !w) : setChip(c => (c === k ? 'all' : (k as Chip))))}
+                    style={{ height: isMobile ? 38 : 30, padding: '0 13px', borderRadius: 16, border: `1px solid ${on ? GOLD : 'var(--k-e5e7eb)'}`, background: on ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: on ? 'var(--k-a06a12)' : 'var(--k-374151)', fontWeight: 600, fontSize: 13, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 5 }}>{on && <DI n="close" size={11} />}{l}</button>;
+                })}
+              </div>
+              <div role="group" aria-label="Layout" style={{ display: 'inline-flex', border: '1px solid var(--k-e5e7eb)', borderRadius: 9, overflow: 'hidden', flexShrink: 0 }}>
+                {([['list', 'List view'], ['grid', 'Grid view']] as Array<['list' | 'grid', string]>).map(([l, label]) => (
+                  <button key={l} type="button" aria-label={label} title={label} aria-pressed={layout === l} onClick={() => setLayoutTo(l)}
+                    style={{ width: isMobile ? 42 : 34, height: isMobile ? 38 : 30, border: 'none', background: layout === l ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: layout === l ? 'var(--k-a06a12)' : 'var(--k-6b7280)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n={l === 'list' ? 'list' : 'grid'} size={16} /></button>
+                ))}
+              </div>
+            </div>
+          )}
           {sel.size > 0 && (
             <div role="toolbar" aria-label="Actions for the selected items" style={{ position: 'sticky', top: 8, zIndex: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: isMobile ? '8px 10px' : '8px 12px', marginBottom: 12, borderRadius: 12, background: 'var(--k-fdf6e9)', border: `1px solid ${GOLD}`, boxShadow: '0 6px 20px rgba(0,0,0,.12)' }}>
               <button type="button" onClick={clearSel} aria-label="Clear the selection" title="Clear the selection (Esc)" style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-6b7280)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="close" size={16} /></button>
@@ -650,11 +757,19 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           {(docs.length > 0 || forms.length > 0 || files.length > 0 || (!cardsView && folders.length > 0)) && (
             <>
               {cardsView && folders.length > 0 && sectionLabel('Files')}
+              {layout === 'grid' && !inTrash && view !== 'templates' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                  {!cardsView && folders.map(f => gridCard('folder', f))}
+                  {docs.map(d => gridCard('doc', d))}
+                  {forms.map(f => gridCard('form', f))}
+                  {files.map(f => gridCard('file', f))}
+                </div>
+              ) : (
               <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, overflow: 'hidden' }}>
                 {!isMobile && (
                   <div style={{ display: 'flex', gap: 10, padding: '9px 10px 9px 14px', borderBottom: '1px solid var(--k-eef0f2)', background: 'var(--k-fafafa)', fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>
                     <span style={{ width: 22, flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select everything in this list" style={{ width: 16, height: 16, margin: 0, accentColor: GOLD, cursor: 'pointer' }} /></span>
-                    <span style={{ flex: 1, paddingLeft: 48 }}>Name</span><span style={{ width: 120 }}>Owner</span><span style={{ width: 118 }}>Access</span><span style={{ width: 84 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 32 + (inTrash ? 0 : 32) }} />
+                    <span style={{ flex: 1, paddingLeft: 48 }}>Name</span><span style={{ width: 120 }}>Owner</span><span style={{ width: 118 }}>Access</span><span style={{ width: 84 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 32 + (inTrash ? 0 : 64) }} />
                   </div>
                 )}
                 {!cardsView && folders.map(f => row('folder', f))}
@@ -662,16 +777,18 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                 {forms.map(f => row('form', f))}
                 {files.map(f => row('file', f))}
               </div>
+              )}
             </>
           )}
+          {noMatch && <div style={{ padding: '34px 20px', textAlign: 'center', color: 'var(--k-6b7280)', fontSize: 14, background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 14 }}>Nothing here matches those filters. <button type="button" onClick={() => { setChip('all'); setMine(false); setWeek(false); }} style={{ background: 'none', border: 'none', color: 'var(--k-a06a12)', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>Clear filters</button></div>}
           {empty && (
             <div style={{ padding: '54px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <Tile n={view === 'trash' ? 'trash' : view === 'shared' ? 'users' : view === 'templates' ? 'template' : view === 'search' ? 'search' : view === 'recent' ? 'clock' : 'folder'} color={GOLD} size={52} />
+              <Tile n={view === 'trash' ? 'trash' : view === 'shared' ? 'users' : view === 'templates' ? 'template' : view === 'search' ? 'search' : view === 'recent' ? 'clock' : view === 'starred' ? 'star' : 'folder'} color={GOLD} size={52} />
               <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--k-1a1a1a)', marginTop: 8 }}>
-                {view === 'trash' ? 'The trash is empty' : view === 'shared' ? 'Nothing is shared with you yet' : view === 'templates' ? 'No templates yet' : view === 'search' ? 'Nothing matches that search' : view === 'recent' ? 'No documents yet' : 'This folder is empty'}
+                {view === 'trash' ? 'The trash is empty' : view === 'shared' ? 'Nothing is shared with you yet' : view === 'templates' ? 'No templates yet' : view === 'search' ? 'Nothing matches that search' : view === 'starred' ? 'Nothing starred yet' : view === 'recent' ? 'No documents yet' : 'This folder is empty'}
               </div>
               <div style={{ fontSize: 13.5, color: 'var(--k-6b7280)', maxWidth: 360, lineHeight: 1.55 }}>
-                {view === 'trash' ? 'Items you delete wait here until you remove them for good.' : view === 'shared' ? 'When a teammate shares a private document, folder or file with you, it shows up here — and you get a notification.' : view === 'templates' ? 'Open any document, then ⋯ → Save as template.' : view === 'search' ? 'Try a different word, or check the spelling.' : view === 'recent' ? 'Documents you open or edit show up here.' : `Add a document, a folder or a form${isMobile ? '' : ' — or drop files right here'}.`}
+                {view === 'trash' ? 'Items you delete wait here until you remove them for good.' : view === 'shared' ? 'When a teammate shares a private document, folder or file with you, it shows up here — and you get a notification.' : view === 'templates' ? 'Open any document, then ⋯ → Save as template.' : view === 'search' ? 'Try a different word, or check the spelling.' : view === 'starred' ? 'Click the star on any document, file or folder to keep it here, one click away.' : view === 'recent' ? 'Documents you open or edit show up here.' : `Add a document, a folder or a form${isMobile ? '' : ' — or drop files right here'}.`}
               </div>
               {view === 'folder' && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -715,6 +832,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as Word (.docx)" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocWord(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && canEditFile((dlg.item as DriveFile).name) && <MenuBtn icon="✎" label="Edit as a live document" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void editFile(d.item as DriveFile); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
+              <MenuBtn icon="⭐" label={isStar(dlg.kind, dlg.item) ? 'Remove from Starred' : 'Add to Starred'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); toggleStar(d.kind, d.item); }} />
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
               {!(dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template) && <>
                 <MenuBtn icon="📁" label="Move to…" isMobile={isMobile} onClick={() => setDlg({ t: 'move', kind: dlg.kind, item: dlg.item })} />
@@ -794,7 +912,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
 
 const crumb = (current: boolean): React.CSSProperties => ({ background: 'none', border: 'none', padding: '6px 6px', borderRadius: 6, cursor: current ? 'default' : 'pointer', fontSize: 'inherit', fontWeight: current ? 700 : 600, color: current ? 'var(--k-1a1a1a)' : 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif", maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 
-const MENU_ICON: Record<string, DIName> = { '▦': 'sheet', '📄': 'doc', '📋': 'template', '📁': 'folder', '📝': 'form', '⬆': 'upload', '↩': 'restore', '🗑': 'trash', '↗': 'open', '👁': 'eye', '⬇': 'download', '↓': 'download', '💼': 'briefcase', '👤': 'user', '✎': 'pen', '👥': 'users' };
+const MENU_ICON: Record<string, DIName> = { '▦': 'sheet', '📄': 'doc', '📋': 'template', '📁': 'folder', '📝': 'form', '⬆': 'upload', '↩': 'restore', '🗑': 'trash', '↗': 'open', '👁': 'eye', '⬇': 'download', '↓': 'download', '💼': 'briefcase', '👤': 'user', '✎': 'pen', '👥': 'users', '⭐': 'star' };
 function MenuBtn({ icon, label, onClick, danger, isMobile }: { icon: string; label: string; onClick: () => void; danger?: boolean; isMobile: boolean }) {
   return (
     <button type="button" role="menuitem" onClick={onClick}

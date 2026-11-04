@@ -41,10 +41,28 @@ export async function GET(req: NextRequest) {
   }
 
   if (view === 'recent') {
-    const { data, error } = await userDb.from('crm_drive_docs').select(DOC_COLS)
+    const { data, error } = await userDb.from('crm_drive_docs').select(`${DOC_COLS},content_text`)
       .eq('business_unit', bu).is('trashed_at', null).eq('is_template', false).order('updated_at', { ascending: false }).limit(40);
     if (error) return NextResponse.json({ error: 'Could not load documents' }, { status: 500 });
-    return NextResponse.json({ path: [], folder: null, folders: [], docs: await withLinkCounts(dc.admin, (data ?? []) as unknown as DriveDoc[]) } satisfies DriveListing);
+    // A short plain-text peek at each document (Home's "Suggested" cards show it as a preview).
+    const rows = ((data ?? []) as unknown as Array<DriveDoc & { content_text: string | null }>).map(({ content_text, ...d }) => ({ ...d, snippet: (content_text ?? '').replace(/\s+/g, ' ').trim().slice(0, 150) }));
+    return NextResponse.json({ path: [], folder: null, folders: [], docs: await withLinkCounts(dc.admin, rows as DriveDoc[]) } satisfies DriveListing);
+  }
+
+  // Starred: the caller's own stars live in their browser (kind:id pairs); this just loads those items — visibility is still the database's call.
+  if (view === 'starred') {
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const ids: Record<string, string[]> = { folder: [], doc: [], file: [], form: [] };
+    for (const p of (url.searchParams.get('ids') ?? '').split(',').slice(0, 300)) { const [k, id] = p.split(':'); if (ids[k] && UUID.test(id ?? '')) ids[k].push(id); }
+    const none = Promise.resolve({ data: [], error: null });
+    const [f, d, fl, fm] = await Promise.all([
+      ids.folder.length ? userDb.from('crm_drive_folders').select(FOLDER_COLS).eq('business_unit', bu).is('trashed_at', null).in('id', ids.folder) : none,
+      ids.doc.length ? userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).is('trashed_at', null).in('id', ids.doc) : none,
+      ids.file.length ? userDb.from('crm_drive_files').select(FILE_COLS).eq('business_unit', bu).is('trashed_at', null).in('id', ids.file) : none,
+      ids.form.length ? userDb.from('crm_drive_forms').select(FORM_LINK_COLS).eq('business_unit', bu).is('trashed_at', null).in('id', ids.form) : none,
+    ]);
+    if (f.error || d.error || fl.error || fm.error) return NextResponse.json({ error: 'Could not load your starred items' }, { status: 500 });
+    return NextResponse.json({ path: [], folder: null, folders: (f.data ?? []) as DriveFolder[], docs: await withLinkCounts(dc.admin, (d.data ?? []) as unknown as DriveDoc[]), files: (fl.data ?? []) as DriveFile[], forms: await hydrateDriveForms(dc, (fm.data ?? []) as Array<Record<string, unknown>>) } satisfies DriveListing);
   }
 
   // Shared with me: what teammates have shared with this user (private items that list them), top of each shared branch only.

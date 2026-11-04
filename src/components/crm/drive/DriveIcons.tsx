@@ -3,7 +3,7 @@ import React from 'react';
 /** Line icons for My Drive — the same drawing style as the CRM chrome (Ico.tsx), so the Drive no longer leans on emoji. Stroke follows currentColor. */
 export type DIName =
   | 'folder' | 'folderLock' | 'folderDeal' | 'doc' | 'form' | 'file' | 'image' | 'sheet' | 'clock' | 'template' | 'trash' | 'search' | 'plus'
-  | 'upload' | 'download' | 'lock' | 'users' | 'user' | 'briefcase' | 'open' | 'pen' | 'eye' | 'restore' | 'grid' | 'chevron' | 'dots' | 'move' | 'close';
+  | 'upload' | 'download' | 'lock' | 'users' | 'user' | 'briefcase' | 'open' | 'pen' | 'eye' | 'restore' | 'grid' | 'chevron' | 'dots' | 'move' | 'close' | 'star' | 'list';
 
 const FOLDER = 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z';
 
@@ -36,6 +36,8 @@ const PATHS: Record<DIName, React.ReactNode> = {
   dots: <><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></>,
   move: <><path d={FOLDER} /><path d="M9 13h6M13 11l2 2-2 2" /></>,
   close: <path d="M6 6l12 12M18 6L6 18" />,
+  star: <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 17l-5.3 2.7 1.1-5.9L3.5 9.7l5.9-.8z" />,
+  list: <path d="M4 6h16M4 12h16M4 18h16" />,
 };
 
 export default function DI({ n, size = 18, style }: { n: DIName; size?: number; style?: React.CSSProperties }) {
