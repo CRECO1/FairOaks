@@ -8,9 +8,11 @@ import type Anthropic from '@anthropic-ai/sdk';
 // web_fetch can only open pages on these sites (a domain covers its subdomains). It is the one tool here that can reach a URL an attacker
 // might plant in a contact note or an email, so it is restricted; web_search stays open and finds pages anywhere. To allow another site,
 // add its domain here.
+// Every entry must be crawlable by Anthropic's fetcher: the API rejects the WHOLE request (400 "domains are not accessible to our user
+// agent") if one is not, which takes the copilot down for everyone. realtor.com, expressnews.com and bizjournals.com block it — leave them out.
 export const FETCH_ALLOWED_DOMAINS = [
   // listings + commercial real estate
-  'zillow.com', 'realtor.com', 'redfin.com', 'trulia.com', 'har.com', 'sabor.com', 'apartments.com', 'loopnet.com', 'crexi.com', 'costar.com',
+  'zillow.com', 'redfin.com', 'trulia.com', 'har.com', 'sabor.com', 'apartments.com', 'loopnet.com', 'crexi.com', 'costar.com',
   'commercialcafe.com', 'propertyshark.com', 'landwatch.com', 'land.com', 'landsearch.com', 'compass.com', 'nar.realtor', 'ccim.com',
   // brokerages + research
   'cbre.com', 'jll.com', 'cushmanwakefield.com', 'colliers.com', 'marcusmillichap.com', 'lee-associates.com', 'naiglobal.com', 'kwcommercial.com',
@@ -19,7 +21,7 @@ export const FETCH_ALLOWED_DOMAINS = [
   'texas.gov', 'census.gov', 'fema.gov', 'hud.gov', 'sba.gov',
   // business + person lookups, news
   'linkedin.com', 'bizapedia.com', 'opencorporates.com', 'bbb.org', 'google.com/maps', 'wikipedia.org',
-  'expressnews.com', 'bizjournals.com', 'sanantonioreport.org', 'therealdeal.com', 'bisnow.com',
+  'sanantonioreport.org', 'therealdeal.com', 'bisnow.com',
   // ours
   'crecotx.com', 'fairoaksrealtygroup.com',
 ];
