@@ -523,6 +523,9 @@ export interface FeedData {
   extraHeaders?: string[];
   /** How many feed columns an existing tab made before this version added more — so the team's columns shift right with them. */
   prevCols?: number;
+  /** A re-arranged layout: when a tab was last laid out differently, its frozen columns are reset once to `freezeCols`. */
+  layout?: number;
+  freezeCols?: number;
 }
 
 export function applyFeed(tab: Y.Map<unknown>, data: FeedData) {
@@ -567,6 +570,7 @@ export function applyFeed(tab: Y.Map<unknown>, data: FeedData) {
   tab.set('rows', Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, data.rows.length + 30)));
   tab.set('ncols', Math.min(MAX_COLS, Math.max(DEFAULT_COLS, nSys + Math.max(1, headerExtra.size) + 2)));
   (data.widths ?? []).forEach((w, c) => cols.set(String(c), w));
+  if (data.layout && tab.get('feedLayout') !== data.layout) { tab.set('frozenCols', data.freezeCols ?? 0); tab.set('feedLayout', data.layout); }
   tab.set('feedCols', nSys);
   tab.set('feedAt', Date.now());
 }

@@ -18,7 +18,7 @@ const phone = (n: string | null | undefined) => { const d = String(n ?? '').repl
 const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 const personName = (c: { first_name?: string | null; last_name?: string | null }) => [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
 
-type Client = { id: string; first_name: string | null; last_name: string | null; business_name: string | null; phone: string | null; cell_phone: string | null; email: string | null; unsubscribed_at: string | null; tags?: string[] | null };
+type Client = { notes?: string | null; id: string; first_name: string | null; last_name: string | null; business_name: string | null; phone: string | null; cell_phone: string | null; email: string | null; unsubscribed_at: string | null; tags?: string[] | null };
 type Call = { contact_id: string; started_at: string; result: string | null; outcome: string | null; notes: string | null; duration_sec: number | null; to_number: string | null };
 
 
@@ -57,7 +57,7 @@ async function callsFor(dc: DriveContext, agent: string, ids: string[]): Promise
 async function clientsById(dc: DriveContext, ids: string[]): Promise<Map<string, Client>> {
   const m = new Map<string, Client>();
   for (const part of chunk(ids, 100)) {
-    const { data } = await dc.userDb.from('crm_clients').select('id,first_name,last_name,business_name,phone,cell_phone,email,unsubscribed_at,tags').in('id', part);
+    const { data } = await dc.userDb.from('crm_clients').select('id,first_name,last_name,business_name,phone,cell_phone,email,unsubscribed_at,tags,notes').in('id', part);
     for (const c of (data ?? []) as Client[]) m.set(c.id, c);
   }
   return m;
@@ -110,9 +110,17 @@ async function buildTenants(dc: DriveContext): Promise<FeedData> {
   const called = all.filter(r => r.calls.length && !bottom(r)).sort((a, b) => b.last!.started_at.localeCompare(a.last!.started_at));
   const uncalled = all.filter(r => !r.calls.length && !bottom(r)).sort((a, b) => b.e.opened - a.e.opened || b.e.last.localeCompare(a.e.last));
   const bot = all.filter(bottom).sort((a, b) => Number(a.unsub && !a.notInterested) - Number(b.unsub && !b.notInterested) || (b.last?.started_at ?? '').localeCompare(a.last?.started_at ?? ''));
-  // Leads that go together sit together: inside each list group, same business type side by side (the order above is kept within a type).
-  for (const list of [called, uncalled, bot]) list.sort((a, b) => categoryRank(a.cat) - categoryRank(b.cat));
+  // Contacted leads stay in order of who was reached most recently. The ones not yet called are grouped by business type (leads that go
+  // together sit together), most-engaged first inside each type. Not-interested / unsubscribed go last.
+  uncalled.sort((a, b) => categoryRank(a.cat) - categoryRank(b.cat) || b.e.opened - a.e.opened || b.e.last.localeCompare(a.e.last));
   const group = (r: Row) => (bottom(r) ? '3 Not interested / unsubscribed' : r.calls.length ? '1 Recently contacted' : '2 Not yet called');
+  const md = (iso: string) => { const d = day(iso); return d ? `${+d.slice(5, 7)}/${+d.slice(8, 10)}` : ''; };
+  const notesOf = (r: Row) => {
+    const mine = r.calls.filter(x => (x.notes ?? '').trim()).map(x => `${md(x.started_at)}: ${(x.notes ?? '').trim()}`);
+    if (mine.length) return mine.join('  |  ');
+    const crm = (r.c.notes ?? '').trim();
+    return crm ? `CRM note: ${crm.slice(0, 400)}` : '';
+  };
   const status = (r: Row) => !r.calls.length ? 'NOT CALLED' : r.talked ? 'Called - reached' : 'Called - no contact yet';
   const followUp = (r: Row) => {
     if (!r.calls.length) return '';
@@ -123,11 +131,11 @@ async function buildTenants(dc: DriveContext): Promise<FeedData> {
   };
   const rows = [...called, ...uncalled, ...bot].map((r, i) => ({
     key: r.id,
-    cells: [String(i + 1), group(r), r.cat, r.area, status(r), r.c.business_name ?? '', personName(r.c), phone(r.c.phone || r.c.cell_phone), r.c.email ?? '', String(r.e.sent), String(r.e.opened), day(r.e.last), [...r.e.camps].filter(Boolean).join('; '), String(r.calls.length || ''), r.last ? day(r.last.started_at) : '', r.last ? (r.last.outcome || r.last.result || '') : '', r.last?.notes ?? '', followUp(r), r.unsub ? 'YES' : ''],
+    cells: [String(i + 1), r.c.business_name ?? '', status(r), r.last ? day(r.last.started_at) : '', personName(r.c), phone(r.c.phone || r.c.cell_phone), r.last ? (r.last.outcome || r.last.result || '') : '', notesOf(r), followUp(r), r.c.email ?? '', r.cat, r.area, group(r), String(r.calls.length || ''), String(r.e.sent), String(r.e.opened), day(r.e.last), [...r.e.camps].filter(Boolean).join('; '), r.unsub ? 'YES' : ''],
   }));
   return {
     feed: 'elkhorn_tenants', title: 'Emailed Tenants',
-    header: ['#', 'List group', 'Category', 'Area', 'Call status', 'Business', 'Contact', 'Phone', 'Email', 'Emails sent', 'Opened', 'Last email', 'Campaigns', 'Brian calls', 'Last call', 'Last outcome', 'Brian notes', 'Follow-up email', 'Unsubscribed'],
-    widths: [40, 190, 170, 130, 150, 240, 150, 120, 220, 80, 70, 95, 260, 90, 95, 110, 320, 230, 100], rows, extraHeaders: ['Team notes'], prevCols: 17,
+    header: ['#', 'Business', 'Call status', 'Last call', 'Contact', 'Phone', 'Last outcome', 'Notes', 'Follow-up email', 'Email', 'Category', 'Area', 'List group', 'Brian calls', 'Emails sent', 'Opened', 'Last email', 'Campaigns', 'Unsubscribed'],
+    widths: [40, 240, 150, 95, 150, 120, 110, 420, 230, 220, 170, 130, 190, 90, 80, 70, 95, 260, 100], rows, extraHeaders: ['Team notes'], prevCols: 17, layout: 2, freezeCols: 2,
   };
 }
