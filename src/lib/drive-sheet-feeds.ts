@@ -14,6 +14,7 @@ export const isFeed = (k: unknown): k is FeedKey => typeof k === 'string' && k i
 const CALLER_EMAIL = 'brian@crecotx.com';                 // whose calls the Elkhorn sheet tracks
 const day = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }) : '';
 const stamp = (iso: string) => new Date(iso).toLocaleString('en-CA', { timeZone: 'America/Chicago', hour12: false }).replace(',', '').slice(0, 16);
+const phone = (n: string | null | undefined) => { const d = String(n ?? '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : String(n ?? ''); };
 const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 const personName = (c: { first_name?: string | null; last_name?: string | null }) => [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
 
@@ -53,7 +54,7 @@ async function buildCalls(dc: DriveContext): Promise<FeedData> {
   const calls = agent ? await callsFor(dc, agent, [...byId.keys()]) : [];
   const rows = calls.slice().sort((a, b) => b.started_at.localeCompare(a.started_at)).map((l, i) => {
     const c = byId.get(l.contact_id)!;
-    return { key: `${l.contact_id}|${l.started_at}|${i}`, cells: [stamp(l.started_at), personName(c), c.business_name ?? '', l.to_number ?? c.phone ?? c.cell_phone ?? '', l.outcome || l.result || '', l.duration_sec != null ? String(l.duration_sec) : '', l.notes ?? ''] };
+    return { key: `${l.contact_id}|${l.started_at}|${i}`, cells: [stamp(l.started_at), personName(c), c.business_name ?? '', phone(l.to_number ?? c.phone ?? c.cell_phone), l.outcome || l.result || '', l.duration_sec != null ? String(l.duration_sec) : '', l.notes ?? ''] };
   });
   return { feed: 'elkhorn_calls', title: 'Call Log', header: ['Date/Time (CT)', 'Contact', 'Business', 'Phone', 'Outcome', 'Seconds', 'Notes'], widths: [130, 150, 230, 120, 110, 70, 340], rows, extraHeaders: ['Follow-up'] };
 }
@@ -100,7 +101,7 @@ async function buildTenants(dc: DriveContext): Promise<FeedData> {
   };
   const rows = [...called, ...uncalled, ...bot].map((r, i) => ({
     key: r.id,
-    cells: [String(i + 1), group(r), status(r), r.c.business_name ?? '', personName(r.c), r.c.phone || r.c.cell_phone || '', r.c.email ?? '', String(r.e.sent), String(r.e.opened), day(r.e.last), [...r.e.camps].filter(Boolean).join('; '), String(r.calls.length || ''), r.last ? day(r.last.started_at) : '', r.last ? (r.last.outcome || r.last.result || '') : '', r.last?.notes ?? '', followUp(r), r.unsub ? 'YES' : ''],
+    cells: [String(i + 1), group(r), status(r), r.c.business_name ?? '', personName(r.c), phone(r.c.phone || r.c.cell_phone), r.c.email ?? '', String(r.e.sent), String(r.e.opened), day(r.e.last), [...r.e.camps].filter(Boolean).join('; '), String(r.calls.length || ''), r.last ? day(r.last.started_at) : '', r.last ? (r.last.outcome || r.last.result || '') : '', r.last?.notes ?? '', followUp(r), r.unsub ? 'YES' : ''],
   }));
   return {
     feed: 'elkhorn_tenants', title: 'Emailed Tenants',

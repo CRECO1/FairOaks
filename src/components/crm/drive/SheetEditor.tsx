@@ -193,7 +193,9 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sel, setSel] = useState<Sel>({ r: 0, c: 0, r2: 0, c2: 0 });
-  const [edit, setEdit] = useState<{ r: number; c: number; text: string } | null>(null);
+  const [edit, setEditState] = useState<{ r: number; c: number; text: string } | null>(null);
+  const editRef = useRef<{ r: number; c: number; text: string } | null>(null);   // always current, so keys typed before React re-renders are not lost
+  const setEdit = (v: { r: number; c: number; text: string } | null) => { editRef.current = v; setEditState(v); };
   const [scroll, setScroll] = useState({ top: 0, left: 0 });
   const [box, setBox] = useState({ w: 800, h: 500 });
   const [bar, setBar] = useState<string | null>(null);       // formula bar text while it is focused
@@ -284,8 +286,9 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   };
   const startEdit = (r: number, c: number, text?: string) => { setEdit({ r, c, text: text ?? raw(r, c) }); };
   const commitEdit = (then?: 'down' | 'right' | 'stay') => {
-    if (!edit) return;
-    const { r, c, text } = edit;
+    const cur = editRef.current;
+    if (!cur) return;
+    const { r, c, text } = cur;
     setEdit(null);
     if (text !== raw(r, c)) setCell(r, c, text);
     if (then === 'down') moveTo(r + 1, c); else if (then === 'right') moveTo(r, c + 1);
@@ -431,7 +434,16 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const onDouble = (e: React.MouseEvent) => { const p = cellAt(e.clientX, e.clientY); if (p) startEdit(p.r, p.c); };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (edit) return;
+    const open = editRef.current;
+    if (open) {
+      // The edit box is mounted but not focused yet (very fast typing): keep the keys instead of dropping them.
+      if (e.key === 'Enter') { e.preventDefault(); commitEdit('down'); }
+      else if (e.key === 'Tab') { e.preventDefault(); commitEdit('right'); }
+      else if (e.key === 'Escape') { e.preventDefault(); setEdit(null); }
+      else if (e.key === 'Backspace') { e.preventDefault(); setEdit({ ...open, text: open.text.slice(0, -1) }); }
+      else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setEdit({ ...open, text: open.text + e.key }); }
+      return;
+    }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) undo.redo(); else undo.undo(); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); undo.redo(); return; }
