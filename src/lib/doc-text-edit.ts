@@ -92,6 +92,9 @@ export async function editDocx(input: Uint8Array | Buffer, edits: EditSpec[]): P
   const zip = await JSZip.loadAsync(input);
   const entry = zip.file('word/document.xml');
   if (!entry) throw new Error('That does not look like a Word document (no word/document.xml).');
+  // A tiny zip can inflate to gigabytes: read the declared size from the header before inflating, and cap the archive's entry count.
+  const declared = (entry as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize;
+  if ((typeof declared === 'number' && declared > 25 * 1024 * 1024) || Object.keys(zip.files).length > 5000) throw new Error('That Word document is too large or malformed to edit.');
   const doc = new DOMParser().parseFromString(await entry.async('string'), 'text/xml');
   const report: string[] = [], warnings: string[] = [];
 
