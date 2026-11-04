@@ -1,8 +1,9 @@
 /**
  * "Attach from the CRM" (Zack, 2026-10-28): an agent picks documents that are already on a DEAL's Docs tab and the
  * server attaches them to the email itself, so nothing is downloaded and re-uploaded through the browser (which also
- * sidesteps Vercel's 4.5 MB request cap). Only deal documents are offered — files an agent pulled into the deal
- * (uploads, forms) and the signed copies of those forms — never other properties' flyers or listing files.
+ * sidesteps Vercel's 4.5 MB request cap). Deal documents are offered — files an agent pulled into the deal
+ * (uploads, forms) and the signed copies of those forms — plus, since 2026-11-04 (Zack), each property's own FLYER
+ * (the PDF on the listing, 'listing_flyer'), authorized by the listing's workspace + Restricted rules. Other listing files stay out.
  *
  * Every reference is authorized server-side by its parent deal (workspace + Restricted-deal rules), exactly like
  * opening the document from the deal's Docs tab.
@@ -10,13 +11,15 @@
 import { adminClient } from '@/lib/supabase-admin';
 import { assertOwnsResource, hiddenDealIds, type CrmContext } from '@/lib/crm-auth';
 import { canAccessLinked } from '@/lib/crm-linked-access';
+import { LISTING_FILES_BUCKET, assertCanAccessListing, listingAccessible } from '@/lib/listing-files-access';
+import { isAdminRole } from '@/lib/crm-auth';
 import { EMAIL_ATTACH_BUCKET, type StoredAttachment } from '@/lib/email-attachments';
 import { callerMailboxes } from '@/lib/gmail-mailbox';
 import { fetchAttachment } from '@/lib/gmail-live';
 import { driveDocPdf } from '@/lib/drive-pdf-server';
 
-export type CrmAttachKind = 'deal_doc' | 'form' | 'signed' | 'email_att' | 'gmail_att' | 'upload' | 'drive_doc';
-export const CRM_ATTACH_KINDS: CrmAttachKind[] = ['deal_doc', 'form', 'signed', 'email_att', 'gmail_att', 'upload', 'drive_doc'];
+export type CrmAttachKind = 'deal_doc' | 'form' | 'signed' | 'email_att' | 'gmail_att' | 'upload' | 'drive_doc' | 'listing_flyer';
+export const CRM_ATTACH_KINDS: CrmAttachKind[] = ['deal_doc', 'form', 'signed', 'email_att', 'gmail_att', 'upload', 'drive_doc', 'listing_flyer'];
 /** An 'upload' id is the storage path `pending/<uploader's id>/<uuid>/<file name>` of a big file the sender put in storage straight from the browser. */
 export const UPLOAD_ID = /^pending\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[^/\\]{1,150}$/i;
 const MIME_BY_EXT: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', csv: 'text/csv', txt: 'text/plain', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', zip: 'application/zip' };
@@ -81,6 +84,22 @@ async function canOpenClient(ctx: CrmContext, clientId: string): Promise<boolean
   return !(c?.lead_hold && c.agent_id !== ctx.userId);
 }
 
+/** The property flyers this caller may email: the generated/uploaded flyer PDF on each listing they can open (workspace + Restricted rules). */
+async function flyerGroup(ctx: CrmContext, term?: string): Promise<CrmAttachGroup[]> {
+  let q = adminClient().from('crm_listings').select('id, name, address, flyer_path, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').not('flyer_path', 'is', null).order('updated_at', { ascending: false }).limit(60);
+  if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
+  const { data } = await q;
+  const t = (term ?? '').toLowerCase();
+  const items: CrmAttachItem[] = [];
+  for (const l of data ?? []) {
+    if (!listingAccessible(l as Record<string, unknown>, ctx)) continue;
+    const label = [l.name, l.address].filter(Boolean).join(' — ');
+    if (t && !label.toLowerCase().includes(t)) continue;
+    items.push({ kind: 'listing_flyer', id: l.id as string, name: `${clean(String(l.name ?? l.address ?? 'Property'), 'Property')} — Flyer.pdf`, size: null, type: 'application/pdf', sub: `Property flyer${l.address ? ` · ${l.address}` : ''}` });
+  }
+  return items.length ? [{ dealId: 'flyers', title: 'Property flyers', items: items.slice(0, 30) }] : [];
+}
+
 /** Groups of attachable documents for these deals (hidden/Restricted ones left out, deals with nothing on them skipped). */
 async function groupsFor(ctx: CrmContext, deals: Array<{ id: unknown; client: unknown; property: unknown }>): Promise<CrmAttachGroup[]> {
   const hidden = new Set(await hiddenDealIds(ctx));
@@ -102,30 +121,30 @@ export async function listAttachables(ctx: CrmContext, opts: { dealId?: string; 
     if (!(await assertOwnsResource('crm_deals', opts.dealId, ctx))) return null;
     const { data: d } = await db.from('crm_deals').select('id, client, property').eq('id', opts.dealId).maybeSingle();
     const items = await dealItems(opts.dealId);
-    return items.length ? [{ dealId: opts.dealId, title: [d?.client, d?.property].filter(Boolean).join(' — ') || 'This deal', items }] : [];
+    return [...(items.length ? [{ dealId: opts.dealId, title: [d?.client, d?.property].filter(Boolean).join(' — ') || 'This deal', items }] : []), ...(await flyerGroup(ctx))];
   }
   if (opts.clientId) {
     if (!(await assertOwnsResource('crm_clients', opts.clientId, ctx))) return null;
     const { data: deals } = await db.from('crm_deals').select('id, client, property').eq('client_id', opts.clientId).limit(10);
     const live = (await canOpenClient(ctx, opts.clientId)) ? await clientLiveGroup(opts.clientId) : [];
-    return [...live, ...(await groupsFor(ctx, deals ?? []))];
+    return [...live, ...(await groupsFor(ctx, deals ?? [])), ...(await flyerGroup(ctx))];
   }
   if (opts.email) {
     const { data: clients } = await db.from('crm_clients').select('id').ilike('email', opts.email.trim().replace(/[%_\\]/g, m => '\\' + m)).limit(5);
     const ids: string[] = [];
     for (const c of clients ?? []) if (await assertOwnsResource('crm_clients', c.id as string, ctx)) ids.push(c.id as string);
-    if (!ids.length) return [];
+    if (!ids.length) return flyerGroup(ctx);
     const { data: deals } = await db.from('crm_deals').select('id, client, property').in('client_id', ids).order('updated_at', { ascending: false }).limit(10);
     const live: CrmAttachGroup[] = [];
     for (const id of ids) if (await canOpenClient(ctx, id)) live.push(...(await clientLiveGroup(id)));
-    return [...live, ...(await groupsFor(ctx, deals ?? []))];
+    return [...live, ...(await groupsFor(ctx, deals ?? [])), ...(await flyerGroup(ctx))];
   }
   if (opts.q && opts.q.trim().length >= 2) {
     const term = opts.q.trim().replace(/[%_\\,()]/g, ' ').slice(0, 60);
     const { data: found } = await db.from('crm_deals').select('id, client, property').or(`client.ilike.%${term}%,property.ilike.%${term}%`).order('updated_at', { ascending: false }).limit(15);
     const allowed: typeof found = [];
     for (const d of found ?? []) if (await assertOwnsResource('crm_deals', d.id as string, ctx)) allowed.push(d);
-    return groupsFor(ctx, allowed);
+    return [...(await groupsFor(ctx, allowed)), ...(await flyerGroup(ctx, term))];
   }
   return [];
 }
@@ -152,6 +171,13 @@ export async function resolveCrmAttachments(refs: CrmAttachRef[], ctx: CrmContex
       if (!d || !(await assertOwnsResource('crm_deals', d.deal_id as string, ctx))) return { ok: false, status: 404, error: 'A deal document you picked is no longer available' };
       name = d.name as string; mimeType = (d.file_type as string) || 'application/octet-stream';
       bytes = await fetchBytes(DEAL_DOCS, d.storage_path as string);
+    } else if (ref.kind === 'listing_flyer') {
+      // A property's flyer PDF: the listing must be one this caller can open (same workspace, Restricted needs owner/assigned).
+      const l = await assertCanAccessListing(ref.id, ctx);
+      const { data: fl } = l ? await db.from('crm_listings').select('name, address, flyer_path').eq('id', ref.id).maybeSingle() : { data: null };
+      if (!l || !fl?.flyer_path) return { ok: false, status: 404, error: 'A property flyer you picked is no longer available' };
+      name = `${clean(String(fl.name ?? fl.address ?? 'Property'), 'Property')} — Flyer.pdf`;
+      bytes = await fetchBytes(LISTING_FILES_BUCKET, fl.flyer_path as string);
     } else if (ref.kind === 'drive_doc') {
       // A live My Drive document, authorized by a deal or contact it is linked to (the same card rule as opening it there).
       const { data: links } = await db.from('crm_drive_doc_links').select('deal_id, client_id').eq('doc_id', ref.id);

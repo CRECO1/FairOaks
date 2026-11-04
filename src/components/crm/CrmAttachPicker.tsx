@@ -8,7 +8,7 @@ import type { CrmAttachItem, CrmAttachGroup } from '@/lib/crm-attachments';
 
 const key = (i: CrmAttachItem) => `${i.kind}:${i.id}`;
 const fmt = (n: number | null) => n == null ? '' : n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
-const icon = (i: CrmAttachItem) => i.kind === 'drive_doc' ? '🔗' : i.kind === 'signed' ? '✅' : i.kind === 'form' ? '📝' : /^image\//.test(i.type) ? '🖼️' : /word|document/.test(i.type) ? '📃' : '📄';
+const icon = (i: CrmAttachItem) => i.kind === 'listing_flyer' ? '🏢' : i.kind === 'drive_doc' ? '🔗' : i.kind === 'signed' ? '✅' : i.kind === 'form' ? '📝' : /^image\//.test(i.type) ? '🖼️' : /word|document/.test(i.type) ? '📃' : '📄';
 
 export default function CrmAttachPicker(p: {
   ctx: { dealId?: string; clientId?: string; email?: string; searchable?: boolean };
@@ -51,7 +51,7 @@ export default function CrmAttachPicker(p: {
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--k-f0f0f0)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-111)' }}>Attach from the deal</div>
-            <div style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>Documents already on the deal’s Docs tab. They’re attached when you send — nothing to download.</div>
+            <div style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>Documents on the deal’s Docs tab, and property flyers. They’re attached when you send — nothing to download.</div>
           </div>
           <button type="button" onClick={p.onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--k-9ca3af)', cursor: 'pointer', width: 40, height: 40, minWidth: 0, minHeight: 0 }}>×</button>
         </div>
