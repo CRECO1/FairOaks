@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { escapeLike } from '@/lib/like-escape';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
 import { rateLimit } from '@/lib/ratelimit';
 import { pushEmailOpen } from '@/lib/notify';
@@ -16,6 +16,27 @@ function classifyAgent(ua: string | null): string {
   if (/YahooMailProxy|Yahoo Ad monitoring/i.test(ua)) return 'yahoo-proxy';
   if (/proofpoint|mimecast|barracuda|symantec|forcepoint|trendmicro|bot\b|crawl|spider|scan/i.test(ua)) return 'security-scanner';
   return 'other';
+}
+
+/** Logs a campaign / action-plan pixel load and says whether it starts a new "open" (no load of this send in the last 30 minutes). */
+async function recordSendHit(
+  supabase: SupabaseClient, req: NextRequest, kind: 'campaign' | 'action_plan', sendId: string, lastKnownOpenIso: string | null,
+): Promise<boolean> {
+  let lastMs: number | null = lastKnownOpenIso ? new Date(lastKnownOpenIso).getTime() : null;
+  try {
+    const { data, error } = await supabase.from('crm_send_open_hits').select('at').eq('kind', kind).eq('send_id', sendId).order('at', { ascending: false }).limit(1);
+    if (!error) lastMs = (data as { at: string }[] | null)?.[0]?.at ? new Date((data as { at: string }[])[0].at).getTime() : lastMs;
+  } catch { /* log table missing — fall back to the send's own last-open stamp */ }
+  const isNew = lastMs === null || Date.now() - lastMs >= OPEN_SESSION_GAP_MS;
+  try {
+    const ua = req.headers.get('user-agent')?.slice(0, 300) ?? null;
+    const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim();
+    await supabase.from('crm_send_open_hits').insert([{
+      kind, send_id: sendId, user_agent: ua, agent_kind: classifyAgent(ua), counted: isNew,
+      ip_hash: ip ? createHash('sha256').update(ip).digest('hex').slice(0, 12) : null,
+    }]);
+  } catch { /* non-fatal */ }
+  return isNew;
 }
 
 // 1×1 transparent GIF
@@ -50,11 +71,14 @@ export async function GET(req: NextRequest) {
           .maybeSingle();
 
         if (send) {
-          // Update open stats on the send record
-          await supabase.from('crm_campaign_sends').update({
-            open_count: (send.open_count ?? 0) + 1,
-            ...(send.opened_at ? {} : { opened_at: now }),
-          }).eq('id', send.id);
+          // Count a new open only after a gap with no loads (see OPEN_SESSION_GAP_MS); every load is still logged.
+          const isNewOpen = await recordSendHit(supabase, req, 'campaign', send.id, null);
+          if (isNewOpen || !send.opened_at) {
+            await supabase.from('crm_campaign_sends').update({
+              open_count: (send.open_count ?? 0) + 1,
+              ...(send.opened_at ? {} : { opened_at: now }),
+            }).eq('id', send.id);
+          }
 
           // First open only: add "Opened Email" tag to the contact
           if (!send.opened_at && send.client_id) {
@@ -78,16 +102,19 @@ export async function GET(req: NextRequest) {
         // Action-plan email tracking (welcome sequence, nurture, closed-deal congrats)
         const { data: send } = await supabase
           .from('crm_action_plan_sends')
-          .select('id, client_id, opened_at, open_count')
+          .select('id, client_id, opened_at, last_opened_at, open_count')
           .eq('tracking_id', trackingId)
           .maybeSingle();
 
         if (send) {
-          await supabase.from('crm_action_plan_sends').update({
-            open_count: (send.open_count ?? 0) + 1,
-            ...(send.opened_at ? {} : { opened_at: now }),
-            last_opened_at: now,       // every open, so the History tab can order by "latest open"
-          }).eq('id', send.id);
+          const isNewOpen = await recordSendHit(supabase, req, 'action_plan', send.id, (send.last_opened_at as string | null) ?? null);
+          if (isNewOpen || !send.opened_at) {
+            await supabase.from('crm_action_plan_sends').update({
+              open_count: (send.open_count ?? 0) + 1,
+              ...(send.opened_at ? {} : { opened_at: now }),
+              last_opened_at: now,       // each counted open, so the History tab can order by "latest open"
+            }).eq('id', send.id);
+          }
 
           // First open only: tag the contact
           if (!send.opened_at && send.client_id) {
