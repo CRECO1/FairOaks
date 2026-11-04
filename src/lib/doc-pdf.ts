@@ -44,7 +44,39 @@ export async function letterheadLogo(): Promise<Uint8Array | null> {
   try { const r = await fetch(LETTERHEAD.logoPath); if (!r.ok) return null; logoCache = new Uint8Array(await r.arrayBuffer()); return logoCache; } catch { return null; }
 }
 
-export async function docToPdf(doc: PMNode, title: string, opts: { letterhead?: boolean } = {}): Promise<Uint8Array> {
+/**
+ * What leaves the app (PDF / Word / signature): suggested deletions are dropped and suggested additions kept as plain text (the document
+ * as it would read if every suggestion were accepted), and inline pictures become their own blocks so both writers can place them.
+ */
+export function prepForExport(doc: PMNode): PMNode {
+  const clean = (n: PMNode): PMNode[] => {
+    if (n.type === 'text') {
+      if ((n.marks ?? []).some(m => m.type === 'suggestDel')) return [];
+      const marks = (n.marks ?? []).filter(m => m.type !== 'suggestAdd' && m.type !== 'suggestDel');
+      return [{ ...n, marks }];
+    }
+    const kids = (n.content ?? []).flatMap(clean);
+    if (n.type === 'paragraph' || n.type === 'heading') {
+      const imgs = kids.filter(k => k.type === 'image'), rest = kids.filter(k => k.type !== 'image');
+      if (!imgs.length) return [{ ...n, content: rest }];
+      return [...(rest.length ? [{ ...n, content: rest }] : []), ...imgs];
+    }
+    return [{ ...n, content: n.content ? kids : undefined }];
+  };
+  return clean(doc)[0] ?? doc;
+}
+
+/** A data:image URL's bytes + kind (null when it is not a picture the writers can embed). */
+export function decodeImage(src: unknown): { bytes: Uint8Array; kind: 'png' | 'jpg' | 'gif' } | null {
+  const m = typeof src === 'string' ? /^data:image\/(png|jpe?g|gif);base64,([A-Za-z0-9+/=]+)$/.exec(src) : null;
+  if (!m) return null;
+  const bin = atob(m[2]); const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return { bytes, kind: m[1] === 'png' ? 'png' : m[1] === 'gif' ? 'gif' : 'jpg' };
+}
+
+export async function docToPdf(rawDoc: PMNode, title: string, opts: { letterhead?: boolean } = {}): Promise<Uint8Array> {
+  const doc = prepForExport(rawDoc);
   const pdf = await PDFDocument.create();
   pdf.setTitle(winAnsi(title) || 'Document'); pdf.setCreator('CRECO CRM');
   const F = {
@@ -78,6 +110,10 @@ export async function docToPdf(doc: PMNode, title: string, opts: { letterhead?: 
     center(LETTERHEAD.tagline, 51, 8.5, TIMESI, rgb(0.23, 0.23, 0.25));
     center(winAnsi(LETTERHEAD.footContact), 40, 7.5, TIMES);
   };
+  // Pictures are embedded up front (pdf-lib embeds are async; layout below is synchronous).
+  const embedded = new Map<PMNode, Awaited<ReturnType<typeof pdf.embedPng>>>();
+  const findImgs = (n: PMNode): PMNode[] => (n.type === 'image' ? [n] : (n.content ?? []).flatMap(findImgs));
+  for (const n of findImgs(doc)) { const d = decodeImage(n.attrs?.src); if (!d || d.kind === 'gif') continue; try { embedded.set(n, d.kind === 'png' ? await pdf.embedPng(d.bytes) : await pdf.embedJpg(d.bytes)); } catch { /* shown as [picture] */ } }
   newPage();
   const need = (h: number) => { if (y - h < bottom) newPage(); };
   const fontOf = (r: Run) => (r.code ? F.c : r.bold && r.italic ? F.bi : r.bold ? F.b : r.italic ? F.i : F.r);
@@ -159,6 +195,16 @@ export async function docToPdf(doc: PMNode, title: string, opts: { letterhead?: 
         break;
       }
       case 'paragraph': paragraph(runsOf(n, { size: 11, color: INK }), { x, width, align, size: 11, after: 6 }); break;
+      case 'image': {
+        const img = decodeImage(n.attrs?.src);
+        if (!img || img.kind === 'gif') { paragraph([{ text: '[picture]', size: 10, color: GREY, italic: true }], { x, width, size: 10, after: 6 }); break; }
+        const pic = embedded.get(n) ?? null;
+        if (!pic) break;
+        const w = Math.min(width, pic.width * 0.75), h = (pic.height / pic.width) * w;
+        need(Math.min(h, PH - MT - bottom));
+        page.drawImage(pic, { x, y: y - h, width: w, height: h }); y -= h + 8;
+        break;
+      }
       case 'blockquote': {
         const start = y;
         for (const c of n.content ?? []) paragraph(runsOf(c, { size: 11, color: GREY }), { x: x + 12, width: width - 12, size: 11, after: 4, bar: true });

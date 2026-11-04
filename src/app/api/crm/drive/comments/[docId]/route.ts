@@ -94,6 +94,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ do
   return NextResponse.json({ comment: data as DriveComment });
 }
 
+/** A row / column was inserted or deleted in a sheet: move that tab's cell-comment anchors with their cells (a comment whose row / column was deleted is resolved). */
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ docId: string }> }) {
+  const dc = await driveContext(req);
+  if (!dc) return unauthorized();
+  const { docId } = await params;
+  if (!(await openDoc(dc, docId))) return notFound('That document is not available');
+  const b = await req.json().catch(() => ({})) as { tabId?: string; axis?: string; at?: number; delta?: number };
+  const at = Number(b.at), delta = Number(b.delta);
+  if (!b.tabId || (b.axis !== 'row' && b.axis !== 'col') || !Number.isInteger(at) || at < 0 || (delta !== 1 && delta !== -1)) return NextResponse.json({ error: 'invalid shift' }, { status: 400 });
+  const { data } = await dc.admin.from('crm_drive_comments').select('id,anchor_text,resolved_at').eq('doc_id', docId).is('parent_id', null).like('anchor_text', 'cell|%');
+  let moved = 0;
+  for (const c of data ?? []) {
+    const [, tab, r, col, ...rest] = String(c.anchor_text).split('|');
+    if (tab !== b.tabId) continue;
+    const idx = Number(b.axis === 'row' ? r : col);
+    if (!Number.isFinite(idx) || idx < at) continue;
+    if (delta === -1 && idx === at) { await dc.admin.from('crm_drive_comments').update({ resolved_at: c.resolved_at ?? new Date().toISOString(), resolved_by: dc.ctx.userId }).eq('id', c.id); moved++; continue; }
+    const n = idx + delta;
+    await dc.admin.from('crm_drive_comments').update({ anchor_text: ['cell', tab, b.axis === 'row' ? n : r, b.axis === 'col' ? n : col, ...rest].join('|') }).eq('id', c.id); moved++;
+  }
+  return NextResponse.json({ moved });
+}
+
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ docId: string }> }) {
   const dc = await driveContext(req);
   if (!dc) return unauthorized();

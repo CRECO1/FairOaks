@@ -178,6 +178,17 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
   }, [comments]);
   const openCellComments = useMemo(() => comments.filter(c => !c.parent_id && !c.resolved_at && parseCellAnchor(c.anchor_text)).length, [comments]);
   const tabNameOf = (id: string) => (handle ? listTabs(handle.ydoc).find(t => t.id === id)?.name ?? null : null);
+  // Rows / columns inserted or deleted: cell comments move with their cells (calls go one at a time so deleting several rows stays in order).
+  const shiftQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const shiftComments = (tabId: string, axis: 'row' | 'col', at: number, delta: 1 | -1) => {
+    if (!comments.some(c => !c.parent_id && parseCellAnchor(c.anchor_text)?.tabId === tabId)) return;
+    shiftQueue.current = shiftQueue.current.then(async () => {
+      try {
+        await fetch(`/api/crm/drive/comments/${doc.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...(authRef.current ? { Authorization: `Bearer ${authRef.current}` } : {}) }, body: JSON.stringify({ tabId, axis, at, delta }) });
+        await commentsReload.current(); handle?.ydoc.getMap<unknown>('meta').set('commentsRev', Date.now());
+      } catch { /* the anchors stay where they were */ }
+    });
+  };
   const commentAt = (t: { tabId: string; r: number; c: number }, follow?: boolean) => { setCTarget(t); if (!follow) { setPanel('comments'); void commentsReload.current(); } };
   const dot = status === 'connected' ? '#16a34a' : status === 'connecting' ? '#d97706' : '#dc2626';
   const statusLabel = status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting…' : status === 'denied' ? 'No live access' : 'Reconnecting…';
@@ -219,7 +230,7 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} onHistory={() => setHistory(true)} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} cellComments={cellComments} onCommentAt={commentAt} commentsOpen={panel === 'comments'} jump={jump} />
+        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} onHistory={() => setHistory(true)} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} cellComments={cellComments} onCommentAt={commentAt} commentsOpen={panel === 'comments'} jump={jump} onShiftComments={shiftComments} />
           : <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Connecting…</div>}
         {panel === 'comments' && handle && (
           <CellCommentsPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} isAdmin={isAdmin} onToast={onToast} onClose={() => setPanel(null)}
@@ -279,7 +290,7 @@ const moveKeys = (m: Y.Map<unknown>, axis: 'row' | 'col', at: number, delta: 1 |
   for (const [, to, v] of moves) if (to) m.set(to, v);
 };
 
-function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, title, onToast, onHistory, cellComments, onCommentAt, commentsOpen, jump }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; onHistory: () => void; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void; cellComments: Map<string, number>; onCommentAt: (t: { tabId: string; r: number; c: number }, follow?: boolean) => void; commentsOpen: boolean; jump: { tabId: string; r: number; c: number; n: number } | null }) {
+function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, title, onToast, onHistory, cellComments, onCommentAt, commentsOpen, jump, onShiftComments }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; onHistory: () => void; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void; cellComments: Map<string, number>; onCommentAt: (t: { tabId: string; r: number; c: number }, follow?: boolean) => void; commentsOpen: boolean; jump: { tabId: string; r: number; c: number; n: number } | null; onShiftComments: (tabId: string, axis: 'row' | 'col', at: number, delta: 1 | -1) => void }) {
   const ydoc = handle.ydoc;
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -683,6 +694,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
       if (axis === 'row') tab.map.set('rows', Math.min(MAX_ROWS, Math.max(30, rows + delta)));
       else tab.map.set('ncols', Math.min(MAX_COLS, Math.max(6, ncols + delta)));
     });
+    onShiftComments(tabId, axis, at, delta);
   };
   const insertMany = (axis: 'row' | 'col', at: number, n: number) => { for (let i = 0; i < n; i++) shift(axis, at, 1); };
   const deleteMany = (axis: 'row' | 'col', from: number, to: number) => { for (let i = to; i >= from; i--) shift(axis, i, -1); setSel(s => ({ ...s, r2: s.r, c2: s.c })); };

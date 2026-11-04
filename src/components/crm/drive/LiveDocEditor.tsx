@@ -12,7 +12,7 @@
  * (its own and its peers'), so a doc survives even if the person who typed last closes the laptop mid-sentence.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import * as Y from 'yjs';
 import { toBase64, fromBase64 } from 'lib0/buffer';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
@@ -30,6 +30,7 @@ import { exportDocPdf, exportDocDocx } from './doc-export';
 import { ActivityPanel, CommentsPanel, HistoryPanel } from './DocPanel';
 import { SuggestTracking, listSuggestions, resolveSuggestions, type Suggestion } from '@/lib/collab/suggest-marks';
 import { safeImageSrc } from '@/lib/collab/image-node';
+import { FindReplace, countFind, currentFind, replaceAll, replaceOne, setFind, stepFind } from '@/lib/collab/find-replace';
 import type { DrivePerson } from './DocsDrive';
 import { Frame, btnStyle, iconBtn, colorFor } from './DocChrome';
 import SheetWorkspace from './SheetEditor';
@@ -349,7 +350,7 @@ function DocSurface({ handle, me, userId, isMobile, onEditor, onComment, onHighl
     shouldRerenderOnTransaction: true, // the toolbar reads editor.isActive() while rendering (TipTap 3 stopped re-rendering on every transaction by default)
     extensions: [
       ...docExtensions(),
-      SuggestTracking,
+      SuggestTracking, FindReplace,
       Placeholder.configure({ placeholder: 'Start typing — or press “/” … everyone on this doc sees it live.' }),
       Collaboration.configure({ document: handle.ydoc }),
       CollaborationCaret.configure({ provider: { awareness: handle.awareness }, user: me }),
@@ -363,6 +364,7 @@ function DocSurface({ handle, me, userId, isMobile, onEditor, onComment, onHighl
   // Suggesting mode is per person (not shared): while on, this editor's typing / deleting / pasting is recorded as suggestions under this name.
   const [suggesting, setSuggesting] = useState(false);
   const [side, setSide] = useState<null | 'outline' | 'suggestions'>(null);
+  const [findOpen, setFindOpen] = useState(false);
   useEffect(() => {
     if (!editor) return;
     const sg = (editor.storage as unknown as { suggest: { on: boolean; author: string; authorId: string } }).suggest;
@@ -370,8 +372,9 @@ function DocSurface({ handle, me, userId, isMobile, onEditor, onComment, onHighl
   }, [editor, suggesting, me.name, userId]);
 
   return (
-    <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <Toolbar editor={editor} isMobile={isMobile} onComment={onComment} letterhead={letterhead} onLetterhead={() => handle.ydoc.getMap<unknown>('meta').set('letterhead', !letterhead)} suggesting={suggesting} onSuggesting={setSuggesting} side={side} onSide={setSide} />
+    <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }} onKeyDownCapture={e => { if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'h')) { e.preventDefault(); setFindOpen(true); } }}>
+      <Toolbar editor={editor} isMobile={isMobile} onComment={onComment} letterhead={letterhead} onLetterhead={() => handle.ydoc.getMap<unknown>('meta').set('letterhead', !letterhead)} suggesting={suggesting} onSuggesting={setSuggesting} side={side} onSide={setSide} onFind={() => setFindOpen(o => !o)} />
+      {findOpen && editor && <FindBar editor={editor} isMobile={isMobile} onClose={() => { setFind(editor, '', false); setFindOpen(false); }} />}
       {suggesting && <div style={{ background: 'var(--k-f0fdf4)', color: '#15803d', borderBottom: '1px solid #bbf7d0', padding: '5px 14px', fontSize: 12.5, fontWeight: 600 }}>Suggesting — what you type or delete is shown as a suggestion for someone to accept or reject. Formatting changes apply directly.</div>}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
       {editor && side && <SidePanel editor={editor} side={side} onSide={setSide} isMobile={isMobile} />}
@@ -383,6 +386,7 @@ function DocSurface({ handle, me, userId, isMobile, onEditor, onComment, onHighl
         </div>
       </div>
       </div>
+      {editor && <WordCount editor={editor} />}
       <DocStyles />
     </div>
   );
@@ -390,7 +394,7 @@ function DocSurface({ handle, me, userId, isMobile, onEditor, onComment, onHighl
 
 // ── toolbar ────────────────────────────────────────────────────────────────
 
-function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, suggesting, onSuggesting, side, onSide }: { editor: Editor | null; isMobile: boolean; onComment: () => void; letterhead: boolean; onLetterhead: () => void; suggesting: boolean; onSuggesting: (v: boolean) => void; side: null | 'outline' | 'suggestions'; onSide: (v: null | 'outline' | 'suggestions') => void }) {
+function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, suggesting, onSuggesting, side, onSide, onFind }: { editor: Editor | null; isMobile: boolean; onComment: () => void; letterhead: boolean; onLetterhead: () => void; suggesting: boolean; onSuggesting: (v: boolean) => void; side: null | 'outline' | 'suggestions'; onSide: (v: null | 'outline' | 'suggestions') => void; onFind: () => void }) {
   const [colorOpen, setColorOpen] = useState(false);
   const imgInput = useRef<HTMLInputElement>(null);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -427,6 +431,7 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
         <B on={() => c().undo().run()} label="↶" title="Undo" />
         {isMobile && <B on={() => setMore(m => !m)} active={more} label={more ? 'Less ▴' : 'More'} title={more ? 'Show fewer tools' : 'Show every formatting tool'} />}
         {x && <B on={() => c().redo().run()} label="↷" title="Redo" />}
+        <B on={onFind} label="🔍" title="Find and replace (Ctrl+F)" />
         <Sep />
         <select aria-label="Text style" value={block} onChange={e => { const v = e.target.value; if (v === 'p') c().setParagraph().run(); else c().toggleHeading({ level: Number(v[1]) as 1 | 2 | 3 }).run(); }}
           style={{ height: isMobile ? 40 : 32, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13.5, padding: '0 6px', flexShrink: 0 }}>
@@ -475,7 +480,7 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
       <input ref={imgInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={async e => {
         const f = e.target.files?.[0]; e.target.value = '';
         if (!f) return;
-        try { const src = await shrinkImage(f); editor.chain().focus().insertContent({ type: 'image', attrs: { src, alt: f.name.replace(/\.[a-z0-9]+$/i, '') } }).run(); }
+        try { const p = await shrinkImage(f); editor.chain().focus().insertContent({ type: 'image', attrs: { src: p.src, iw: p.w, ih: p.h, alt: f.name.replace(/\.[a-z0-9]+$/i, '') } }).run(); }
         catch (err) { window.alert((err as Error).message || 'Could not add that picture'); }
       }} />
       {colorOpen && (
@@ -503,7 +508,7 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
 
 
 /** A picture, scaled to fit the page (max 1000 px wide) and re-encoded small enough to live inside the document. */
-async function shrinkImage(file: File): Promise<string> {
+async function shrinkImage(file: File): Promise<{ src: string; w: number; h: number }> {
   if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) throw new Error('Use a PNG, JPG, WebP or GIF picture');
   if (file.size > 12 * 1024 * 1024) throw new Error('That picture is over 12 MB');
   const bmp = await createImageBitmap(file);
@@ -518,7 +523,7 @@ async function shrinkImage(file: File): Promise<string> {
   for (let q = 0.75; out.length > 700_000 && q > 0.3; q -= 0.15) out = cv.toDataURL('image/jpeg', q);   // too big as PNG: fall back to JPEG
   if (out.length > 900_000) throw new Error('That picture is too detailed to put in a document — try a smaller one');
   if (!safeImageSrc(out)) throw new Error('Could not use that picture');
-  return out;
+  return { src: out, w: cv.width, h: cv.height };
 }
 
 /** Left column: the headings outline (click to jump) or the pending suggestions (accept / reject). */
@@ -567,5 +572,43 @@ function SidePanel({ editor, side, onSide, isMobile }: { editor: Editor; side: '
         )}
       </div>
     </aside>
+  );
+}
+
+
+/** "1,204 words · 6,310 characters" (or the selection's own count while text is selected). */
+function WordCount({ editor }: { editor: Editor }) {
+  const { from, to, empty } = editor.state.selection;
+  const text = (empty ? editor.state.doc.textBetween(0, editor.state.doc.content.size, ' ', ' ') : editor.state.doc.textBetween(from, to, ' ', ' ')).replace(/\uFFFC/g, ' ');
+  const words = (text.match(/\S+/g) ?? []).length;
+  return <div aria-live="off" style={{ flexShrink: 0, padding: '3px 14px', borderTop: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', fontSize: 11.5, color: 'var(--k-9ca3af)', display: 'flex', gap: 12 }}>
+    <span>{words.toLocaleString()} word{words === 1 ? '' : 's'}</span><span>{text.length.toLocaleString()} characters</span>{!empty && <span>(selection)</span>}
+  </div>;
+}
+
+/** Find & replace bar under the toolbar. Matches are highlighted in the page; Replace edits the text for everyone live. */
+function FindBar({ editor, isMobile, onClose }: { editor: Editor; isMobile: boolean; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const [rep, setRep] = useState('');
+  const [matchCase, setMatchCase] = useState(false);
+  const [, force] = useState(0);
+  useEffect(() => { setFind(editor, q, matchCase); force(n => n + 1); }, [q, matchCase, editor]);
+  useEffect(() => { const f = () => force(n => n + 1); editor.on('transaction', f); return () => { editor.off('transaction', f); }; }, [editor]);
+  const n = q ? countFind(editor) : 0;
+  const inp: CSSProperties = { height: isMobile ? 40 : 30, border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '0 9px', fontSize: 13.5, background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', minWidth: 0, flex: '1 1 130px', fontFamily: "'DM Sans',sans-serif" };
+  const b: CSSProperties = { ...btnStyle(isMobile), height: isMobile ? 40 : 30, padding: '0 10px', fontSize: 13 };
+  return (
+    <div role="search" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', padding: '6px 10px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)' }}>
+      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Find" aria-label="Find" style={inp}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); stepFind(editor, e.shiftKey ? -1 : 1); } if (e.key === 'Escape') onClose(); }} />
+      <span style={{ fontSize: 12, color: 'var(--k-6b7280)', minWidth: 62 }}>{q ? (n ? `${Math.min(currentFind(editor) + 1, n)} of ${n}` : 'No matches') : ''}</span>
+      <button type="button" style={b} onClick={() => stepFind(editor, -1)} aria-label="Previous match" disabled={!n}>↑</button>
+      <button type="button" style={b} onClick={() => stepFind(editor, 1)} aria-label="Next match" disabled={!n}>↓</button>
+      <input value={rep} onChange={e => setRep(e.target.value)} placeholder="Replace with" aria-label="Replace with" style={inp} onKeyDown={e => { if (e.key === 'Escape') onClose(); }} />
+      <button type="button" style={b} onClick={() => replaceOne(editor, rep)} disabled={!n}>Replace</button>
+      <button type="button" style={b} onClick={() => replaceAll(editor, rep)} disabled={!n}>All</button>
+      <label style={{ fontSize: 12.5, color: 'var(--k-6b7280)', display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={matchCase} onChange={e => setMatchCase(e.target.checked)} />Aa</label>
+      <button type="button" style={{ ...b, background: 'none', border: 'none' }} onClick={onClose} aria-label="Close find">✕</button>
+    </div>
   );
 }

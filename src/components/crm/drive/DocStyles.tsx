@@ -34,6 +34,7 @@ export function DocStyles() {
       .drive-doc .selectedCell::after { content: ''; position: absolute; inset: 0; background: rgba(201,146,44,.18); pointer-events: none; }
       .drive-doc .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: -2px; width: 4px; background: #c9922c; pointer-events: none; }
       .drive-doc .tableWrapper { overflow-x: auto; }
+      .drive-doc .find-hit { background: #fde68a; border-radius: 2px; } .drive-doc .find-cur { background: #fb923c; color: #fff; }
       .drive-doc .sg-add { color: #15803d; background: rgba(34,197,94,.14); text-decoration: underline; text-decoration-color: #22c55e; border-radius: 2px; }
       .drive-doc .sg-del { color: #b91c1c; background: rgba(239,68,68,.12); text-decoration: line-through; border-radius: 2px; }
       .drive-doc img.doc-img { max-width: 100%; height: auto; vertical-align: bottom; border-radius: 4px; }

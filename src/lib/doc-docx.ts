@@ -8,7 +8,7 @@ import {
   AlignmentType, BorderStyle, Document, ExternalHyperlink, Footer, Header, HeadingLevel, ImageRun, LevelFormat, Packer, PageNumber,
   Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType, type ParagraphChild,
 } from 'docx';
-import { LETTERHEAD, letterheadLogo, type PMNode } from '@/lib/doc-pdf';
+import { LETTERHEAD, decodeImage, letterheadLogo, prepForExport, type PMNode } from '@/lib/doc-pdf';
 
 const FONT = 'Calibri';
 const MONO = 'Courier New';
@@ -47,6 +47,13 @@ function blocks(nodes: PMNode[] | undefined, ctx: { quote?: boolean } = {}): Blo
   for (const n of nodes ?? []) {
     switch (n.type) {
       case 'paragraph': out.push(new Paragraph({ children: inline(n.content), spacing: { after: 120 }, ...quoteProps })); break;
+      case 'image': {
+        const img = decodeImage(n.attrs?.src);
+        if (!img) { out.push(new Paragraph({ children: [new TextRun({ text: '[picture]', italics: true })], spacing: { after: 120 } })); break; }
+        const w0 = Number(n.attrs?.iw) || 400, h0 = Number(n.attrs?.ih) || 300, w = Math.min(w0, 520);
+        out.push(new Paragraph({ spacing: { after: 160 }, children: [new ImageRun({ type: img.kind, data: img.bytes, transformation: { width: w, height: Math.round((h0 / w0) * w) }, altText: { title: 'Picture', description: String(n.attrs?.alt ?? 'Picture'), name: 'picture' } })] }));
+        break;
+      }
       case 'heading': {
         const level = Math.min(3, Math.max(1, Number(n.attrs?.level ?? 1)));
         out.push(new Paragraph({ heading: HEADING[level - 1], children: inline(n.content, { bold: true }, [34, 28, 24][level - 1]), ...quoteProps }));   // formatted directly too, so viewers that ignore styles still show a heading
@@ -123,7 +130,7 @@ function pngSize(b: Uint8Array): { w: number; h: number } | null {
 
 export async function docToDocx(doc: PMNode, title: string, opts: { letterhead?: boolean } = {}): Promise<Uint8Array> {
   orderedInstance = 0;
-  const body = blocks(doc.content);
+  const body = blocks(prepForExport(doc).content);
   const levels = (fmt: typeof LevelFormat.BULLET | typeof LevelFormat.DECIMAL) => Array.from({ length: 5 }, (_, level) => ({
     level, format: fmt, text: fmt === LevelFormat.BULLET ? ['•', '◦', '▪', '•', '◦'][level] : `%${level + 1}.`, alignment: AlignmentType.LEFT,
     style: { paragraph: { indent: { left: 720 + level * 360, hanging: 360 } } },

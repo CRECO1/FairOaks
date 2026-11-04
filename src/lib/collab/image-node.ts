@@ -16,6 +16,9 @@ export const ImageNode = Node.create({
       src: { default: null },
       alt: { default: '' },
       width: { default: null },
+      /** the stored picture's own pixel size (used to size it in Word) */
+      iw: { default: null },
+      ih: { default: null },
     };
   },
   parseHTML() { return [{ tag: 'img[src]' }]; },
