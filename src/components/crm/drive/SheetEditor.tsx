@@ -1036,7 +1036,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         </Pop>
         <button type="button" style={on(!!find)} onClick={() => setFind(f => (f ? null : { q: '', rep: '', idx: 0, replace: false }))} title="Find and replace (Ctrl+F)">🔍</button>
         <button type="button" style={tb} onClick={() => { setChartEdit(null); setDlg('chart'); }} title="Insert a chart from the selected cells">📊</button>
-        <Pop title="Dropdowns, checkboxes, notes and rules" style={tb} label={<>Data ▾</>}>
+        <Pop title="Dropdowns, checkboxes, notes and rules" style={tb} label={<>Data ▾</>} align="right">
           {close => (<>
             <Item checked={bandOn} onClick={() => { toggleBand(); close(); }}>Alternating row colors</Item>
             <Item onClick={() => { hide('row'); close(); }}>Hide row{R.r2 > R.r1 ? 's' : ''} {R.r1 + 1}{R.r2 > R.r1 ? `–${R.r2 + 1}` : ''}</Item>

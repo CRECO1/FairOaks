@@ -28,7 +28,7 @@ export function Pop({ label, title, children, style, active, align = 'left' }: {
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
-          <div role="menu" style={{ position: 'fixed', top: pos.top, ...(align === 'right' ? { right: pos.right } : { left: Math.min(pos.left, window.innerWidth - 230) }), zIndex: 1301, minWidth: 180, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 6, maxHeight: '70vh', overflowY: 'auto' }}>{children(() => setOpen(false))}</div>
+          <div role="menu" style={{ position: 'fixed', top: pos.top, ...(align === 'right' ? { right: pos.right } : { left: Math.max(8, Math.min(pos.left, window.innerWidth - 360)) }), zIndex: 1301, minWidth: 180, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 6, maxHeight: '70vh', overflowY: 'auto' }}>{children(() => setOpen(false))}</div>
         </>
       )}
     </div>
