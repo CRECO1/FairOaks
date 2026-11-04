@@ -1497,9 +1497,9 @@ function ThreadReader(p: {
       {msgs === null && <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Opening conversation…</div>}
       {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
       {chrono.length > 1 && (
-        <div style={{ position: p.isMobile ? 'static' : 'sticky', top: p.embedded ? 0 : 58, zIndex: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 10px', padding: '8px 10px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 10px 0 var(--k-fff)' }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', marginRight: 2 }}>{chrono.length} messages</span>
-          {chrono.length <= 14 ? (
+        <div style={{ position: p.isMobile ? 'static' : 'sticky', top: p.embedded ? 0 : 58, zIndex: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '0 0 10px', padding: '6px 8px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 10px 0 var(--k-fff)' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', marginRight: 2 }}>{p.embedded ? chrono.length : `${chrono.length} messages`}</span>
+          {chrono.length <= (p.embedded ? 6 : 14) ? (
             <div role="group" aria-label="Jump to a message" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               {ordered.map(m => {
                 const n = chrono.findIndex(x => x.id === m.id) + 1, open = !folded.has(m.id), isCur = cur !== null && ordered[cur]?.id === m.id, f = parseAddr(m.from);
@@ -1519,8 +1519,8 @@ function ThreadReader(p: {
             </select>
           )}
           <span style={{ flex: 1 }} />
-          <button type="button" onClick={toggleAll} title="Open or fold every message (o)" style={{ height: 30, padding: '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{allOpen ? '▴ Collapse all' : '▾ Expand all'}</button>
-          <button type="button" onClick={flip} title="Which end of the conversation comes first" style={{ height: 30, padding: '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{newestFirst ? '↑ Newest first' : '↓ Oldest first'}</button>
+          <button type="button" onClick={toggleAll} title="Open or fold every message (o)" style={{ height: 30, padding: '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{allOpen ? (p.embedded ? '▴ Fold' : '▴ Collapse all') : (p.embedded ? '▾ Open' : '▾ Expand all')}</button>
+          <button type="button" onClick={flip} title="Which end of the conversation comes first" style={{ height: 30, padding: '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{newestFirst ? (p.embedded ? '↑ Newest' : '↑ Newest first') : (p.embedded ? '↓ Oldest' : '↓ Oldest first')}</button>
         </div>
       )}
       {newestFirst && quickEl && <div style={{ marginBottom: 10 }}>{quickEl}</div>}

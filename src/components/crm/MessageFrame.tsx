@@ -64,11 +64,11 @@ export function MessageFrame({ html }: { html: string }) {
     const f = ref.current, d = f?.contentDocument;
     if (!f || !d?.documentElement || !d.body) return;
     // A wide email (a table-based signature, a fixed 600px newsletter) would be cut off at the right edge on a phone, so
-    // shrink it to fit — what Gmail's phone app does — but never below 70%: smaller than that the text is unreadable, so
+    // shrink it to fit — what Gmail's phone app does — but never below 55%: smaller than that the text is unreadable, so
     // the last bit scrolls sideways inside the frame instead.
     d.body.style.zoom = '1';
     const avail = f.clientWidth, need = d.documentElement.scrollWidth;
-    if (avail > 0 && need > avail + 2) d.body.style.zoom = String(Math.max(0.7, avail / need));
+    if (avail > 0 && need > avail + 2) d.body.style.zoom = String(Math.max(0.55, avail / need));
     const sideways = avail > 0 && d.documentElement.scrollWidth > avail + 2;
     setH(Math.min(30000, Math.max(40, d.documentElement.scrollHeight + (sideways ? 14 : 0))));
   }, []);
