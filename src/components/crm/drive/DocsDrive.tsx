@@ -596,7 +596,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
             <button type="button" onClick={() => (selectMode || sel.size ? clearSel() : setSelectMode(true))} aria-pressed={selecting} style={{ height: 44, padding: '0 14px', border: `1px solid ${selecting ? GOLD : 'var(--k-e5e7eb)'}`, borderRadius: 10, background: selecting ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: selecting ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{selecting ? 'Done' : 'Select'}</button>
           ) : null}
           {inTrash && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Items you delete stay here for 30 days, then are removed for good.</span>}
-          {view === 'templates' && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Click a template to use it. To add one: open any document, then ⋯ → Save as template. Type {{client}} {{property}} {{deal_type}} {{stage}} {{contact_name}} {{company}} {{email}} {{phone}} {{agent}} {{date}} in a template and they fill in when it is started from a deal or contact card.</span>}
+          {view === 'templates' && <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>{'Click a template to use it. To add one: open any document, then ⋯ → Save as template. Type {{client}} {{property}} {{deal_type}} {{stage}} {{contact_name}} {{company}} {{email}} {{phone}} {{agent}} {{date}} in a template and they fill in when it is started from a deal or contact card.'}</span>}
         </div>
 
         {/* List */}
