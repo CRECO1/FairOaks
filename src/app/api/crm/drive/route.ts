@@ -8,6 +8,8 @@ import { markdownToDriveState } from '@/lib/drive-markdown';
 import * as YY from 'yjs';
 import { applyFeed, blankSheetState, newTabMap, sheetText, tabsMap } from '@/lib/drive-sheet';
 import { FEEDS, isFeed } from '@/lib/drive-sheet-feeds';
+import { builtinById } from '@/lib/drive-builtin-templates';
+import { buildBuiltin } from '@/lib/drive-builtin-build';
 import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS, type DriveDoc, type DriveFile, type DriveFolder, type DriveListing } from '@/lib/drive-types';
 
 // Transaction Docs "Drive": list folders + live documents, and create new ones.
@@ -168,11 +170,13 @@ export async function POST(req: NextRequest) {
   const dc = await driveContext(req);
   if (!dc) return unauthorized();
   const { userDb, admin, bu, ctx } = dc;
-  const body = await req.json().catch(() => ({})) as { type?: string; name?: string; title?: string; parent_id?: string | null; deal_id?: string | null; template_id?: string; from_doc_id?: string; as_template?: boolean; markdown?: string; letterhead?: boolean; feeds?: unknown };
-  const isSheet = body.type === 'sheet';
-  const type = body.type === 'doc' || isSheet ? 'doc' : body.type === 'folder' ? 'folder' : null;
+  const body = await req.json().catch(() => ({})) as { type?: string; name?: string; title?: string; parent_id?: string | null; deal_id?: string | null; template_id?: string; from_doc_id?: string; as_template?: boolean; markdown?: string; letterhead?: boolean; feeds?: unknown; builtin?: string };
+  const builtin = body.builtin ? builtinById(String(body.builtin)) : undefined;
+  if (body.builtin && !builtin) return NextResponse.json({ error: 'That template is not available' }, { status: 400 });
+  const isSheet = body.type === 'sheet' || builtin?.kind === 'sheet';
+  const type = body.type === 'doc' || isSheet || builtin ? 'doc' : body.type === 'folder' ? 'folder' : null;
   if (!type) return NextResponse.json({ error: 'type must be folder, doc or sheet' }, { status: 400 });
-  const label = ((type === 'folder' ? body.name : body.title) ?? '').trim().slice(0, type === 'folder' ? 200 : 300) || (type === 'folder' ? 'New folder' : isSheet ? 'Untitled spreadsheet' : 'Untitled document');
+  const label = ((type === 'folder' ? body.name : body.title) ?? '').trim().slice(0, type === 'folder' ? 200 : 300) || (builtin ? builtin.title : type === 'folder' ? 'New folder' : isSheet ? 'Untitled spreadsheet' : 'Untitled document');
 
   // A new item takes on the visibility (and deal link) of the folder it is created in. At the top level an agent's items start PRIVATE
   // (only them, until they share with someone); admins and the owner start with team items.
@@ -237,7 +241,10 @@ export async function POST(req: NextRequest) {
   const base = { business_unit: bu, created_by: ctx.userId, visibility, shared_with, deal_id };
   // A document created with content (the Copilot writes these): markdown becomes the live document's starting text.
   let initial: { ystate: string; content_text: string; version: number } | null = null;
-  if (isSheet) {
+  if (builtin) {
+    try { const b = buildBuiltin(builtin); initial = { ystate: b.ystate, content_text: b.text, version: 1 }; }
+    catch (e) { console.error('[drive] builtin template', e); return NextResponse.json({ error: 'Could not build that template' }, { status: 500 }); }
+  } else if (isSheet) {
     // A sheet can start with live CRM tabs (one per requested feed), filled right away from the CRM.
     const wantedFeeds = (Array.isArray(body.feeds) ? body.feeds : []).filter(isFeed);
     if (wantedFeeds.length) {

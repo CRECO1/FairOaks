@@ -15,6 +15,7 @@ import { useBackToClose } from '@/lib/use-back-to-close';
 import DocPreviewModal from '../DocPreviewModal';
 import type { DriveDoc, DriveFile, DriveFolder, DriveFormItem, DriveListing, DriveTreeFolder } from '@/lib/drive-types';
 import { DRIVE_FILE_MAX } from '@/lib/drive-types';
+import { BUILTIN_TEMPLATES, type BuiltinTemplate } from '@/lib/drive-builtin-templates';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
 const DocQuickView = dynamic(() => import('./DocQuickView'), { ssr: false });
@@ -59,6 +60,7 @@ type Dlg =
   | { t: 'toContact'; kind: Kind; item: Item }
   | { t: 'form' }
   | { t: 'template' }
+  | { t: 'gallery' }
   | { t: 'saveTpl'; item: DriveDoc };
 
 const GOLD = '#c9922c';
@@ -203,6 +205,14 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     setDlg(null); setNewOpen(false);
     try {
       const j = await api<{ item: DriveDoc }>('/api/crm/drive', { method: 'POST', body: JSON.stringify({ type: 'doc', template_id: templateId, parent_id: view === 'folder' ? folderId : null }) });
+      refresh(); setOpenDocId(j.item.id);
+    } catch (e) { onToast((e as Error).message); }
+  };
+  // A ready-made starting point from the Template gallery (lives in code, same for every team): a copy in the folder you are looking at, opened straight away.
+  const startFromBuiltin = async (id: string) => {
+    setDlg(null); setNewOpen(false);
+    try {
+      const j = await api<{ item: DriveDoc }>('/api/crm/drive', { method: 'POST', body: JSON.stringify({ builtin: id, parent_id: view === 'folder' ? folderId : null }) });
       refresh(); setOpenDocId(j.item.id);
     } catch (e) { onToast((e as Error).message); }
   };
@@ -680,7 +690,8 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                     <MenuBtn onClick={() => void createDoc()} icon="📄" label="Document" isMobile={isMobile} />
                     <MenuBtn onClick={() => void createDoc('sheet')} icon="▦" label="Spreadsheet" isMobile={isMobile} />
                     <MenuBtn onClick={() => void createDoc('sheet', ['elkhorn_tenants', 'elkhorn_calls'])} icon="▦" label="Elkhorn call tracker (live)" isMobile={isMobile} />
-                    <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'template' }); }} icon="📋" label="From template…" isMobile={isMobile} />
+                    <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'gallery' }); }} icon="📋" label="Template gallery…" isMobile={isMobile} />
+                    <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'template' }); }} icon="📋" label="Your team’s templates…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'newFolder' }); }} icon="📁" label="Folder" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); if (!canAddForm) { onToast('Forms can only be added to team folders (not private ones)'); return; } setDlg({ t: 'form' }); }} icon="📝" label="Form…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); fileInput.current?.click(); }} icon="⬆" label="Upload files" isMobile={isMobile} />
@@ -807,6 +818,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
       {dlg?.t === 'form' && <FormPicker api={api} businessUnit={businessUnit} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void createForm(id)} />}
       {dlg?.t === 'toContact' && <ContactPicker contacts={contacts} liveDoc={dlg.kind === 'doc'} isMobile={isMobile} title={nameOf(dlg.kind, dlg.item)} onClose={() => setDlg(null)} onPick={c => void addToContact(dlg.kind, dlg.item, c)} />}
       {dlg?.t === 'toDeal' && <DealPicker deals={deals} liveDoc={dlg.kind === 'doc'} isMobile={isMobile} title={nameOf(dlg.kind, dlg.item)} onClose={() => setDlg(null)} onPick={d => void addToDeal(dlg.kind, dlg.item, d)} />}
+      {dlg?.t === 'gallery' && <TemplateGallery isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void startFromBuiltin(id)} onTeam={() => setDlg({ t: 'template' })} />}
       {dlg?.t === 'template' && <TemplatePicker api={api} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void startFromTemplate(id)} />}
       {dlg?.t === 'saveTpl' && <NameDialog title="Save as template" cta="Save template" initial={dlg.item.title} isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void saveAsTemplate(dlg.item, name)} />}
       {dlg?.t === 'newFolder' && <NameDialog title="New folder" cta="Create" initial="" isMobile={isMobile} onClose={() => setDlg(null)} onSubmit={name => void createFolder(name)} />}
@@ -924,11 +936,11 @@ function MenuBtn({ icon, label, onClick, danger, isMobile }: { icon: string; lab
 }
 
 /** Centred dialog on desktop, bottom sheet on phones. */
-function Modal({ title, isMobile, onClose, children }: { title: string; isMobile: boolean; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, isMobile, onClose, children, wide }: { title: string; isMobile: boolean; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 1200, display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'center', padding: isMobile ? 0 : 20 }}>
       <div onClick={e => e.stopPropagation()} role="dialog" aria-label={title}
-        style={{ background: 'var(--k-fff)', width: '100%', maxWidth: isMobile ? '100%' : 460, maxHeight: isMobile ? '88dvh' : '82vh', display: 'flex', flexDirection: 'column', borderRadius: isMobile ? '18px 18px 0 0' : 14, boxShadow: '0 20px 60px rgba(0,0,0,.25)', paddingBottom: isMobile ? 'env(safe-area-inset-bottom, 0px)' : 0 }}>
+        style={{ background: 'var(--k-fff)', width: '100%', maxWidth: isMobile ? '100%' : wide ? 760 : 460, maxHeight: isMobile ? '88dvh' : '82vh', display: 'flex', flexDirection: 'column', borderRadius: isMobile ? '18px 18px 0 0' : 14, boxShadow: '0 20px 60px rgba(0,0,0,.25)', paddingBottom: isMobile ? 'env(safe-area-inset-bottom, 0px)' : 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--k-eef0f2)', flexShrink: 0 }}>
           <div style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 700, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
           <button type="button" onClick={onClose} aria-label="Close" style={{ width: isMobile ? 40 : 30, height: isMobile ? 40 : 30, border: 'none', borderRadius: 8, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 16, cursor: 'pointer' }}>✕</button>
@@ -1033,6 +1045,39 @@ function ShareDialog({ kind, item, bulk, people, can, isMobile, who, onClose, on
         {can
           ? <DialogButtons isMobile={isMobile} onCancel={onClose} cta="Save" onSubmit={() => onSave(vis, vis === 'private' ? [...picked] : [])} />
           : <p style={{ fontSize: 13, color: 'var(--k-6b7280)', margin: 0 }}>Only the owner ({who(item.created_by)}) or an admin can change this.</p>}
+      </div>
+    </Modal>
+  );
+}
+
+/** The Template gallery: ready-made spreadsheets and documents (built into the CRM), filterable by type. */
+function TemplateGallery({ isMobile, onClose, onPick, onTeam }: { isMobile: boolean; onClose: () => void; onPick: (id: string) => void; onTeam: () => void }) {
+  const [kind, setKind] = useState<'all' | BuiltinTemplate['kind']>('all');
+  const list = BUILTIN_TEMPLATES.filter(t => kind === 'all' || t.kind === kind);
+  return (
+    <Modal title="Template gallery" isMobile={isMobile} onClose={onClose} wide>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        {([['all', 'All'], ['sheet', 'Spreadsheets'], ['doc', 'Documents']] as Array<['all' | 'sheet' | 'doc', string]>).map(([k, l]) => (
+          <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)} style={{ height: isMobile ? 38 : 30, padding: '0 14px', borderRadius: 16, border: `1px solid ${kind === k ? GOLD : 'var(--k-e5e7eb)'}`, background: kind === k ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: kind === k ? 'var(--k-a06a12)' : 'var(--k-374151)', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{l}</button>
+        ))}
+        <button type="button" onClick={onTeam} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--k-a06a12)', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Your team’s templates →</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
+        {list.map(t => {
+          const tn = toneFor('doc', { sheet: t.kind === 'sheet' });
+          return (
+            <button key={t.id} type="button" onClick={() => onPick(t.id)} style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', padding: 0, border: '1px solid var(--k-eef0f2)', borderRadius: 12, background: 'var(--k-fff)', cursor: 'pointer', overflow: 'hidden', fontFamily: "'DM Sans',sans-serif" }}>
+              <span style={{ display: 'block', height: 76, padding: '10px 12px', background: `${tn.color}0d`, borderBottom: '1px solid var(--k-f0f0f0)', fontSize: 11, lineHeight: 1.45, color: 'var(--k-6b7280)', overflow: 'hidden' }}>{t.peek}</span>
+              <span style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '10px 12px 12px' }}>
+                <span style={{ color: tn.color, display: 'inline-flex', marginTop: 1 }}><DI n={tn.icon} size={18} /></span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>{t.title}</span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--k-6b7280)', marginTop: 2, lineHeight: 1.4 }}>{t.desc}</span>
+                </span>
+              </span>
+            </button>
+          );
+        })}
       </div>
     </Modal>
   );
