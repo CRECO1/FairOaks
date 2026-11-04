@@ -1506,6 +1506,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     } else if (ctx.kind === 'contact' && ctx.id) {
       const client = clients.find(x => x.id === ctx.id);
       if (!client) { showToast('That contact isn’t available any more.'); return; }
+      if (!client.email) showToast('This contact has no email address yet — add one on their card, then the draft opens there ready to send.');
       setPage('contacts'); setActiveClient(client);
       setTimeout(() => { void openDraftInContact(d, client); }, 200);
     } else {

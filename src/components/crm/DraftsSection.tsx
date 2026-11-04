@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listDrafts, deleteDraft, saveDraft, syncDrafts, onDraftsChanged, draftsServerReady, type EmailDraft } from '@/lib/email-drafts';
 import { confirmDialog } from '@/lib/confirm-dialog';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 // Everything you started writing and didn't send — the CRM's own saved drafts AND the drafts sitting in Gmail itself — in ONE list,
 // newest first. A CRM draft resumes exactly where you left off (right deal or contact, still inside its thread, CRM files still attached).
@@ -63,6 +64,7 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
   const [filter, setFilter] = useState<'all' | 'replies' | 'new' | 'files' | 'gmail' | 'stale'>('all');
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Set<string>>(() => new Set());
+  const [previewKey, setPreviewKey] = useState<string | null>(null);   // the CRM draft whose full text is open below its row
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -241,7 +243,10 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
             const initial = (label || '✉').replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '✉';
             const crmIdx = isG ? -1 : crmShown.findIndex(x => x.key === it.key);
             const kind = !isG ? (it.d.context.kind === 'deal' ? '💼 Deal' : it.d.context.kind === 'contact' ? '👤 Contact' : '✉ New message') : '';
-            const open = () => (isG ? void editGmail(it.g) : onResume(it.d));
+            // A draft with nobody to send it to yet (e.g. prepared for a contact whose email isn't known) can't be resumed into a composer, so a click shows its full text instead.
+            const noRecipient = !isG && !it.d.to.trim() && !it.d.moreTo.trim();
+            const open = () => (isG ? void editGmail(it.g) : noRecipient ? setPreviewKey(k => (k === it.d.key ? null : it.d.key)) : onResume(it.d));
+            const previewing = !isG && previewKey === it.d.key;
             const gLink = isG ? `https://mail.google.com/mail/${gm.account ? `?authuser=${encodeURIComponent(gm.account)}` : ''}#drafts?compose=${it.g.messageId}` : '';
             return (
               <React.Fragment key={it.key}>
@@ -284,11 +289,31 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
                       {gm.canModify && <button type="button" aria-label="Discard Gmail draft" title="Discard this draft in Gmail" onClick={() => void discardGmail(it.g)} style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--k-9ca3af)', cursor: 'pointer', fontSize: 17 }}>🗑</button>}
                     </div>
                   ) : (
+                    <>
+                    <button type="button" aria-label={previewing ? 'Close preview' : 'Preview draft'} title={previewing ? 'Close preview' : 'Preview the full draft'} aria-pressed={previewing}
+                      onClick={e => { e.stopPropagation(); setPreviewKey(k => (k === it.d.key ? null : it.d.key)); }}
+                      style={{ flexShrink: 0, width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: previewing ? 'var(--k-fdf6e9)' : 'none', border: 'none', borderRadius: 8, color: 'var(--k-6b7280)', cursor: 'pointer', fontSize: 17 }}>👁</button>
                     <button type="button" aria-label="Discard draft" title="Discard draft (you can undo)"
                       onClick={e => { e.stopPropagation(); discard([it.d]); }}
                       style={{ flexShrink: 0, width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--k-9ca3af)', cursor: 'pointer', fontSize: 17 }}>🗑</button>
+                    </>
                   )}
                 </div>
+                {previewing && !isG && (
+                  <div style={{ padding: isMobile ? '12px 14px 16px' : '14px 20px 18px 64px', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 4 }}>
+                      <b>To:</b> {first ? to.map(x => x.name ? `${x.name} <${x.email}>` : x.email).join(', ') : <span style={{ color: '#b45309' }}>nobody yet — add the contact’s email address on their card after your call, then open this draft there to send</span>}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 10 }}><b>Subject:</b> {subject || '(no subject)'}</div>
+                    <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '14px 16px', fontSize: 14, lineHeight: 1.55, color: 'var(--k-111)', maxHeight: 420, overflowY: 'auto', overflowWrap: 'anywhere' }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(it.d.bodyHtml) || '<span style="color:#9ca3af">No text yet</span>' }} />
+                    {files.length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{files.map(f => <span key={f.name} style={pill('var(--k-fdf6e8)', 'var(--k-92400e)', 'var(--k-fde68a)')}>📎 {f.name}{f.size ? ` (${kb(f.size)})` : ''}</span>)}</div>}
+                    <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {!noRecipient && <button type="button" onClick={() => onResume(it.d)} style={{ ...btn, borderColor: '#c9922c', color: '#92400e' }}>Open to edit &amp; send</button>}
+                      <button type="button" onClick={() => setPreviewKey(null)} style={btn}>Close preview</button>
+                    </div>
+                  </div>
+                )}
               </React.Fragment>
             );
           })}
