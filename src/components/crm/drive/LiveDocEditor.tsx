@@ -28,6 +28,8 @@ import { DocStyles } from './DocStyles';
 import { LetterheadHeader, LetterheadFooter } from './Letterhead';
 import { exportDocPdf, exportDocDocx } from './doc-export';
 import { ActivityPanel, CommentsPanel, HistoryPanel } from './DocPanel';
+import { SuggestTracking, listSuggestions, resolveSuggestions, type Suggestion } from '@/lib/collab/suggest-marks';
+import { safeImageSrc } from '@/lib/collab/image-node';
 import type { DrivePerson } from './DocsDrive';
 import { Frame, btnStyle, iconBtn, colorFor } from './DocChrome';
 import SheetWorkspace from './SheetEditor';
@@ -306,7 +308,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         {handle ? (
-          <DocSurface handle={handle} me={me} isMobile={isMobile} onEditor={setEditor}
+          <DocSurface handle={handle} me={me} userId={user.id} isMobile={isMobile} onEditor={setEditor}
             onComment={() => {
               if (!editor) return;
               const { from, to } = editor.state.selection;
@@ -332,7 +334,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
   );
 }
 
-function DocSurface({ handle, me, isMobile, onEditor, onComment, onHighlightClick }: { handle: CollabHandle; me: Peer; isMobile: boolean; onEditor: (e: Editor | null) => void; onComment: () => void; onHighlightClick: () => void }) {
+function DocSurface({ handle, me, userId, isMobile, onEditor, onComment, onHighlightClick }: { handle: CollabHandle; me: Peer; userId: string; isMobile: boolean; onEditor: (e: Editor | null) => void; onComment: () => void; onHighlightClick: () => void }) {
   const clickRef = useRef(onHighlightClick); clickRef.current = onHighlightClick;
   // CRECO letterhead on/off is a setting of the document itself (shared, saved with it), so everyone sees the same page.
   const [letterhead, setLetterhead] = useState(() => handle.ydoc.getMap<unknown>('meta').get('letterhead') === true);
@@ -347,6 +349,7 @@ function DocSurface({ handle, me, isMobile, onEditor, onComment, onHighlightClic
     shouldRerenderOnTransaction: true, // the toolbar reads editor.isActive() while rendering (TipTap 3 stopped re-rendering on every transaction by default)
     extensions: [
       ...docExtensions(),
+      SuggestTracking,
       Placeholder.configure({ placeholder: 'Start typing — or press “/” … everyone on this doc sees it live.' }),
       Collaboration.configure({ document: handle.ydoc }),
       CollaborationCaret.configure({ provider: { awareness: handle.awareness }, user: me }),
@@ -357,16 +360,28 @@ function DocSurface({ handle, me, isMobile, onEditor, onComment, onHighlightClic
     },
   }, [handle.ydoc]);
   useEffect(() => { onEditor(editor); return () => onEditor(null); }, [editor]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Suggesting mode is per person (not shared): while on, this editor's typing / deleting / pasting is recorded as suggestions under this name.
+  const [suggesting, setSuggesting] = useState(false);
+  const [side, setSide] = useState<null | 'outline' | 'suggestions'>(null);
+  useEffect(() => {
+    if (!editor) return;
+    const sg = editor.storage.suggest as { on: boolean; author: string; authorId: string };
+    sg.on = suggesting; sg.author = me.name; sg.authorId = userId;
+  }, [editor, suggesting, me.name, userId]);
 
   return (
     <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <Toolbar editor={editor} isMobile={isMobile} onComment={onComment} letterhead={letterhead} onLetterhead={() => handle.ydoc.getMap<unknown>('meta').set('letterhead', !letterhead)} />
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--k-f3f4f6)', padding: isMobile ? '0' : '24px 16px 60px' }}>
+      <Toolbar editor={editor} isMobile={isMobile} onComment={onComment} letterhead={letterhead} onLetterhead={() => handle.ydoc.getMap<unknown>('meta').set('letterhead', !letterhead)} suggesting={suggesting} onSuggesting={setSuggesting} side={side} onSide={setSide} />
+      {suggesting && <div style={{ background: 'var(--k-f0fdf4)', color: '#15803d', borderBottom: '1px solid #bbf7d0', padding: '5px 14px', fontSize: 12.5, fontWeight: 600 }}>Suggesting — what you type or delete is shown as a suggestion for someone to accept or reject. Formatting changes apply directly.</div>}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
+      {editor && side && <SidePanel editor={editor} side={side} onSide={setSide} isMobile={isMobile} />}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--k-f3f4f6)', padding: isMobile ? '0' : '24px 16px 60px' }}>
         <div style={{ maxWidth: 816, margin: '0 auto', minHeight: isMobile ? '100%' : 1056, background: 'var(--k-fff)', boxShadow: isMobile ? 'none' : '0 1px 3px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.05)', borderRadius: isMobile ? 0 : 4, padding: isMobile ? '18px 16px 80px' : '56px 72px 80px' }}>
           {letterhead && <LetterheadHeader />}
           <EditorContent editor={editor} />
           {letterhead && <LetterheadFooter />}
         </div>
+      </div>
       </div>
       <DocStyles />
     </div>
@@ -375,7 +390,9 @@ function DocSurface({ handle, me, isMobile, onEditor, onComment, onHighlightClic
 
 // ── toolbar ────────────────────────────────────────────────────────────────
 
-function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { editor: Editor | null; isMobile: boolean; onComment: () => void; letterhead: boolean; onLetterhead: () => void }) {
+function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, suggesting, onSuggesting, side, onSide }: { editor: Editor | null; isMobile: boolean; onComment: () => void; letterhead: boolean; onLetterhead: () => void; suggesting: boolean; onSuggesting: (v: boolean) => void; side: null | 'outline' | 'suggestions'; onSide: (v: null | 'outline' | 'suggestions') => void }) {
+  const [colorOpen, setColorOpen] = useState(false);
+  const imgInput = useRef<HTMLInputElement>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [more, setMore] = useState(false);   // phones: the everyday tools fit one row; "⋯" opens the whole toolbar, wrapped (no sideways scrolling)
@@ -420,8 +437,9 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { ed
         <B on={() => c().toggleItalic().run()} active={editor.isActive('italic')} label={<i>I</i>} title="Italic" />
         {x && <B on={() => c().toggleUnderline().run()} active={editor.isActive('underline')} label={<u>U</u>} title="Underline" />}
         {x && <B on={() => c().toggleStrike().run()} active={editor.isActive('strike')} label={<s>S</s>} title="Strikethrough" />}
-        {x && <B on={() => c().toggleHighlight().run()} active={editor.isActive('highlight')} label="🖍" title="Highlight" />}
+        {x && <B on={() => setColorOpen(o => !o)} active={editor.isActive('highlight') || colorOpen} label="🖍" title="Highlight color" />}
         <B on={openLink} active={editor.isActive('link')} label="🔗" title="Link" />
+        {x && <B on={() => imgInput.current?.click()} label="🖼" title="Insert a picture" />}
         {x && <B on={onComment} label="💬＋" title="Comment on the selected words" />}
         <Sep />
         <B on={() => c().toggleBulletList().run()} active={editor.isActive('bulletList')} label="•≡" title="Bulleted list" />
@@ -447,8 +465,28 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { ed
           <B on={() => c().setHorizontalRule().run()} label="―" title="Divider line" />
           <Sep />
           <B on={onLetterhead} active={letterhead} label="🏷 Letterhead" title="CRECO letterhead — logo header and footer on every page (and on the PDF)" />
+          <Sep />
+          <B on={() => onSide(side === 'outline' ? null : 'outline')} active={side === 'outline'} label="☰ Outline" title="Show the document outline (headings)" />
+          <B on={() => onSide(side === 'suggestions' ? null : 'suggestions')} active={side === 'suggestions'} label="✎ Suggestions" title="Review suggested changes" />
+          <Sep />
+          <B on={() => onSuggesting(!suggesting)} active={suggesting} label={suggesting ? '✎ Suggesting' : '✎ Editing'} title={suggesting ? 'Suggesting — click to go back to editing directly' : 'Editing — click to switch to Suggesting (your changes become suggestions)'} />
         </>}
       </div>
+      <input ref={imgInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={async e => {
+        const f = e.target.files?.[0]; e.target.value = '';
+        if (!f) return;
+        try { const src = await shrinkImage(f); editor.chain().focus().insertContent({ type: 'image', attrs: { src, alt: f.name.replace(/\.[a-z0-9]+$/i, '') } }).run(); }
+        catch (err) { window.alert((err as Error).message || 'Could not add that picture'); }
+      }} />
+      {colorOpen && (
+        <div role="group" aria-label="Highlight color" style={{ display: 'flex', gap: 8, padding: '6px 10px 8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa', '#e9d5ff'].map(col => (
+            <button key={col} type="button" aria-label={`Highlight ${col}`} onMouseDown={e => e.preventDefault()} onClick={() => { c().setHighlight({ color: col }).run(); setColorOpen(false); }}
+              style={{ width: isMobile ? 34 : 24, height: isMobile ? 34 : 24, borderRadius: '50%', background: col, border: '1px solid var(--k-d1d5db)', cursor: 'pointer' }} />
+          ))}
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { c().unsetHighlight().run(); setColorOpen(false); }} style={{ ...btnStyle(isMobile), background: 'none' }}>No highlight</button>
+        </div>
+      )}
       {linkOpen && (
         <form onSubmit={e => { e.preventDefault(); const u = linkUrl.trim(); if (!u) c().unsetLink().run(); else c().extendMarkRange('link').setLink({ href: /^(https?:|mailto:|tel:)/i.test(u) ? u : `https://${u}` }).run(); setLinkOpen(false); }}
           style={{ display: 'flex', gap: 6, padding: '6px 8px 8px', alignItems: 'center' }}>
@@ -462,3 +500,72 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { ed
   );
 }
 
+
+
+/** A picture, scaled to fit the page (max 1000 px wide) and re-encoded small enough to live inside the document. */
+async function shrinkImage(file: File): Promise<string> {
+  if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) throw new Error('Use a PNG, JPG, WebP or GIF picture');
+  if (file.size > 12 * 1024 * 1024) throw new Error('That picture is over 12 MB');
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, 1000 / bmp.width);
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(bmp.width * scale)); cv.height = Math.max(1, Math.round(bmp.height * scale));
+  const ctx = cv.getContext('2d'); if (!ctx) throw new Error('Could not read that picture');
+  const keepAlpha = file.type === 'image/png' || file.type === 'image/gif';
+  if (!keepAlpha) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); }
+  ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+  let out = keepAlpha ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', 0.85);
+  for (let q = 0.75; out.length > 700_000 && q > 0.3; q -= 0.15) out = cv.toDataURL('image/jpeg', q);   // too big as PNG: fall back to JPEG
+  if (out.length > 900_000) throw new Error('That picture is too detailed to put in a document — try a smaller one');
+  if (!safeImageSrc(out)) throw new Error('Could not use that picture');
+  return out;
+}
+
+/** Left column: the headings outline (click to jump) or the pending suggestions (accept / reject). */
+function SidePanel({ editor, side, onSide, isMobile }: { editor: Editor; side: 'outline' | 'suggestions'; onSide: (v: null | 'outline' | 'suggestions') => void; isMobile: boolean }) {
+  const [, force] = useState(0);
+  useEffect(() => { const f = () => force(n => n + 1); editor.on('transaction', f); return () => { editor.off('transaction', f); }; }, [editor]);
+  const heads: Array<{ level: number; text: string; pos: number }> = [];
+  editor.state.doc.descendants((node, pos) => { if (node.type.name === 'heading' && node.textContent.trim()) heads.push({ level: Number(node.attrs.level) || 1, text: node.textContent.trim(), pos }); });
+  const sugg = listSuggestions(editor);
+  const tab = (id: 'outline' | 'suggestions', label: string) => (
+    <button type="button" onClick={() => onSide(id)} style={{ flex: 1, minHeight: 36, border: 'none', borderBottom: `2px solid ${side === id ? '#c9922c' : 'transparent'}`, background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: side === id ? 'var(--k-a06a12)' : 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif" }}>{label}</button>
+  );
+  const group = (list: Suggestion[]) => (
+    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+      <button type="button" onClick={() => resolveSuggestions(editor, list, true)} style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 6, background: '#16a34a', color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>✓ Accept</button>
+      <button type="button" onClick={() => resolveSuggestions(editor, list, false)} style={{ height: 28, padding: '0 10px', border: '1px solid var(--k-d1d5db)', borderRadius: 6, background: 'var(--k-fff)', color: 'var(--k-374151)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>✕ Reject</button>
+    </div>
+  );
+  return (
+    <aside aria-label="Document side panel" style={{ width: isMobile ? 'min(82vw, 300px)' : 260, flexShrink: 0, borderRight: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', display: 'flex', flexDirection: 'column', minHeight: 0, ...(isMobile ? { position: 'absolute', zIndex: 20, top: 0, bottom: 0, left: 0, boxShadow: '4px 0 24px rgba(0,0,0,.18)' } : {}) }}>
+      <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--k-eef0f2)' }}>
+        {tab('outline', 'Outline')}{tab('suggestions', `Suggestions${sugg.length ? ` (${sugg.length})` : ''}`)}
+        <button type="button" onClick={() => onSide(null)} aria-label="Close side panel" style={{ width: 34, height: 34, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 15 }}>✕</button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 10 }}>
+        {side === 'outline' ? (
+          heads.length === 0 ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', lineHeight: 1.5 }}>Headings you add (Title, Heading, Subheading) show up here so you can jump around a long document.</div>
+            : heads.map((h, i) => (
+              <button key={i} type="button" onClick={() => { editor.chain().focus().setTextSelection(h.pos + 1).scrollIntoView().run(); if (isMobile) onSide(null); }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: `5px 8px 5px ${8 + (h.level - 1) * 14}px`, border: 'none', borderRadius: 6, background: 'none', cursor: 'pointer', fontSize: h.level === 1 ? 13.5 : 13, fontWeight: h.level === 1 ? 700 : 500, color: 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" }}>{h.text}</button>
+            ))
+        ) : sugg.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', lineHeight: 1.5 }}>No suggestions yet. Switch the toolbar from “Editing” to “Suggesting” and your changes show up here for review.</div>
+        ) : (
+          <>
+            <button type="button" onClick={() => resolveSuggestions(editor, sugg, true)} style={{ height: 30, width: '100%', marginBottom: 10, border: '1px solid #bbf7d0', borderRadius: 6, background: '#f0fdf4', color: '#15803d', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>Accept all ({sugg.length})</button>
+            {sugg.map((g, i) => (
+              <div key={i} style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: 9, marginBottom: 8 }}>
+                <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>{g.author} · {g.type === 'add' ? 'added' : 'deleted'}</div>
+                <div style={{ fontSize: 13, marginTop: 3, overflowWrap: 'anywhere', color: g.type === 'add' ? '#15803d' : '#b91c1c', textDecoration: g.type === 'del' ? 'line-through' : 'none' }}>{g.text.length > 140 ? `${g.text.slice(0, 140)}…` : g.text}</div>
+                <button type="button" onClick={() => editor.chain().focus().setTextSelection(g.from).scrollIntoView().run()} style={{ border: 'none', background: 'none', color: 'var(--k-6b7280)', fontSize: 12, cursor: 'pointer', padding: '4px 0 0' }}>Show in document</button>
+                {group([g])}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </aside>
+  );
+}
