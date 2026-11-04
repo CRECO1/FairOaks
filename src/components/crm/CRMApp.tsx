@@ -5574,7 +5574,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── UI ────────────────────────────────────────────────────────────────────────
   return (
-    <div className="crm-app-shell" data-crm-theme={crmTheme} style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: 'var(--k-f2f2f2)' }}>
+    <div className="crm-app-shell" data-crm-theme={crmTheme} style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: isTabletOrMobile ? '100dvh' : '100vh', overflow: 'hidden', background: 'var(--k-f2f2f2)' }}>
       <CrmShield exempt={isSuperAdmin} name={`${profile.first_name} ${profile.last_name}`.trim()} email={profile.email} token={session?.access_token} page={page} />
       <style>{`
         /* Design tokens. Light values equal the colours the CRM already used, so light mode is unchanged; dark swaps them. */
@@ -5621,13 +5621,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell *::-webkit-scrollbar{width:10px;height:10px;}
         .crm-app-shell *::-webkit-scrollbar-thumb{background:var(--c-line-2);border-radius:99px;border:2px solid transparent;background-clip:padding-box;}
         .crm-app-shell *::-webkit-scrollbar-track{background:transparent;}
-        /* Phone / tablet navigation: a swipeable strip under the header (replaces the old bottom tab bar). */
-        .crm-app-shell .crm-topnav{display:flex;gap:2px;overflow-x:auto;overflow-y:hidden;flex-shrink:0;background:#111;border-bottom:1px solid rgba(201,146,44,.25);padding:0 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;}
+        /* Phone / tablet navigation: a swipeable tab bar pinned to the bottom of the screen (thumb reach). It is the last flex child of the
+           column shell (order), so page content and sticky bars end above it; safe-area padding clears the home indicator. */
+        .crm-app-shell .crm-topnav{display:flex;gap:2px;overflow-x:auto;overflow-y:hidden;flex-shrink:0;order:99;background:#111;border-top:1px solid rgba(201,146,44,.25);padding:0 6px env(safe-area-inset-bottom);scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;}
         .crm-app-shell .crm-topnav::-webkit-scrollbar{display:none;}
-        .crm-topnav-item{position:relative;flex:none;display:inline-flex;align-items:center;gap:9px;padding:0 17px;min-height:52px;background:none;border:none;border-bottom:3px solid transparent;color:rgba(255,255,255,.62);font:600 15.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:color .15s,border-color .15s;}
+        .crm-topnav-item{position:relative;flex:none;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0 12px;min-width:72px;min-height:58px;background:none;border:none;border-top:3px solid transparent;color:rgba(255,255,255,.62);font:600 11.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:color .15s,border-color .15s;}
         .crm-topnav-item:hover{color:#fff;}
-        .crm-topnav-item.on{color:#c9922c;border-bottom-color:#c9922c;}
-        .crm-topnav-badge{min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;}
+        .crm-topnav-item.on{color:#c9922c;border-top-color:#c9922c;}
+        .crm-topnav-badge{position:absolute;top:5px;left:calc(50% + 6px);min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;}
         @media(prefers-reduced-motion:reduce){.overlay,.modal,.crm-sheet,.crm-sheet-panel,.crm-toast,.sk{animation:none!important;}.crm-app-shell *{transition-duration:.01ms!important;}}
         @media(min-width:1181px){.dk-side{position:sticky;top:0;}}
         .dk-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start;}
@@ -6037,8 +6038,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🔍</button>
             </div>
           </div>
-          {/* Section strip: the phone/tablet navigation lives up here (like the TORCH app) — one swipeable row,
-              the current page highlighted and scrolled into view. The ☰ above still opens everything else. */}
+          {/* Section tab bar: the phone/tablet navigation is pinned to the bottom (CSS order) — one swipeable row,
+              the current page highlighted and scrolled into view. The ☰ in the header still opens everything else. */}
           {(() => {
             const overdueCt = overdueMine(tasks, profile?.id);
             type Tab = { id: typeof page; label: string; ico: IcoName; on?: boolean; badge?: number; go: () => void };
@@ -15441,8 +15442,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* Toast */}
       {toast && (
         <div className="crm-toast" style={{ position: 'fixed', ...(isMobile
-          // phones: full-width along the bottom, clear of the home indicator (the nav lives at the top now)
-          ? { bottom: 'calc(20px + env(safe-area-inset-bottom))', left: 14, right: 14, maxWidth: 'none' }
+          // phones: full-width along the bottom, clear of the bottom tab bar
+          ? { bottom: 'calc(84px + env(safe-area-inset-bottom))', left: 14, right: 14, maxWidth: 'none' }
           : { bottom: 26, right: 26, maxWidth: 300 }),
           background: '#111', color: '#fff', padding: '12px 20px', borderRadius: 8, fontSize: 14, zIndex: 9999, borderLeft: '4px solid #c9922c', boxShadow: '0 4px 20px rgba(0,0,0,.3)' }}>
           {toast}
