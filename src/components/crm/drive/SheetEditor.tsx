@@ -244,6 +244,9 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     return () => ro.disconnect();
   }, [tabId]);
 
+  // A different tab starts at its top-left corner.
+  useEffect(() => { const el = body.current; if (el) { el.scrollTop = 0; el.scrollLeft = 0; } setScroll({ top: 0, left: 0 }); }, [tabId]);
+
   // Tell teammates which cell I'm on.
   useEffect(() => { handle.awareness.setLocalStateField('cell', { tab: tabId, r: sel.r, c: sel.c }); }, [handle, tabId, sel.r, sel.c]);
 
