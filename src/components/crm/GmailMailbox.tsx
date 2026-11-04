@@ -1497,7 +1497,7 @@ function ThreadReader(p: {
       {msgs === null && <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Opening conversation…</div>}
       {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
       {chrono.length > 1 && (
-        <div style={{ position: p.isMobile ? 'static' : 'sticky', top: p.embedded ? 0 : 58, zIndex: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 10px', padding: '8px 10px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10 }}>
+        <div style={{ position: p.isMobile ? 'static' : 'sticky', top: p.embedded ? 0 : 58, zIndex: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 10px', padding: '8px 10px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 10px 0 var(--k-fff)' }}>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', marginRight: 2 }}>{chrono.length} messages</span>
           {chrono.length <= 14 ? (
             <div role="group" aria-label="Jump to a message" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -1552,7 +1552,7 @@ function ThreadReader(p: {
           const other = mine ? parseAddr(m.to) : from;
           const target = other.email ? p.contactFor(other.email) : null;
           return (
-            <div key={m.id} id={`gm-msg-${m.id}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: p.isMobile ? '12px' : '16px 18px', scrollMarginTop: p.isMobile ? 12 : p.embedded ? 64 : 122 }}>
+            <div key={m.id} id={`gm-msg-${m.id}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: p.isMobile ? '12px' : '14px 16px', boxShadow: '0 1px 2px rgba(0,0,0,.04)', scrollMarginTop: p.isMobile ? 12 : p.embedded ? 64 : 122 }}>
               <div style={{ display: 'flex', gap: '8px 12px', alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
                 <Avatar name={name} email={from.email} size={40} warm={!!match} />
                 <div style={{ flex: '1 1 190px', minWidth: 0 }}>
@@ -1582,7 +1582,7 @@ function ThreadReader(p: {
                 <div style={{ flex: '0 1 auto', marginLeft: 'auto', textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {chrono.length > 1 && <span title={`Message ${num} of ${chrono.length}`} style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-6b7280)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '0 7px' }}>{num}/{chrono.length}</span>}
-                    <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }} title={whenLong(m.date)}>{p.isMobile ? when(m.date) : whenLong(m.date)}</span>
+                    <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }} title={whenLong(m.date)}>{p.isMobile || p.embedded ? when(m.date) : whenLong(m.date)}</span>
                     {chrono.length > 1 && <button type="button" aria-expanded aria-label="Collapse this message" title="Collapse this message" onClick={() => setFolded(prev => new Set(prev).add(m.id))}
                       style={{ width: 26, height: 26, border: '1px solid var(--k-e5e7eb)', borderRadius: 7, background: 'var(--k-fff)', color: 'var(--k-6b7280)', cursor: 'pointer', fontSize: 12, padding: 0 }}>▴</button>}
                   </span>
@@ -1591,7 +1591,7 @@ function ThreadReader(p: {
                     : <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px' }}>Not opened</span>)}
                 </div>
               </div>
-              <MessageFrame html={m.html} />
+              <div style={{ borderTop: '1px solid var(--k-f0f0f0)', paddingTop: 12 }}><MessageFrame html={m.html} /></div>
               {m.attachments.length > 0 && (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 6 }}>{m.attachments.length} attachment{m.attachments.length === 1 ? '' : 's'}</div>
