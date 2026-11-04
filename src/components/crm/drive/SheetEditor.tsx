@@ -19,7 +19,7 @@ import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
 import type { DriveDoc } from '@/lib/drive-types';
 import {
   Evaluator, IMPORT_RE, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, buildPivot, cellKey, chartList, checkValid, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, formatVal, getNote, getValid, hasRichMarks, listTabs, lockList, mergeList, mkey, newId, newTabMap, cloneTabMap, parseRich, readRangeFromDoc, stripRich,
-  notesMap, parseKey, patchFmt, renameTabRefs, shiftFormula, shiftMeta, tBold, tCells, tCols, tabGrid, tabsMap, validMap,
+  notesMap, parseKey, patchFmt, renameTabRefs, shiftFormula, shiftMeta, swapRows, tBold, tCells, tCols, tabGrid, tabsMap, validMap,
   type CellFmt, type CondOp, type CondRule, type ChartDef, type FeedData, type LockRange, type MergeRange, type NoteInfo, type PivotDef, type TabInfo, type ValidRule, type Val,
 } from '@/lib/drive-sheet';
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
@@ -271,6 +271,9 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const [filters, setFilters] = useState<Record<number, string[]>>({});     // column -> hidden values (this person only)
   const [filterMenu, setFilterMenu] = useState<{ c: number; q: string } | null>(null);
   const [find, setFind] = useState<{ q: string; rep: string; idx: number; replace: boolean } | null>(null);
+  const [hoverRow, setHoverRow] = useState<number | null>(null);
+  const [rowDrag, setRowDrag] = useState<{ from: number; to: number } | null>(null);
+  const suppressClick = useRef(false);
   const [ctx, setCtx] = useState<{ x: number; y: number; r: number; c: number; head?: 'col' | 'row' } | null>(null);
   const [dlg, setDlg] = useState<null | 'cond' | 'valid' | 'note' | 'chart' | 'protect'>(null);
   const [chartEdit, setChartEdit] = useState<ChartDef | null>(null);
@@ -829,6 +832,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
       return;
     }
     const S = selRef.current;
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && S.r === S.r2) { e.preventDefault(); moveRowBy(S.r, e.key === 'ArrowUp' ? -1 : 1); return; }
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
     if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) undo.redo(); else undo.undo(); return; }
@@ -945,6 +949,27 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   };
+  // ── moving rows: the ▲ ▼ in a row's number, dragging the number, the right-click menu, or Alt+↑ / Alt+↓ ──
+  const movable = (r: number) => !!tab && !isPivot && r >= frozen && canEditCell(r, 0);
+  const moveRowTo = (from: number, to: number) => {
+    if (!tab || from === to || !movable(from)) return;
+    const i = idxOf(from), j0 = idxOf(to); if (i < 0 || j0 < 0) return;
+    const j = Math.max(Math.min(frozen, nRows - 1), j0);              // never into the frozen header rows
+    const dir = j > i ? 1 : -1; const steps = Math.min(400, Math.abs(j - i)); if (!steps) return;
+    let done = 0;
+    tx(() => { for (let k = 0; k < steps; k++) { const a = order[i + dir * k], b = order[i + dir * (k + 1)]; if (!canEditCell(b, 0)) break; swapRows(ydoc, tab, tabs, a, b); done++; } });
+    if (done) { const dest = order[i + dir * done]; const next = { r: dest, c: selRef.current.c, r2: dest, c2: selRef.current.c2 }; selRef.current = next; setSel(next); }
+  };
+  const moveRowBy = (r: number, dir: -1 | 1) => { const j = idxOf(r) + dir; if (j >= 0 && j < nRows) moveRowTo(r, order[j]); };
+  const lastUsedRow = () => { let m = 0; if (tab) tCells(tab.map).forEach((v, k) => { if (v !== '') m = Math.max(m, parseKey(k)[0]); }); return m; };
+  const beginRowDrag = (r: number, e: React.MouseEvent) => {
+    if (e.button !== 0 || !movable(r)) return;
+    const startY = e.clientY; let dragging = false; let to = r;
+    const rowAtClientY = (cy: number) => { const el = body.current; if (!el) return r; const y = cy - el.getBoundingClientRect().top; return rowAt(idxAtY(y < frozenH ? y : y + el.scrollTop)); };
+    const move = (ev: MouseEvent) => { if (!dragging && Math.abs(ev.clientY - startY) < 5) return; dragging = true; to = rowAtClientY(ev.clientY); setRowDrag({ from: r, to }); };
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); if (dragging) { suppressClick.current = true; setTimeout(() => { suppressClick.current = false; }, 0); setRowDrag(null); moveRowTo(r, to); } };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  };
   const autoFit = (c: number) => { if (!tab) return; let m = colName(c).length; for (let r = 0; r < Math.min(rows, 400); r++) m = Math.max(m, shown(r, c).length); tx(() => tCols(tab.map).set(String(c), Math.max(MIN_W, Math.min(520, Math.round(m * 7.4 + 22))))); };
 
   const activeRaw = edit ? edit.text : bar ?? raw(sel.r, sel.c);
@@ -1041,6 +1066,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             <Item checked={bandOn} onClick={() => { toggleBand(); close(); }}>Alternating row colors</Item>
             <Item onClick={() => { hide('row'); close(); }}>Hide row{R.r2 > R.r1 ? 's' : ''} {R.r1 + 1}{R.r2 > R.r1 ? `–${R.r2 + 1}` : ''}</Item>
             <Item onClick={() => { hide('col'); close(); }}>Hide column{R.c2 > R.c1 ? 's' : ''} {colName(R.c1)}{R.c2 > R.c1 ? `–${colName(R.c2)}` : ''}</Item>
+            {hasFeed && !!tab?.map.get('feedOrder') && <Item onClick={() => { tx(() => tab?.map.delete('feedOrder')); void refreshFeed(false); close(); }}>Automatic row order (undo my moves)</Item>}
             <Item disabled={!hiddenCount} onClick={() => { unhideAll(); close(); }}>Show hidden rows and columns{hiddenCount ? ` (${hiddenCount})` : ''}</Item>
             <Divider />
             <Item onClick={() => { setDlg('valid'); close(); }}>Data validation (dropdown, checkbox, rules)…</Item>
@@ -1114,9 +1140,13 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         <div style={{ position: 'absolute', top: HEAD_H, left: 0, width: NUM_W, bottom: 0, overflow: 'hidden', zIndex: 4, background: 'var(--k-f3f4f6)', borderRight: '1px solid var(--k-d1d5db)', boxSizing: 'border-box' }}>
           <div style={{ position: 'relative', height: tops[nRows], transform: `translateY(${-scroll.top}px)` }}>
             {visI(firstI, lastI).map(i => { const r = rowAt(i); const inS = r >= R.r1 && r <= R.r2; return (
-              <div key={r} onClick={e => { setSel(e.shiftKey ? { ...sel, r2: r } : { r, c: 0, r2: r, c2: ncols - 1 }); wrap.current?.focus(); }}
+              <div key={r} onMouseDown={e => beginRowDrag(r, e)} onMouseEnter={() => setHoverRow(r)} onMouseLeave={() => setHoverRow(h => (h === r ? null : h))} onClick={e => { if (suppressClick.current) return; setSel(e.shiftKey ? { ...sel, r2: r } : { r, c: 0, r2: r, c2: ncols - 1 }); wrap.current?.focus(); }}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!inS) setSel({ r, c: 0, r2: r, c2: ncols - 1 }); setCtx({ x: e.clientX, y: e.clientY, r, c: 0, head: 'row' }); }}
-                style={{ position: 'absolute', top: tops[i], height: heights[i], width: NUM_W, lineHeight: `${Math.min(heights[i], ROW_H)}px`, textAlign: 'center', fontSize: 11.5, color: inS ? '#a06a12' : 'var(--k-9ca3af)', background: inS ? 'var(--k-fdf6e9)' : undefined, borderBottom: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: 'pointer' }}>{r + 1}
+                style={{ position: 'absolute', top: tops[i], height: heights[i], width: NUM_W, lineHeight: `${Math.min(heights[i], ROW_H)}px`, textAlign: 'center', fontSize: 11.5, color: inS ? '#a06a12' : 'var(--k-9ca3af)', background: inS ? 'var(--k-fdf6e9)' : undefined, borderBottom: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: movable(r) ? 'grab' : 'pointer' }}>{r + 1}
+                {(hoverRow === r || (R.r1 === R.r2 && R.r1 === r)) && movable(r) && (<>
+                  <span role="button" aria-label="Move row up" title="Move row up" onMouseDown={e => { e.stopPropagation(); e.preventDefault(); moveRowBy(r, -1); }} style={{ position: 'absolute', left: 0, top: 0, width: 13, height: Math.min(heights[i], ROW_H), lineHeight: `${Math.min(heights[i], ROW_H)}px`, fontSize: 9, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>▲</span>
+                  <span role="button" aria-label="Move row down" title="Move row down" onMouseDown={e => { e.stopPropagation(); e.preventDefault(); moveRowBy(r, 1); }} style={{ position: 'absolute', right: 0, top: 0, width: 13, height: Math.min(heights[i], ROW_H), lineHeight: `${Math.min(heights[i], ROW_H)}px`, fontSize: 9, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>▼</span>
+                </>)}
                 <span onMouseDown={e => beginRowResize(r, e)} onDoubleClick={e => { e.stopPropagation(); tx(() => extMap(ydoc).delete(`${tabId}|rh|${r}`)); }} title="Drag to change the row height, double-click to reset" style={{ position: 'absolute', left: 0, right: 0, bottom: -3, height: 7, cursor: 'row-resize', zIndex: 2 }} />
               </div>); })}
           </div>
@@ -1175,6 +1205,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
           </div>
           {fill && <div style={{ position: 'absolute', top: sy(Math.max(0, idxOf(Math.min(R.r1, fill.r)))), left: sx(Math.min(R.c1, fill.c)), width: lefts[Math.max(R.c2, fill.c) + 1] - lefts[Math.min(R.c1, fill.c)], height: tops[Math.max(0, idxOf(Math.max(R.r2, fill.r))) + 1] - tops[Math.max(0, idxOf(Math.min(R.r1, fill.r)))], border: '2px dashed #c9922c', boxSizing: 'border-box' }} />}
           {peerBoxes}
+          {rowDrag && idxOf(rowDrag.to) >= 0 && <div style={{ position: 'absolute', left: 0, right: 0, top: sy(idxOf(rowDrag.to)) + (idxOf(rowDrag.to) > idxOf(rowDrag.from) ? heights[idxOf(rowDrag.to)] : 0) - 1, height: 3, background: '#c9922c', pointerEvents: 'none', zIndex: 7 }} />}
           {selValid?.t === 'list' && !edit && <button type="button" onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setDd({ r: sel.r, c: sel.c }); }} aria-label="Choose from the list" style={{ position: 'absolute', top: act.top + 3, left: act.left + act.w - 24, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(201,146,44,.18)', color: '#a06a12', fontSize: 11, cursor: 'pointer', pointerEvents: 'auto', padding: 0 }}>▾</button>}
           {dd && (() => { const v = getValid(ydoc, tabId, dd.r, dd.c); const i = Math.max(0, idxOf(dd.r)); return v?.t === 'list' ? (
             <>
@@ -1241,6 +1272,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             <Item onClick={() => { const t = doCopy(true); void navigator.clipboard?.writeText(t).catch(() => {}); setCtx(null); }}>Cut</Item>
             <Item onClick={() => { setCtx(null); void navigator.clipboard?.readText().then(paste).catch(() => onToast('Use Ctrl+V to paste — the browser blocked reading the clipboard')); }}>Paste</Item>
             <Divider />
+            {ctx.head !== 'col' && movable(ctx.r) && R.r1 === R.r2 && <><Item onClick={() => { moveRowBy(ctx.r, -1); setCtx(null); }}>Move row up</Item><Item onClick={() => { moveRowBy(ctx.r, 1); setCtx(null); }}>Move row down</Item><Item onClick={() => { moveRowTo(ctx.r, order[Math.min(frozen, nRows - 1)]); setCtx(null); }}>Move row to the top</Item><Item onClick={() => { moveRowTo(ctx.r, lastUsedRow()); setCtx(null); }}>Move row to the bottom</Item><Divider /></>}
             {ctx.head !== 'col' && <><Item onClick={() => { insertMany('row', R.r1, R.r2 - R.r1 + 1); setCtx(null); }}>Insert row above</Item><Item onClick={() => { insertMany('row', R.r2 + 1, R.r2 - R.r1 + 1); setCtx(null); }}>Insert row below</Item></>}
             {ctx.head !== 'row' && <><Item onClick={() => { insertMany('col', R.c1, R.c2 - R.c1 + 1); setCtx(null); }}>Insert column left</Item><Item onClick={() => { insertMany('col', R.c2 + 1, R.c2 - R.c1 + 1); setCtx(null); }}>Insert column right</Item></>}
             {ctx.head !== 'col' && <Item danger onClick={() => { deleteMany('row', R.r1, R.r2); setCtx(null); }}>Delete row{R.r2 > R.r1 ? 's' : ''}</Item>}

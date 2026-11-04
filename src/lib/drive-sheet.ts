@@ -536,6 +536,12 @@ export function applyFeed(tab: Y.Map<unknown>, data: FeedData) {
   let keys = tab.get('feedKeys') as Y.Map<number> | undefined;
   if (!(keys instanceof Y.Map)) { keys = new Y.Map<number>(); tab.set('feedKeys', keys); }
   // what the team typed to the right of the feed's columns, per record
+  // a person's own row order (set by moving rows) wins over the feed's order; rows the person never placed follow after
+  let rowsIn = data.rows;
+  try {
+    const saved = tab.get('feedOrder'); const manual = typeof saved === 'string' ? (JSON.parse(saved) as string[]) : null;
+    if (manual && manual.length) { const idx = new Map(manual.map((k, i) => [k, i])); const placed = rowsIn.filter(r => idx.has(r.key)).sort((x, y) => idx.get(x.key)! - idx.get(y.key)!); const rest = rowsIn.filter(r => !idx.has(r.key)); rowsIn = [...placed, ...rest].map((r, i) => (data.header[0] === '#' ? { ...r, cells: [String(i + 1), ...r.cells.slice(1)] } : r)); }
+  } catch { /* keep the feed's order */ }
   const keep = new Map<string, Map<number, string>>();
   let maxC = oldN - 1;
   cells.forEach((_v, k) => { const [, c] = parseKey(k); if (c >= oldN) maxC = Math.max(maxC, c); });
@@ -560,14 +566,14 @@ export function applyFeed(tab: Y.Map<unknown>, data: FeedData) {
   keys.forEach((_, key) => keys!.delete(key));
   data.header.forEach((h, c) => { cells.set(cellKey(0, c), h); bold.set(cellKey(0, c), true); });
   headerExtra.forEach((v, c) => { cells.set(cellKey(0, c), v); bold.set(cellKey(0, c), true); });
-  data.rows.forEach((row, i) => {
+  rowsIn.forEach((row, i) => {
     const r = i + 1;
     row.cells.forEach((v, c) => { if (v !== '') cells.set(cellKey(r, c), v); });
     keys!.set(row.key, r);
     keep.get(row.key)?.forEach((v, c) => cells.set(cellKey(r, c), v));
   });
   if (!tab.get('feedAt')) tab.set('frozen', 1);   // the header row is frozen the first time only — after that it is the team's choice
-  tab.set('rows', Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, data.rows.length + 30)));
+  tab.set('rows', Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, rowsIn.length + 30)));
   tab.set('ncols', Math.min(MAX_COLS, Math.max(DEFAULT_COLS, nSys + Math.max(1, headerExtra.size) + 2)));
   (data.widths ?? []).forEach((w, c) => cols.set(String(c), w));
   if (data.layout && tab.get('feedLayout') !== data.layout) { tab.set('frozenCols', data.freezeCols ?? 0); tab.set('feedLayout', data.layout); }
@@ -804,4 +810,45 @@ export function buildPivot(def: PivotDef, get: (r: number, c: number) => Val): s
     grid.push(['Grand total', ...cks.map(ck => agg(colTot.get(ck) ?? [], colCnt.get(ck) ?? 0)), agg(all, allCnt)]);
   }
   return grid;
+}
+
+// ── moving rows ─────────────────────────────────────────────────────────────────────────
+
+/** Formula text after rows `a` and `b` of `targetTab` traded places: every reference to one now points at the other. */
+export function swapFormulaRows(formula: string, formulaTab: string, targetTab: string, a: number, b: number): string {
+  return rewrite(formula, p => {
+    if ((p.tab ? unq(p.tab) : formulaTab) !== targetTab) return p;
+    const m = (r: number) => (r === a ? b : r === b ? a : r);
+    if (p.range) { const lo = Math.min(p.r1, p.r2), hi = Math.max(p.r1, p.r2); if (lo <= Math.min(a, b) && hi >= Math.max(a, b)) return p; }   // a range that holds both rows still holds both
+    const q = { ...p, r1: m(p.r1), r2: p.range ? m(p.r2) : p.r2 } as RefParts;
+    if (q.range && q.r1 > q.r2) { const t = q.r1; q.r1 = q.r2; q.r2 = t; }
+    return q;
+  });
+}
+
+/**
+ * Trade the contents of two rows of a tab — values, bold, formats, dropdown rules, notes, row height and hidden state — and keep every
+ * formula (on any tab) pointing at the same data. A live-feed tab also remembers the new order so the next refresh keeps it.
+ */
+export function swapRows(doc: Y.Doc, tab: TabInfo, allTabs: TabInfo[], a: number, b: number) {
+  if (a === b) return;
+  const swapSparse = (m: Y.Map<unknown>, keyOf: (r: number, c: number) => string, parse: (k: string) => [number, number] | null) => {
+    const rowA = new Map<number, unknown>(), rowB = new Map<number, unknown>();
+    m.forEach((v, k) => { const p = parse(k); if (!p) return; if (p[0] === a) rowA.set(p[1], v); else if (p[0] === b) rowB.set(p[1], v); });
+    for (const c of rowA.keys()) m.delete(keyOf(a, c)); for (const c of rowB.keys()) m.delete(keyOf(b, c));
+    rowA.forEach((v, c) => m.set(keyOf(b, c), v)); rowB.forEach((v, c) => m.set(keyOf(a, c), v));
+  };
+  swapSparse(tCells(tab.map) as Y.Map<unknown>, cellKey, k => parseKey(k));
+  swapSparse(tBold(tab.map) as Y.Map<unknown>, cellKey, k => parseKey(k));
+  const pre = tab.id + '|';
+  for (const m of [fmtMap(doc), validMap(doc), notesMap(doc)]) swapSparse(m as Y.Map<unknown>, (r, c) => mkey(tab.id, r, c), k => (k.startsWith(pre) ? parseKey(k.slice(pre.length)) : null));
+  const e = extMap(doc);
+  for (const kind of ['rh', 'hr']) { const ka = `${tab.id}|${kind}|${a}`, kb = `${tab.id}|${kind}|${b}`, va = e.get(ka), vb = e.get(kb); if (va === undefined) e.delete(kb); else e.set(kb, va); if (vb === undefined) e.delete(ka); else e.set(ka, vb); }
+  for (const t of allTabs) { const cm = tCells(t.map); cm.forEach((v, k) => { if (v.startsWith('=')) { const nv = swapFormulaRows(v, t.name, tab.name, a, b); if (nv !== v) cm.set(k, nv); } }); }
+  const keys = tab.map.get('feedKeys');
+  if (keys instanceof Y.Map) {
+    keys.forEach((r, key) => { if (r === a) keys.set(key, b); else if (r === b) keys.set(key, a); });
+    const order: string[] = []; keys.forEach((r, key) => order.push(`${String(r).padStart(6, '0')}|${key}`));
+    tab.map.set('feedOrder', JSON.stringify(order.sort().map(x => x.slice(7))));
+  }
 }
