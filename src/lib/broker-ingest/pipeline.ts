@@ -101,6 +101,16 @@ export interface PipelineResult {
   digestWouldInsert: PropertyRecord[];
 }
 
+/** A readable property title from a broker email subject ("RE:"/"FW:" and marketing tags removed), or null if nothing usable is left. */
+export function thinListingTitle(subject: string | null | undefined): string | null {
+  const t = (subject ?? '')
+    .replace(/^\s*((re|fw|fwd)\s*:\s*)+/i, '')
+    .replace(/^\s*(new|price reduced|price drop|just listed|on market|for (sale|lease)(\s+or\s+(sale|lease))?)\s*[|:–-]+\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return t.length >= 8 ? t.slice(0, 120) : null;
+}
+
 export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineResult> {
   const query = opts.query ?? DEFAULT_QUERY;
   const limit = opts.limit ?? 50;
@@ -177,6 +187,16 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
             log(`  [${i}/${ids.length}] not a listing — "${email.subject.slice(0, 60)}"`);
           }
           continue;
+        }
+        // A flyer whose street address lives only in remote images / a brochure link (typical of brokerage blasts) extracts with no name
+        // and no address, and upsert drops it silently. Keep it, named after the email's own subject and flagged to verify, so the lead
+        // reaches the Property DB instead of vanishing. Re-scans dedup on the subject-derived name.
+        if (!ex.name && !ex.address) {
+          const title = thinListingTitle(email.subject);
+          if (title) {
+            ex.name = title;
+            ex.notes = ex.notes ? `[Thin — address not in the email, verify] ${ex.notes}` : '[Thin — address not in the email (flyer/brochure link), verify]';
+          }
         }
         items.push({ extraction: ex, photos: await pickPhotos(email) });
         listings++;
