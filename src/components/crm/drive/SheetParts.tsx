@@ -18,13 +18,17 @@ const plain: CSSProperties = { height: 34, padding: '0 14px', border: '1px solid
 /** A button that opens a small floating panel under it. */
 export function Pop({ label, title, children, style, active, align = 'left' }: { label: ReactNode; title: string; children: (close: () => void) => ReactNode; style: CSSProperties; active?: boolean; align?: 'left' | 'right' }) {
   const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0, right: 0 });
+  // The toolbar scrolls sideways (which clips anything absolutely positioned inside it), so the menu is placed on the page itself.
+  const toggle = () => { const r = btn.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 4, left: r.left, right: Math.max(8, window.innerWidth - r.right) }); setOpen(o => !o); };
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
-      <button type="button" title={title} aria-label={title} aria-haspopup="menu" aria-expanded={open} onMouseDown={e => e.preventDefault()} onClick={() => setOpen(o => !o)} style={{ ...style, background: active || open ? 'var(--k-fdf6e9)' : style.background }}>{label}</button>
+      <button ref={btn} type="button" title={title} aria-label={title} aria-haspopup="menu" aria-expanded={open} onMouseDown={e => e.preventDefault()} onClick={toggle} style={{ ...style, background: active || open ? 'var(--k-fdf6e9)' : style.background }}>{label}</button>
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
-          <div role="menu" style={{ position: 'absolute', [align]: 0, top: 'calc(100% + 4px)', zIndex: 1301, minWidth: 180, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 6, maxHeight: '70vh', overflowY: 'auto' }}>{children(() => setOpen(false))}</div>
+          <div role="menu" style={{ position: 'fixed', top: pos.top, ...(align === 'right' ? { right: pos.right } : { left: Math.min(pos.left, window.innerWidth - 230) }), zIndex: 1301, minWidth: 180, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 6, maxHeight: '70vh', overflowY: 'auto' }}>{children(() => setOpen(false))}</div>
         </>
       )}
     </div>
