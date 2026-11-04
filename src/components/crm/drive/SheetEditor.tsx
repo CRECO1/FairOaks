@@ -279,7 +279,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
     if (left < el.scrollLeft) el.scrollLeft = left; else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth;
   };
-  const startEdit = (r: number, c: number, text?: string) => { setEdit({ r, c, text: text ?? raw(r, c) }); setTimeout(() => { const i = editor.current; if (i) { i.focus(); const n = i.value.length; i.setSelectionRange(n, n); } }, 0); };
+  const startEdit = (r: number, c: number, text?: string) => { setEdit({ r, c, text: text ?? raw(r, c) }); };
   const commitEdit = (then?: 'down' | 'right' | 'stay') => {
     if (!edit) return;
     const { r, c, text } = edit;
@@ -585,7 +585,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
           <div style={{ position: 'absolute', ...selBox, border: '2px solid #c9922c', boxSizing: 'border-box', pointerEvents: 'none' }} />
           {peerBoxes}
           {edit && (
-            <input ref={editor} value={edit.text} onChange={e => setEdit({ ...edit, text: e.target.value })} aria-label="Edit cell"
+            <input ref={el => { editor.current = el; if (el && document.activeElement !== el) { el.focus(); const n = el.value.length; el.setSelectionRange(n, n); } }} value={edit.text} onChange={e => setEdit({ ...edit, text: e.target.value })} aria-label="Edit cell"
               onKeyDown={e => {
                 if (e.key === 'Enter') { e.preventDefault(); commitEdit('down'); }
                 else if (e.key === 'Tab') { e.preventDefault(); commitEdit('right'); }
