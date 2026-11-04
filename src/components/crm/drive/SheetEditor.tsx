@@ -5,8 +5,9 @@
  *
  * Same plumbing as LiveDocEditor: a Yjs document owned by the module-level registry, live traffic over the private Realtime
  * channel `drive-doc:<id>`, durable saves merged by /api/crm/drive/doc-state/<id>. The cells live in the `tabs` map of that
- * document (see lib/drive-sheet.ts): every tab has its own cells, bold marks, column widths and frozen rows. The grid itself
- * is drawn here (only the visible rows are rendered) with a formula bar, tabs along the bottom, and CSV / Excel download.
+ * document (see lib/drive-sheet.ts); formats, dropdown/checkbox rules, notes and conditional-format rules live in doc-level maps.
+ * The grid is drawn here (only the visible rows are rendered) with frozen rows + columns, filters, find & replace, a right-click
+ * menu, autofill, formulas that follow when rows move, and CSV / Excel download.
  */
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
@@ -17,11 +18,13 @@ import { acquireDoc, releaseDoc, type CollabHandle } from '@/lib/collab/doc-regi
 import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
 import type { DriveDoc } from '@/lib/drive-types';
 import {
-  Evaluator, applyFeed, MAX_COLS, MAX_ROWS, SheetError, addr, cellKey, colName, csvEscape, displayVal, listTabs, newId, newTabMap, parseKey,
-  tBold, tCells, tCols, tabGrid, tabsMap, type FeedData, type TabInfo,
+  Evaluator, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, cellKey, colIndex, colName, condList, condMatch, csvEscape, fmtMap, formatVal, getFmt, getNote, getValid, listTabs, mkey, newId, newTabMap, cloneTabMap,
+  notesMap, parseKey, patchFmt, renameTabRefs, shiftFormula, shiftMeta, tBold, tCells, tCols, tabGrid, tabsMap, validMap,
+  type CellFmt, type CondOp, type CondRule, type FeedData, type NoteInfo, type TabInfo, type ValidRule,
 } from '@/lib/drive-sheet';
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
 import { ActivityPanel } from './DocPanel';
+import { CondDialog, Divider, HistoryDialog, Item, NoteDialog, Palette, Pop, ValidDialog } from './SheetParts';
 import type { DrivePerson } from './DocsDrive';
 
 interface Props {
@@ -39,9 +42,13 @@ interface Props {
 interface Peer { name: string; color: string; cell?: { tab: string; r: number; c: number } }
 type SaveState = 'saved' | 'dirty' | 'saving' | 'error';
 interface Sel { r: number; c: number; r2: number; c2: number }
+type Edit = { r: number; c: number; text: string } | null;
+interface ClipCell { raw: string; fmt: string; bold: boolean; valid: string }
+interface Clip { text: string; r1: number; c1: number; cells: ClipCell[][] }
 
 const ROW_H = 26, HEAD_H = 26, NUM_W = 48, DEF_W = 120, MIN_W = 36;
 const LOCAL = 'sheet-local';
+const LINK = /^(https?:\/\/\S+|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
 
 export default function SheetWorkspace({ doc, initialState, authToken, user, isMobile, onClose, onShare, onToast, onTitle, people = [] }: Props) {
   const [handle, setHandle] = useState<CollabHandle | null>(null);
@@ -50,9 +57,11 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
   const [title, setTitle] = useState(doc.title);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [panel, setPanel] = useState<null | 'activity'>(null);
+  const [history, setHistory] = useState(false);
   const me = useMemo<Peer>(() => ({ name: user.name || 'Teammate', color: colorFor(user.id) }), [user.id, user.name]);
   const authRef = useRef(authToken); authRef.current = authToken;
   const toastRef = useRef(onToast); toastRef.current = onToast;
+  const flushRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     const supabase = createClient();
@@ -78,7 +87,7 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
     };
     meta.observe(onMeta);
 
-    // Saving: identical to the live documents — collect updates, merge, send after typing pauses (or every 8 s while typing).
+    // Saving: collect updates, merge, send after typing pauses (or every 6 s while typing).
     const pending: Uint8Array[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined, maxTimer: ReturnType<typeof setTimeout> | undefined, retry: ReturnType<typeof setTimeout> | undefined;
     let saving = false, again = false;
@@ -105,6 +114,10 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
         saving = false;
         if ((again || pending.length) && !retry) { again = false; timer = setTimeout(() => void flush(), 400); }
       }
+    };
+    flushRef.current = async () => {
+      await flush();
+      for (let i = 0; i < 30 && (saving || pending.length); i++) { await new Promise(r => setTimeout(r, 150)); if (!saving && pending.length) await flush(); }
     };
     const onUpdate = (u: Uint8Array, origin: unknown) => {
       if (origin === 'seed') return;
@@ -170,6 +183,7 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
         </div>
         <button type="button" onClick={() => setPanel(p => (p ? null : 'activity'))} aria-pressed={!!panel} aria-label="Activity log" title="Activity — every change to this spreadsheet"
           style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px', background: panel ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>📜</button>
+        <button type="button" onClick={() => setHistory(true)} aria-label="Version history" title="Version history" style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px' }}>🕘</button>
         {onShare && <button type="button" onClick={() => onShare(doc)} style={{ ...btnStyle(isMobile), background: '#c9922c', color: '#fff', border: 'none' }}>Share</button>}
       </header>
       {status === 'denied' && (
@@ -182,39 +196,67 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
           : <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Connecting…</div>}
         {panel === 'activity' && <ActivityPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} onToast={onToast} onClose={() => setPanel(null)} />}
       </div>
+      {history && handle && <HistoryDialog docId={doc.id} authToken={authToken} ydoc={handle.ydoc} people={people} flush={() => flushRef.current()} onToast={onToast} onClose={() => setHistory(false)} />}
     </Frame>
   );
 }
 
 // ── the grid ─────────────────────────────────────────────────────────────────────────────
 
+const rangeLabel = (a: { r1: number; c1: number; r2: number; c2: number }) => (a.r1 === a.r2 && a.c1 === a.c2 ? addr(a.r1, a.c1) : `${addr(a.r1, a.c1)}:${addr(a.r2, a.c2)}`);
+function parseRange(t: string): { r1: number; c1: number; r2: number; c2: number } | null {
+  const m = /^\s*\$?([A-Za-z]{1,3})\$?(\d{1,5})(?:\s*:\s*\$?([A-Za-z]{1,3})\$?(\d{1,5}))?\s*$/.exec(t); if (!m) return null;
+  const c1 = colIndex(m[1]), r1 = Number(m[2]) - 1, c2 = m[3] ? colIndex(m[3]) : c1, r2 = m[4] ? Number(m[4]) - 1 : r1;
+  return { r1: Math.min(r1, r2), c1: Math.min(c1, c2), r2: Math.max(r1, r2), c2: Math.max(c1, c2) };
+}
+const moveKeys = (m: Y.Map<unknown>, axis: 'row' | 'col', at: number, delta: 1 | -1) => {
+  const moves: Array<[string, string | null, unknown]> = [];
+  m.forEach((v, k) => {
+    const [r, c] = parseKey(k); const i = axis === 'row' ? r : c;
+    if (delta === 1 && i >= at) moves.push([k, axis === 'row' ? cellKey(r + 1, c) : cellKey(r, c + 1), v]);
+    if (delta === -1) { if (i === at) moves.push([k, null, v]); else if (i > at) moves.push([k, axis === 'row' ? cellKey(r - 1, c) : cellKey(r, c - 1), v]); }
+  });
+  for (const [k] of moves) m.delete(k);
+  for (const [, to, v] of moves) if (to) m.set(to, v);
+};
+
 function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }: { handle: CollabHandle; me: Peer; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void }) {
   const ydoc = handle.ydoc;
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sel, setSel] = useState<Sel>({ r: 0, c: 0, r2: 0, c2: 0 });
-  const [edit, setEditState] = useState<{ r: number; c: number; text: string } | null>(null);
-  const editRef = useRef<{ r: number; c: number; text: string } | null>(null);   // always current, so keys typed before React re-renders are not lost
-  const setEdit = (v: { r: number; c: number; text: string } | null) => { editRef.current = v; setEditState(v); };
+  const [edit, setEditState] = useState<Edit>(null);
+  const editRef = useRef<Edit>(null);   // always current, so keys typed before React re-renders are not lost
+  const setEdit = (v: Edit) => { editRef.current = v; setEditState(v); };
   const [scroll, setScroll] = useState({ top: 0, left: 0 });
   const [box, setBox] = useState({ w: 800, h: 500 });
   const [bar, setBar] = useState<string | null>(null);       // formula bar text while it is focused
   const [tabMenu, setTabMenu] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; text: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [filtersOn, setFiltersOn] = useState(false);
+  const [filters, setFilters] = useState<Record<number, string[]>>({});     // column -> hidden values (this person only)
+  const [filterMenu, setFilterMenu] = useState<{ c: number; q: string } | null>(null);
+  const [find, setFind] = useState<{ q: string; rep: string; idx: number; replace: boolean } | null>(null);
+  const [ctx, setCtx] = useState<{ x: number; y: number; r: number; c: number; head?: 'col' | 'row' } | null>(null);
+  const [dlg, setDlg] = useState<null | 'cond' | 'valid' | 'note'>(null);
+  const [dd, setDd] = useState<{ r: number; c: number } | null>(null);
+  const [fill, setFill] = useState<{ r: number; c: number } | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const editor = useRef<HTMLInputElement>(null);
   const dragging = useRef(false);
-  const undo = useMemo(() => new Y.UndoManager(tabsMap(ydoc), { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 }), [ydoc]);
+  const clip = useRef<Clip | null>(null);
+  const fmtCache = useRef(new Map<string, CellFmt>());
+  const undo = useMemo(() => new Y.UndoManager([tabsMap(ydoc), fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), condList(ydoc)], { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 }), [ydoc]);
   useEffect(() => () => undo.destroy(), [undo]);
 
-  // Re-render whenever anything in the tabs changes (mine or a teammate's).
+  // Re-render whenever anything in the sheet changes (mine or a teammate's).
   useEffect(() => {
-    const m = tabsMap(ydoc);
     const on = () => bump();
-    m.observeDeep(on);
-    return () => m.unobserveDeep(on);
+    const shared = [tabsMap(ydoc), fmtMap(ydoc), validMap(ydoc), notesMap(ydoc), condList(ydoc)] as Array<Y.AbstractType<unknown>>;
+    shared.forEach(t => t.observeDeep(on));
+    return () => shared.forEach(t => t.unobserveDeep(on));
   }, [ydoc]);
 
   const tabs = useMemo(() => listTabs(ydoc), [ydoc, version]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -223,6 +265,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   const rows = Math.min(MAX_ROWS, Number(tab?.map.get('rows') ?? 100));
   const ncols = Math.min(MAX_COLS, Number(tab?.map.get('ncols') ?? 12));
   const frozen = Math.min(rows, Number(tab?.map.get('frozen') ?? 0));
+  const fc = Math.min(ncols - 1, Number(tab?.map.get('frozenCols') ?? 0));
   const widths = useMemo(() => {
     const w: number[] = [];
     for (let c = 0; c < ncols; c++) w.push(Math.max(MIN_W, Number(tab ? tCols(tab.map).get(String(c)) : 0) || DEF_W));
@@ -230,6 +273,7 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   }, [tab, ncols, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const lefts = useMemo(() => { const l = [0]; widths.forEach((w, i) => l.push(l[i] + w)); return l; }, [widths]);
   const totalW = lefts[lefts.length - 1];
+  const fcW = lefts[fc];
 
   const evaluator = useMemo(() => {
     const byName = new Map(tabs.map(t => [t.name, t.map]));
@@ -237,19 +281,40 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
   }, [tabs, tab?.name, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const raw = useCallback((r: number, c: number) => (tab ? tCells(tab.map).get(cellKey(r, c)) ?? '' : ''), [tab, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fmtOf = (r: number, c: number): CellFmt => {
+    const s = fmtMap(ydoc).get(mkey(tabId, r, c)); if (!s) return {};
+    let f = fmtCache.current.get(s); if (!f) { try { f = JSON.parse(s) as CellFmt; } catch { f = {}; } fmtCache.current.set(s, f); }
+    return f;
+  };
+  const rules = useMemo(() => condList(ydoc).toArray().map(s => { try { return JSON.parse(s) as CondRule; } catch { return null; } }).filter((x): x is CondRule => !!x && x.tab === tabId), [ydoc, tabId, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = (r: number, c: number) => formatVal(evaluator.value(null, r, c), fmtOf(r, c));
 
-  // Size of the scrolling area.
+  // ── filters: which rows are visible (display index ↔ sheet row) ──
+  const hdrRows = Math.max(frozen, 1);
+  const filterKey = JSON.stringify(filters);
+  const order = useMemo(() => {
+    if (!filtersOn || !Object.keys(filters).length) return null;
+    const hidden = Object.entries(filters).map(([c, v]) => [Number(c), new Set(v)] as [number, Set<string>]);
+    const out: number[] = [];
+    for (let r = 0; r < rows; r++) {
+      if (r < hdrRows) { out.push(r); continue; }
+      if (hidden.every(([c, set]) => !set.has(formatVal(evaluator.value(null, r, c), fmtOf(r, c))))) out.push(r);
+    }
+    return out;
+  }, [filtersOn, filterKey, rows, evaluator, tabId, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const posOf = useMemo(() => { if (!order) return null; const m = new Map<number, number>(); order.forEach((r, i) => m.set(r, i)); return m; }, [order]);
+  const nRows = order ? order.length : rows;
+  const rowAt = (i: number) => (order ? order[Math.max(0, Math.min(order.length - 1, i))] : Math.max(0, Math.min(rows - 1, i)));
+  const idxOf = (r: number) => (posOf ? posOf.get(r) ?? -1 : r);
+  const frozenH = Math.min(frozen, nRows) * ROW_H;
+
   useEffect(() => {
     const el = body.current; if (!el) return;
     const ro = new ResizeObserver(() => setBox({ w: el.clientWidth, h: el.clientHeight }));
     ro.observe(el); setBox({ w: el.clientWidth, h: el.clientHeight });
     return () => ro.disconnect();
   }, [tabId]);
-
-  // A different tab starts at its top-left corner.
-  useEffect(() => { const el = body.current; if (el) { el.scrollTop = 0; el.scrollLeft = 0; } setScroll({ top: 0, left: 0 }); }, [tabId]);
-
-  // Tell teammates which cell I'm on.
+  useEffect(() => { const el = body.current; if (el) { el.scrollTop = 0; el.scrollLeft = 0; } setScroll({ top: 0, left: 0 }); setFilters({}); setFilterMenu(null); setDd(null); }, [tabId]);
   useEffect(() => { handle.awareness.setLocalStateField('cell', { tab: tabId, r: sel.r, c: sel.c }); }, [handle, tabId, sel.r, sel.c]);
 
   // ── edits (every change is one transaction tagged LOCAL so Undo only undoes my own) ──
@@ -266,41 +331,74 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
 
   const range = (s: Sel) => ({ r1: Math.min(s.r, s.r2), r2: Math.max(s.r, s.r2), c1: Math.min(s.c, s.c2), c2: Math.max(s.c, s.c2) });
   const R = range(sel);
+  const forEachSel = (fn: (r: number, c: number) => void) => { for (let r = R.r1; r <= Math.min(R.r2, rows - 1); r++) for (let c = R.c1; c <= R.c2; c++) fn(r, c); };
 
-  const clearRange = () => { if (!tab) return; tx(() => { for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) tCells(tab.map).delete(cellKey(r, c)); }); };
-  const toggleBold = () => {
-    if (!tab) return;
-    const b = tBold(tab.map); const on = !b.get(cellKey(R.r1, R.c1));
-    tx(() => { for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) { if (on) b.set(cellKey(r, c), true); else b.delete(cellKey(r, c)); } });
+  const clearRange = () => { if (!tab) return; tx(() => forEachSel((r, c) => tCells(tab.map).delete(cellKey(r, c)))); };
+  const toggleBold = () => { if (!tab) return; const b = tBold(tab.map); const on = !b.get(cellKey(R.r1, R.c1)); tx(() => forEachSel((r, c) => { if (on) b.set(cellKey(r, c), true); else b.delete(cellKey(r, c)); })); };
+  const applyFmt = (patch: { [K in keyof CellFmt]?: CellFmt[K] | null }) => { tx(() => forEachSel((r, c) => patchFmt(ydoc, tabId, r, c, patch))); };
+  const toggleFmt = (k: 'i' | 'u' | 's') => { const on = !fmtOf(R.r1, R.c1)[k]; applyFmt({ [k]: on ? 1 : null }); };
+  const cur = fmtOf(sel.r, sel.c);
+  const boldOn = !!(tab && tBold(tab.map).get(cellKey(sel.r, sel.c)));
+  const setDecimals = (d: 1 | -1) => {
+    const v = evaluator.value(null, sel.r, sel.c);
+    const base = cur.dp ?? (cur.nf === 'pct' ? 0 : cur.nf === 'num' || cur.nf === 'cur' ? 2 : typeof v === 'number' ? (String(v).split('.')[1]?.length ?? 0) : 0);
+    applyFmt({ dp: Math.max(0, Math.min(8, base + d)), ...(cur.nf ? {} : { nf: 'plain' as const }) });
   };
+
+  // a display-index based cursor, so arrows skip rows a filter hides
+  const step = (r: number, dir: number) => { const i = idxOf(r); return rowAt((i < 0 ? 0 : i) + dir); };
   const moveTo = (r: number, c: number, extend = false) => {
     const rr = Math.max(0, Math.min(MAX_ROWS - 1, r)), cc = Math.max(0, Math.min(MAX_COLS - 1, c));
     setSel(s => (extend ? { ...s, r2: rr, c2: cc } : { r: rr, c: cc, r2: rr, c2: cc }));
-    // keep the cell in view
     const el = body.current; if (!el) return;
-    const top = rr * ROW_H, bottom = top + ROW_H, left = lefts[cc] ?? cc * DEF_W, right = left + (widths[cc] ?? DEF_W);
-    const frozenH = frozen * ROW_H;
-    if (rr >= frozen && top < el.scrollTop + frozenH) el.scrollTop = top - frozenH;
+    const i = Math.max(0, idxOf(rr));
+    const top = i * ROW_H, bottom = top + ROW_H, left = lefts[cc] ?? cc * DEF_W, right = left + (widths[cc] ?? DEF_W);
+    if (i >= frozen && top < el.scrollTop + frozenH) el.scrollTop = top - frozenH;
     else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
-    if (left < el.scrollLeft) el.scrollLeft = left; else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth;
+    if (cc >= fc) { if (left < el.scrollLeft + fcW) el.scrollLeft = left - fcW; else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth; }
   };
-  const startEdit = (r: number, c: number, text?: string) => { setEdit({ r, c, text: text ?? raw(r, c) }); };
+  const startEdit = (r: number, c: number, text?: string) => { const v = getValid(ydoc, tabId, r, c); if (v?.t === 'check' && text === undefined) { toggleCheck(r, c); return; } setEdit({ r, c, text: text ?? raw(r, c) }); };
+  const toggleCheck = (r: number, c: number) => { const on = /^true$/i.test(raw(r, c)); setCell(r, c, on ? 'FALSE' : 'TRUE'); };
   const commitEdit = (then?: 'down' | 'right' | 'stay') => {
-    const cur = editRef.current;
-    if (!cur) return;
-    const { r, c, text } = cur;
+    const e = editRef.current; if (!e) return;
+    const { r, c, text } = e;
     setEdit(null);
     if (text !== raw(r, c)) setCell(r, c, text);
-    if (then === 'down') moveTo(r + 1, c); else if (then === 'right') moveTo(r, c + 1);
+    if (then === 'down') moveTo(step(r, 1), c); else if (then === 'right') moveTo(r, c + 1);
     setTimeout(() => wrap.current?.focus(), 0);
   };
 
-  const gridText = (s: Sel) => { const x = range(s); const lines: string[] = []; for (let r = x.r1; r <= x.r2; r++) { const row: string[] = []; for (let c = x.c1; c <= x.c2; c++) row.push(raw(r, c)); lines.push(row.join('\t')); } return lines.join('\n'); };
+  // ── copy / cut / paste (formulas follow the move, formats come along) ──
+  const grabCells = (s: Sel): ClipCell[][] => {
+    const x = range(s); const out: ClipCell[][] = [];
+    for (let r = x.r1; r <= x.r2; r++) { const row: ClipCell[] = []; for (let c = x.c1; c <= x.c2; c++) row.push({ raw: raw(r, c), fmt: fmtMap(ydoc).get(mkey(tabId, r, c)) ?? '', bold: !!(tab && tBold(tab.map).get(cellKey(r, c))), valid: validMap(ydoc).get(mkey(tabId, r, c)) ?? '' }); out.push(row); }
+    return out;
+  };
+  const gridText = (cells: ClipCell[][]) => cells.map(row => row.map(x => (x.raw.startsWith('=') ? x.raw : x.raw)).join('\t')).join('\n');
+  const doCopy = (cut: boolean): string => {
+    const cells = grabCells(sel); const text = gridText(cells);
+    clip.current = { text, r1: R.r1, c1: R.c1, cells };
+    if (cut) clearRange();
+    return text;
+  };
   const paste = (text: string) => {
     if (!tab) return;
-    const lines = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').map(l => l.split('\t'));
+    const mine = clip.current && clip.current.text === text.replace(/\r\n?/g, '\n').replace(/\n$/, '') ? clip.current : null;
+    const lines = (mine ? mine.cells.map(row => row.map(x => x.raw)) : text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').map(l => l.split('\t')));
+    const dr = mine ? R.r1 - mine.r1 : 0, dc = mine ? R.c1 - mine.c1 : 0;
     tx(() => {
-      lines.forEach((cols, i) => cols.forEach((v, j) => { const r = R.r1 + i, c = R.c1 + j; if (r < MAX_ROWS && c < MAX_COLS) { const cells = tCells(tab.map), k = cellKey(r, c); if (v === '') cells.delete(k); else cells.set(k, v); } }));
+      lines.forEach((cols, i) => cols.forEach((v, j) => {
+        const r = R.r1 + i, c = R.c1 + j; if (r >= MAX_ROWS || c >= MAX_COLS) return;
+        const cells = tCells(tab.map), k = cellKey(r, c);
+        const val = mine && v.startsWith('=') ? shiftFormula(v, dr, dc) : v;
+        if (val === '') cells.delete(k); else cells.set(k, val);
+        if (mine) {
+          const src = mine.cells[i][j];
+          if (src.fmt) fmtMap(ydoc).set(mkey(tabId, r, c), src.fmt); else fmtMap(ydoc).delete(mkey(tabId, r, c));
+          if (src.valid) validMap(ydoc).set(mkey(tabId, r, c), src.valid); else validMap(ydoc).delete(mkey(tabId, r, c));
+          if (src.bold) tBold(tab.map).set(k, true); else tBold(tab.map).delete(k);
+        }
+      }));
       const lastR = R.r1 + lines.length - 1, lastC = R.c1 + Math.max(...lines.map(l => l.length)) - 1;
       if (lastR >= Number(tab.map.get('rows') ?? 100) - 1) tab.map.set('rows', Math.min(MAX_ROWS, lastR + 21));
       if (lastC >= Number(tab.map.get('ncols') ?? 12) - 1) tab.map.set('ncols', Math.min(MAX_COLS, lastC + 3));
@@ -308,42 +406,74 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     setSel({ r: R.r1, c: R.c1, r2: Math.min(MAX_ROWS - 1, R.r1 + lines.length - 1), c2: Math.min(MAX_COLS - 1, R.c1 + Math.max(...lines.map(l => l.length)) - 1) });
   };
 
+  // ── autofill (drag the little square) and Ctrl+D / Ctrl+R ──
+  const autofill = (src: { r1: number; c1: number; r2: number; c2: number }, to: { r: number; c: number }) => {
+    if (!tab) return;
+    const vertical = Math.abs(to.r - (to.r < src.r1 ? src.r1 : src.r2)) >= Math.abs(to.c - (to.c < src.c1 ? src.c1 : src.c2)) || (to.c >= src.c1 && to.c <= src.c2);
+    const sh = src.r2 - src.r1 + 1, sw = src.c2 - src.c1 + 1;
+    const fromR = vertical ? (to.r > src.r2 ? src.r2 + 1 : to.r < src.r1 ? to.r : src.r1) : src.r1, toR = vertical ? (to.r > src.r2 ? to.r : to.r < src.r1 ? src.r1 - 1 : src.r2) : src.r2;
+    const fromC = !vertical ? (to.c > src.c2 ? src.c2 + 1 : to.c < src.c1 ? to.c : src.c1) : src.c1, toC = !vertical ? (to.c > src.c2 ? to.c : to.c < src.c1 ? src.c1 - 1 : src.c2) : src.c2;
+    if (fromR > toR || fromC > toC || toR >= MAX_ROWS || toC >= MAX_COLS) return;
+    tx(() => {
+      const cells = tCells(tab.map), bold = tBold(tab.map);
+      const series = (line: Array<{ r: number; c: number }>) => {                       // 1, 2 → 3, 4, 5 …
+        const vals = line.map(p => raw(p.r, p.c));
+        if (line.length < 2 || vals.some(v => v === '' || Number.isNaN(Number(v)))) return null;
+        const n = vals.map(Number), d = n[1] - n[0];
+        return n.slice(1).every((x, i) => Math.abs(x - n[i] - d) < 1e-9) ? d : null;
+      };
+      for (let r = fromR; r <= toR; r++) for (let c = fromC; c <= toC; c++) {
+        const sr = vertical ? src.r1 + ((((r - src.r1) % sh) + sh) % sh) : r, sc = vertical ? c : src.c1 + ((((c - src.c1) % sw) + sw) % sw);
+        const line = vertical ? Array.from({ length: sh }, (_, i) => ({ r: src.r1 + i, c })) : Array.from({ length: sw }, (_, i) => ({ r, c: src.c1 + i }));
+        const step_ = series(line);
+        let v = raw(sr, sc);
+        if (step_ !== null && !v.startsWith('=')) { const base = vertical ? (r < src.r1 ? Number(raw(src.r1, c)) - step_ * (src.r1 - r) : Number(raw(src.r2, c)) + step_ * (r - src.r2)) : (c < src.c1 ? Number(raw(r, src.c1)) - step_ * (src.c1 - c) : Number(raw(r, src.c2)) + step_ * (c - src.c2)); v = String(Math.round(base * 1e9) / 1e9); }
+        else if (v.startsWith('=')) v = shiftFormula(v, r - sr, c - sc);
+        const k = cellKey(r, c); if (v === '') cells.delete(k); else cells.set(k, v);
+        const f = fmtMap(ydoc).get(mkey(tabId, sr, sc)); if (f) fmtMap(ydoc).set(mkey(tabId, r, c), f); else fmtMap(ydoc).delete(mkey(tabId, r, c));
+        const vr = validMap(ydoc).get(mkey(tabId, sr, sc)); if (vr) validMap(ydoc).set(mkey(tabId, r, c), vr); else validMap(ydoc).delete(mkey(tabId, r, c));
+        if (bold.get(cellKey(sr, sc))) bold.set(k, true); else bold.delete(k);
+      }
+      if (toR >= Number(tab.map.get('rows') ?? 100) - 1) tab.map.set('rows', Math.min(MAX_ROWS, toR + 21));
+    });
+    setSel({ r: Math.min(src.r1, fromR), c: Math.min(src.c1, fromC), r2: Math.max(src.r2, toR), c2: Math.max(src.c2, toC) });
+  };
+  const fillDir = (dir: 'down' | 'right') => { if (dir === 'down') autofill({ r1: R.r1, c1: R.c1, r2: R.r1, c2: R.c2 }, { r: R.r2, c: R.c2 }); else autofill({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c1 }, { r: R.r2, c: R.c2 }); };
+
+  // ── insert / delete / sort ──
   const shift = (axis: 'row' | 'col', at: number, delta: 1 | -1) => {
     if (!tab) return;
     tx(() => {
-      for (const m of [tCells(tab.map) as Y.Map<unknown>, tBold(tab.map) as Y.Map<unknown>]) {
-        const moves: Array<[string, string | null, unknown]> = [];
-        m.forEach((v, k) => {
-          const [r, c] = parseKey(k); const i = axis === 'row' ? r : c;
-          if (delta === 1 && i >= at) moves.push([k, axis === 'row' ? cellKey(r + 1, c) : cellKey(r, c + 1), v]);
-          if (delta === -1) { if (i === at) moves.push([k, null, v]); else if (i > at) moves.push([k, axis === 'row' ? cellKey(r - 1, c) : cellKey(r, c - 1), v]); }
-        });
-        moves.sort((a, b) => 0 + (delta === 1 ? (parseKey(b[0])[axis === 'row' ? 0 : 1] - parseKey(a[0])[axis === 'row' ? 0 : 1]) : (parseKey(a[0])[axis === 'row' ? 0 : 1] - parseKey(b[0])[axis === 'row' ? 0 : 1])));
-        for (const [k] of moves) m.delete(k);
-        for (const [, to, v] of moves) if (to) m.set(to, v);
-      }
+      moveKeys(tCells(tab.map) as Y.Map<unknown>, axis, at, delta); moveKeys(tBold(tab.map) as Y.Map<unknown>, axis, at, delta);
+      shiftMeta(ydoc, tabId, axis, at, delta);
+      for (const t of tabs) { const cm = tCells(t.map); cm.forEach((v, k) => { if (v.startsWith('=')) { const nv = adjustFormula(v, t.name, tab.name, axis, at, delta); if (nv !== v) cm.set(k, nv); } }); }
       if (axis === 'row') tab.map.set('rows', Math.min(MAX_ROWS, Math.max(30, rows + delta)));
       else tab.map.set('ncols', Math.min(MAX_COLS, Math.max(6, ncols + delta)));
     });
   };
+  const insertMany = (axis: 'row' | 'col', at: number, n: number) => { for (let i = 0; i < n; i++) shift(axis, at, 1); };
+  const deleteMany = (axis: 'row' | 'col', from: number, to: number) => { for (let i = to; i >= from; i--) shift(axis, i, -1); setSel(s => ({ ...s, r2: s.r, c2: s.c })); };
 
   const sortBy = (c: number, dir: 1 | -1) => {
     if (!tab) return;
+    const head = filtersOn ? hdrRows : frozen;
     let last = -1; tCells(tab.map).forEach((v, k) => { if (v !== '') last = Math.max(last, parseKey(k)[0]); });
-    const body_: Array<{ r: number; key: string | number }> = [];
-    for (let r = frozen; r <= last; r++) { const v = evaluator.value(null, r, c); body_.push({ r, key: v instanceof SheetError ? String(v) : typeof v === 'number' ? v : (v ?? '') === '' ? '￿' : String(v).toLowerCase() }); }
+    const list: Array<{ r: number; key: string | number }> = [];
+    for (let r = head; r <= last; r++) { const v = evaluator.value(null, r, c); list.push({ r, key: v instanceof SheetError ? String(v) : typeof v === 'number' ? v : (v ?? '') === '' ? '￿' : String(v).toLowerCase() }); }
     const blank = (x: { key: string | number }) => x.key === '￿';
-    body_.sort((a, b) => (blank(a) ? 1 : blank(b) ? -1 : (typeof a.key === 'number' && typeof b.key === 'number' ? a.key - b.key : String(a.key).localeCompare(String(b.key), undefined, { numeric: true })) * dir));
+    list.sort((a, b) => (blank(a) ? 1 : blank(b) ? -1 : (typeof a.key === 'number' && typeof b.key === 'number' ? a.key - b.key : String(a.key).localeCompare(String(b.key), undefined, { numeric: true })) * dir));
     tx(() => {
       const cells = tCells(tab.map), bold = tBold(tab.map);
-      const snap = new Map<string, { v: string; b: boolean }>();
-      for (const { r } of body_) for (let cc = 0; cc < ncols; cc++) { const k = cellKey(r, cc); snap.set(k, { v: cells.get(k) ?? '', b: !!bold.get(k) }); }
-      body_.forEach(({ r: from }, i) => {
-        const to = frozen + i;
+      const snap = new Map<string, { v: string; b: boolean; f?: string; vr?: string; n?: string }>();
+      for (const { r } of list) for (let cc = 0; cc < ncols; cc++) { const k = cellKey(r, cc); snap.set(k, { v: cells.get(k) ?? '', b: !!bold.get(k), f: fmtMap(ydoc).get(mkey(tabId, r, cc)), vr: validMap(ydoc).get(mkey(tabId, r, cc)), n: notesMap(ydoc).get(mkey(tabId, r, cc)) }); }
+      list.forEach(({ r: from }, i) => {
+        const to = head + i;
         for (let cc = 0; cc < ncols; cc++) {
           const s = snap.get(cellKey(from, cc))!, k = cellKey(to, cc);
-          if (s.v === '') cells.delete(k); else cells.set(k, s.v);
+          const val = s.v.startsWith('=') ? shiftFormula(s.v, to - from, 0) : s.v;
+          if (val === '') cells.delete(k); else cells.set(k, val);
           if (s.b) bold.set(k, true); else bold.delete(k);
+          for (const [m, x] of [[fmtMap(ydoc), s.f], [validMap(ydoc), s.vr], [notesMap(ydoc), s.n]] as Array<[Y.Map<string>, string | undefined]>) { if (x) m.set(mkey(tabId, to, cc), x); else m.delete(mkey(tabId, to, cc)); }
         }
       });
     });
@@ -355,32 +485,33 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     tx(() => { tabsMap(ydoc).set(id, newTabMap(name, (tabs[tabs.length - 1]?.order ?? 0) + 1)); });
     setActiveId(id); setSel({ r: 0, c: 0, r2: 0, c2: 0 });
   };
-  const renameTab = (id: string, name: string) => { const t = tabs.find(x => x.id === id); const n = name.trim().slice(0, 60); if (!t || !n || n === t.name) return; if (tabs.some(x => x.id !== id && x.name.toLowerCase() === n.toLowerCase())) { onToast('Another tab already has that name'); return; } tx(() => t.map.set('name', n)); };
-  const deleteTab = (id: string) => { if (tabs.length < 2) { onToast('A spreadsheet needs at least one tab'); return; } tx(() => tabsMap(ydoc).delete(id)); if (activeId === id) setActiveId(null); };
-  const moveTab = (id: string, dir: -1 | 1) => {
-    const i = tabs.findIndex(t => t.id === id), j = i + dir; if (i < 0 || j < 0 || j >= tabs.length) return;
-    tx(() => { tabs.forEach((t, k) => t.map.set('order', k === i ? j : k === j ? i : k)); });
+  const renameTab = (id: string, name: string) => {
+    const t = tabs.find(x => x.id === id); const n = name.trim().slice(0, 60); if (!t || !n || n === t.name) return;
+    if (tabs.some(x => x.id !== id && x.name.toLowerCase() === n.toLowerCase())) { onToast('Another tab already has that name'); return; }
+    tx(() => { t.map.set('name', n); for (const x of tabs) { const cm = tCells(x.map); cm.forEach((v, k) => { if (v.startsWith('=')) { const nv = renameTabRefs(v, t.name, n); if (nv !== v) cm.set(k, nv); } }); } });
   };
+  const deleteTab = (id: string) => { if (tabs.length < 2) { onToast('A spreadsheet needs at least one tab'); return; } if (!window.confirm('Delete this tab and everything on it?')) return; tx(() => tabsMap(ydoc).delete(id)); if (activeId === id) setActiveId(null); };
+  const moveTab = (id: string, dir: -1 | 1) => { const i = tabs.findIndex(t => t.id === id), j = i + dir; if (i < 0 || j < 0 || j >= tabs.length) return; tx(() => { tabs.forEach((t, k) => t.map.set('order', k === i ? j : k === j ? i : k)); }); };
   const dupTab = (id: string) => {
     const t = tabs.find(x => x.id === id); if (!t) return;
-    const nid = newId(), m = newTabMap(`${t.name} copy`.slice(0, 60), (tabs[tabs.length - 1]?.order ?? 0) + 1, Number(t.map.get('rows') ?? 100), Number(t.map.get('ncols') ?? 12), Number(t.map.get('frozen') ?? 0));
-    tx(() => { tabsMap(ydoc).set(nid, m); tCells(t.map).forEach((v, k) => tCells(m).set(k, v)); tBold(t.map).forEach((v, k) => tBold(m).set(k, v)); tCols(t.map).forEach((v, k) => tCols(m).set(k, v)); });
+    const nid = newId(), m = cloneTabMap(t.map); m.set('name', `${t.name} copy`.slice(0, 60)); m.set('order', (tabs[tabs.length - 1]?.order ?? 0) + 1); m.delete('feed');
+    tx(() => { tabsMap(ydoc).set(nid, m); for (const mp of [fmtMap(ydoc), validMap(ydoc), notesMap(ydoc)]) mp.forEach((v, k) => { if (k.startsWith(id + '|')) mp.set(nid + k.slice(id.length), v); }); });
     setActiveId(nid);
   };
 
   // ── export ──
-  const shown = (t: TabInfo) => { const ev = new Evaluator((tn, r, c) => (tabs.find(x => x.name === tn)?.map.get('cells') as Y.Map<string> | undefined)?.get(cellKey(r, c)) ?? '', t.name); return (r: number, c: number) => displayVal(ev.value(null, r, c)); };
   const download = async (kind: 'csv' | 'xlsx') => {
     if (!tab) return;
     const base = (title || 'spreadsheet').replace(/[^\w\- ]+/g, '').trim() || 'spreadsheet';
+    const textOf = (t: TabInfo) => { const ev = new Evaluator((tn, r, c) => (tabs.find(x => x.name === tn)?.map.get('cells') as Y.Map<string> | undefined)?.get(cellKey(r, c)) ?? '', t.name); return (r: number, c: number) => { const s = fmtMap(ydoc).get(mkey(t.id, r, c)); let f: CellFmt = {}; try { f = s ? JSON.parse(s) : {}; } catch { /* plain */ } return formatVal(ev.value(null, r, c), f); }; };
     try {
       if (kind === 'csv') {
-        const csv = tabGrid(tab.map, shown(tab)).map(r => r.map(csvEscape).join(',')).join('\n');
+        const csv = tabGrid(tab.map, textOf(tab)).map(r => r.map(csvEscape).join(',')).join('\n');
         const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = `${base} - ${tab.name}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       } else {
         const XLSX = await import('xlsx');
         const wb = XLSX.utils.book_new();
-        for (const t of tabs) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tabGrid(t.map, shown(t)).map(r => r.map(v => (v !== '' && !Number.isNaN(Number(v)) ? Number(v) : v)))), t.name.slice(0, 31).replace(/[\\/?*[\]:]/g, ' '));
+        for (const t of tabs) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tabGrid(t.map, textOf(t)).map(r => r.map(v => (v !== '' && !Number.isNaN(Number(v.replace(/,/g, ''))) && !/^0\d/.test(v) ? Number(v.replace(/,/g, '')) : v)))), t.name.slice(0, 31).replace(/[\\/?*[\]:]/g, ' '));
         XLSX.writeFile(wb, `${base}.xlsx`);
       }
     } catch { onToast('Could not make that download'); }
@@ -400,7 +531,6 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     } catch (e) { if (!quiet) onToast((e as Error).message); }
     finally { setRefreshing(false); }
   }, [ydoc, docId, authToken, tx, onToast]);
-  // Opening the sheet (and every 5 minutes while it stays open) pulls fresh CRM rows into its feed tabs.
   const feedTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   useEffect(() => {
     const t = setTimeout(() => {
@@ -411,27 +541,63 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     return () => { clearTimeout(t); clearInterval(feedTimer.current); };
   }, [ydoc, refreshFeed]);
 
+  // ── find & replace ──
+  const matches = useMemo(() => {
+    if (!find || !find.q || !tab) return [] as Array<{ r: number; c: number }>;
+    const q = find.q.toLowerCase(); const out: Array<{ r: number; c: number }> = [];
+    tCells(tab.map).forEach((v, k) => { if (v === '') return; const [r, c] = parseKey(k); const t = v.startsWith('=') ? shown(r, c) + ' ' + v : v; if (t.toLowerCase().includes(q)) out.push({ r, c }); });
+    return out.sort((a, b) => a.r - b.r || a.c - b.c);
+  }, [find?.q, tab, version, evaluator]); // eslint-disable-line react-hooks/exhaustive-deps
+  const matchSet = useMemo(() => new Set(matches.map(m => cellKey(m.r, m.c))), [matches]);
+  const goMatch = (i: number) => { if (!matches.length) return; const k = ((i % matches.length) + matches.length) % matches.length; setFind(f => (f ? { ...f, idx: k } : f)); moveTo(matches[k].r, matches[k].c); };
+  const replaceOne = () => { if (!find || !matches.length) return; const m = matches[find.idx % matches.length]; const v = raw(m.r, m.c); setCell(m.r, m.c, v.replace(new RegExp(find.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), find.rep)); };
+  const replaceAll = () => { if (!find || !tab || !matches.length) return; const re = new RegExp(find.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'); tx(() => { for (const m of matches) { const v = raw(m.r, m.c); tCells(tab.map).set(cellKey(m.r, m.c), v.replace(re, find.rep)); } }); onToast(`Replaced in ${matches.length} cell${matches.length === 1 ? '' : 's'}`); };
+
   // ── pointer + keyboard ──
   const cellAt = (clientX: number, clientY: number): { r: number; c: number } | null => {
     const el = body.current; if (!el) return null;
     const b = el.getBoundingClientRect();
     const x = clientX - b.left, y = clientY - b.top;
     if (x < 0 || y < 0) return null;
-    const yy = y < frozen * ROW_H ? y : y + el.scrollTop, xx = x + el.scrollLeft;
+    const yy = y < frozenH ? y : y + el.scrollTop, xx = x < fcW ? x : x + el.scrollLeft;
     let c = 0; while (c < ncols - 1 && lefts[c + 1] <= xx) c++;
-    return { r: Math.min(rows - 1, Math.max(0, Math.floor(yy / ROW_H))), c };
+    return { r: rowAt(Math.floor(yy / ROW_H)), c };
   };
   const onMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    setCtx(null); setDd(null);
     if (edit) commitEdit('stay');
     const p = cellAt(e.clientX, e.clientY); if (!p) return;
+    const v = getValid(ydoc, tabId, p.r, p.c);
+    if (filtersOn && p.r === 0) {   // the little ▾ at the right of a header cell opens its filter
+      const rect = body.current!.getBoundingClientRect(); const cx = (p.c < fc ? lefts[p.c + 1] : lefts[p.c + 1] - scroll.left) + rect.left;
+      if (e.clientX > cx - 22) { setFilterMenu({ c: p.c, q: '' }); setSel({ r: p.r, c: p.c, r2: p.r, c2: p.c }); wrap.current?.focus(); return; }
+    }
+    if (v?.t === 'check' && !e.shiftKey) { toggleCheck(p.r, p.c); setSel({ r: p.r, c: p.c, r2: p.r, c2: p.c }); wrap.current?.focus(); return; }
+    if (v?.t === 'list' && !e.shiftKey && sel.r === p.r && sel.c === p.c && sel.r2 === p.r && sel.c2 === p.c) { setDd({ r: p.r, c: p.c }); return; }
+    if ((e.metaKey || e.ctrlKey) && LINK.test(shown(p.r, p.c))) { const t = shown(p.r, p.c); window.open(t.includes('@') && !/^https?:/.test(t) ? `mailto:${t}` : t, '_blank', 'noopener'); return; }
     if (e.shiftKey) setSel(s => ({ ...s, r2: p.r, c2: p.c })); else setSel({ r: p.r, c: p.c, r2: p.r, c2: p.c });
     dragging.current = true; wrap.current?.focus();
     const up = () => { dragging.current = false; window.removeEventListener('mouseup', up); };
     window.addEventListener('mouseup', up);
   };
   const onMouseMove = (e: React.MouseEvent) => { if (!dragging.current) return; const p = cellAt(e.clientX, e.clientY); if (p) setSel(s => (s.r2 === p.r && s.c2 === p.c ? s : { ...s, r2: p.r, c2: p.c })); };
-  const onDouble = (e: React.MouseEvent) => { const p = cellAt(e.clientX, e.clientY); if (p) startEdit(p.r, p.c); };
+  const onDouble = (e: React.MouseEvent) => { const p = cellAt(e.clientX, e.clientY); if (p && getValid(ydoc, tabId, p.r, p.c)?.t !== 'check') startEdit(p.r, p.c); };
+  const onContext = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const p = cellAt(e.clientX, e.clientY); if (!p) return;
+    const inside = p.r >= R.r1 && p.r <= R.r2 && p.c >= R.c1 && p.c <= R.c2;
+    if (!inside) setSel({ r: p.r, c: p.c, r2: p.r, c2: p.c });
+    setCtx({ x: e.clientX, y: e.clientY, r: p.r, c: p.c });
+  };
+
+  const beginFill = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const src = { ...R };
+    const move = (ev: MouseEvent) => { const p = cellAt(ev.clientX, ev.clientY); if (p) setFill(p); };
+    const up = (ev: MouseEvent) => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); const p = cellAt(ev.clientX, ev.clientY); setFill(null); if (p && (p.r > src.r2 || p.r < src.r1 || p.c > src.c2 || p.c < src.c1)) autofill(src, p); };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const open = editRef.current;
@@ -445,63 +611,94 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
       return;
     }
     const mod = e.metaKey || e.ctrlKey;
-    if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) undo.redo(); else undo.undo(); return; }
-    if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); undo.redo(); return; }
-    if (mod && e.key.toLowerCase() === 'b') { e.preventDefault(); toggleBold(); return; }
-    if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); setSel({ r: 0, c: 0, r2: rows - 1, c2: ncols - 1 }); return; }
+    const k = e.key.toLowerCase();
+    if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) undo.redo(); else undo.undo(); return; }
+    if (mod && k === 'y') { e.preventDefault(); undo.redo(); return; }
+    if (mod && k === 'b') { e.preventDefault(); toggleBold(); return; }
+    if (mod && k === 'i') { e.preventDefault(); toggleFmt('i'); return; }
+    if (mod && k === 'u') { e.preventDefault(); toggleFmt('u'); return; }
+    if (mod && e.shiftKey && k === 'x') { e.preventDefault(); toggleFmt('s'); return; }
+    if (mod && k === 'a') { e.preventDefault(); setSel({ r: 0, c: 0, r2: rows - 1, c2: ncols - 1 }); return; }
+    if (mod && k === 'f') { e.preventDefault(); setFind(f => f ?? { q: '', rep: '', idx: 0, replace: false }); return; }
+    if (mod && k === 'h') { e.preventDefault(); setFind(f => ({ q: f?.q ?? '', rep: f?.rep ?? '', idx: 0, replace: true })); return; }
+    if (mod && k === 'd') { e.preventDefault(); fillDir('down'); return; }
+    if (mod && k === 'r') { e.preventDefault(); fillDir('right'); return; }
     if (mod) return; // copy / cut / paste are handled by their own events
     const ext = e.shiftKey;
+    const cr = ext ? sel.r2 : sel.r, cc = ext ? sel.c2 : sel.c;
     switch (e.key) {
-      case 'ArrowDown': e.preventDefault(); moveTo((ext ? sel.r2 : sel.r) + 1, ext ? sel.c2 : sel.c, ext); return;
-      case 'ArrowUp': e.preventDefault(); moveTo((ext ? sel.r2 : sel.r) - 1, ext ? sel.c2 : sel.c, ext); return;
-      case 'ArrowLeft': e.preventDefault(); moveTo(ext ? sel.r2 : sel.r, (ext ? sel.c2 : sel.c) - 1, ext); return;
-      case 'ArrowRight': e.preventDefault(); moveTo(ext ? sel.r2 : sel.r, (ext ? sel.c2 : sel.c) + 1, ext); return;
+      case 'ArrowDown': e.preventDefault(); moveTo(step(cr, 1), cc, ext); return;
+      case 'ArrowUp': e.preventDefault(); moveTo(step(cr, -1), cc, ext); return;
+      case 'ArrowLeft': e.preventDefault(); moveTo(cr, cc - 1, ext); return;
+      case 'ArrowRight': e.preventDefault(); moveTo(cr, cc + 1, ext); return;
       case 'Tab': e.preventDefault(); moveTo(sel.r, sel.c + (e.shiftKey ? -1 : 1)); return;
       case 'Enter': e.preventDefault(); startEdit(sel.r, sel.c); return;
       case 'F2': e.preventDefault(); startEdit(sel.r, sel.c); return;
+      case ' ': if (getValid(ydoc, tabId, sel.r, sel.c)?.t === 'check') { e.preventDefault(); toggleCheck(sel.r, sel.c); return; } break;
       case 'Delete': case 'Backspace': e.preventDefault(); clearRange(); return;
       case 'Home': e.preventDefault(); moveTo(sel.r, 0); return;
-      case 'PageDown': e.preventDefault(); moveTo(sel.r + 20, sel.c); return;
-      case 'PageUp': e.preventDefault(); moveTo(sel.r - 20, sel.c); return;
-      case 'Escape': setSel(s => ({ ...s, r2: s.r, c2: s.c })); return;
+      case 'PageDown': e.preventDefault(); moveTo(step(sel.r, 20), sel.c); return;
+      case 'PageUp': e.preventDefault(); moveTo(step(sel.r, -20), sel.c); return;
+      case 'Escape': setSel(s => ({ ...s, r2: s.r, c2: s.c })); setFind(null); setCtx(null); return;
     }
     if (e.key.length === 1 && !e.altKey) { e.preventDefault(); startEdit(sel.r, sel.c, e.key); }
   };
 
   // ── drawing ──
   const bold = tab ? tBold(tab.map) : null;
-  const firstRow = Math.max(frozen, Math.floor(scroll.top / ROW_H) - 3);
-  const lastRow = Math.min(rows - 1, Math.floor((scroll.top + box.h) / ROW_H) + 3);
+  const firstI = Math.max(Math.min(frozen, nRows), Math.floor(scroll.top / ROW_H) - 3);
+  const lastI = Math.min(nRows - 1, Math.floor((scroll.top + box.h) / ROW_H) + 3);
+  const visI = (a: number, b: number) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);
   let c0 = 0; while (c0 < ncols - 1 && lefts[c0 + 1] < scroll.left) c0++;
   let c1 = c0; while (c1 < ncols - 1 && lefts[c1] < scroll.left + box.w) c1++;
+  const bodyCols = visI(Math.max(c0, fc), c1);
+  const frozenCols = visI(0, fc - 1);
+  const curMatch = find && matches.length ? matches[find.idx % matches.length] : null;
 
-  const cell = (r: number, c: number, top: number) => {
-    const v = evaluator.value(null, r, c);
-    const isNum = typeof v === 'number', isErr = v instanceof SheetError;
-    const inSel = r >= R.r1 && r <= R.r2 && c >= R.c1 && c <= R.c2;
-    const text = displayVal(v);
-    const isActive = r === sel.r && c === sel.c;
-    if (!text && !inSel && !bold?.get(cellKey(r, c))) return <div key={`${r}:${c}`} style={{ position: 'absolute', top, left: lefts[c], width: widths[c], height: ROW_H, borderRight: '1px solid var(--k-e5e7eb)', borderBottom: '1px solid var(--k-e5e7eb)', boxSizing: 'border-box' }} />;
+  const paint = (i: number, c: number) => {
+    const r = rowAt(i);
+    const key = cellKey(r, c);
+    const f = fmtOf(r, c), v = evaluator.value(null, r, c);
+    const valid = getValid(ydoc, tabId, r, c) as ValidRule | undefined;
+    const note = notesMap(ydoc).get(mkey(tabId, r, c));
+    const isCheck = valid?.t === 'check';
+    const text = isCheck ? (v === true ? '☑' : '☐') : formatVal(v, f);
+    let cbg: string | undefined, cfg: string | undefined, cb = false;
+    for (const rule of rules) if (r >= rule.r1 && r <= rule.r2 && c >= rule.c1 && c <= rule.c2 && condMatch(v, rule.op as CondOp, rule.val)) { cbg = rule.bg ?? cbg; cfg = rule.fg ?? cfg; cb = cb || !!rule.b; }
+    const inSel = r >= R.r1 && r <= R.r2 && c >= R.c1 && c <= R.c2 && !(r === sel.r && c === sel.c);
+    const isNum = typeof v === 'number' && f.nf !== 'text';
+    const al = f.al ?? (isCheck ? 'c' : isNum || (f.nf === 'date' && typeof v === 'number') ? 'r' : 'l');
+    const link = !isCheck && typeof v === 'string' && LINK.test(v);
+    const hit = matchSet.has(key);
+    const isHdr = filtersOn && r === 0;
+    const bgc = hit ? (curMatch && curMatch.r === r && curMatch.c === c ? '#ffd966' : '#fff2a8') : cbg ?? f.bg ?? (r < frozen ? 'var(--k-f9fafb)' : 'var(--k-fff)');
     return (
-      <div key={`${r}:${c}`} style={{
-        position: 'absolute', top, left: lefts[c], width: widths[c], height: ROW_H, boxSizing: 'border-box', padding: '0 6px', lineHeight: `${ROW_H - 1}px`, fontSize: 13,
-        overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', textAlign: isNum ? 'right' : 'left', fontWeight: bold?.get(cellKey(r, c)) || (frozen > 0 && r < frozen) ? 700 : 400,
-        color: isErr ? 'var(--k-dc2626)' : 'var(--k-1a1a1a)', borderRight: '1px solid var(--k-e5e7eb)', borderBottom: '1px solid var(--k-e5e7eb)',
-        background: inSel && !isActive ? 'rgba(201,146,44,.14)' : frozen > 0 && r < frozen ? 'var(--k-f9fafb)' : 'var(--k-fff)',
-      }}>{text}</div>
+      <div key={key} title={note ? (JSON.parse(note) as NoteInfo).t : undefined} style={{
+        position: 'absolute', top: i * ROW_H, left: lefts[c], width: widths[c], height: ROW_H, boxSizing: 'border-box', padding: '0 6px', lineHeight: `${ROW_H - 1}px`, fontSize: 13,
+        overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', textAlign: al === 'r' ? 'right' : al === 'c' ? 'center' : 'left',
+        fontWeight: bold?.get(key) || cb || r < frozen ? 700 : 400, fontStyle: f.i ? 'italic' : undefined, textDecoration: [f.u || link ? 'underline' : '', f.s ? 'line-through' : ''].filter(Boolean).join(' ') || undefined,
+        color: v instanceof SheetError ? 'var(--k-dc2626)' : link ? '#1a56db' : cfg ?? f.fg ?? 'var(--k-1a1a1a)', cursor: link ? 'pointer' : undefined,
+        borderRight: '1px solid var(--k-e5e7eb)', borderBottom: '1px solid var(--k-e5e7eb)', background: bgc,
+        backgroundImage: inSel ? 'linear-gradient(rgba(201,146,44,.16),rgba(201,146,44,.16))' : undefined, paddingRight: isHdr ? 22 : 6,
+      }}>
+        {text}
+        {note && <span style={{ position: 'absolute', top: 0, right: 0, width: 0, height: 0, borderLeft: '7px solid transparent', borderTop: '7px solid #dc2626' }} />}
+        {isHdr && <span style={{ position: 'absolute', right: 4, top: 0, fontSize: 10, color: (filters[c]?.length ?? 0) ? '#a06a12' : 'var(--k-9ca3af)', fontWeight: 400 }}>{(filters[c]?.length ?? 0) ? '◆' : '▾'}</span>}
+      </div>
     );
   };
 
+  const sx = (c: number) => (c < fc ? lefts[c] : lefts[c] - scroll.left);
+  const sy = (i: number) => (i < frozen ? i * ROW_H : i * ROW_H - scroll.top);
+  const iA = Math.max(0, idxOf(R.r1)), iB = Math.max(0, idxOf(R.r2));
+  const selBox = { top: sy(Math.min(iA, iB)), left: sx(R.c1), width: lefts[R.c2 + 1] - lefts[R.c1], height: (Math.abs(iB - iA) + 1) * ROW_H };
+  const act = { top: sy(Math.max(0, idxOf(sel.r))), left: sx(sel.c), w: widths[sel.c] ?? DEF_W };
   const peerBoxes = peers.filter(p => p.cell && p.cell.tab === tabId).map((p, i) => {
-    const { r, c } = p.cell!; if (r >= rows || c >= ncols) return null;
-    const top = (r < frozen ? r * ROW_H : r * ROW_H - scroll.top), left = lefts[c] - scroll.left;
-    return <div key={i} style={{ position: 'absolute', top, left, width: widths[c], height: ROW_H, border: `2px solid ${p.color}`, boxSizing: 'border-box', pointerEvents: 'none', zIndex: 3 }}>
+    const { r, c } = p.cell!; if (r >= rows || c >= ncols || idxOf(r) < 0) return null;
+    return <div key={i} style={{ position: 'absolute', top: sy(idxOf(r)), left: sx(c), width: widths[c], height: ROW_H, border: `2px solid ${p.color}`, boxSizing: 'border-box', pointerEvents: 'none', zIndex: 3 }}>
       <span style={{ position: 'absolute', top: -15, left: -2, background: p.color, color: '#fff', fontSize: 10, padding: '0 4px', borderRadius: 3, whiteSpace: 'nowrap' }}>{p.name}</span>
     </div>;
   });
-
-  const selTop = sel.r < frozen ? sel.r * ROW_H : sel.r * ROW_H - scroll.top;
-  const selBox = { top: Math.min(selTop, (R.r1 < frozen ? R.r1 * ROW_H : R.r1 * ROW_H - scroll.top)), left: lefts[R.c1] - scroll.left, width: lefts[R.c2 + 1] - lefts[R.c1], height: (R.r2 - R.r1 + 1) * ROW_H };
 
   const beginResize = (c: number, e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -510,36 +707,90 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   };
+  const autoFit = (c: number) => { if (!tab) return; let m = colName(c).length; for (let r = 0; r < Math.min(rows, 400); r++) m = Math.max(m, shown(r, c).length); tx(() => tCols(tab.map).set(String(c), Math.max(MIN_W, Math.min(520, Math.round(m * 7.4 + 22))))); };
 
   const activeRaw = edit ? edit.text : bar ?? raw(sel.r, sel.c);
   const hasFeed = tab ? !!tab.map.get('feed') : false;
-  const tb: React.CSSProperties = { ...btnStyle(isMobile), height: isMobile ? 36 : 28, padding: '0 10px', fontSize: 13 };
+  const tb: React.CSSProperties = { ...btnStyle(isMobile), height: isMobile ? 36 : 28, padding: '0 9px', fontSize: 13, minWidth: 30 };
+  const on = (b: boolean): React.CSSProperties => ({ ...tb, background: b ? 'var(--k-fdf6e9)' : tb.background, color: b ? '#a06a12' : tb.color });
+  const sep = <span style={{ width: 1, height: 20, background: 'var(--k-e5e7eb)', margin: '0 3px', flexShrink: 0 }} />;
+  const selValid = getValid(ydoc, tabId, sel.r, sel.c);
+  const selNote = getNote(ydoc, tabId, sel.r, sel.c);
 
   if (!tab) return <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Opening…</div>;
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)' }}>
       {/* toolbar */}
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '6px 10px', borderBottom: '1px solid var(--k-e5e7eb)', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '5px 10px', borderBottom: '1px solid var(--k-e5e7eb)', overflowX: 'auto', flexWrap: 'nowrap' }}>
         <button type="button" style={tb} onClick={() => undo.undo()} title="Undo (Ctrl+Z)">↶</button>
         <button type="button" style={tb} onClick={() => undo.redo()} title="Redo (Ctrl+Y)">↷</button>
-        <button type="button" style={{ ...tb, fontWeight: 800 }} onClick={toggleBold} title="Bold (Ctrl+B)">B</button>
-        <button type="button" style={tb} onClick={() => tx(() => tab.map.set('frozen', frozen ? 0 : 1))} title="Keep the first row visible while scrolling">{frozen ? '☑' : '☐'} Header row</button>
-        <button type="button" style={tb} onClick={() => sortBy(sel.c, 1)} title="Sort rows by this column, A → Z">A→Z</button>
-        <button type="button" style={tb} onClick={() => sortBy(sel.c, -1)} title="Sort rows by this column, Z → A">Z→A</button>
-        <button type="button" style={tb} onClick={() => shift('row', R.r2 + 1, 1)} title="Insert a row below">＋ Row</button>
-        <button type="button" style={tb} onClick={() => { if (R.r1 === R.r2) shift('row', R.r1, -1); else onToast('Select one row to delete'); }} title="Delete the selected row">－ Row</button>
-        <button type="button" style={tb} onClick={() => shift('col', R.c2 + 1, 1)} title="Insert a column to the right">＋ Col</button>
-        <button type="button" style={tb} onClick={() => { if (R.c1 === R.c2) shift('col', R.c1, -1); else onToast('Select one column to delete'); }} title="Delete the selected column">－ Col</button>
+        {sep}
+        <Pop title="Number format" style={tb} label={<>{cur.nf === 'cur' ? '$' : cur.nf === 'pct' ? '%' : cur.nf === 'date' ? '📅' : cur.nf === 'num' ? '123' : cur.nf === 'text' ? 'Aa' : '123'} ▾</>}>
+          {close => (<>
+            {([[undefined, 'Automatic'], ['num', 'Number  1,234.56'], ['cur', 'Currency  $1,234.56'], ['pct', 'Percent  12%'], ['date', 'Date  10/14/2026'], ['text', 'Plain text']] as Array<[CellFmt['nf'], string]>).map(([nf, label]) => (
+              <Item key={label} checked={(cur.nf ?? undefined) === nf} onClick={() => { applyFmt({ nf: nf ?? null, dp: null }); close(); }}>{label}</Item>
+            ))}
+          </>)}
+        </Pop>
+        <button type="button" style={tb} onClick={() => setDecimals(-1)} title="Fewer decimal places">.0←</button>
+        <button type="button" style={tb} onClick={() => setDecimals(1)} title="More decimal places">.00→</button>
+        {sep}
+        <button type="button" style={{ ...on(boldOn), fontWeight: 800 }} onClick={toggleBold} title="Bold (Ctrl+B)">B</button>
+        <button type="button" style={{ ...on(!!cur.i), fontStyle: 'italic' }} onClick={() => toggleFmt('i')} title="Italic (Ctrl+I)">I</button>
+        <button type="button" style={{ ...on(!!cur.u), textDecoration: 'underline' }} onClick={() => toggleFmt('u')} title="Underline (Ctrl+U)">U</button>
+        <button type="button" style={{ ...on(!!cur.s), textDecoration: 'line-through' }} onClick={() => toggleFmt('s')} title="Strikethrough (Ctrl+Shift+X)">S</button>
+        <Pop title="Text color" style={tb} label={<span style={{ borderBottom: `3px solid ${cur.fg ?? '#000'}`, lineHeight: 1 }}>A</span>}>{close => <Palette onPick={c => { applyFmt({ fg: c }); close(); }} onClear={() => { applyFmt({ fg: null }); close(); }} clearLabel="Default text color" />}</Pop>
+        <Pop title="Fill color" style={tb} label={<span style={{ display: 'inline-block', width: 14, height: 14, background: cur.bg ?? 'transparent', border: '1px solid #9ca3af', borderRadius: 3, verticalAlign: 'middle' }} />}>{close => <Palette onPick={c => { applyFmt({ bg: c }); close(); }} onClear={() => { applyFmt({ bg: null }); close(); }} clearLabel="No fill" />}</Pop>
+        <Pop title="Align" style={tb} label={<>{cur.al === 'c' ? '≡' : cur.al === 'r' ? '☰' : '☷'} ▾</>}>
+          {close => (<>{([['l', 'Left'], ['c', 'Center'], ['r', 'Right']] as Array<['l' | 'c' | 'r', string]>).map(([a, l]) => <Item key={a} checked={cur.al === a} onClick={() => { applyFmt({ al: a }); close(); }}>{l}</Item>)}<Item onClick={() => { applyFmt({ al: null }); close(); }}>Automatic</Item></>)}
+        </Pop>
+        {sep}
+        <Pop title="Freeze rows and columns" style={tb} label={<>❄ ▾</>} active={frozen > 0 || fc > 0}>
+          {close => (<>
+            <Item checked={frozen === 0} onClick={() => { tx(() => tab.map.set('frozen', 0)); close(); }}>No frozen rows</Item>
+            <Item checked={frozen === 1} onClick={() => { tx(() => tab.map.set('frozen', 1)); close(); }}>1 row</Item>
+            <Item checked={frozen === 2} onClick={() => { tx(() => tab.map.set('frozen', 2)); close(); }}>2 rows</Item>
+            <Item onClick={() => { tx(() => tab.map.set('frozen', sel.r + 1)); close(); }}>Up to row {sel.r + 1}</Item>
+            <Divider />
+            <Item checked={fc === 0} onClick={() => { tx(() => tab.map.set('frozenCols', 0)); close(); }}>No frozen columns</Item>
+            <Item checked={fc === 1} onClick={() => { tx(() => tab.map.set('frozenCols', 1)); close(); }}>1 column</Item>
+            <Item checked={fc === 2} onClick={() => { tx(() => tab.map.set('frozenCols', 2)); close(); }}>2 columns</Item>
+            <Item onClick={() => { tx(() => tab.map.set('frozenCols', sel.c + 1)); close(); }}>Up to column {colName(sel.c)}</Item>
+          </>)}
+        </Pop>
+        <button type="button" style={on(filtersOn)} onClick={() => { setFiltersOn(o => !o); setFilters({}); }} title="Filter: add a ▾ to the header row and hide rows by value">⏷ Filter</button>
+        <Pop title="Sort" style={tb} label={<>A↓Z ▾</>}>
+          {close => (<><Item onClick={() => { sortBy(sel.c, 1); close(); }}>Sort sheet by {colName(sel.c)}, A → Z</Item><Item onClick={() => { sortBy(sel.c, -1); close(); }}>Sort sheet by {colName(sel.c)}, Z → A</Item></>)}
+        </Pop>
+        {sep}
+        <Pop title="Insert or delete rows and columns" style={tb} label={<>＋ ▾</>}>
+          {close => (<>
+            <Item onClick={() => { insertMany('row', R.r1, R.r2 - R.r1 + 1); close(); }}>Insert row above</Item>
+            <Item onClick={() => { insertMany('row', R.r2 + 1, R.r2 - R.r1 + 1); close(); }}>Insert row below</Item>
+            <Item onClick={() => { insertMany('col', R.c1, R.c2 - R.c1 + 1); close(); }}>Insert column left</Item>
+            <Item onClick={() => { insertMany('col', R.c2 + 1, R.c2 - R.c1 + 1); close(); }}>Insert column right</Item>
+            <Divider />
+            <Item danger onClick={() => { deleteMany('row', R.r1, R.r2); close(); }}>Delete row{R.r2 > R.r1 ? 's' : ''}</Item>
+            <Item danger onClick={() => { deleteMany('col', R.c1, R.c2); close(); }}>Delete column{R.c2 > R.c1 ? 's' : ''}</Item>
+          </>)}
+        </Pop>
+        <button type="button" style={on(!!find)} onClick={() => setFind(f => (f ? null : { q: '', rep: '', idx: 0, replace: false }))} title="Find and replace (Ctrl+F)">🔍</button>
+        <Pop title="Dropdowns, checkboxes, notes and rules" style={tb} label={<>Data ▾</>}>
+          {close => (<>
+            <Item onClick={() => { setDlg('valid'); close(); }}>Dropdown / checkbox…</Item>
+            <Item onClick={() => { setDlg('cond'); close(); }}>Conditional formatting…</Item>
+            <Item onClick={() => { setDlg('note'); close(); }}>{selNote ? 'Edit note…' : 'Add a note…'}</Item>
+          </>)}
+        </Pop>
         <span style={{ flex: 1 }} />
-        {hasFeed && <button type="button" style={{ ...tb, color: '#a06a12', background: 'var(--k-fdf6e9)' }} disabled={refreshing} onClick={() => void refreshFeed(false)} title="Pull the latest from the CRM into the live columns">{refreshing ? 'Refreshing…' : '↻ Refresh from CRM'}</button>}
-        <button type="button" style={tb} onClick={() => void download('csv')} title="Download this tab as CSV">⬇ CSV</button>
-        <button type="button" style={tb} onClick={() => void download('xlsx')} title="Download every tab as an Excel file">⬇ Excel</button>
+        {hasFeed && <button type="button" style={{ ...tb, color: '#a06a12', background: 'var(--k-fdf6e9)', whiteSpace: 'nowrap' }} disabled={refreshing} onClick={() => void refreshFeed(false)} title="Pull the latest from the CRM into the live columns">{refreshing ? 'Refreshing…' : '↻ Refresh from CRM'}</button>}
+        <Pop title="Download" style={{ ...tb, whiteSpace: 'nowrap' }} label={<>⬇ ▾</>} align="right">
+          {close => (<><Item onClick={() => { void download('csv'); close(); }}>This tab as CSV</Item><Item onClick={() => { void download('xlsx'); close(); }}>Whole spreadsheet as Excel (.xlsx)</Item></>)}
+        </Pop>
       </div>
       {/* formula bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderBottom: '1px solid var(--k-e5e7eb)' }}>
-        <div style={{ width: 64, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: 'var(--k-6b7280)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '4px 0' }}>
-          {R.r1 === R.r2 && R.c1 === R.c2 ? addr(sel.r, sel.c) : `${addr(R.r1, R.c1)}:${addr(R.r2, R.c2)}`}
-        </div>
+        <div style={{ minWidth: 64, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: 'var(--k-6b7280)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '4px 6px', whiteSpace: 'nowrap' }}>{rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })}</div>
         <span style={{ color: 'var(--k-9ca3af)', fontStyle: 'italic', fontSize: 13 }}>fx</span>
         <input value={activeRaw} aria-label="Cell contents"
           onFocus={() => setBar(raw(sel.r, sel.c))}
@@ -548,35 +799,54 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
           onBlur={() => { if (bar !== null && bar !== raw(sel.r, sel.c)) setCell(sel.r, sel.c, bar); setBar(null); }}
           style={{ flex: 1, minWidth: 0, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)' }} />
       </div>
-      {/* grid */}
-      <div ref={wrap} tabIndex={0} onKeyDown={onKeyDown} style={{ flex: 1, minHeight: 0, position: 'relative', outline: 'none', userSelect: 'none', overflow: 'hidden' }}
-        onCopy={e => { if (edit) return; e.preventDefault(); e.clipboardData.setData('text/plain', gridText(sel)); }}
-        onCut={e => { if (edit) return; e.preventDefault(); e.clipboardData.setData('text/plain', gridText(sel)); clearRange(); }}
-        onPaste={e => { if (edit) return; e.preventDefault(); paste(e.clipboardData.getData('text/plain')); }}>
-        {/* corner + column letters */}
-        <div style={{ position: 'absolute', top: 0, left: 0, width: NUM_W, height: HEAD_H, background: 'var(--k-f3f4f6)', borderRight: '1px solid var(--k-d1d5db)', borderBottom: '1px solid var(--k-d1d5db)', zIndex: 5, boxSizing: 'border-box' }} />
-        <div style={{ position: 'absolute', top: 0, left: NUM_W, right: 0, height: HEAD_H, overflow: 'hidden', zIndex: 4, background: 'var(--k-f3f4f6)', borderBottom: '1px solid var(--k-d1d5db)', boxSizing: 'border-box' }}>
-          <div style={{ position: 'relative', width: totalW, height: HEAD_H, transform: `translateX(${-scroll.left}px)` }}>
-            {Array.from({ length: c1 - c0 + 1 }, (_, i) => c0 + i).map(c => (
-              <div key={c} onClick={() => { setSel({ r: 0, c, r2: rows - 1, c2: c }); wrap.current?.focus(); }}
-                style={{ position: 'absolute', left: lefts[c], width: widths[c], height: HEAD_H, lineHeight: `${HEAD_H}px`, textAlign: 'center', fontSize: 12, fontWeight: 600, color: c >= R.c1 && c <= R.c2 ? '#a06a12' : 'var(--k-6b7280)', background: c >= R.c1 && c <= R.c2 ? 'var(--k-fdf6e9)' : undefined, borderRight: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: 'pointer' }}>
-                {colName(c)}
-                <span onMouseDown={e => beginResize(c, e)} style={{ position: 'absolute', right: -3, top: 0, width: 7, height: HEAD_H, cursor: 'col-resize', zIndex: 2 }} />
-              </div>
-            ))}
-          </div>
+      {find && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderBottom: '1px solid var(--k-e5e7eb)', background: 'var(--k-f9fafb)', flexWrap: 'wrap' }}>
+          <input autoFocus value={find.q} placeholder="Find" onChange={e => setFind({ ...find, q: e.target.value, idx: 0 })} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); goMatch(find.idx + (e.shiftKey ? -1 : 1)); } else if (e.key === 'Escape') setFind(null); }} style={{ height: 28, border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '0 8px', fontSize: 13, width: 160 }} />
+          <span style={{ fontSize: 12, color: 'var(--k-6b7280)', minWidth: 54 }}>{find.q ? (matches.length ? `${(find.idx % matches.length) + 1} of ${matches.length}` : 'No match') : ''}</span>
+          <button type="button" style={tb} onClick={() => goMatch(find.idx - 1)} aria-label="Previous match">↑</button>
+          <button type="button" style={tb} onClick={() => goMatch(find.idx + 1)} aria-label="Next match">↓</button>
+          {find.replace ? (<>
+            <input value={find.rep} placeholder="Replace with" onChange={e => setFind({ ...find, rep: e.target.value })} style={{ height: 28, border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '0 8px', fontSize: 13, width: 160 }} />
+            <button type="button" style={tb} onClick={replaceOne}>Replace</button>
+            <button type="button" style={tb} onClick={replaceAll}>Replace all</button>
+          </>) : <button type="button" style={tb} onClick={() => setFind({ ...find, replace: true })}>Replace…</button>}
+          <button type="button" style={tb} onClick={() => setFind(null)} aria-label="Close find">✕</button>
         </div>
+      )}
+      {/* grid */}
+      <div ref={wrap} tabIndex={0} onKeyDown={onKeyDown} onContextMenu={onContext} style={{ flex: 1, minHeight: 0, position: 'relative', outline: 'none', userSelect: 'none', overflow: 'hidden' }}
+        onCopy={e => { if (edit || bar !== null) return; e.preventDefault(); e.clipboardData.setData('text/plain', doCopy(false)); }}
+        onCut={e => { if (edit || bar !== null) return; e.preventDefault(); e.clipboardData.setData('text/plain', doCopy(true)); }}
+        onPaste={e => { if (edit || bar !== null) return; e.preventDefault(); paste(e.clipboardData.getData('text/plain')); }}>
+        {/* corner + column letters */}
+        <div style={{ position: 'absolute', top: 0, left: 0, width: NUM_W, height: HEAD_H, background: 'var(--k-f3f4f6)', borderRight: '1px solid var(--k-d1d5db)', borderBottom: '1px solid var(--k-d1d5db)', zIndex: 6, boxSizing: 'border-box' }} onClick={() => setSel({ r: 0, c: 0, r2: rows - 1, c2: ncols - 1 })} />
+        {(() => {
+          const head = (c: number) => (
+            <div key={c} onClick={e => { setSel(e.shiftKey ? { ...sel, c2: c } : { r: 0, c, r2: rows - 1, c2: c }); wrap.current?.focus(); }}
+              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!(c >= R.c1 && c <= R.c2)) setSel({ r: 0, c, r2: rows - 1, c2: c }); setCtx({ x: e.clientX, y: e.clientY, r: 0, c, head: 'col' }); }}
+              style={{ position: 'absolute', left: lefts[c], width: widths[c], height: HEAD_H, lineHeight: `${HEAD_H}px`, textAlign: 'center', fontSize: 12, fontWeight: 600, color: c >= R.c1 && c <= R.c2 ? '#a06a12' : 'var(--k-6b7280)', background: c >= R.c1 && c <= R.c2 ? 'var(--k-fdf6e9)' : 'var(--k-f3f4f6)', borderRight: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: 'pointer' }}>
+              {colName(c)}
+              <span onMouseDown={e => beginResize(c, e)} onDoubleClick={e => { e.stopPropagation(); autoFit(c); }} title="Drag to resize, double-click to fit" style={{ position: 'absolute', right: -3, top: 0, width: 7, height: HEAD_H, cursor: 'col-resize', zIndex: 2 }} />
+            </div>
+          );
+          return (<>
+            <div style={{ position: 'absolute', top: 0, left: NUM_W, right: 0, height: HEAD_H, overflow: 'hidden', zIndex: 4, background: 'var(--k-f3f4f6)', borderBottom: '1px solid var(--k-d1d5db)', boxSizing: 'border-box' }}>
+              <div style={{ position: 'relative', width: totalW, height: HEAD_H, transform: `translateX(${-scroll.left}px)` }}>{bodyCols.map(head)}</div>
+            </div>
+            {fc > 0 && <div style={{ position: 'absolute', top: 0, left: NUM_W, width: fcW, height: HEAD_H, overflow: 'hidden', zIndex: 5, background: 'var(--k-f3f4f6)', borderBottom: '1px solid var(--k-d1d5db)', borderRight: '2px solid var(--k-d1d5db)', boxSizing: 'content-box' }}><div style={{ position: 'relative', width: fcW, height: HEAD_H }}>{frozenCols.map(head)}</div></div>}
+          </>);
+        })()}
         {/* row numbers */}
         <div style={{ position: 'absolute', top: HEAD_H, left: 0, width: NUM_W, bottom: 0, overflow: 'hidden', zIndex: 4, background: 'var(--k-f3f4f6)', borderRight: '1px solid var(--k-d1d5db)', boxSizing: 'border-box' }}>
-          <div style={{ position: 'relative', height: rows * ROW_H, transform: `translateY(${-scroll.top}px)` }}>
-            {Array.from({ length: Math.max(0, lastRow - firstRow + 1) }, (_, i) => firstRow + i).map(r => (
-              <div key={r} onClick={() => { setSel({ r, c: 0, r2: r, c2: ncols - 1 }); wrap.current?.focus(); }}
-                style={{ position: 'absolute', top: r * ROW_H, height: ROW_H, width: NUM_W, lineHeight: `${ROW_H}px`, textAlign: 'center', fontSize: 11.5, color: r >= R.r1 && r <= R.r2 ? '#a06a12' : 'var(--k-9ca3af)', background: r >= R.r1 && r <= R.r2 ? 'var(--k-fdf6e9)' : undefined, borderBottom: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: 'pointer' }}>{r + 1}</div>
-            ))}
+          <div style={{ position: 'relative', height: nRows * ROW_H, transform: `translateY(${-scroll.top}px)` }}>
+            {visI(firstI, lastI).map(i => { const r = rowAt(i); const inS = r >= R.r1 && r <= R.r2; return (
+              <div key={r} onClick={e => { setSel(e.shiftKey ? { ...sel, r2: r } : { r, c: 0, r2: r, c2: ncols - 1 }); wrap.current?.focus(); }}
+                onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!inS) setSel({ r, c: 0, r2: r, c2: ncols - 1 }); setCtx({ x: e.clientX, y: e.clientY, r, c: 0, head: 'row' }); }}
+                style={{ position: 'absolute', top: i * ROW_H, height: ROW_H, width: NUM_W, lineHeight: `${ROW_H}px`, textAlign: 'center', fontSize: 11.5, color: inS ? '#a06a12' : 'var(--k-9ca3af)', background: inS ? 'var(--k-fdf6e9)' : undefined, borderBottom: '1px solid var(--k-d1d5db)', boxSizing: 'border-box', cursor: 'pointer' }}>{r + 1}</div>); })}
           </div>
           {frozen > 0 && (
-            <div style={{ position: 'absolute', top: 0, left: 0, width: NUM_W, height: frozen * ROW_H, background: 'var(--k-f3f4f6)', zIndex: 2 }}>
-              {Array.from({ length: frozen }, (_, r) => <div key={r} style={{ position: 'absolute', top: r * ROW_H, height: ROW_H, width: NUM_W, lineHeight: `${ROW_H}px`, textAlign: 'center', fontSize: 11.5, color: 'var(--k-9ca3af)', borderBottom: '2px solid var(--k-d1d5db)', boxSizing: 'border-box' }}>{r + 1}</div>)}
+            <div style={{ position: 'absolute', top: 0, left: 0, width: NUM_W, height: frozenH, background: 'var(--k-f3f4f6)', zIndex: 2 }}>
+              {visI(0, Math.min(frozen, nRows) - 1).map(i => <div key={i} style={{ position: 'absolute', top: i * ROW_H, height: ROW_H, width: NUM_W, lineHeight: `${ROW_H}px`, textAlign: 'center', fontSize: 11.5, color: 'var(--k-9ca3af)', borderBottom: i === frozen - 1 ? '2px solid var(--k-d1d5db)' : '1px solid var(--k-d1d5db)', boxSizing: 'border-box' }}>{rowAt(i) + 1}</div>)}
             </div>
           )}
         </div>
@@ -584,21 +854,45 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
         <div ref={body} onScroll={e => setScroll({ top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft })}
           onMouseDown={onMouseDown} onMouseMove={onMouseMove} onDoubleClick={onDouble}
           style={{ position: 'absolute', top: HEAD_H, left: NUM_W, right: 0, bottom: 0, overflow: 'auto' }}>
-          <div style={{ position: 'relative', width: totalW, height: rows * ROW_H }}>
-            {Array.from({ length: Math.max(0, lastRow - firstRow + 1) }, (_, i) => firstRow + i).flatMap(r => Array.from({ length: c1 - c0 + 1 }, (_, j) => cell(r, c0 + j, r * ROW_H)))}
+          <div style={{ position: 'relative', width: totalW, height: nRows * ROW_H }}>
+            {visI(firstI, lastI).flatMap(i => visI(c0, c1).map(c => paint(i, c)))}
           </div>
         </div>
         {frozen > 0 && (
-          <div style={{ position: 'absolute', top: HEAD_H, left: NUM_W, right: 0, height: frozen * ROW_H, overflow: 'hidden', zIndex: 2, pointerEvents: 'none', borderBottom: '2px solid var(--k-d1d5db)', boxSizing: 'content-box' }}>
-            <div style={{ position: 'relative', width: totalW, height: frozen * ROW_H, transform: `translateX(${-scroll.left}px)` }}>
-              {Array.from({ length: frozen }, (_, r) => r).flatMap(r => Array.from({ length: c1 - c0 + 1 }, (_, j) => cell(r, c0 + j, r * ROW_H)))}
+          <div style={{ position: 'absolute', top: HEAD_H, left: NUM_W, right: 0, height: frozenH, overflow: 'hidden', zIndex: 2, pointerEvents: 'none', borderBottom: '2px solid var(--k-d1d5db)', boxSizing: 'content-box', background: 'var(--k-fff)' }}>
+            <div style={{ position: 'relative', width: totalW, height: frozenH, transform: `translateX(${-scroll.left}px)` }}>
+              {visI(0, Math.min(frozen, nRows) - 1).flatMap(i => bodyCols.map(c => paint(i, c)))}
             </div>
           </div>
         )}
-        {/* selection frame, peers, editor */}
-        <div style={{ position: 'absolute', top: HEAD_H, left: NUM_W, right: 0, bottom: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 3 }}>
-          <div style={{ position: 'absolute', ...selBox, border: '2px solid #c9922c', boxSizing: 'border-box', pointerEvents: 'none' }} />
+        {fc > 0 && (
+          <div style={{ position: 'absolute', top: HEAD_H + frozenH, left: NUM_W, width: fcW, bottom: 0, overflow: 'hidden', zIndex: 3, pointerEvents: 'none', borderRight: '2px solid var(--k-d1d5db)', boxSizing: 'content-box', background: 'var(--k-fff)' }}>
+            <div style={{ position: 'relative', width: fcW, height: nRows * ROW_H, transform: `translateY(${-scroll.top - frozenH}px)` }}>
+              {visI(firstI, lastI).flatMap(i => frozenCols.map(c => paint(i, c)))}
+            </div>
+          </div>
+        )}
+        {fc > 0 && frozen > 0 && (
+          <div style={{ position: 'absolute', top: HEAD_H, left: NUM_W, width: fcW, height: frozenH, overflow: 'hidden', zIndex: 4, pointerEvents: 'none', borderRight: '2px solid var(--k-d1d5db)', borderBottom: '2px solid var(--k-d1d5db)', boxSizing: 'content-box', background: 'var(--k-fff)' }}>
+            <div style={{ position: 'relative', width: fcW, height: frozenH }}>{visI(0, Math.min(frozen, nRows) - 1).flatMap(i => frozenCols.map(c => paint(i, c)))}</div>
+          </div>
+        )}
+        {/* selection frame, peers, editor, dropdowns */}
+        <div style={{ position: 'absolute', top: HEAD_H, left: NUM_W, right: 0, bottom: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 5 }}>
+          <div style={{ position: 'absolute', ...selBox, border: '2px solid #c9922c', boxSizing: 'border-box', pointerEvents: 'none' }}>
+            {!edit && <span onMouseDown={beginFill} title="Drag to fill" style={{ position: 'absolute', right: -5, bottom: -5, width: 9, height: 9, background: '#c9922c', border: '1px solid #fff', pointerEvents: 'auto', cursor: 'crosshair' }} />}
+          </div>
+          {fill && <div style={{ position: 'absolute', top: sy(Math.max(0, idxOf(Math.min(R.r1, fill.r)))), left: sx(Math.min(R.c1, fill.c)), width: lefts[Math.max(R.c2, fill.c) + 1] - lefts[Math.min(R.c1, fill.c)], height: (Math.abs(Math.max(0, idxOf(Math.max(R.r2, fill.r))) - Math.max(0, idxOf(Math.min(R.r1, fill.r)))) + 1) * ROW_H, border: '2px dashed #c9922c', boxSizing: 'border-box' }} />}
           {peerBoxes}
+          {selValid?.t === 'list' && !edit && <button type="button" onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setDd({ r: sel.r, c: sel.c }); }} aria-label="Choose from the list" style={{ position: 'absolute', top: act.top + 3, left: act.left + act.w - 24, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(201,146,44,.18)', color: '#a06a12', fontSize: 11, cursor: 'pointer', pointerEvents: 'auto', padding: 0 }}>▾</button>}
+          {dd && (() => { const v = getValid(ydoc, tabId, dd.r, dd.c); const i = Math.max(0, idxOf(dd.r)); return v?.t === 'list' ? (
+            <>
+              <div onMouseDown={() => setDd(null)} style={{ position: 'fixed', inset: 0, pointerEvents: 'auto', zIndex: 8 }} />
+              <div role="listbox" style={{ position: 'absolute', top: sy(i) + ROW_H, left: sx(dd.c), minWidth: Math.max(widths[dd.c], 160), maxHeight: 240, overflowY: 'auto', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 12px 36px rgba(0,0,0,.2)', padding: 4, pointerEvents: 'auto', zIndex: 9 }}>
+                {(v.o ?? []).map(o => <button key={o} type="button" role="option" aria-selected={raw(dd.r, dd.c) === o} onMouseDown={e => { e.preventDefault(); setCell(dd.r, dd.c, o); setDd(null); wrap.current?.focus(); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: raw(dd.r, dd.c) === o ? 'var(--k-fdf6e9)' : 'none', borderRadius: 5, cursor: 'pointer', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-1a1a1a)' }}>{o}</button>)}
+                <button type="button" onMouseDown={e => { e.preventDefault(); setCell(dd.r, dd.c, ''); setDd(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12.5, color: 'var(--k-9ca3af)', fontFamily: "'DM Sans',sans-serif" }}>Clear</button>
+              </div>
+            </>) : null; })()}
           {edit && (
             <input ref={el => { editor.current = el; if (el && document.activeElement !== el) { el.focus(); const n = el.value.length; el.setSelectionRange(n, n); } }} value={edit.text} onChange={e => setEdit({ ...edit, text: e.target.value })} aria-label="Edit cell"
               onKeyDown={e => {
@@ -608,24 +902,94 @@ function Grid({ handle, me, peers, isMobile, docId, authToken, title, onToast }:
                 e.stopPropagation();
               }}
               onBlur={() => { if (editor.current && document.activeElement?.getAttribute('aria-label') === 'Cell contents') return; commitEdit('stay'); }}
-              style={{ position: 'absolute', pointerEvents: 'auto', top: edit.r < frozen ? edit.r * ROW_H : edit.r * ROW_H - scroll.top, left: lefts[edit.c] - scroll.left, width: Math.max(widths[edit.c], 140), height: ROW_H, boxSizing: 'border-box', border: '2px solid #c9922c', outline: 'none', padding: '0 5px', fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', zIndex: 6, userSelect: 'text' }} />
+              style={{ position: 'absolute', pointerEvents: 'auto', top: sy(Math.max(0, idxOf(edit.r))), left: sx(edit.c), width: Math.max(widths[edit.c], 140), height: ROW_H, boxSizing: 'border-box', border: '2px solid #c9922c', outline: 'none', padding: '0 5px', fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', zIndex: 6, userSelect: 'text' }} />
           )}
         </div>
       </div>
+      {/* filter menu */}
+      {filterMenu && (() => {
+        const c = filterMenu.c; const vals = new Map<string, number>();
+        for (let r = hdrRows; r < rows; r++) { const t = formatVal(evaluator.value(null, r, c), fmtOf(r, c)); vals.set(t, (vals.get(t) ?? 0) + 1); }
+        const list = [...vals.entries()].filter(([t]) => t.toLowerCase().includes(filterMenu.q.toLowerCase())).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true })).slice(0, 300);
+        const hidden = new Set(filters[c] ?? []);
+        const setHidden = (s: Set<string>) => setFilters(f => { const n = { ...f }; if (s.size) n[c] = [...s]; else delete n[c]; return n; });
+        return (
+          <>
+            <div onMouseDown={() => setFilterMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
+            <div role="dialog" aria-label="Filter" style={{ position: 'fixed', top: 150, left: Math.max(12, Math.min(window.innerWidth - 270, (body.current?.getBoundingClientRect().left ?? 0) + sx(c))), zIndex: 1301, width: 260, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.22)', padding: 10 }}>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <button type="button" style={tb} onClick={() => { sortBy(c, 1); setFilterMenu(null); }}>Sort A→Z</button>
+                <button type="button" style={tb} onClick={() => { sortBy(c, -1); setFilterMenu(null); }}>Z→A</button>
+              </div>
+              <input autoFocus value={filterMenu.q} onChange={e => setFilterMenu({ c, q: e.target.value })} placeholder="Search values" style={{ width: '100%', height: 30, border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '0 8px', fontSize: 13, boxSizing: 'border-box' }} />
+              <div style={{ display: 'flex', gap: 10, margin: '6px 0', fontSize: 12.5 }}>
+                <button type="button" onClick={() => setHidden(new Set())} style={{ border: 'none', background: 'none', color: '#a06a12', cursor: 'pointer', padding: 0 }}>Select all</button>
+                <button type="button" onClick={() => setHidden(new Set([...hidden, ...list.map(x => x[0])]))} style={{ border: 'none', background: 'none', color: '#a06a12', cursor: 'pointer', padding: 0 }}>Clear</button>
+              </div>
+              <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                {list.map(([t, n]) => (
+                  <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 2px', fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!hidden.has(t)} onChange={e => { const s = new Set(hidden); if (e.target.checked) s.delete(t); else s.add(t); setHidden(s); }} />
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t === '' ? '(blank)' : t}</span><span style={{ color: 'var(--k-9ca3af)', fontSize: 11.5 }}>{n}</span>
+                  </label>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}><button type="button" style={{ ...tb, background: '#c9922c', color: '#fff', border: 'none' }} onClick={() => setFilterMenu(null)}>Done</button></div>
+            </div>
+          </>
+        );
+      })()}
+      {/* right-click menu */}
+      {ctx && (
+        <>
+          <div onMouseDown={() => setCtx(null)} onContextMenu={e => { e.preventDefault(); setCtx(null); }} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
+          <div role="menu" style={{ position: 'fixed', top: Math.min(ctx.y, window.innerHeight - 360), left: Math.min(ctx.x, window.innerWidth - 230), zIndex: 1301, minWidth: 210, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.22)', padding: 6 }}>
+            <Item onClick={() => { const t = doCopy(false); void navigator.clipboard?.writeText(t).catch(() => {}); setCtx(null); }}>Copy</Item>
+            <Item onClick={() => { const t = doCopy(true); void navigator.clipboard?.writeText(t).catch(() => {}); setCtx(null); }}>Cut</Item>
+            <Item onClick={() => { setCtx(null); void navigator.clipboard?.readText().then(paste).catch(() => onToast('Use Ctrl+V to paste — the browser blocked reading the clipboard')); }}>Paste</Item>
+            <Divider />
+            {ctx.head !== 'col' && <><Item onClick={() => { insertMany('row', R.r1, R.r2 - R.r1 + 1); setCtx(null); }}>Insert row above</Item><Item onClick={() => { insertMany('row', R.r2 + 1, R.r2 - R.r1 + 1); setCtx(null); }}>Insert row below</Item></>}
+            {ctx.head !== 'row' && <><Item onClick={() => { insertMany('col', R.c1, R.c2 - R.c1 + 1); setCtx(null); }}>Insert column left</Item><Item onClick={() => { insertMany('col', R.c2 + 1, R.c2 - R.c1 + 1); setCtx(null); }}>Insert column right</Item></>}
+            {ctx.head !== 'col' && <Item danger onClick={() => { deleteMany('row', R.r1, R.r2); setCtx(null); }}>Delete row{R.r2 > R.r1 ? 's' : ''}</Item>}
+            {ctx.head !== 'row' && <Item danger onClick={() => { deleteMany('col', R.c1, R.c2); setCtx(null); }}>Delete column{R.c2 > R.c1 ? 's' : ''}</Item>}
+            <Item onClick={() => { clearRange(); setCtx(null); }}>Clear contents</Item>
+            <Divider />
+            <Item onClick={() => { sortBy(ctx.c, 1); setCtx(null); }}>Sort sheet by {colName(ctx.c)}, A → Z</Item>
+            <Item onClick={() => { sortBy(ctx.c, -1); setCtx(null); }}>Sort sheet by {colName(ctx.c)}, Z → A</Item>
+            <Divider />
+            <Item onClick={() => { setDlg('note'); setCtx(null); }}>{selNote ? 'Edit note…' : 'Add a note…'}</Item>
+            <Item onClick={() => { setDlg('valid'); setCtx(null); }}>Dropdown / checkbox…</Item>
+            <Item onClick={() => { setDlg('cond'); setCtx(null); }}>Conditional formatting…</Item>
+          </div>
+        </>
+      )}
+      {dlg === 'cond' && (
+        <CondDialog rangeText={rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} rules={rules} onClose={() => setDlg(null)}
+          onDelete={id => tx(() => { const l = condList(ydoc); const i = l.toArray().findIndex(s => { try { return (JSON.parse(s) as CondRule).id === id; } catch { return false; } }); if (i >= 0) l.delete(i, 1); })}
+          onAdd={x => { const rg = parseRange(x.range); if (!rg) return 'Type a range like A2:D50'; if ((x.op !== 'empty' && x.op !== 'notempty') && x.val === '') return 'Enter a value to compare with'; tx(() => condList(ydoc).push([JSON.stringify({ id: newId(), tab: tabId, ...rg, op: x.op, val: x.val, bg: x.bg, fg: x.fg, ...(x.b ? { b: 1 } : {}) } satisfies CondRule)])); return null; }} />
+      )}
+      {dlg === 'valid' && (
+        <ValidDialog rangeText={rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} current={selValid} onClose={() => setDlg(null)}
+          onApply={rule => tx(() => forEachSel((r, c) => { const k = mkey(tabId, r, c); if (!rule) validMap(ydoc).delete(k); else validMap(ydoc).set(k, JSON.stringify(rule)); if (rule?.t === 'check' && !/^(true|false)$/i.test(raw(r, c))) tCells(tab.map).set(cellKey(r, c), 'FALSE'); }))} />
+      )}
+      {dlg === 'note' && (
+        <NoteDialog addr={addr(sel.r, sel.c)} initial={selNote?.t ?? ''} onClose={() => setDlg(null)}
+          onSave={t => tx(() => { const k = mkey(tabId, sel.r, sel.c); if (!t) notesMap(ydoc).delete(k); else notesMap(ydoc).set(k, JSON.stringify({ t, by: me.name, at: Date.now() } satisfies NoteInfo)); })} />
+      )}
       {/* tabs along the bottom */}
       <div style={{ display: 'flex', alignItems: 'stretch', borderTop: '1px solid var(--k-d1d5db)', background: 'var(--k-f3f4f6)', flexShrink: 0, overflowX: 'auto', minHeight: isMobile ? 44 : 36 }}>
         <button type="button" onClick={addTab} title="Add a tab" aria-label="Add a tab" style={{ width: 40, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, color: 'var(--k-6b7280)' }}>＋</button>
         {tabs.map(t => {
-          const on = t.id === tab.id;
+          const onT = t.id === tab.id;
           return (
-            <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', background: on ? 'var(--k-fff)' : 'transparent', borderRight: '1px solid var(--k-e5e7eb)', borderTop: on ? '2px solid #c9922c' : '2px solid transparent', flexShrink: 0 }}>
+            <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', background: onT ? 'var(--k-fff)' : 'transparent', borderRight: '1px solid var(--k-e5e7eb)', borderTop: onT ? '2px solid #c9922c' : '2px solid transparent', flexShrink: 0 }}>
               {renaming?.id === t.id ? (
                 <input autoFocus value={renaming.text} onChange={e => setRenaming({ id: t.id, text: e.target.value })} onBlur={() => { renameTab(t.id, renaming.text); setRenaming(null); }}
                   onKeyDown={e => { if (e.key === 'Enter') { renameTab(t.id, renaming.text); setRenaming(null); } else if (e.key === 'Escape') setRenaming(null); }}
                   style={{ width: 120, margin: '0 8px', fontSize: 13, border: '1px solid #c9922c', borderRadius: 4, padding: '2px 4px' }} />
               ) : (
                 <button type="button" onClick={() => { setActiveId(t.id); setSel({ r: 0, c: 0, r2: 0, c2: 0 }); setEdit(null); }} onDoubleClick={() => setRenaming({ id: t.id, text: t.name })}
-                  style={{ border: 'none', background: 'transparent', padding: '0 4px 0 14px', height: '100%', fontSize: 13, fontWeight: on ? 700 : 500, color: on ? 'var(--k-1a1a1a)' : 'var(--k-6b7280)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+                  style={{ border: 'none', background: 'transparent', padding: '0 4px 0 14px', height: '100%', fontSize: 13, fontWeight: onT ? 700 : 500, color: onT ? 'var(--k-1a1a1a)' : 'var(--k-6b7280)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
                   {t.map.get('feed') ? '● ' : ''}{t.name}
                 </button>
               )}
