@@ -6,7 +6,7 @@ import { getCrmContext, assertOwnsResource, unauthorized, forbidden, notFound, t
 import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { createClient } from '@supabase/supabase-js';
-import { resolveSignature, withSignature } from '@/lib/agent-signature';
+import { resolveSignature, withBodyStyle, withSignature } from '@/lib/agent-signature';
 import { chicagoToday } from '@/lib/chicago-time';
 import { attachmentParam, encodeHeader, formatAddress, stripLineBreaks } from '@/lib/mime-header';
 
@@ -325,7 +325,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
     // addressed to a single person makes an open attributable to that person.
     const sendCopy = async (opts: { toHeader: string; ccHeader?: string; bccHeader?: string; replyTo?: string; note?: string; tid: string }) => {
       const pixel = `<img src="https://www.fairoaksrealtygroup.com/api/track/open?id=${opts.tid}" width="1" height="1" style="display:none" />`;
-      const html = `${opts.note ?? ''}${outBody}${pixel}`;
+      const html = `${withBodyStyle(`${opts.note ?? ''}${outBody}`)}${pixel}`;
       const headerLines = [
         `From: ${fromLine}`,
         `To: ${opts.toHeader}`,
