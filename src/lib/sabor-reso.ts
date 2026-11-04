@@ -386,7 +386,6 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
   const status = statusMap[p.StandardStatus] ?? 'off-market';
 
   const agentName = [p.ListAgentFirstName, p.ListAgentLastName].filter(Boolean).join(' ') || null;
-  const agentPhone = p.ListAgentCellPhone ?? p.ListAgentOfficePhone ?? null;
 
   const title = fullAddress || p.ListingId;
   // Full ListingId appended so detail page can reliably extract it from the slug
@@ -422,7 +421,7 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
     tax_annual_amount:      p.TaxAnnualAmount ?? null,
     list_agent_name:        agentName,
     list_agent_email:       null,
-    list_agent_phone:       agentPhone,
+    list_agent_phone:       null,   // third-party agents' phone numbers are deliberately not stored (security audit 2026-11)
     list_office_name:       p.ListOfficeName ?? null,
     description:            p.PublicRemarks ?? null,
     images:                 images.length > 0 ? images : null,
