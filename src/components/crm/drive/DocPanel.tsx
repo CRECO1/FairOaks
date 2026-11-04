@@ -8,7 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { fromBase64 } from 'lib0/buffer';
-import { yXmlFragmentToProsemirrorJSON } from 'y-prosemirror';
+import { yXmlFragmentToProsemirrorJSON } from '@tiptap/y-tiptap';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import { findCommentRange, removeCommentMark } from '@/lib/collab/comment-mark';
 import { docExtensions } from './doc-extensions';

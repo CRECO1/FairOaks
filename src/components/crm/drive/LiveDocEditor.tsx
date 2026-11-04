@@ -18,7 +18,7 @@ import { toBase64, fromBase64 } from 'lib0/buffer';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
 import Collaboration from '@tiptap/extension-collaboration';
-import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import { createClient } from '@/lib/supabase/client';
 import { acquireDoc, releaseDoc, type CollabHandle } from '@/lib/collab/doc-registry';
 import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
@@ -344,11 +344,12 @@ function DocSurface({ handle, me, isMobile, onEditor, onComment, onHighlightClic
   }, [handle.ydoc]);
   const editor = useEditor({
     immediatelyRender: false,
+    shouldRerenderOnTransaction: true, // the toolbar reads editor.isActive() while rendering (TipTap 3 stopped re-rendering on every transaction by default)
     extensions: [
       ...docExtensions(),
       Placeholder.configure({ placeholder: 'Start typing — or press “/” … everyone on this doc sees it live.' }),
       Collaboration.configure({ document: handle.ydoc }),
-      CollaborationCursor.configure({ provider: { awareness: handle.awareness }, user: me }),
+      CollaborationCaret.configure({ provider: { awareness: handle.awareness }, user: me }),
     ],
     editorProps: {
       attributes: { class: 'drive-doc', spellcheck: 'true' },

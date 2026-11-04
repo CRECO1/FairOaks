@@ -1,7 +1,7 @@
 'use client';
 import * as Y from 'yjs';
 import { fromBase64 } from 'lib0/buffer';
-import { yXmlFragmentToProsemirrorJSON } from 'y-prosemirror';
+import { yXmlFragmentToProsemirrorJSON } from '@tiptap/y-tiptap';
 import { docToPdf, pdfName, saveBytes, type PMNode } from '@/lib/doc-pdf';
 
 /** A live document's saved content as ProseMirror JSON (for a read-only preview or a PDF), straight from the server copy. */

@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { yXmlFragmentToProsemirrorJSON } from 'y-prosemirror';
+import { yXmlFragmentToProsemirrorJSON } from '@tiptap/y-tiptap';
 import { docToPdf, pdfName, type PMNode } from '@/lib/doc-pdf';
 import { adminClient } from '@/lib/supabase-admin';
 

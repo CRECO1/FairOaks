@@ -1,6 +1,6 @@
 import * as Y from 'yjs';
 import { getSchema } from '@tiptap/core';
-import { prosemirrorJSONToYDoc } from 'y-prosemirror';
+import { prosemirrorJSONToYDoc } from '@tiptap/y-tiptap';
 import { docExtensions } from '@/components/crm/drive/doc-extensions';
 import { mergeYState } from '@/lib/drive-server';
 

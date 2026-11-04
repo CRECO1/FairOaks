@@ -35,8 +35,8 @@ export function DocStyles() {
       .drive-doc .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: -2px; width: 4px; background: #c9922c; pointer-events: none; }
       .drive-doc .tableWrapper { overflow-x: auto; }
       .drive-doc .comment-hl { background: rgba(250, 204, 21, .32); border-bottom: 2px solid #eab308; cursor: pointer; border-radius: 2px; }
-      .collaboration-cursor__caret { position: relative; margin-left: -1px; margin-right: -1px; border-left: 1px solid #0d0d0d; border-right: 1px solid #0d0d0d; word-break: normal; pointer-events: none; }
-      .collaboration-cursor__label { position: absolute; top: -1.45em; left: -1px; font-size: 11px; font-style: normal; font-weight: 600; line-height: normal; user-select: none; color: #fff; padding: 1px 6px; border-radius: 4px 4px 4px 0; white-space: nowrap; }
+      .collaboration-carets__caret { position: relative; margin-left: -1px; margin-right: -1px; border-left: 1px solid #0d0d0d; border-right: 1px solid #0d0d0d; word-break: normal; pointer-events: none; }
+      .collaboration-carets__label { position: absolute; top: -1.45em; left: -1px; font-size: 11px; font-style: normal; font-weight: 600; line-height: normal; user-select: none; color: #fff; padding: 1px 6px; border-radius: 4px 4px 4px 0; white-space: nowrap; }
     `}</style>
   );
 }
