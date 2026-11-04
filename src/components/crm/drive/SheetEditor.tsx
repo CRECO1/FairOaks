@@ -23,7 +23,8 @@ import {
   type CellFmt, type CondOp, type CondRule, type ChartDef, type FeedData, type LockRange, type MergeRange, type NoteInfo, type PivotDef, type TabInfo, type ValidRule, type Val,
 } from '@/lib/drive-sheet';
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
-import { ActivityPanel } from './DocPanel';
+import { ActivityPanel, CellCommentsPanel, parseCellAnchor } from './DocPanel';
+import type { DriveComment } from '@/lib/drive-types';
 import { CommandPalette, CondDialog, DedupeDialog, Divider, FunctionsDialog, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, ShortcutsDialog, SplitDialog, TBtn, TSep, ValidDialog, type Command, type LockInfo, type PivotForm } from './SheetParts';
 import { ChartDialog, ChartSvg, type ChartData } from './SheetChart';
 import type { DrivePerson } from './DocsDrive';
@@ -58,7 +59,11 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
   const [save, setSave] = useState<SaveState>('saved');
   const [title, setTitle] = useState(doc.title);
   const [peers, setPeers] = useState<Peer[]>([]);
-  const [panel, setPanel] = useState<null | 'activity'>(null);
+  const [panel, setPanel] = useState<null | 'activity' | 'comments'>(null);
+  const [comments, setComments] = useState<DriveComment[]>([]);
+  const commentsReload = useRef<() => Promise<void>>(async () => {});
+  const [cTarget, setCTarget] = useState<{ tabId: string; r: number; c: number } | null>(null);
+  const [jump, setJump] = useState<{ tabId: string; r: number; c: number; n: number } | null>(null);
   const [history, setHistory] = useState(false);
   const me = useMemo<Peer>(() => ({ name: user.name || 'Teammate', color: colorFor(user.id) }), [user.id, user.name]);
   const authRef = useRef(authToken); authRef.current = authToken;
@@ -82,7 +87,16 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
     h.awareness.on('change', refreshPeers); refreshPeers();
 
     const meta = h.ydoc.getMap<unknown>('meta');
+    const loadComments = async () => {
+      try {
+        const r = await fetch(`/api/crm/drive/comments/${doc.id}`, { headers: authRef.current ? { Authorization: `Bearer ${authRef.current}` } : {} });
+        if (r.ok) setComments(((await r.json()) as { comments: DriveComment[] }).comments ?? []);
+      } catch { /* retried on the next poll */ }
+    };
+    void loadComments(); commentsReload.current = loadComments;
+    const poll = setInterval(() => { if (document.visibilityState === 'visible') void loadComments(); }, 30_000);
     const onMeta = (ev: Y.YMapEvent<unknown>) => {
+      if (!ev.transaction.local && ev.keysChanged.has('commentsRev')) void loadComments();   // a teammate commented, replied or resolved
       if (ev.transaction.local || !ev.keysChanged.has('title')) return;
       const t = meta.get('title');
       if (typeof t === 'string') { setTitle(t); onTitle?.(doc.id, t); }
@@ -139,7 +153,7 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
     return () => {
       h.awareness.off('change', refreshPeers); meta.unobserve(onMeta); h.ydoc.off('update', onUpdate);
       document.removeEventListener('visibilitychange', onHide); window.removeEventListener('pagehide', onPageHide); window.removeEventListener('beforeunload', onBeforeUnload);
-      clearTimeout(retry); void flush(true); releaseDoc(doc.id);
+      clearInterval(poll); clearTimeout(retry); void flush(true); releaseDoc(doc.id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc.id]);
@@ -156,6 +170,15 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
     }, 700);
   };
 
+  // open comment threads per cell ("tabId|r:c" -> count), for the corner markers
+  const cellComments = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of comments) { if (c.parent_id || c.resolved_at) continue; const a = parseCellAnchor(c.anchor_text); if (a) m.set(`${a.tabId}|${a.r}:${a.c}`, (m.get(`${a.tabId}|${a.r}:${a.c}`) ?? 0) + 1); }
+    return m;
+  }, [comments]);
+  const openCellComments = useMemo(() => comments.filter(c => !c.parent_id && !c.resolved_at && parseCellAnchor(c.anchor_text)).length, [comments]);
+  const tabNameOf = (id: string) => (handle ? listTabs(handle.ydoc).find(t => t.id === id)?.name ?? null : null);
+  const commentAt = (t: { tabId: string; r: number; c: number }, follow?: boolean) => { setCTarget(t); if (!follow) { setPanel('comments'); void commentsReload.current(); } };
   const dot = status === 'connected' ? '#16a34a' : status === 'connecting' ? '#d97706' : '#dc2626';
   const statusLabel = status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting…' : status === 'denied' ? 'No live access' : 'Reconnecting…';
   const saveLabel = save === 'saved' ? 'Saved' : save === 'saving' ? 'Saving…' : save === 'dirty' ? 'Unsaved changes' : 'Couldn’t save — retrying';
@@ -183,8 +206,10 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
           ))}
           {peers.length > 4 && <span style={{ fontSize: 11, marginLeft: 4, color: 'var(--k-6b7280)' }}>+{peers.length - 4}</span>}
         </div>
-        <button type="button" onClick={() => setPanel(p => (p ? null : 'activity'))} aria-pressed={!!panel} aria-label="Activity log" title="Activity — every change to this spreadsheet"
-          style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px', background: panel ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>📜</button>
+        <button type="button" onClick={() => setPanel(p => (p === 'comments' ? null : 'comments'))} aria-pressed={panel === 'comments'} aria-label="Comments" title="Comments"
+          style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px', background: panel === 'comments' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>💬{openCellComments > 0 && <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--k-a06a12)' }}>{openCellComments}</span>}</button>
+        <button type="button" onClick={() => setPanel(p => (p === 'activity' ? null : 'activity'))} aria-pressed={panel === 'activity'} aria-label="Activity log" title="Activity — every change to this spreadsheet"
+          style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px', background: panel === 'activity' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>📜</button>
         <button type="button" onClick={() => setHistory(true)} aria-label="Version history" title="Version history" style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px' }}>🕘</button>
         {onShare && <button type="button" onClick={() => onShare(doc)} style={{ ...btnStyle(isMobile), background: '#c9922c', color: '#fff', border: 'none' }}>Share</button>}
       </header>
@@ -194,8 +219,14 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} onHistory={() => setHistory(true)} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} />
+        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} onHistory={() => setHistory(true)} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} cellComments={cellComments} onCommentAt={commentAt} commentsOpen={panel === 'comments'} jump={jump} />
           : <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Connecting…</div>}
+        {panel === 'comments' && handle && (
+          <CellCommentsPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} isAdmin={isAdmin} onToast={onToast} onClose={() => setPanel(null)}
+            comments={comments} reload={() => commentsReload.current()} bump={() => handle.ydoc.getMap<unknown>('meta').set('commentsRev', Date.now())}
+            target={cTarget && tabNameOf(cTarget.tabId) ? { ...cTarget, tabName: tabNameOf(cTarget.tabId)!, label: addr(cTarget.r, cTarget.c) } : null}
+            labelOf={a => addr(a.r, a.c)} tabName={tabNameOf} goTo={a => setJump(j => ({ ...a, n: (j?.n ?? 0) + 1 }))} />
+        )}
         {panel === 'activity' && <ActivityPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} onToast={onToast} onClose={() => setPanel(null)} />}
       </div>
       {history && handle && <HistoryDialog docId={doc.id} authToken={authToken} ydoc={handle.ydoc} people={people} flush={() => flushRef.current()} onToast={onToast} onClose={() => setHistory(false)} />}
@@ -248,7 +279,7 @@ const moveKeys = (m: Y.Map<unknown>, axis: 'row' | 'col', at: number, delta: 1 |
   for (const [, to, v] of moves) if (to) m.set(to, v);
 };
 
-function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, title, onToast, onHistory }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; onHistory: () => void; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void }) {
+function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, title, onToast, onHistory, cellComments, onCommentAt, commentsOpen, jump }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; onHistory: () => void; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void; cellComments: Map<string, number>; onCommentAt: (t: { tabId: string; r: number; c: number }, follow?: boolean) => void; commentsOpen: boolean; jump: { tabId: string; r: number; c: number; n: number } | null }) {
   const ydoc = handle.ydoc;
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -548,6 +579,15 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
     if (cc >= fc) { if (left < el.scrollLeft + fcW) el.scrollLeft = left - fcW; else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth; }
   };
+  // Comments panel: "jump to this cell" (switching tab first), and while it is open the cell you select becomes the one a new comment goes on.
+  const pendingJump = useRef<{ r: number; c: number } | null>(null);
+  const moveToRef = useRef(moveTo); moveToRef.current = moveTo;
+  useEffect(() => {
+    if (!jump) return;
+    if (jump.tabId !== tabId) { pendingJump.current = { r: jump.r, c: jump.c }; setActiveId(jump.tabId); } else moveToRef.current(jump.r, jump.c);
+  }, [jump]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const j = pendingJump.current; if (j) { pendingJump.current = null; setTimeout(() => moveToRef.current(j.r, j.c), 30); } }, [tabId]);
+  useEffect(() => { if (commentsOpen && tabId) onCommentAt({ tabId, r: sel.r, c: sel.c }, true); }, [commentsOpen, tabId, sel.r, sel.c]); // eslint-disable-line react-hooks/exhaustive-deps
   const startEdit = (r: number, c: number, text?: string) => { if (!canEditCell(r, c)) { onToast(denyMsg(r, c)); return; } const v = getValid(ydoc, tabId, r, c); if (v?.t === 'check' && text === undefined) { toggleCheck(r, c); return; } setEdit({ r, c, text: text ?? raw(r, c) }); };
   const toggleCheck = (r: number, c: number) => { const on = /^true$/i.test(raw(r, c)); setCell(r, c, on ? 'FALSE' : 'TRUE'); };
   const commitEdit = (then?: 'down' | 'right' | 'stay') => {
@@ -935,6 +975,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && S.r === S.r2) { e.preventDefault(); moveRowBy(S.r, e.key === 'ArrowUp' ? -1 : 1); return; }
     if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && S.c === S.c2 && S.r === 0 && S.r2 >= rows - 1) { e.preventDefault(); moveColBy(S.c, e.key === 'ArrowLeft' ? -1 : 1); return; }
     if (e.altKey && (e.key === '/' || e.code === 'Slash')) { e.preventDefault(); setPalette(true); return; }
+    if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key.toLowerCase() === 'm' || e.code === 'KeyM')) { e.preventDefault(); onCommentAt({ tabId, r: selRef.current.r, c: selRef.current.c }); return; }
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
     if (mod && k === 'p') { e.preventDefault(); printTab(); return; }
@@ -1021,6 +1062,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         {spark ? <SparkSvg kind={spark[0]} nums={spark[1] ? spark[1].split(',').map(Number) : []} w={width - 8} h={Math.max(10, height - 6)} /> : rich ? parseRich(String(v)).map((run, k) => <span key={k} style={{ fontWeight: run.b ? 700 : undefined, fontStyle: run.i ? 'italic' : undefined, textDecoration: [run.u ? 'underline' : '', run.s ? 'line-through' : ''].filter(Boolean).join(' ') || undefined, color: run.c }}>{run.t}</span>) : text}
         {badEntry && <span title="This doesn't match the rule for this cell" style={{ position: 'absolute', top: 0, left: 0, width: 0, height: 0, borderRight: '7px solid transparent', borderTop: '7px solid #f59e0b' }} />}
         {note && <span style={{ position: 'absolute', top: 0, right: 0, width: 0, height: 0, borderLeft: '7px solid transparent', borderTop: '7px solid #dc2626' }} />}
+        {(cellComments.get(mkey(tabId, r, c)) ?? 0) > 0 && <span title={`${cellComments.get(mkey(tabId, r, c))} open comment${cellComments.get(mkey(tabId, r, c)) === 1 ? '' : 's'} — click to read`} onMouseDown={e => { e.stopPropagation(); e.preventDefault(); onCommentAt({ tabId, r, c }); }} style={{ position: 'absolute', top: 1, right: 1, width: 10, height: 10, borderRadius: '50%', background: '#c9922c', border: '1.5px solid #fff', boxSizing: 'border-box', cursor: 'pointer', zIndex: 2 }} />}
         {isHdr && <span style={{ position: 'absolute', right: 4, top: 0, fontSize: 10, color: (filters[c]?.length ?? 0) || condFilters[c] ? '#a06a12' : 'var(--k-9ca3af)', fontWeight: 400 }}>{(filters[c]?.length ?? 0) || condFilters[c] ? '◆' : '▾'}</span>}
       </div>
     );
@@ -1156,7 +1198,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     { group: 'Insert', label: 'Row above', run: () => insertMany('row', R.r1, R.r2 - R.r1 + 1) }, { group: 'Insert', label: 'Row below', run: () => insertMany('row', R.r2 + 1, R.r2 - R.r1 + 1) },
     { group: 'Insert', label: 'Column left', run: () => insertMany('col', R.c1, R.c2 - R.c1 + 1) }, { group: 'Insert', label: 'Column right', run: () => insertMany('col', R.c2 + 1, R.c2 - R.c1 + 1) },
     { group: 'Insert', label: 'Chart', run: () => { setChartEdit(null); setDlg('chart'); } }, { group: 'Insert', label: 'Pivot table', run: () => setPivotDlg({}) },
-    { group: 'Insert', label: 'Dropdown or checkbox', run: () => setDlg('valid') }, { group: 'Insert', label: 'Note', run: () => setDlg('note') }, { group: 'Insert', label: 'Data from another spreadsheet', run: () => setImportDlg(true) },
+    { group: 'Insert', label: 'Dropdown or checkbox', run: () => setDlg('valid') }, { group: 'Insert', label: 'Comment', run: () => onCommentAt({ tabId, r: sel.r, c: sel.c }) }, { group: 'Insert', label: 'Note', run: () => setDlg('note') }, { group: 'Insert', label: 'Data from another spreadsheet', run: () => setImportDlg(true) },
     { group: 'Insert', label: 'New tab', run: addTab }, { group: 'Insert', label: 'Delete the selected rows', run: () => deleteMany('row', R.r1, R.r2) }, { group: 'Insert', label: 'Delete the selected columns', run: () => deleteMany('col', R.c1, R.c2) },
     { group: 'Format', label: 'Bold', hint: 'Ctrl+B', run: toggleBold }, { group: 'Format', label: 'Italic', hint: 'Ctrl+I', run: () => toggleFmt('i') }, { group: 'Format', label: 'Underline', hint: 'Ctrl+U', run: () => toggleFmt('u') }, { group: 'Format', label: 'Strikethrough', run: () => toggleFmt('s') },
     { group: 'Format', label: 'Wrap text', run: toggleWrap }, { group: 'Format', label: 'Merge or unmerge cells', run: toggleMerge }, { group: 'Format', label: 'Bigger text', run: () => stepFont(1) }, { group: 'Format', label: 'Smaller text', run: () => stepFont(-1) },
@@ -1246,6 +1288,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             <Item onClick={() => { setChartEdit(null); setDlg('chart'); close(); }}>Chart…</Item>
             <Item onClick={() => { setPivotDlg({}); close(); }}>Pivot table…</Item>
             <Item onClick={() => { setDlg('valid'); close(); }}>Dropdown or checkbox…</Item>
+            <Item hint="Ctrl+Alt+M" onClick={() => { onCommentAt({ tabId, r: sel.r, c: sel.c }); close(); }}>Comment…</Item>
             <Item onClick={() => { setDlg('note'); close(); }}>{selNote ? 'Edit note…' : 'Note…'}</Item>
             <Item onClick={() => { if (tab && canEditCell(R.r1, R.c2 + 1)) setCell(R.r1, R.c2 + 1, `=SPARKLINE(${rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })})`); close(); }}>Mini chart (sparkline) in the next cell</Item>
             <Item onClick={() => { setImportDlg(true); close(); }}>Data from another spreadsheet…</Item>
@@ -1637,6 +1680,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             <Item onClick={() => { sortBy(ctx.c, 1); setCtx(null); }}>Sort sheet by {colName(ctx.c)}, A → Z</Item>
             <Item onClick={() => { sortBy(ctx.c, -1); setCtx(null); }}>Sort sheet by {colName(ctx.c)}, Z → A</Item>
             <Divider />
+            <Item hint="Ctrl+Alt+M" onClick={() => { onCommentAt({ tabId, r: sel.r, c: sel.c }); setCtx(null); }}>Comment…</Item>
             <Item onClick={() => { setDlg('note'); setCtx(null); }}>{selNote ? 'Edit note…' : 'Add a note…'}</Item>
             <Item onClick={() => { setDlg('valid'); setCtx(null); }}>Dropdown / checkbox…</Item>
             <Item onClick={() => { setDlg('cond'); setCtx(null); }}>Conditional formatting…</Item>

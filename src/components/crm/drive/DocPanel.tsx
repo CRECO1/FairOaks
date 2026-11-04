@@ -275,6 +275,125 @@ export function CommentsPanel(p: Common & {
   );
 }
 
+// ── Cell comments (spreadsheets) ──────────────────────────────────────────
+// Same comments table and API as documents; a cell comment's anchor_text is "cell|<tabId>|<row>|<col>|<tab name>".
+
+export const cellAnchor = (tabId: string, r: number, c: number, tabName: string) => `cell|${tabId}|${r}|${c}|${tabName}`;
+export function parseCellAnchor(a: string | null): { tabId: string; r: number; c: number; tabName: string } | null {
+  if (!a || !a.startsWith('cell|')) return null;
+  const [, tabId, r, c, ...rest] = a.split('|');
+  if (!tabId || !Number.isFinite(Number(r)) || !Number.isFinite(Number(c))) return null;
+  return { tabId, r: Number(r), c: Number(c), tabName: rest.join('|') };
+}
+
+export function CellCommentsPanel(p: Common & {
+  comments: DriveComment[];
+  reload: () => Promise<void>;
+  bump: () => void;
+  isAdmin: boolean;
+  /** The cell a new comment goes on (null = none picked yet). */
+  target: { tabId: string; tabName: string; r: number; c: number; label: string } | null;
+  /** A cell's current address label, e.g. "B4" (the tab may have been renamed or deleted since). */
+  labelOf: (a: { tabId: string; r: number; c: number }) => string;
+  tabName: (tabId: string) => string | null;
+  goTo: (a: { tabId: string; r: number; c: number }) => void;
+}) {
+  const api = useApi(p.authToken);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [showResolved, setShowResolved] = useState(false);
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const person = (id: string | null) => p.people.find(x => x.id === id);
+  const nameFor = (id: string | null) => (id === p.me.id ? 'You' : fullName(person(id)) || 'Teammate');
+  const tops = p.comments.filter(c => !c.parent_id && parseCellAnchor(c.anchor_text));
+  const open = tops.filter(c => !c.resolved_at), done = tops.filter(c => c.resolved_at);
+  const here = (c: DriveComment) => { const a = parseCellAnchor(c.anchor_text); return !!a && !!p.target && a.tabId === p.target.tabId && a.r === p.target.r && a.c === p.target.c; };
+  const shown = (showResolved ? done : open).slice().sort((a, b) => Number(here(b)) - Number(here(a)) || a.created_at.localeCompare(b.created_at));
+
+  const post = async (mentions: string[]) => {
+    const body = text.trim(); if (!body || !p.target) return;
+    setBusy(true);
+    try {
+      await api(`/api/crm/drive/comments/${p.docId}`, { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID(), body, mentions, anchor_text: cellAnchor(p.target.tabId, p.target.r, p.target.c, p.target.tabName) }) });
+      setText(''); await p.reload(); p.bump();
+    } catch (e) { p.onToast((e as Error).message); }
+    setBusy(false);
+  };
+  const reply = async (parent: string, mentions: string[]) => {
+    const body = replyText.trim(); if (!body) return;
+    setBusy(true);
+    try { await api(`/api/crm/drive/comments/${p.docId}`, { method: 'POST', body: JSON.stringify({ body, mentions, parent_id: parent }) }); setReplyText(''); setReplyTo(null); await p.reload(); p.bump(); }
+    catch (e) { p.onToast((e as Error).message); }
+    setBusy(false);
+  };
+  const resolve = async (c: DriveComment, resolved: boolean) => {
+    try { await api(`/api/crm/drive/comments/${p.docId}?id=${c.id}`, { method: 'PATCH', body: JSON.stringify({ resolved }) }); await p.reload(); p.bump(); }
+    catch (e) { p.onToast((e as Error).message); }
+  };
+  const remove = async (c: DriveComment) => {
+    if (!confirm(c.parent_id ? 'Delete this reply?' : 'Delete this comment and its replies?')) return;
+    try { await api(`/api/crm/drive/comments/${p.docId}?id=${c.id}`, { method: 'DELETE' }); await p.reload(); p.bump(); }
+    catch (e) { p.onToast((e as Error).message); }
+  };
+  const small = (label: string, on: () => void, danger?: boolean) => (
+    <button type="button" onClick={on} style={{ minHeight: p.isMobile ? 36 : 26, padding: '0 8px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: danger ? 'var(--k-dc2626)' : 'var(--k-6b7280)' }}>{label}</button>
+  );
+  const msg = (c: DriveComment, isReply: boolean) => (
+    <div key={c.id} style={{ padding: isReply ? '8px 0 0 12px' : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>{nameFor(c.author_id)}</span>
+        <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>{fmtWhen(c.created_at)}</span>
+        {(c.author_id === p.me.id || p.isAdmin) && <span style={{ marginLeft: 'auto' }}>{small('Delete', () => void remove(c), true)}</span>}
+      </div>
+      <div style={{ fontSize: 14, color: 'var(--k-374151)', lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}><Body c={c} people={p.people} /></div>
+    </div>
+  );
+
+  return (
+    <Shell title={`Comments${open.length ? ` (${open.length})` : ''}`} isMobile={p.isMobile} onClose={p.onClose}>
+      <div style={{ padding: 14, borderBottom: '1px solid var(--k-f0f0f0)' }}>
+        {p.target ? (
+          <div style={{ background: 'var(--k-fffbeb)', borderLeft: `3px solid ${GOLD}`, padding: '6px 10px', borderRadius: 6, marginBottom: 8, fontSize: 12.5, color: 'var(--k-92400e)' }}>Comment on <b>{p.target.tabName}!{p.target.label}</b></div>
+        ) : <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginBottom: 8 }}>Right-click a cell and choose Comment (or select it and press Ctrl+Alt+M) to start a thread on it.</div>}
+        {p.target && <MentionBox people={p.people} me={p.me.id} value={text} onChange={setText} onSubmit={m => void post(m)} placeholder="Add a comment…" cta="Comment" busy={busy} autoFocus isMobile={p.isMobile} />}
+      </div>
+      <div style={{ display: 'flex', gap: 6, padding: '10px 14px 0' }}>
+        {([[false, `Open (${open.length})`], [true, `Resolved (${done.length})`]] as Array<[boolean, string]>).map(([v, l]) => (
+          <button key={l} type="button" onClick={() => setShowResolved(v)} style={{ minHeight: p.isMobile ? 38 : 28, padding: '0 12px', borderRadius: 16, border: `1px solid ${showResolved === v ? GOLD : 'var(--k-e5e7eb)'}`, background: showResolved === v ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: showResolved === v ? 'var(--k-a06a12)' : 'var(--k-374151)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>{l}</button>
+        ))}
+      </div>
+      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {shown.length === 0 && <div style={{ fontSize: 13.5, color: 'var(--k-9ca3af)', textAlign: 'center', padding: '16px 0' }}>{showResolved ? 'No resolved comments.' : 'No open comments yet.'}</div>}
+        {shown.map(c => {
+          const a = parseCellAnchor(c.anchor_text)!;
+          const tn = p.tabName(a.tabId);
+          const rs = p.comments.filter(x => x.parent_id === c.id);
+          return (
+            <div key={c.id} style={{ border: `1px solid ${here(c) ? GOLD : 'var(--k-e5e7eb)'}`, borderRadius: 10, padding: 11, background: c.resolved_at ? 'var(--k-f9fafb)' : 'var(--k-fff)' }}>
+              {tn ? (
+                <button type="button" onClick={() => p.goTo(a)} title="Jump to this cell" style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', borderLeft: `3px solid ${GOLD}`, background: 'var(--k-fffbeb)', padding: '4px 9px', borderRadius: 4, marginBottom: 8, cursor: 'pointer', fontSize: 12.5, color: 'var(--k-92400e)', fontWeight: 600 }}>{tn}!{p.labelOf(a)}</button>
+              ) : <div style={{ borderLeft: '3px solid var(--k-d1d5db)', padding: '4px 9px', marginBottom: 8, fontSize: 12.5, color: 'var(--k-9ca3af)' }}>{a.tabName} (tab deleted)</div>}
+              {msg(c, false)}
+              {rs.map(r => msg(r, true))}
+              {replyTo === c.id ? (
+                <div style={{ marginTop: 8 }}>
+                  <MentionBox people={p.people} me={p.me.id} value={replyText} onChange={setReplyText} onSubmit={m => void reply(c.id, m)} placeholder="Reply…" cta="Reply" busy={busy} autoFocus isMobile={p.isMobile} onCancel={() => { setReplyTo(null); setReplyText(''); }} />
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 2, marginTop: 6 }}>
+                  {!c.resolved_at && small('Reply', () => { setReplyTo(c.id); setReplyText(''); })}
+                  {small(c.resolved_at ? 'Reopen' : '✓ Resolve', () => void resolve(c, !c.resolved_at))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Shell>
+  );
+}
+
 // ── Version history ───────────────────────────────────────────────────────
 
 export function HistoryPanel(p: Common & {
