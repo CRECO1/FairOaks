@@ -1553,12 +1553,12 @@ function ThreadReader(p: {
           const target = other.email ? p.contactFor(other.email) : null;
           return (
             <div key={m.id} id={`gm-msg-${m.id}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: p.isMobile ? '12px' : '16px 18px', scrollMarginTop: p.isMobile ? 12 : p.embedded ? 64 : 122 }}>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
+              <div style={{ display: 'flex', gap: '8px 12px', alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
                 <Avatar name={name} email={from.email} size={40} warm={!!match} />
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: '1 1 190px', minWidth: 0 }}>
                   <div onClick={() => setFolded(prev => new Set(prev).add(m.id))} title="Fold this message" style={{ cursor: 'pointer' }}>
                     <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-111)' }}>{mine ? 'Me' : name}</span>
-                    <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginLeft: p.isMobile ? 0 : 7, display: p.isMobile ? 'block' : 'inline', wordBreak: 'break-all' }}>&lt;{from.email}&gt;</span>
+                    <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', display: 'block', overflowWrap: 'anywhere' }}>&lt;{from.email}&gt;</span>
                   </div>
                   <button type="button" onClick={() => setDetails(prev => { const n = new Set(prev); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; })} aria-expanded={showDetails}
                     style={{ background: 'none', border: 'none', padding: 0, marginTop: 2, cursor: 'pointer', fontSize: 12.5, color: 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif", textAlign: 'left' }}>
@@ -1579,8 +1579,8 @@ function ThreadReader(p: {
                     </button>
                   )}
                 </div>
-                <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ flex: '0 1 auto', marginLeft: 'auto', textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {chrono.length > 1 && <span title={`Message ${num} of ${chrono.length}`} style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-6b7280)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '0 7px' }}>{num}/{chrono.length}</span>}
                     <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }} title={whenLong(m.date)}>{p.isMobile ? when(m.date) : whenLong(m.date)}</span>
                     {chrono.length > 1 && <button type="button" aria-expanded aria-label="Collapse this message" title="Collapse this message" onClick={() => setFolded(prev => new Set(prev).add(m.id))}
