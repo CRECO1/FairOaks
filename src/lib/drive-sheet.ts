@@ -513,25 +513,35 @@ export interface FeedData {
   rows: Array<{ key: string; cells: string[] }>;
   /** Names for the team's own columns the first time (e.g. "Team notes"). */
   extraHeaders?: string[];
+  /** How many feed columns an existing tab made before this version added more — so the team's columns shift right with them. */
+  prevCols?: number;
 }
 
 export function applyFeed(tab: Y.Map<unknown>, data: FeedData) {
   const cells = tCells(tab), bold = tBold(tab), cols = tCols(tab);
   const nSys = data.header.length;
+  const oldN = Number(tab.get('feedCols') ?? data.prevCols ?? nSys);   // where the team's own columns start right now
+  const delta = nSys - oldN;                                         // > 0 when the feed gained columns: the team's columns move right
   let keys = tab.get('feedKeys') as Y.Map<number> | undefined;
   if (!(keys instanceof Y.Map)) { keys = new Y.Map<number>(); tab.set('feedKeys', keys); }
   // what the team typed to the right of the feed's columns, per record
   const keep = new Map<string, Map<number, string>>();
-  let maxC = nSys - 1;
-  cells.forEach((v, k) => { const [r, c] = parseKey(k); if (c >= nSys) maxC = Math.max(maxC, c); if (r === 0 && c >= nSys) return; });
+  let maxC = oldN - 1;
+  cells.forEach((_v, k) => { const [, c] = parseKey(k); if (c >= oldN) maxC = Math.max(maxC, c); });
   keys.forEach((r, key) => {
     const extra = new Map<number, string>();
-    for (let c = nSys; c <= maxC; c++) { const v = cells.get(cellKey(r, c)); if (v) extra.set(c, v); }
+    for (let c = oldN; c <= maxC; c++) { const v = cells.get(cellKey(r, c)); if (v) extra.set(c + delta, v); }
     if (extra.size) keep.set(key, extra);
   });
   const headerExtra = new Map<number, string>();
-  for (let c = nSys; c <= maxC; c++) { const v = cells.get(cellKey(0, c)); if (v) headerExtra.set(c, v); }
+  for (let c = oldN; c <= maxC; c++) { const v = cells.get(cellKey(0, c)); if (v) headerExtra.set(c + delta, v); }
   if (!headerExtra.size && data.extraHeaders) data.extraHeaders.forEach((h, i) => headerExtra.set(nSys + i, h));
+  if (delta !== 0) {   // widths of the team's columns move with them
+    const moved: Array<[number, number]> = [];
+    cols.forEach((w, k) => { if (Number(k) >= oldN) moved.push([Number(k), w]); });
+    for (const [c] of moved) cols.delete(String(c));
+    for (const [c, w] of moved) cols.set(String(c + delta), w);
+  }
 
   // wipe the feed's area (and the old extras) then rewrite in the feed's order
   const oldKeys = [...cells.keys()];
@@ -549,6 +559,7 @@ export function applyFeed(tab: Y.Map<unknown>, data: FeedData) {
   tab.set('rows', Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, data.rows.length + 30)));
   tab.set('ncols', Math.min(MAX_COLS, Math.max(DEFAULT_COLS, nSys + Math.max(1, headerExtra.size) + 2)));
   (data.widths ?? []).forEach((w, c) => cols.set(String(c), w));
+  tab.set('feedCols', nSys);
   tab.set('feedAt', Date.now());
 }
 
