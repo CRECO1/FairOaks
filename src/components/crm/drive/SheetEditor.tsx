@@ -189,6 +189,15 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
       } catch { /* the anchors stay where they were */ }
     });
   };
+  const swapComments = (tabId: string, axis: 'row' | 'col', a: number, b: number) => {
+    if (!comments.some(c => !c.parent_id && parseCellAnchor(c.anchor_text)?.tabId === tabId)) return;
+    shiftQueue.current = shiftQueue.current.then(async () => {
+      try {
+        await fetch(`/api/crm/drive/comments/${doc.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...(authRef.current ? { Authorization: `Bearer ${authRef.current}` } : {}) }, body: JSON.stringify({ tabId, axis, swap: [a, b] }) });
+        await commentsReload.current(); handle?.ydoc.getMap<unknown>('meta').set('commentsRev', Date.now());
+      } catch { /* the anchors stay where they were */ }
+    });
+  };
   const commentAt = (t: { tabId: string; r: number; c: number }, follow?: boolean) => { setCTarget(t); if (!follow) { setPanel('comments'); void commentsReload.current(); } };
   const dot = status === 'connected' ? '#16a34a' : status === 'connecting' ? '#d97706' : '#dc2626';
   const statusLabel = status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting…' : status === 'denied' ? 'No live access' : 'Reconnecting…';
@@ -230,7 +239,7 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} onHistory={() => setHistory(true)} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} cellComments={cellComments} onCommentAt={commentAt} commentsOpen={panel === 'comments'} jump={jump} onShiftComments={shiftComments} />
+        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} onHistory={() => setHistory(true)} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} cellComments={cellComments} onCommentAt={commentAt} commentsOpen={panel === 'comments'} jump={jump} onShiftComments={shiftComments} onSwapComments={swapComments} />
           : <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Connecting…</div>}
         {panel === 'comments' && handle && (
           <CellCommentsPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} isAdmin={isAdmin} onToast={onToast} onClose={() => setPanel(null)}
@@ -290,7 +299,7 @@ const moveKeys = (m: Y.Map<unknown>, axis: 'row' | 'col', at: number, delta: 1 |
   for (const [, to, v] of moves) if (to) m.set(to, v);
 };
 
-function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, title, onToast, onHistory, cellComments, onCommentAt, commentsOpen, jump, onShiftComments }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; onHistory: () => void; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void; cellComments: Map<string, number>; onCommentAt: (t: { tabId: string; r: number; c: number }, follow?: boolean) => void; commentsOpen: boolean; jump: { tabId: string; r: number; c: number; n: number } | null; onShiftComments: (tabId: string, axis: 'row' | 'col', at: number, delta: 1 | -1) => void }) {
+function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, title, onToast, onHistory, cellComments, onCommentAt, commentsOpen, jump, onShiftComments, onSwapComments }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; onHistory: () => void; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void; cellComments: Map<string, number>; onCommentAt: (t: { tabId: string; r: number; c: number }, follow?: boolean) => void; commentsOpen: boolean; jump: { tabId: string; r: number; c: number; n: number } | null; onShiftComments: (tabId: string, axis: 'row' | 'col', at: number, delta: 1 | -1) => void; onSwapComments: (tabId: string, axis: 'row' | 'col', a: number, b: number) => void }) {
   const ydoc = handle.ydoc;
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -1114,7 +1123,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     const j = Math.max(Math.min(frozen, nRows - 1), j0);              // never into the frozen header rows
     const dir = j > i ? 1 : -1; const steps = Math.min(400, Math.abs(j - i)); if (!steps) return;
     let done = 0;
-    tx(() => { for (let k = 0; k < steps; k++) { const a = order[i + dir * k], b = order[i + dir * (k + 1)]; if (!canEditCell(b, 0)) break; swapRows(ydoc, tab, tabs, a, b); done++; } });
+    tx(() => { for (let k = 0; k < steps; k++) { const a = order[i + dir * k], b = order[i + dir * (k + 1)]; if (!canEditCell(b, 0)) break; swapRows(ydoc, tab, tabs, a, b); onSwapComments(tabId, 'row', a, b); done++; } });
     if (done) { const dest = order[i + dir * done]; const next = { r: dest, c: selRef.current.c, r2: dest, c2: selRef.current.c2 }; selRef.current = next; setSel(next); }
   };
   const moveRowBy = (r: number, dir: -1 | 1) => { const j = idxOf(r) + dir; if (j >= 0 && j < nRows) moveRowTo(r, order[j]); };
@@ -1135,7 +1144,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     if (feedCols) { if (from < feedCols) to = Math.min(to, feedCols - 1); else to = Math.max(to, feedCols); }   // CRM columns and the team's columns stay apart
     if (to === from) { onToast('The CRM’s columns and your own columns can’t be mixed — move it within its own side'); return; }
     const dir = to > from ? 1 : -1; const steps = Math.abs(to - from);
-    tx(() => { for (let k = 0; k < steps; k++) swapCols(ydoc, tab, tabs, from + dir * k, from + dir * (k + 1)); });
+    tx(() => { for (let k = 0; k < steps; k++) { swapCols(ydoc, tab, tabs, from + dir * k, from + dir * (k + 1)); onSwapComments(tabId, 'col', from + dir * k, from + dir * (k + 1)); } });
     const next = { r: selRef.current.r, c: to, r2: selRef.current.r2, c2: to }; selRef.current = next; setSel(next);
   };
   const moveColBy = (c: number, dir: -1 | 1) => { let n = c + dir; while (n > 0 && n < ncols - 1 && !widths[n]) n += dir; moveColTo(c, n); };

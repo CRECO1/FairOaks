@@ -447,6 +447,15 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
           <TSep />
           <T title="Link" icon="link" on={editor.isActive('link')} onClick={openLink} />
           <T title="Insert a picture" icon="image" onClick={() => imgInput.current?.click()} />
+          {editor.isActive('image') && (
+            <Pop className="sx-btn" title="Picture size" active label={<><span>Size</span><span style={{ fontSize: 9 }}>▾</span></>}>
+              {close => <>
+                {([['Small', 200], ['Medium', 400], ['Large', 600], ['Full width', null]] as Array<[string, number | null]>).map(([l, w]) => (
+                  <Item key={l} checked={(Number(editor.getAttributes('image').width) || null) === w} onClick={() => { c().updateAttributes('image', { width: w }).run(); close(); }}>{l}</Item>
+                ))}
+              </>}
+            </Pop>
+          )}
           <T title="Comment on the selected words" icon="comment" onClick={onComment} />
           <TSep />
           <T title="Bulleted list" icon="bullets" on={editor.isActive('bulletList')} onClick={() => c().toggleBulletList().run()} />

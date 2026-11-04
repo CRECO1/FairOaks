@@ -100,7 +100,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ docI
   if (!dc) return unauthorized();
   const { docId } = await params;
   if (!(await openDoc(dc, docId))) return notFound('That document is not available');
-  const b = await req.json().catch(() => ({})) as { tabId?: string; axis?: string; at?: number; delta?: number };
+  const b = await req.json().catch(() => ({})) as { tabId?: string; axis?: string; at?: number; delta?: number; swap?: [number, number] };
+  // Two neighbouring rows / columns traded places (Alt+arrows, drag): their comments trade places too.
+  if (b.swap && b.tabId && (b.axis === 'row' || b.axis === 'col') && b.swap.length === 2 && b.swap.every(n => Number.isInteger(n) && n >= 0)) {
+    const [x, y] = b.swap;
+    const { data: cs } = await dc.admin.from('crm_drive_comments').select('id,anchor_text').eq('doc_id', docId).is('parent_id', null).like('anchor_text', 'cell|%');
+    for (const c of cs ?? []) {
+      const [, tab, r, col, ...rest] = String(c.anchor_text).split('|');
+      if (tab !== b.tabId) continue;
+      const idx = Number(b.axis === 'row' ? r : col);
+      const n = idx === x ? y : idx === y ? x : null; if (n === null) continue;
+      await dc.admin.from('crm_drive_comments').update({ anchor_text: ['cell', tab, b.axis === 'row' ? n : r, b.axis === 'col' ? n : col, ...rest].join('|') }).eq('id', c.id);
+    }
+    return NextResponse.json({ ok: true });
+  }
   const at = Number(b.at), delta = Number(b.delta);
   if (!b.tabId || (b.axis !== 'row' && b.axis !== 'col') || !Number.isInteger(at) || at < 0 || (delta !== 1 && delta !== -1)) return NextResponse.json({ error: 'invalid shift' }, { status: 400 });
   const { data } = await dc.admin.from('crm_drive_comments').select('id,anchor_text,resolved_at').eq('doc_id', docId).is('parent_id', null).like('anchor_text', 'cell|%');
