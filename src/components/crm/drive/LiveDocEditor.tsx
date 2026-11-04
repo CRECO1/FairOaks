@@ -235,7 +235,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
 
   return (
     <Frame isMobile={isMobile}>
-      <header style={{ display: 'flex', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap', rowGap: isMobile ? 4 : 0, gap: isMobile ? 6 : 12, padding: isMobile ? '8px 10px' : '10px 18px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)', flexShrink: 0 }}>
+      <header style={{ display: 'flex', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap', rowGap: isMobile ? 4 : 0, gap: isMobile ? 4 : 12, padding: isMobile ? '8px 10px' : '10px 18px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)', flexShrink: 0 }}>
         <button type="button" onClick={onClose} aria-label="Back to Docs" style={{ ...iconBtn(isMobile), fontSize: 18 }}>←</button>
         <div style={{ flex: isMobile ? '1 1 calc(100% - 56px)' : 1, minWidth: 0 }}>
           <input value={title} onChange={e => onTitleInput(e.target.value)} aria-label="Document title" maxLength={300}
@@ -257,25 +257,25 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
           {peers.length > 4 && <span style={{ fontSize: 11, marginLeft: 4, color: 'var(--k-6b7280)' }}>+{peers.length - 4}</span>}
         </div>
         <button type="button" onClick={() => setPanel(p => (p === 'comments' ? null : 'comments'))} aria-pressed={panel === 'comments'} aria-label="Comments" title="Comments"
-          style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'comments' ? 'var(--k-fdf6e9)' : 'var(--k-fff)', position: 'relative' }}>
+          style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px', background: panel === 'comments' ? 'var(--k-fdf6e9)' : 'var(--k-fff)', position: 'relative' }}>
           💬{comments.some(c => !c.parent_id && !c.resolved_at) && <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--k-a06a12)' }}>{comments.filter(c => !c.parent_id && !c.resolved_at).length}</span>}
         </button>
         <button type="button" onClick={() => setPanel(p => (p === 'activity' ? null : 'activity'))} aria-pressed={panel === 'activity'} aria-label="Activity log" title="Activity — every change to this document"
-          style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'activity' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>📜</button>
+          style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px', background: panel === 'activity' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>📜</button>
         <button type="button" onClick={() => setPanel(p => (p === 'history' ? null : 'history'))} aria-pressed={panel === 'history'} aria-label="Version history" title="Version history"
-          style={{ ...btnStyle(isMobile), padding: '0 10px', background: panel === 'history' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>🕘</button>
+          style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px', background: panel === 'history' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>🕘</button>
         {(() => {
           const doPdf = async () => { if (!editor) return; try { await flushRef.current(); await exportDocPdf(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the PDF'); } };
           const doWord = async () => { if (!editor) return; try { await flushRef.current(); await exportDocDocx(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the Word file'); } };
           if (!isMobile) return (
             <>
-              <button type="button" disabled={!editor} onClick={() => void doPdf()} aria-label="Download as PDF" title="Download as PDF" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇ PDF</button>
-              <button type="button" disabled={!editor} onClick={() => void doWord()} aria-label="Download as Word" title="Download as a Word (.docx) file you can edit in Word" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇ Word</button>
+              <button type="button" disabled={!editor} onClick={() => void doPdf()} aria-label="Download as PDF" title="Download as PDF" style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px' }}>⬇ PDF</button>
+              <button type="button" disabled={!editor} onClick={() => void doWord()} aria-label="Download as Word" title="Download as a Word (.docx) file you can edit in Word" style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px' }}>⬇ Word</button>
             </>
           );
           return (
             <div style={{ position: 'relative' }}>
-              <button type="button" disabled={!editor} onClick={() => setDlOpen(o => !o)} aria-haspopup="menu" aria-expanded={dlOpen} aria-label="Download" title="Download as PDF or Word" style={{ ...btnStyle(isMobile), padding: '0 10px' }}>⬇</button>
+              <button type="button" disabled={!editor} onClick={() => setDlOpen(o => !o)} aria-haspopup="menu" aria-expanded={dlOpen} aria-label="Download" title="Download as PDF or Word" style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px' }}>⬇</button>
               {dlOpen && (
                 <>
                   <div onClick={() => setDlOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
@@ -293,7 +293,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
         {onSign && (
           <button type="button" disabled={!editor} aria-label="Send for signature" title="Turn this document into a PDF and send it for e-signature"
             onClick={async () => { if (!editor) return; try { await flushRef.current(); onSign(doc); } catch (e) { onToast((e as Error).message || 'Could not prepare the document'); } }}
-            style={{ ...btnStyle(isMobile), padding: '0 10px', color: '#a06a12', background: 'var(--k-fdf6e9)' }}>✍ Sign</button>
+            style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px', color: '#a06a12', background: 'var(--k-fdf6e9)' }}>✍ Sign</button>
         )}
         {onShare && <button type="button" onClick={() => onShare(doc)} style={{ ...btnStyle(isMobile), background: '#c9922c', color: '#fff', border: 'none' }}>Share</button>}
       </header>
@@ -405,7 +405,7 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead }: { ed
     <div style={{ background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)', flexShrink: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '4px 8px', ...(isMobile && more ? { flexWrap: 'wrap', rowGap: 2 } : { overflowX: 'auto', WebkitOverflowScrolling: 'touch' }) }}>
         <B on={() => c().undo().run()} label="↶" title="Undo" />
-        {isMobile && <B on={() => setMore(m => !m)} active={more} label={more ? 'Less ▴' : '⋯ More'} title={more ? 'Show fewer tools' : 'Show every formatting tool'} />}
+        {isMobile && <B on={() => setMore(m => !m)} active={more} label={more ? 'Less ▴' : 'More'} title={more ? 'Show fewer tools' : 'Show every formatting tool'} />}
         {x && <B on={() => c().redo().run()} label="↷" title="Redo" />}
         <Sep />
         <select aria-label="Text style" value={block} onChange={e => { const v = e.target.value; if (v === 'p') c().setParagraph().run(); else c().toggleHeading({ level: Number(v[1]) as 1 | 2 | 3 }).run(); }}
