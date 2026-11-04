@@ -59,6 +59,8 @@ export function gmailSignatureBlock(signature: string): string {
 
 const FONT = 'Arial,Helvetica,sans-serif';
 const GOLD = '#C9922C';
+// The signature's own logo is a Google-hosted image (googleusercontent.com/mail-sig) that only loads for the sender, so recipients saw an empty box. The card uses our own hosted logo instead.
+const LOGO_URL = 'https://www.crecotx.com/images/creco-logo-light.png';
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const plain = (h: string) => h.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
 
@@ -105,8 +107,8 @@ export function brandedSignature(signature: string): string {
       return `<tr><td style="padding:0 10px 0 0;color:${GOLD};font-weight:700;font-size:11px;letter-spacing:1px;width:14px">${lab ? esc(lab[1].toUpperCase()) : '&nbsp;'}</td><td style="padding:1px 0;color:#333;font-size:13px">${shown}</td></tr>`;
     };
     return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:${FONT};margin:0"><tr>`
-      + `<td valign="top" style="padding:0 14px 0 0;border-right:3px solid ${GOLD}"><img src="${src}" width="104" alt="CRECO" style="display:block;width:104px;height:auto;border:0"></td>`
-      + `<td valign="top" style="padding:0 0 0 14px;font-family:${FONT}">`
+      + `<td valign="top" style="padding:0 16px 0 0;border-right:3px solid ${GOLD}"><img src="${LOGO_URL}" width="150" alt="CRECO — Commercial Real Estate Company" style="display:block;width:150px;height:auto;border:0"></td>`
+      + `<td valign="top" style="padding:0 0 0 16px;font-family:${FONT}">`
       + `<div style="font-size:17px;font-weight:700;color:#111;line-height:1.25">${esc(name)}</div>`
       + (title ? `<div style="font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:${GOLD};margin:2px 0 0">${esc(title)}</div>` : '')
       + (where ? `<div style="font-size:12px;color:#666;margin:2px 0 8px">${esc(where)}</div>` : '<div style="height:8px"></div>')
