@@ -3,9 +3,39 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { adminClient } from '@/lib/supabase-admin';
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
+import { createHash } from 'crypto';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+/**
+ * Short-lived, per-server-instance memory of "this token is a valid login" and "this user's role/workspace".
+ * Every authenticated API call used to spend two Supabase round trips (~270 ms) re-proving both, even for a
+ * burst of clicks a second apart. Rules that keep this safe:
+ *   - READ requests only (GET). Anything that writes, shares, deletes or sends re-checks fresh every time.
+ *   - 45 s at most, and never past the token's own expiry, so a lapsed login stops working on time.
+ *   - Memory only, keyed by a hash of the token; nothing is stored or shared across instances.
+ * The trade-off: someone demoted or removed can keep READING for up to 45 s on an instance that already cached them.
+ */
+const AUTH_CACHE_MS = 45_000;
+const AUTH_CACHE_MAX = 500;
+type CachedUser = NonNullable<Awaited<ReturnType<ReturnType<typeof createAdminClient>['auth']['getUser']>>['data']['user']>;
+const userCache = new Map<string, { user: CachedUser; until: number }>();
+const profileCache = new Map<string, { role: string | null; businessUnit: string | null; until: number }>();
+
+function remember<V extends { until: number }>(m: Map<string, V>, key: string, v: V) {
+  if (m.size >= AUTH_CACHE_MAX) {
+    const now = Date.now();
+    for (const [k, e] of m) if (e.until <= now) m.delete(k);
+    if (m.size >= AUTH_CACHE_MAX) m.clear();
+  }
+  m.set(key, v);
+}
+
+/** The token's own expiry (ms), from its unverified payload — only ever used to SHORTEN the cache window. */
+function tokenExpiryMs(token: string): number {
+  try { return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).exp * 1000 || 0; } catch { return 0; }
+}
 
 /**
  * Returns the authenticated Supabase user.
@@ -23,9 +53,22 @@ export async function getCrmUser(req?: NextRequest) {
   }
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
+    const cacheable = req?.method === 'GET';
+    const key = cacheable ? createHash('sha256').update(token).digest('hex') : '';
+    if (cacheable) {
+      const hit = userCache.get(key);
+      if (hit && hit.until > Date.now()) return hit.user;
+    }
     const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: { user }, error } = await admin.auth.getUser(token);
-    if (!error && user) return user;
+    if (!error && user) {
+      if (cacheable) {
+        const exp = tokenExpiryMs(token);
+        const until = Math.min(Date.now() + AUTH_CACHE_MS, exp || 0);   // unreadable expiry -> don't cache
+        if (until > Date.now()) remember(userCache, key, { user, until });
+      }
+      return user;
+    }
   }
 
   // 2. Fall back to cookie-based session (SSR)
@@ -168,17 +211,21 @@ export interface CrmContext {
 export async function getCrmContext(req?: NextRequest): Promise<CrmContext | null> {
   const user = await getCrmUser(req);
   if (!user) return null;
+  const cacheable = req?.method === 'GET';
+  if (cacheable) {
+    const hit = profileCache.get(user.id);
+    if (hit && hit.until > Date.now()) return { userId: user.id, role: hit.role, businessUnit: hit.businessUnit };
+  }
   const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data } = await admin.from('crm_profiles').select('role, business_unit').eq('id', user.id).maybeSingle();
   // A login with no CRM profile is NOT a CRM user. This used to return role=null/businessUnit=null, which
   // many routes then treated as "no restrictions" (e.g. `businessUnit ?? 'commercial'`), so anyone who signed
   // up for an auth account could read workspace data through the API. Fail closed.
   if (!data) return null;
-  return {
-    userId: user.id,
-    role: (data.role as string | undefined) ?? null,
-    businessUnit: (data.business_unit as string | undefined) ?? null,
-  };
+  const role = (data.role as string | undefined) ?? null;
+  const businessUnit = (data.business_unit as string | undefined) ?? null;
+  if (cacheable) remember(profileCache, user.id, { role, businessUnit, until: Date.now() + AUTH_CACHE_MS });
+  return { userId: user.id, role, businessUnit };
 }
 
 /**
