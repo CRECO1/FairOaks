@@ -904,3 +904,62 @@ export function swapCols(doc: Y.Doc, tab: TabInfo, allTabs: TabInfo[], a: number
     const names: string[] = []; for (let c = 0; c < nSys; c++) names.push(tCells(tab.map).get(cellKey(0, c)) ?? ''); tab.map.set('feedColOrder', JSON.stringify(names));
   }
 }
+
+// ── formula help: the function list, what is being typed, and which cells a formula points at ─────────────
+
+export const FUNCTION_DOCS: Array<{ name: string; sig: string; desc: string }> = [
+  { name: 'SUM', sig: 'SUM(range, …)', desc: 'Adds the numbers' }, { name: 'AVERAGE', sig: 'AVERAGE(range, …)', desc: 'Average of the numbers' }, { name: 'MIN', sig: 'MIN(range, …)', desc: 'Smallest number' }, { name: 'MAX', sig: 'MAX(range, …)', desc: 'Largest number' },
+  { name: 'COUNT', sig: 'COUNT(range, …)', desc: 'How many numbers' }, { name: 'COUNTA', sig: 'COUNTA(range, …)', desc: 'How many cells are not empty' }, { name: 'COUNTBLANK', sig: 'COUNTBLANK(range)', desc: 'How many cells are empty' },
+  { name: 'COUNTIF', sig: 'COUNTIF(range, criterion)', desc: 'Counts cells that match, e.g. ">5" or "Dental"' }, { name: 'COUNTIFS', sig: 'COUNTIFS(range1, criterion1, range2, criterion2, …)', desc: 'Counts rows that match every condition' },
+  { name: 'SUMIF', sig: 'SUMIF(range, criterion, [sum_range])', desc: 'Adds the cells that match' }, { name: 'SUMIFS', sig: 'SUMIFS(sum_range, range1, criterion1, …)', desc: 'Adds where every condition matches' }, { name: 'AVERAGEIF', sig: 'AVERAGEIF(range, criterion, [average_range])', desc: 'Average of the cells that match' },
+  { name: 'IF', sig: 'IF(test, if_true, [if_false])', desc: 'One result if the test is true, another if not' }, { name: 'IFS', sig: 'IFS(test1, value1, test2, value2, …)', desc: 'The first value whose test is true' }, { name: 'IFERROR', sig: 'IFERROR(value, [if_error])', desc: 'A fallback when a formula errors' }, { name: 'SWITCH', sig: 'SWITCH(value, case1, result1, …, [default])', desc: 'Pick a result by matching a value' },
+  { name: 'AND', sig: 'AND(test1, test2, …)', desc: 'True when all are true' }, { name: 'OR', sig: 'OR(test1, test2, …)', desc: 'True when any is true' }, { name: 'NOT', sig: 'NOT(test)', desc: 'Flips true / false' },
+  { name: 'VLOOKUP', sig: 'VLOOKUP(key, range, column, [exact])', desc: 'Find a value in the first column, return another column' }, { name: 'HLOOKUP', sig: 'HLOOKUP(key, range, row, [exact])', desc: 'Same, across a row' }, { name: 'XLOOKUP', sig: 'XLOOKUP(key, lookup_range, return_range, [if_missing])', desc: 'Find a value, return from another range' },
+  { name: 'INDEX', sig: 'INDEX(range, row, [column])', desc: 'The cell at a position in a range' }, { name: 'MATCH', sig: 'MATCH(key, range, [0])', desc: 'Position of a value in a range' }, { name: 'CHOOSE', sig: 'CHOOSE(number, value1, value2, …)', desc: 'Pick the nth value' },
+  { name: 'ROUND', sig: 'ROUND(number, [digits])', desc: 'Rounds a number' }, { name: 'ROUNDUP', sig: 'ROUNDUP(number, [digits])', desc: 'Rounds away from zero' }, { name: 'ROUNDDOWN', sig: 'ROUNDDOWN(number, [digits])', desc: 'Rounds toward zero' }, { name: 'INT', sig: 'INT(number)', desc: 'Rounds down to a whole number' },
+  { name: 'ABS', sig: 'ABS(number)', desc: 'Absolute value' }, { name: 'MOD', sig: 'MOD(number, divisor)', desc: 'Remainder after dividing' }, { name: 'POWER', sig: 'POWER(number, power)', desc: 'Number to a power' }, { name: 'SQRT', sig: 'SQRT(number)', desc: 'Square root' },
+  { name: 'CEILING', sig: 'CEILING(number, [step])', desc: 'Rounds up to a step' }, { name: 'FLOOR', sig: 'FLOOR(number, [step])', desc: 'Rounds down to a step' }, { name: 'MEDIAN', sig: 'MEDIAN(range, …)', desc: 'The middle number' }, { name: 'PRODUCT', sig: 'PRODUCT(range, …)', desc: 'Multiplies the numbers' },
+  { name: 'LARGE', sig: 'LARGE(range, n)', desc: 'The nth largest' }, { name: 'SMALL', sig: 'SMALL(range, n)', desc: 'The nth smallest' }, { name: 'SUMPRODUCT', sig: 'SUMPRODUCT(range1, range2, …)', desc: 'Multiplies ranges item by item, then adds' }, { name: 'PMT', sig: 'PMT(rate, periods, loan, [future_value])', desc: 'Loan payment per period' },
+  { name: 'LEFT', sig: 'LEFT(text, [count])', desc: 'First characters' }, { name: 'RIGHT', sig: 'RIGHT(text, [count])', desc: 'Last characters' }, { name: 'MID', sig: 'MID(text, start, count)', desc: 'Characters from the middle' }, { name: 'LEN', sig: 'LEN(text)', desc: 'Length of the text' },
+  { name: 'FIND', sig: 'FIND(find, text, [start])', desc: 'Position of text (case-sensitive)' }, { name: 'SEARCH', sig: 'SEARCH(find, text, [start])', desc: 'Position of text (any case)' }, { name: 'SUBSTITUTE', sig: 'SUBSTITUTE(text, find, replace)', desc: 'Swap text for other text' },
+  { name: 'UPPER', sig: 'UPPER(text)', desc: 'ALL CAPS' }, { name: 'LOWER', sig: 'LOWER(text)', desc: 'all lowercase' }, { name: 'PROPER', sig: 'PROPER(text)', desc: 'Capitalize Each Word' }, { name: 'TRIM', sig: 'TRIM(text)', desc: 'Removes extra spaces' },
+  { name: 'CONCAT', sig: 'CONCAT(text1, text2, …)', desc: 'Joins text' }, { name: 'CONCATENATE', sig: 'CONCATENATE(text1, text2, …)', desc: 'Joins text' }, { name: 'TEXTJOIN', sig: 'TEXTJOIN(delimiter, skip_empty, text1, …)', desc: 'Joins text with a separator' }, { name: 'REPT', sig: 'REPT(text, times)', desc: 'Repeats text' },
+  { name: 'TEXT', sig: 'TEXT(value, format)', desc: 'Formats a number or date, e.g. "$#,##0.00" or "mmm d, yyyy"' }, { name: 'VALUE', sig: 'VALUE(text)', desc: 'Turns text into a number' },
+  { name: 'TODAY', sig: 'TODAY()', desc: "Today's date" }, { name: 'NOW', sig: 'NOW()', desc: 'Right now' }, { name: 'DATE', sig: 'DATE(year, month, day)', desc: 'Builds a date' }, { name: 'YEAR', sig: 'YEAR(date)', desc: 'The year' }, { name: 'MONTH', sig: 'MONTH(date)', desc: 'The month' }, { name: 'DAY', sig: 'DAY(date)', desc: 'The day' },
+  { name: 'DAYS', sig: 'DAYS(end_date, start_date)', desc: 'Days between two dates' }, { name: 'EDATE', sig: 'EDATE(date, months)', desc: 'A date some months away' },
+  { name: 'ISBLANK', sig: 'ISBLANK(cell)', desc: 'True if empty' }, { name: 'ISNUMBER', sig: 'ISNUMBER(value)', desc: 'True if a number' }, { name: 'ISTEXT', sig: 'ISTEXT(value)', desc: 'True if text' }, { name: 'ISERROR', sig: 'ISERROR(value)', desc: 'True if an error' },
+  { name: 'ROW', sig: 'ROW([cell])', desc: 'Row number' }, { name: 'COLUMN', sig: 'COLUMN([cell])', desc: 'Column number' },
+  { name: 'IMPORTRANGE', sig: 'IMPORTRANGE("spreadsheet name or link", "Tab!A1:D20")', desc: 'Live cells from another spreadsheet' }, { name: 'SPARKLINE', sig: 'SPARKLINE(range, ["line" or "bar"])', desc: 'A tiny chart inside the cell' },
+];
+
+/** The function the caret is inside of ("=SUM(A1," → SUM, argument 2), or the partial name being typed ("=SU" → prefix "SU"). */
+export function formulaContext(text: string, caret: number): { prefix: string | null; fn: string | null; arg: number } {
+  const before = text.slice(0, caret);
+  if (!before.startsWith('=')) return { prefix: null, fn: null, arg: 0 };
+  const m = /(?:^|[=(,+\-*/&<>^;\s])([A-Za-z][A-Za-z0-9.]*)$/.exec(before);
+  let depth = 0, fn: string | null = null, arg = 0, inStr = false;
+  const stack: Array<{ fn: string | null; arg: number }> = [];
+  for (let i = 1; i < before.length; i++) {
+    const ch = before[i];
+    if (ch === '"') { inStr = !inStr; continue; } if (inStr) continue;
+    if (ch === '(') { const name = /([A-Za-z][A-Za-z0-9.]*)$/.exec(before.slice(0, i))?.[1] ?? null; stack.push({ fn: name, arg: 0 }); depth++; }
+    else if (ch === ')') { stack.pop(); depth--; }
+    else if ((ch === ',' || ch === ';') && stack.length) stack[stack.length - 1].arg++;
+  }
+  if (stack.length) { fn = stack[stack.length - 1].fn; arg = stack[stack.length - 1].arg; }
+  void depth;
+  return { prefix: m && !/^[A-Za-z]{1,3}\d+$/.test(m[1]) ? m[1] : null, fn, arg };
+}
+
+/** Every cell / range a formula mentions on its own tab, as zero-based boxes (for colouring them while the formula is edited). */
+export function refsIn(text: string): Array<{ r1: number; c1: number; r2: number; c2: number }> {
+  if (!text.startsWith('=')) return [];
+  const out: Array<{ r1: number; c1: number; r2: number; c2: number }> = [];
+  for (const seg of text.split(/("(?:[^"]|"")*")/).filter((_, i) => i % 2 === 0)) {
+    for (const m of seg.matchAll(/(?<![A-Za-z0-9_.!'])\$?([A-Za-z]{1,3})\$?(\d{1,5})(?::\$?([A-Za-z]{1,3})\$?(\d{1,5}))?(?![A-Za-z0-9_(])/g)) {
+      const c1 = colIndex(m[1]), r1 = Number(m[2]) - 1, c2 = m[3] ? colIndex(m[3]) : c1, r2 = m[4] ? Number(m[4]) - 1 : r1;
+      out.push({ r1: Math.min(r1, r2), c1: Math.min(c1, c2), r2: Math.max(r1, r2), c2: Math.max(c1, c2) });
+    }
+  }
+  return out.slice(0, 12);
+}

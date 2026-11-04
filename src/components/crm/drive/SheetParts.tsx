@@ -349,3 +349,48 @@ export const SHEET_CSS = `
 .sx-gold{height:30px;padding:0 12px;border:none;border-radius:6px;background:var(--k-fdf6e9);color:#a06a12;cursor:pointer;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0}
 .sx-gold:hover{background:#f6e6c4} .sx-gold:disabled{opacity:.6;cursor:default}
 `;
+
+// ── clean-up dialogs ────────────────────────────────────────────────────────────────────
+
+export function DedupeDialog({ headers, onRun, onClose }: { headers: string[]; onRun: (cols: number[], hasHeader: boolean) => string | null; onClose: () => void }) {
+  const [picked, setPicked] = useState<Set<number>>(new Set(headers.map((_, i) => i)));
+  const [hdr, setHdr] = useState(true);
+  const [err, setErr] = useState('');
+  return (
+    <Modal title="Remove duplicate rows" onClose={onClose}>
+      <div style={{ fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>Rows in the selection that repeat the same values in the columns you tick are removed — the first one is kept. Formulas below shift up to follow.</div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, margin: '12px 0 8px' }}><input type="checkbox" checked={hdr} onChange={e => setHdr(e.target.checked)} /> The first row is a header</label>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', margin: '8px 0 4px' }}>Compare these columns</div>
+      <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: 6 }}>
+        {headers.map((h, i) => <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 4px', fontSize: 13.5 }}><input type="checkbox" checked={picked.has(i)} onChange={e => setPicked(s => { const n = new Set(s); if (e.target.checked) n.add(i); else n.delete(i); return n; })} />{h || `Column ${i + 1}`}</label>)}
+      </div>
+      {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+        <button type="button" style={plain} onClick={onClose}>Cancel</button>
+        <button type="button" style={primary} onClick={() => { const e = onRun([...picked].sort((a, b) => a - b), hdr); if (e) setErr(e); else onClose(); }}>Remove duplicates</button>
+      </div>
+    </Modal>
+  );
+}
+
+export function SplitDialog({ onRun, onClose }: { onRun: (delim: string) => string | null; onClose: () => void }) {
+  const [kind, setKind] = useState('comma');
+  const [custom, setCustom] = useState('');
+  const [err, setErr] = useState('');
+  const D: Record<string, string> = { comma: ',', semicolon: ';', space: ' ', tab: '\t', dash: '-', slash: '/', pipe: '|' };
+  return (
+    <Modal title="Split text into columns" onClose={onClose}>
+      <div style={{ fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>Splits each selected cell at a separator and puts the pieces in the columns to its right. Cells already there are overwritten.</div>
+      <label style={lab}>Separator</label>
+      <select value={kind} onChange={e => setKind(e.target.value)} style={{ ...field, width: '100%' }}>
+        <option value="comma">Comma ( , )</option><option value="semicolon">Semicolon ( ; )</option><option value="space">Space</option><option value="tab">Tab</option><option value="dash">Dash ( - )</option><option value="slash">Slash ( / )</option><option value="pipe">Pipe ( | )</option><option value="custom">Custom…</option>
+      </select>
+      {kind === 'custom' && <input value={custom} onChange={e => setCustom(e.target.value)} placeholder="Type the separator" style={{ ...field, width: '100%', marginTop: 8 }} />}
+      {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+        <button type="button" style={plain} onClick={onClose}>Cancel</button>
+        <button type="button" style={primary} onClick={() => { const e = onRun(kind === 'custom' ? custom : D[kind]); if (e) setErr(e); else onClose(); }}>Split</button>
+      </div>
+    </Modal>
+  );
+}

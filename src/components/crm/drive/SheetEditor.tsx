@@ -18,13 +18,13 @@ import { acquireDoc, releaseDoc, type CollabHandle } from '@/lib/collab/doc-regi
 import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
 import type { DriveDoc } from '@/lib/drive-types';
 import {
-  Evaluator, IMPORT_RE, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, buildPivot, cellKey, chartList, checkValid, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, formatVal, getNote, getValid, hasRichMarks, listTabs, lockList, mergeList, mkey, newId, newTabMap, cloneTabMap, parseRich, readRangeFromDoc, stripRich,
+  Evaluator, FUNCTION_DOCS, IMPORT_RE, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, buildPivot, cellKey, chartList, checkValid, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, formatVal, getNote, getValid, hasRichMarks, listTabs, lockList, mergeList, mkey, newId, newTabMap, cloneTabMap, parseRich, readRangeFromDoc, refsIn, stripRich, formulaContext,
   notesMap, parseKey, patchFmt, renameTabRefs, shiftFormula, shiftMeta, swapCols, swapRows, tBold, tCells, tCols, tabGrid, tabsMap, validMap,
   type CellFmt, type CondOp, type CondRule, type ChartDef, type FeedData, type LockRange, type MergeRange, type NoteInfo, type PivotDef, type TabInfo, type ValidRule, type Val,
 } from '@/lib/drive-sheet';
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
 import { ActivityPanel } from './DocPanel';
-import { CondDialog, Divider, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, TBtn, TSep, ValidDialog, type LockInfo, type PivotForm } from './SheetParts';
+import { CondDialog, DedupeDialog, Divider, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, SplitDialog, TBtn, TSep, ValidDialog, type LockInfo, type PivotForm } from './SheetParts';
 import { ChartDialog, ChartSvg, type ChartData } from './SheetChart';
 import type { DrivePerson } from './DocsDrive';
 
@@ -271,6 +271,13 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const [filters, setFilters] = useState<Record<number, string[]>>({});     // column -> hidden values (this person only)
   const [filterMenu, setFilterMenu] = useState<{ c: number; q: string } | null>(null);
   const [find, setFind] = useState<{ q: string; rep: string; idx: number; replace: boolean } | null>(null);
+  const [caret, setCaret] = useState(0);
+  const [acIdx, setAcIdx] = useState(-1);
+  const [acOff, setAcOff] = useState(false);
+  const barRef = useRef<HTMLInputElement>(null);
+  const refSpan = useRef<{ start: number; end: number; first: string } | null>(null);
+  const [condFilters, setCondFilters] = useState<Record<number, { op: string; val: string }>>({});
+  const [cleanDlg, setCleanDlg] = useState<null | 'dedupe' | 'split'>(null);
   const [hoverRow, setHoverRow] = useState<number | null>(null);
   const [rowDrag, setRowDrag] = useState<{ from: number; to: number } | null>(null);
   const [hoverCol, setHoverCol] = useState<number | null>(null);
@@ -354,15 +361,19 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
 
   // ── which rows are visible (hidden rows and filters), and how tall each one is (display index ↔ sheet row) ──
   const hdrRows = Math.max(frozen, 1);
-  const filterKey = JSON.stringify(filters);
+  const filterKey = JSON.stringify(filters) + JSON.stringify(condFilters);
   const order = useMemo(() => {
     const hiddenSet = new Set<number>();
     extMap(ydoc).forEach((_v, k) => { if (k.startsWith(tabId + '|hr|')) hiddenSet.add(Number(k.slice(tabId.length + 4))); });
     const hidden = filtersOn ? Object.entries(filters).map(([c, v]) => [Number(c), new Set(v)] as [number, Set<string>]) : [];
+    const conds = filtersOn ? Object.entries(condFilters).map(([c, f]) => [Number(c), f] as [number, { op: string; val: string }]) : [];
     const out: number[] = [];
     for (let r = 0; r < rows; r++) {
       if (hiddenSet.has(r)) continue;
-      if (r >= hdrRows && hidden.length && !hidden.every(([c, set]) => !set.has(formatVal(evaluator.value(null, r, c), fmtOf(r, c))))) continue;
+      if (r >= hdrRows) {
+        if (hidden.length && !hidden.every(([c, set]) => !set.has(formatVal(evaluator.value(null, r, c), fmtOf(r, c))))) continue;
+        if (conds.length && !conds.every(([c, f]) => { const v = evaluator.value(null, r, c); return f.op === 'notcontains' ? !condMatch(v, 'contains', f.val) : condMatch(v, f.op as CondOp, f.val); })) continue;
+      }
       out.push(r);
     }
     return out.length ? out : [0];
@@ -398,7 +409,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     ro.observe(el); setBox({ w: el.clientWidth, h: el.clientHeight });
     return () => ro.disconnect();
   }, [tabId]);
-  useEffect(() => { const el = body.current; if (el) { el.scrollTop = 0; el.scrollLeft = 0; } setScroll({ top: 0, left: 0 }); setFilters({}); setFilterMenu(null); setDd(null); }, [tabId]);
+  useEffect(() => { const el = body.current; if (el) { el.scrollTop = 0; el.scrollLeft = 0; } setScroll({ top: 0, left: 0 }); setFilters({}); setCondFilters({}); setFilterMenu(null); setDd(null); }, [tabId]);
   useEffect(() => { handle.awareness.setLocalStateField('cell', { tab: tabId, r: sel.r, c: sel.c }); }, [handle, tabId, sel.r, sel.c]);
 
   // ── edits (every change is one transaction tagged LOCAL so Undo only undoes my own) ──
@@ -675,6 +686,58 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     setActiveId(nid);
   };
 
+  // ── data clean-up on the selected cells ──
+  const cleanup = (fn: (v: string) => string, label: string) => {
+    if (!tab) return; if (isPivot) { onToast(denyMsg(0, 0)); return; }
+    let n = 0;
+    tx(() => forEachSel((r, c) => { if (!canEditCell(r, c)) return; const v = tCells(tab.map).get(cellKey(r, c)) ?? ''; if (v === '' || v.startsWith('=')) return; const nv = fn(v); if (nv !== v) { tCells(tab.map).set(cellKey(r, c), nv); n++; } }));
+    onToast(n ? `${label}: ${n} cell${n === 1 ? '' : 's'} changed` : `${label}: nothing to change`);
+  };
+  const trimSel = () => cleanup(v => v.replace(/\s+/g, ' ').trim(), 'Trim whitespace');
+  const caseSel = (k: 'upper' | 'lower' | 'proper') => cleanup(v => (k === 'upper' ? v.toUpperCase() : k === 'lower' ? v.toLowerCase() : v.toLowerCase().replace(/(^|[^a-z'])([a-z])/g, (_m, a: string, b: string) => a + b.toUpperCase())), 'Change case');
+  const numbersSel = () => cleanup(v => {
+    const t = v.trim(); if (!/^[(-]?\$?\s*-?\d[\d,]*(\.\d+)?\)?%?$/.test(t)) return v;
+    const neg = /^\(.*\)$/.test(t) || /^-/.test(t) || /^\$\s*-/.test(t); let n = Number(t.replace(/[^0-9.]/g, '')); if (Number.isNaN(n)) return v; if (/%$/.test(t)) n /= 100;
+    return String(neg ? -n : n);
+  }, 'Text to numbers');
+  const dupRowsIn = (cols: number[], from: number, to: number) => {
+    const seen = new Set<string>(), dups: number[] = [];
+    for (let r = from; r <= to; r++) { const key = cols.map(c => shown(r, c).trim().toLowerCase()).join('\u0001'); if (cols.every(c => shown(r, c).trim() === '')) continue; if (seen.has(key)) dups.push(r); else seen.add(key); }
+    return dups;
+  };
+  const highlightDuplicates = () => {
+    if (!tab) return; const cols = Array.from({ length: R.c2 - R.c1 + 1 }, (_, i) => R.c1 + i); const dups = dupRowsIn(cols, R.r1, Math.min(R.r2, rows - 1));
+    if (!dups.length) { onToast('No duplicates in the selection'); return; }
+    tx(() => { for (const r of dups) for (const c of cols) patchFmt(ydoc, tabId, r, c, { bg: '#fde68a' }); });
+    onToast(`${dups.length} duplicate row${dups.length === 1 ? '' : 's'} highlighted (the first of each is left alone)`);
+  };
+  const removeDuplicates = (cols: number[], hasHeader: boolean): string | null => {
+    if (!tab) return 'Nothing to do';
+    if (feedCols || isPivot) return 'Rows on a live CRM tab come from the CRM — use the filter to hide rows instead';
+    if (!cols.length) return 'Tick at least one column';
+    const dups = dupRowsIn(cols.map(i => R.c1 + i), R.r1 + (hasHeader ? 1 : 0), Math.min(R.r2, rows - 1));
+    if (!dups.length) return 'No duplicate rows found';
+    if (dups.some(r => !canEditCell(r, 0))) return 'Some of those rows are protected';
+    for (const r of [...dups].sort((a, b) => b - a)) shift('row', r, -1);
+    setSel(x => ({ ...x, r2: Math.max(x.r, x.r2 - dups.length) }));
+    onToast(`Removed ${dups.length} duplicate row${dups.length === 1 ? '' : 's'}`);
+    return null;
+  };
+  const splitText = (delim: string): string | null => {
+    if (!tab || delim === '') return 'Pick a separator';
+    let n = 0, wide = 0;
+    tx(() => forEachSel((r, c) => {
+      if (!canEditCell(r, c)) return; const v = tCells(tab.map).get(cellKey(r, c)) ?? ''; if (v === '' || v.startsWith('=') || !v.includes(delim)) return;
+      const parts = v.split(delim).map(x => x.trim()).slice(0, 30);
+      parts.forEach((x, i) => { if (c + i < MAX_COLS && canEditCell(r, c + i)) { if (x === '') tCells(tab.map).delete(cellKey(r, c + i)); else tCells(tab.map).set(cellKey(r, c + i), x); } });
+      wide = Math.max(wide, c + parts.length); n++;
+    }));
+    if (!n) return 'No selected cell contains that separator';
+    if (wide > ncols - 1) tx(() => tab.map.set('ncols', Math.min(MAX_COLS, wide + 2)));
+    onToast(`Split ${n} cell${n === 1 ? '' : 's'}`);
+    return null;
+  };
+
   // ── pivot tables: a tab whose cells are computed from another range (see lib buildPivot) ──
   const savePivot = (f: PivotForm, editTab: TabInfo | undefined, srcTab: TabInfo | undefined): string | null => {
     const rg = parseRange(f.range); if (!rg || !srcTab) return 'Type a range like A1:H200';
@@ -787,6 +850,23 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const onMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     setCtx(null); setDd(null);
+    {   // while a formula is being typed, clicking a cell puts its address into the formula (shift-click makes a range)
+      const ed = editRef.current;
+      if (ed && ed.text.startsWith('=')) {
+        const cp = editor.current?.selectionStart ?? ed.text.length, before = ed.text.slice(0, cp), sp = refSpan.current;
+        const afterOp = /[=(,+\-*/&<>^;]\s*$/.test(before), replacing = !!sp && cp === sp.end && !afterOp;
+        const q = cellAt(e.clientX, e.clientY);
+        if (q && (afterOp || replacing)) {
+          e.preventDefault();
+          const start = replacing ? sp!.start : cp, first = replacing && e.shiftKey ? sp!.first : addr(q.r, q.c);
+          const piece = replacing && e.shiftKey ? `${first}:${addr(q.r, q.c)}` : addr(q.r, q.c);
+          const nt = ed.text.slice(0, start) + piece + ed.text.slice(replacing ? sp!.end : cp), np = start + piece.length;
+          refSpan.current = { start, end: np, first }; setEdit({ ...ed, text: nt }); setCaret(np);
+          setTimeout(() => { const i = editor.current; if (i) { i.focus(); i.setSelectionRange(np, np); } }, 0);
+          return;
+        }
+      }
+    }
     if (edit) commitEdit('stay');
     let p = cellAt(e.clientX, e.clientY); if (!p) return;
     const mg0 = mergeOf.get(cellKey(p.r, p.c));
@@ -921,7 +1001,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         {spark ? <SparkSvg kind={spark[0]} nums={spark[1] ? spark[1].split(',').map(Number) : []} w={width - 8} h={Math.max(10, height - 6)} /> : rich ? parseRich(String(v)).map((run, k) => <span key={k} style={{ fontWeight: run.b ? 700 : undefined, fontStyle: run.i ? 'italic' : undefined, textDecoration: [run.u ? 'underline' : '', run.s ? 'line-through' : ''].filter(Boolean).join(' ') || undefined, color: run.c }}>{run.t}</span>) : text}
         {badEntry && <span title="This doesn't match the rule for this cell" style={{ position: 'absolute', top: 0, left: 0, width: 0, height: 0, borderRight: '7px solid transparent', borderTop: '7px solid #f59e0b' }} />}
         {note && <span style={{ position: 'absolute', top: 0, right: 0, width: 0, height: 0, borderLeft: '7px solid transparent', borderTop: '7px solid #dc2626' }} />}
-        {isHdr && <span style={{ position: 'absolute', right: 4, top: 0, fontSize: 10, color: (filters[c]?.length ?? 0) ? '#a06a12' : 'var(--k-9ca3af)', fontWeight: 400 }}>{(filters[c]?.length ?? 0) ? '◆' : '▾'}</span>}
+        {isHdr && <span style={{ position: 'absolute', right: 4, top: 0, fontSize: 10, color: (filters[c]?.length ?? 0) || condFilters[c] ? '#a06a12' : 'var(--k-9ca3af)', fontWeight: 400 }}>{(filters[c]?.length ?? 0) || condFilters[c] ? '◆' : '▾'}</span>}
       </div>
     );
   };
@@ -996,6 +1076,33 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const autoFit = (c: number) => { if (!tab) return; let m = colName(c).length; for (let r = 0; r < Math.min(rows, 400); r++) m = Math.max(m, shown(r, c).length); tx(() => tCols(tab.map).set(String(c), Math.max(MIN_W, Math.min(520, Math.round(m * 7.4 + 22))))); };
 
   const activeRaw = edit ? edit.text : bar ?? raw(sel.r, sel.c);
+  // formula help: function names as you type, the arguments of the function you are inside, and the cells the formula points at
+  const typing = edit ? edit.text : bar;
+  const fctx = typing !== null && typing.startsWith('=') ? formulaContext(typing, Math.min(caret, typing.length)) : null;
+  const sugs = fctx?.prefix && !acOff ? FUNCTION_DOCS.filter(f => f.name.startsWith(fctx.prefix!.toUpperCase()) && f.name !== fctx.prefix!.toUpperCase()).slice(0, 8) : [];
+  const hintDoc = fctx?.fn ? FUNCTION_DOCS.find(f => f.name === fctx.fn!.toUpperCase()) : undefined;
+  const anchorEl = edit ? editor.current : bar !== null ? barRef.current : null;
+  const acceptSug = (name: string) => {
+    const t = typing ?? '', cp = Math.min(caret, t.length), pre = fctx?.prefix ?? '';
+    const nt = t.slice(0, cp - pre.length) + name + '(' + t.slice(cp), np = cp - pre.length + name.length + 1;
+    if (edit) setEdit({ ...edit, text: nt }); else setBar(nt);
+    setCaret(np); setAcIdx(-1);
+    setTimeout(() => { const el = edit ? editor.current : barRef.current; if (el) { el.focus(); el.setSelectionRange(np, np); } }, 0);
+  };
+  /** Keys for the suggestion list; true when the key was used. */
+  const sugKey = (e: React.KeyboardEvent) => {
+    if (!sugs.length) return false;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setAcIdx(i => Math.min(sugs.length - 1, i + 1)); return true; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setAcIdx(i => Math.max(-1, i - 1)); return true; }
+    if (e.key === 'Tab' || (e.key === 'Enter' && acIdx >= 0)) { e.preventDefault(); acceptSug(sugs[Math.max(0, acIdx)].name); return true; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setAcOff(true); return true; }
+    return false;
+  };
+  const RCOL = ['#2563eb', '#16a34a', '#db2777', '#7c3aed', '#ea580c', '#0891b2'];
+  const refBoxes = (typing && typing.startsWith('=') ? refsIn(typing) : []).map((b, i) => {
+    const i1 = idxOf(b.r1), i2 = idxOf(b.r2); if (i1 < 0 || i2 < 0 || b.c1 >= ncols) return null;
+    return <div key={i} style={{ position: 'absolute', top: sy(i1), left: sx(b.c1), width: lefts[Math.min(b.c2, ncols - 1) + 1] - lefts[b.c1], height: tops[i2 + 1] - tops[i1], border: `2px solid ${RCOL[i % RCOL.length]}`, background: `${RCOL[i % RCOL.length]}14`, boxSizing: 'border-box', pointerEvents: 'none', zIndex: 5 }} />;
+  });
   const hasFeed = tab ? !!tab.map.get('feed') : false;
   const tb: React.CSSProperties = { ...btnStyle(isMobile), height: isMobile ? 36 : 28, padding: '0 9px', fontSize: 13, minWidth: 30 };
   const on = (b: boolean): React.CSSProperties => ({ ...tb, background: b ? 'var(--k-fdf6e9)' : tb.background, color: b ? '#a06a12' : tb.color });
@@ -1058,7 +1165,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             <Item checked={fc === 2} onClick={() => { tx(() => tab.map.set('frozenCols', 2)); close(); }}>2 columns</Item>
             <Item onClick={() => { tx(() => tab.map.set('frozenCols', sel.c + 1)); close(); }}>Up to column {colName(sel.c)}</Item>
             <Divider />
-            <Item checked={filtersOn} onClick={() => { setFiltersOn(o => !o); setFilters({}); close(); }}>Filter</Item>
+            <Item checked={filtersOn} onClick={() => { setFiltersOn(o => !o); setFilters({}); setCondFilters({}); close(); }}>Filter</Item>
             <Item checked={bandOn} onClick={() => { toggleBand(); close(); }}>Alternating row colors</Item>
             <Divider />
             <Item onClick={() => { hide('row'); close(); }}>Hide row{R.r2 > R.r1 ? 's' : ''} {R.r1 + 1}{R.r2 > R.r1 ? `–${R.r2 + 1}` : ''}</Item>
@@ -1123,12 +1230,22 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
           {close => (<>
             <Item onClick={() => { sortBy(sel.c, 1); close(); }}>Sort sheet by {colName(sel.c)}, A → Z</Item>
             <Item onClick={() => { sortBy(sel.c, -1); close(); }}>Sort sheet by {colName(sel.c)}, Z → A</Item>
-            <Item checked={filtersOn} onClick={() => { setFiltersOn(o => !o); setFilters({}); close(); }}>Filter</Item>
+            <Item checked={filtersOn} onClick={() => { setFiltersOn(o => !o); setFilters({}); setCondFilters({}); close(); }}>Filter</Item>
             <Divider />
             <Item onClick={() => { setDlg('valid'); close(); }}>Data validation (dropdown, checkbox, rules)…</Item>
             <Item onClick={() => { setDlg('protect'); close(); }}>Protect range…{locks.length ? ` (${locks.length})` : ''}</Item>
             <Item onClick={() => { setPivotDlg({}); close(); }}>Pivot table…</Item>
             <Item onClick={() => { setImportDlg(true); close(); }}>Import from another spreadsheet…</Item>
+            <Divider />
+            <MenuLabel>Clean up (selected cells)</MenuLabel>
+            <Item onClick={() => { trimSel(); close(); }}>Trim extra spaces</Item>
+            <Item onClick={() => { caseSel('upper'); close(); }}>UPPERCASE</Item>
+            <Item onClick={() => { caseSel('lower'); close(); }}>lowercase</Item>
+            <Item onClick={() => { caseSel('proper'); close(); }}>Capitalize Each Word</Item>
+            <Item onClick={() => { numbersSel(); close(); }}>Turn text into numbers ($1,200 → 1200)</Item>
+            <Item onClick={() => { setCleanDlg('split'); close(); }}>Split text into columns…</Item>
+            <Item onClick={() => { highlightDuplicates(); close(); }}>Highlight duplicate rows</Item>
+            <Item onClick={() => { setCleanDlg('dedupe'); close(); }}>Remove duplicate rows…</Item>
             {hasFeed && <><Divider /><Item onClick={() => { void refreshFeed(false); close(); }}>Refresh from the CRM</Item></>}
             {hasFeed && !!(tab?.map.get('feedOrder') || tab?.map.get('feedColOrder')) && <Item onClick={() => { tx(() => { tab?.map.delete('feedOrder'); tab?.map.delete('feedColOrder'); }); void refreshFeed(false); close(); }}>Automatic row &amp; column order (undo my moves)</Item>}
           </>)}
@@ -1186,7 +1303,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         </Pop>
         <TBtn title="Merge cells (click again to unmerge)" on={merges.some(m => !(m.r2 < R.r1 || m.r1 > R.r2 || m.c2 < R.c1 || m.c1 > R.c2))} onClick={toggleMerge}><Ico n="merge" /></TBtn>
         <TSep />
-        <TBtn title="Filter: add a ▾ to the header row and hide rows by value" on={filtersOn} onClick={() => { setFiltersOn(o => !o); setFilters({}); }}><Ico n="filter" /></TBtn>
+        <TBtn title="Filter: add a ▾ to the header row and hide rows by value" on={filtersOn} onClick={() => { setFiltersOn(o => !o); setFilters({}); setCondFilters({}); }}><Ico n="filter" /></TBtn>
         <Pop className="sx-btn" title="Sort" label={<><Ico n="sort" />▾</>}>
           {close => (<><Item onClick={() => { sortBy(sel.c, 1); close(); }}>Sort sheet by {colName(sel.c)}, A → Z</Item><Item onClick={() => { sortBy(sel.c, -1); close(); }}>Sort sheet by {colName(sel.c)}, Z → A</Item></>)}
         </Pop>
@@ -1212,13 +1329,33 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderBottom: '1px solid var(--k-e5e7eb)' }}>
         <div style={{ minWidth: 64, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: 'var(--k-6b7280)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '4px 6px', whiteSpace: 'nowrap' }}>{rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })}</div>
         <span style={{ color: 'var(--k-9ca3af)', fontStyle: 'italic', fontSize: 13 }}>fx</span>
-        <input value={activeRaw} aria-label="Cell contents"
+        <input ref={barRef} value={activeRaw} aria-label="Cell contents"
           onFocus={() => setBar(raw(sel.r, sel.c))}
-          onChange={e => { if (edit) setEdit({ ...edit, text: e.target.value }); else setBar(e.target.value); }}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const t = edit ? edit.text : bar ?? ''; if (edit) setEdit(null); setBar(null); setCell(sel.r, sel.c, t); wrap.current?.focus(); } else if (e.key === 'Escape') { setBar(null); setEdit(null); wrap.current?.focus(); } }}
+          onChange={e => { refSpan.current = null; setAcOff(false); setAcIdx(-1); setCaret(e.target.selectionStart ?? e.target.value.length); if (edit) setEdit({ ...edit, text: e.target.value }); else setBar(e.target.value); }}
+          onKeyUp={e => setCaret(e.currentTarget.selectionStart ?? 0)} onClick={e => setCaret(e.currentTarget.selectionStart ?? 0)}
+          onKeyDown={e => { if (sugKey(e)) return; if (e.key === 'Enter') { e.preventDefault(); const t = edit ? edit.text : bar ?? ''; if (edit) setEdit(null); setBar(null); setCell(sel.r, sel.c, t); wrap.current?.focus(); } else if (e.key === 'Escape') { setBar(null); setEdit(null); wrap.current?.focus(); } }}
           onBlur={() => { if (bar !== null && bar !== raw(sel.r, sel.c)) setCell(sel.r, sel.c, bar); setBar(null); }}
           style={{ flex: 1, minWidth: 0, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)' }} />
       </div>
+      {anchorEl && (sugs.length > 0 || hintDoc) && (() => {
+        const rc = anchorEl.getBoundingClientRect();
+        const parts = hintDoc ? hintDoc.sig.replace(/\)$/, '').split('(') : [];
+        const args = hintDoc ? (parts[1] ?? '').split(/,\s*/) : [];
+        return (
+          <div style={{ position: 'fixed', top: rc.bottom + 3, left: Math.max(8, Math.min(rc.left, window.innerWidth - 360)), zIndex: 1500, width: 340, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.2)', overflow: 'hidden', fontSize: 12.5 }} onMouseDown={e => e.preventDefault()}>
+            {hintDoc && <div style={{ padding: '7px 10px', background: 'var(--k-f9fafb)', borderBottom: sugs.length ? '1px solid var(--k-e5e7eb)' : undefined }}>
+              <div style={{ fontFamily: 'ui-monospace,Menlo,monospace' }}>{parts[0]}({args.map((a, i) => <span key={i}>{i ? ', ' : ''}<span style={{ fontWeight: i === Math.min(fctx?.arg ?? 0, args.length - 1) ? 800 : 400, color: i === Math.min(fctx?.arg ?? 0, args.length - 1) ? '#a06a12' : undefined }}>{a}</span></span>)})</div>
+              <div style={{ color: 'var(--k-6b7280)', marginTop: 2 }}>{hintDoc.desc}</div>
+            </div>}
+            {sugs.map((f, i) => (
+              <div key={f.name} onMouseDown={e => { e.preventDefault(); acceptSug(f.name); }} style={{ padding: '6px 10px', cursor: 'pointer', background: i === acIdx ? 'var(--k-fdf6e9)' : undefined, display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <b style={{ fontFamily: 'ui-monospace,Menlo,monospace' }}>{f.name}</b><span style={{ color: 'var(--k-6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.desc}</span>
+              </div>
+            ))}
+            {sugs.length > 0 && <div style={{ padding: '4px 10px', color: 'var(--k-9ca3af)', fontSize: 11, borderTop: '1px solid var(--k-e5e7eb)' }}>Tab to insert · ↑↓ to choose · Esc to close</div>}
+          </div>
+        );
+      })()}
       {find && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderBottom: '1px solid var(--k-e5e7eb)', background: 'var(--k-f9fafb)', flexWrap: 'wrap' }}>
           <input autoFocus value={find.q} placeholder="Find" onChange={e => setFind({ ...find, q: e.target.value, idx: 0 })} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); goMatch(find.idx + (e.shiftKey ? -1 : 1)); } else if (e.key === 'Escape') setFind(null); }} style={{ height: 28, border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '0 8px', fontSize: 13, width: 160 }} />
@@ -1329,6 +1466,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
           </div>
           {fill && <div style={{ position: 'absolute', top: sy(Math.max(0, idxOf(Math.min(R.r1, fill.r)))), left: sx(Math.min(R.c1, fill.c)), width: lefts[Math.max(R.c2, fill.c) + 1] - lefts[Math.min(R.c1, fill.c)], height: tops[Math.max(0, idxOf(Math.max(R.r2, fill.r))) + 1] - tops[Math.max(0, idxOf(Math.min(R.r1, fill.r)))], border: '2px dashed #c9922c', boxSizing: 'border-box' }} />}
           {peerBoxes}
+          {refBoxes}
           {colDrag && <div style={{ position: 'absolute', top: 0, bottom: 0, left: sx(colDrag.to) + (colDrag.to > colDrag.from ? widths[colDrag.to] : 0) - 1, width: 3, background: '#c9922c', pointerEvents: 'none', zIndex: 7 }} />}
           {rowDrag && idxOf(rowDrag.to) >= 0 && <div style={{ position: 'absolute', left: 0, right: 0, top: sy(idxOf(rowDrag.to)) + (idxOf(rowDrag.to) > idxOf(rowDrag.from) ? heights[idxOf(rowDrag.to)] : 0) - 1, height: 3, background: '#c9922c', pointerEvents: 'none', zIndex: 7 }} />}
           {selValid?.t === 'list' && !edit && <button type="button" onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setDd({ r: sel.r, c: sel.c }); }} aria-label="Choose from the list" style={{ position: 'absolute', top: act.top + 3, left: act.left + act.w - 24, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'rgba(201,146,44,.18)', color: '#a06a12', fontSize: 11, cursor: 'pointer', pointerEvents: 'auto', padding: 0 }}>▾</button>}
@@ -1341,8 +1479,9 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
               </div>
             </>) : null; })()}
           {edit && (
-            <input ref={el => { editor.current = el; if (el && document.activeElement !== el) { el.focus(); const n = el.value.length; el.setSelectionRange(n, n); } }} value={edit.text} onChange={e => setEdit({ ...edit, text: e.target.value })} aria-label="Edit cell"
+            <input ref={el => { editor.current = el; if (el && document.activeElement !== el) { el.focus(); const n = el.value.length; el.setSelectionRange(n, n); } }} value={edit.text} onChange={e => { refSpan.current = null; setAcOff(false); setAcIdx(-1); setCaret(e.target.selectionStart ?? e.target.value.length); setEdit({ ...edit, text: e.target.value }); }} onKeyUp={e => setCaret(e.currentTarget.selectionStart ?? 0)} onClick={e => setCaret(e.currentTarget.selectionStart ?? 0)} aria-label="Edit cell"
               onKeyDown={e => {
+                if (sugKey(e)) { e.stopPropagation(); return; }
                 const m_ = e.metaKey || e.ctrlKey, k_ = e.key.toLowerCase();
                 if (m_ && (k_ === 'b' || k_ === 'i' || k_ === 'u' || (e.shiftKey && k_ === 'x'))) { e.preventDefault(); e.stopPropagation(); if (k_ === 'b') toggleBold(); else toggleFmt(k_ === 'i' ? 'i' : k_ === 'u' ? 'u' : 's'); return; }
                 if (e.key === 'Enter') { e.preventDefault(); commitEdit('down'); }
@@ -1382,6 +1521,15 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t === '' ? '(blank)' : t}</span><span style={{ color: 'var(--k-9ca3af)', fontSize: 11.5 }}>{n}</span>
                   </label>
                 ))}
+              </div>
+              <div style={{ borderTop: '1px solid var(--k-e5e7eb)', marginTop: 8, paddingTop: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', marginBottom: 4 }}>Or filter by condition</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <select value={condFilters[c]?.op ?? ''} onChange={e => { const op = e.target.value; setCondFilters(f => { const n = { ...f }; if (!op) delete n[c]; else n[c] = { op, val: n[c]?.val ?? '' }; return n; }); }} style={{ height: 30, border: '1px solid var(--k-d1d5db)', borderRadius: 6, fontSize: 12.5, flex: 1, minWidth: 0 }}>
+                    <option value="">(none)</option><option value="contains">Text contains</option><option value="notcontains">Text does not contain</option><option value="eq">Is equal to</option><option value="ne">Is not equal to</option><option value="gt">Greater than</option><option value="lt">Less than</option><option value="ge">Greater than or equal</option><option value="le">Less than or equal</option><option value="empty">Is empty</option><option value="notempty">Is not empty</option>
+                  </select>
+                  {condFilters[c] && condFilters[c].op !== 'empty' && condFilters[c].op !== 'notempty' && <input value={condFilters[c].val} onChange={e => setCondFilters(f => ({ ...f, [c]: { ...f[c], val: e.target.value } }))} placeholder="Value" style={{ height: 30, width: 90, border: '1px solid var(--k-d1d5db)', borderRadius: 6, padding: '0 6px', fontSize: 12.5 }} />}
+                </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}><button type="button" style={{ ...tb, background: '#c9922c', color: '#fff', border: 'none' }} onClick={() => setFilterMenu(null)}>Done</button></div>
             </div>
@@ -1442,6 +1590,8 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
           onSave={f => savePivot(f, editTab, srcTab)} />;
       })()}
       {importDlg && <ImportDialog onClose={() => setImportDlg(false)} onInsert={(nm, rg_) => { const t = `=IMPORTRANGE("${nm.replace(/"/g, '')}","${rg_.replace(/"/g, '')}")`; setCell(sel.r, sel.c, t); }} />}
+      {cleanDlg === 'dedupe' && <DedupeDialog headers={Array.from({ length: R.c2 - R.c1 + 1 }, (_, i) => shown(R.r1, R.c1 + i))} onRun={removeDuplicates} onClose={() => setCleanDlg(null)} />}
+      {cleanDlg === 'split' && <SplitDialog onRun={splitText} onClose={() => setCleanDlg(null)} />}
       {dlg === 'chart' && (
         <ChartDialog initial={chartEdit ?? undefined} rangeText={chartEdit ? rangeLabel(chartEdit) : rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} onClose={() => { setDlg(null); setChartEdit(null); }} onSave={v => saveChart(v, chartEdit)} />
       )}

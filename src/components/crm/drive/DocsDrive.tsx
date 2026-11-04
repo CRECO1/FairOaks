@@ -503,7 +503,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           <span style={{ width: 118 }}>{accessPill(it)}</span>
           <span style={{ width: 84, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}{inTrash && <span style={{ display: 'block', fontSize: 10.5, color: daysLeft(it) <= 3 ? 'var(--k-dc2626)' : 'var(--k-9ca3af)' }}>{daysLeft(it)} d left</span>}</span>
         </>}
-        {kind === 'doc' && !isMobile && !inTrash && (it as DriveDoc).kind !== 'sheet' && (
+        {kind === 'doc' && !isMobile && !inTrash && (
           <button type="button" className="dd-dots" aria-label={`Quick look at ${title}`} title="Quick look — preview without opening" onClick={() => setQuickDocId(it.id)}
             style={{ width: 32, height: 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-9ca3af)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="eye" size={17} /></button>
         )}
@@ -511,7 +511,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           <button type="button" className="dd-dots" aria-label={`Edit ${title} as a live document`} title="Edit as a live document" onClick={() => void editFile(it as DriveFile)}
             style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: GOLD, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="pen" size={17} /></button>
         )}
-        {!(kind === 'doc' && !isMobile && !inTrash && (it as DriveDoc).kind !== 'sheet') && !isMobile && !inTrash && !(kind === 'file' && canEditFile((it as DriveFile).name)) && <span style={{ width: 32, flexShrink: 0 }} />}
+        {!(kind === 'doc' && !isMobile && !inTrash) && !isMobile && !inTrash && !(kind === 'file' && canEditFile((it as DriveFile).name)) && <span style={{ width: 32, flexShrink: 0 }} />}
         {dotsBtn(kind, it, title)}
       </div>
     );
@@ -706,7 +706,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
             <>
               {dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template && <MenuBtn icon="📋" label="Use this template" isMobile={isMobile} onClick={() => void startFromTemplate(dlg.item.id)} />}
               <MenuBtn icon="↗" label={dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template ? 'Edit the template' : 'Open'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); if (d.kind === 'doc') setOpenDocId(d.item.id); else openItem(d.kind, d.item); }} />
-               {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); setQuickDocId(d.item.id); }} />}
+               {dlg.kind === 'doc' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); setQuickDocId(d.item.id); }} />}
               {dlg.kind === 'form' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void quickLookForm(d.item as DriveFormItem); }} />}
               {dlg.kind === 'form' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFormPdf(d.item as DriveFormItem); }} />}
               {(dlg.kind === 'file' || dlg.kind === 'form' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label={dlg.kind === 'doc' ? 'Link to a deal…' : 'Add to a deal…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
