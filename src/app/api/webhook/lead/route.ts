@@ -327,7 +327,10 @@ export async function POST(req: NextRequest) {
   // unless LEAD_AUTOENROLL_UNITS names this unit; see lib/lead-autoenroll.ts.
   // Not for subscribers: someone who only asked for a community newsletter (e.g. fairoaksranchplaza.com) is not a sales lead
   // and must not receive the brand's lead-nurture sequence.
-  if (isNew && !isSubscriptionLead({ source, event: body.event, subscriptionType: body.subscription_type })) {
+  // Not for leads an outside AI agent passed on (crecotx.com /api/v1/inquiries, source "AI agent: ..."): the person has
+  // not written to us themselves, so a human follows up first and no automated series goes to them.
+  const fromAiAgent = /(^|[^a-z])ai[- ]agent/i.test(source);
+  if (isNew && !fromAiAgent && !isSubscriptionLead({ source, event: body.event, subscriptionType: body.subscription_type })) {
     await maybeAutoEnrollLead(supabase, { clientId, agentId: adminId ?? null, businessUnit: unit });
   }
 
