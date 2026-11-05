@@ -343,11 +343,22 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
       const encoded = Buffer.from(buildMimeEmail(headerLines, html, attList)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
       const sendBody: Record<string, string> = { raw: encoded };
       if (threadId) sendBody.threadId = threadId;
-      const sendRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      const postSend = () => fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
         method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(sendBody),
       });
+      let sendRes = await postSend();
+      // Deal emails are shared across the team, so a reply can carry a threadId that lives in ANOTHER
+      // agent's mailbox. Gmail answers that with 404 "Requested entity was not found." Retry as a fresh
+      // message; In-Reply-To/References still thread it for the recipient.
+      if (sendRes.status === 404 && sendBody.threadId) {
+        delete sendBody.threadId;
+        sendRes = await postSend();
+      }
       const sendData = await sendRes.json();
-      if (!sendRes.ok) throw new Error(sendData.error?.message ?? 'Gmail send failed');
+      if (!sendRes.ok) {
+        console.error('Gmail send failed', sendRes.status, JSON.stringify(sendData.error ?? sendData), { userId, hadThread: !!threadId });
+        throw new Error(sendData.error?.message ?? 'Gmail send failed');
+      }
       // Gmail assigns the Message-ID: keep it so a follow-up to this email (not just to a received one)
       // threads for the recipient too (In-Reply-To / References).
       let sentMessageId: string | null = null;
@@ -378,7 +389,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
           gmail_message_id: sendData.id,
           tracking_id: opts.tid,
           tracked: true, // carries the pixel above (Gmail-synced rows get a default tracking_id but no pixel)
-          gmail_thread_id: threadId ?? sendData.threadId ?? null,
+          gmail_thread_id: sendBody.threadId ?? sendData.threadId ?? null,
           ...(sentMessageId ? { rfc_message_id: sentMessageId } : {}),
           ...(opts.ccHeader ? { cc_emails: opts.ccHeader } : {}),
           ...(opts.bccHeader ? { bcc_emails: opts.bccHeader } : {}),
