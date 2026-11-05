@@ -10,9 +10,9 @@ const ROBERT_EMAIL = 'robert@crecotx.com';
 const BRIAN_EMAIL = 'brian@crecotx.com';
 // Robert's outreach is recognised by the listing flyer attached to it. Brian's outreach carries no flyer (the link sits in the text), so
 // it is recognised by naming one of our listings in the subject or body, and only mail to outside contacts counts.
-type Cfg = { email: string; byMention: boolean };
-const ROBERT_CFG: Cfg = { email: ROBERT_EMAIL, byMention: false };
-const BRIAN_CFG: Cfg = { email: BRIAN_EMAIL, byMention: true };
+type Cfg = { email: string; byMention: boolean; who: string };
+const ROBERT_CFG: Cfg = { email: ROBERT_EMAIL, byMention: false, who: 'Robert' };
+const BRIAN_CFG: Cfg = { email: BRIAN_EMAIL, byMention: true, who: 'Brian' };
 const INTERNAL = /@(crecotx\.com|fairoaksrealtygroup\.com|highgroundautomation\.com)$/i;
 const norm = (s: string) => s.toLowerCase().replace(/&amp;/g, '&').replace(/[^a-z0-9& ]+/g, ' ').replace(/\s+/g, ' ').trim();
 const stamp = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('en-CA', { timeZone: 'America/Chicago', hour12: false }).replace(',', '').slice(0, 16) : '';
@@ -138,7 +138,7 @@ async function buildEmails(dc: DriveContext, cfg: Cfg, feed: string, title: stri
   });
   return {
     feed, title,
-    header: ['#', 'Sent / goes out (CT)', 'Contact', 'Business', 'Email', 'Subject', 'Property', 'Status', 'Opened?', 'Opens', 'Last opened (CT)', 'Reply', 'Reply received (CT)', 'What they said', 'Robert answered?', 'Robert’s answer (CT)', 'Action', 'Phone'],
+    header: ['#', 'Sent / goes out (CT)', 'Contact', 'Business', 'Email', 'Subject', 'Property', 'Status', 'Opened?', 'Opens', 'Last opened (CT)', 'Reply', 'Reply received (CT)', 'What they said', `${cfg.who} answered?`, `${cfg.who}’s answer (CT)`, 'Action', 'Phone'],
     widths: [40, 140, 150, 220, 220, 320, 160, 110, 80, 60, 140, 90, 140, 360, 110, 140, 200, 120], rows, extraHeaders: ['Team notes'], layout: 2, freezeCols: 0,
   };
 }
@@ -160,7 +160,7 @@ async function buildSummary(dc: DriveContext, cfg: Cfg, feed: string): Promise<F
   const rows = [line('All listings', mail, queued), ...props.map(p => line(p, mail.filter(m => (m.property || 'Other') === p), queued.filter(m => (m.property || 'Other') === p)))];
   return {
     feed, title: 'Open + reply rates',
-    header: ['Property', 'Emails sent', 'Tracked', 'Opened', 'Open rate', 'Replies', 'Reply rate', 'Of those: not a fit', 'Robert answered', 'Answer owed', 'Bounced', 'Scheduled'],
+    header: ['Property', 'Emails sent', 'Tracked', 'Opened', 'Open rate', 'Replies', 'Reply rate', 'Of those: not a fit', `${cfg.who} answered`, 'Answer owed', 'Bounced', 'Scheduled'],
     widths: [220, 100, 80, 80, 90, 80, 90, 130, 120, 110, 80, 100], rows, layout: 1, freezeCols: 1,
   };
 }
