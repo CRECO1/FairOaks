@@ -95,6 +95,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const [quickDocId, setQuickDocId] = useState<string | null>(null);   // the quick-look side panel
   const [preview, setPreview] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [uploading, setUploading] = useState(0);
+  const [upInfo, setUpInfo] = useState<{ name: string; pct: number } | null>(null);   // the file going up right now and how far it is
   const [dragOver, setDragOver] = useState(false);
   // Bulk actions: the ticked items (keyed kind:id) — a tick-box on every row, a select-all, and an action bar.
   const [sel, setSel] = useState<Map<string, { kind: Kind; item: Item }>>(new Map());
@@ -236,8 +237,18 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const saveAsTemplate = (doc: DriveDoc, title: string) => act(async () => {
     await api('/api/crm/drive', { method: 'POST', body: JSON.stringify({ type: 'doc', from_doc_id: doc.id, as_template: true, title }) });
   }, 'Saved as a template — find it under Templates').then(ok => { if (ok) setDlg(null); });
+  // After moving ONE item to the trash, a short "Undo" bar (a mis-click shouldn't cost anything).
+  const [undo, setUndo] = useState<{ kind: Kind; item: Item; name: string } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const patch = (kind: Kind, item: Item, body: Record<string, unknown>, ok?: string) =>
-    act(() => api(`/api/crm/drive/items/${kind}/${item.id}`, { method: 'PATCH', body: JSON.stringify(body) }), ok);
+    act(() => api(`/api/crm/drive/items/${kind}/${item.id}`, { method: 'PATCH', body: JSON.stringify(body) }), ok).then(done => {
+      if (done && body.trash === true) {
+        setUndo({ kind, item, name: nameOf(kind, item) });
+        if (undoTimer.current) clearTimeout(undoTimer.current);
+        undoTimer.current = setTimeout(() => setUndo(null), 9000);
+      }
+      return done;
+    });
 
   const canManage = (item: Item) => isAdmin || item.created_by === currentUser.id;
   const inTrash = view === 'trash';
@@ -427,8 +438,16 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
       try {
         if (file.size > DRIVE_FILE_MAX) throw new Error(`“${file.name}” is over 50 MB`);
         const pre = await api<{ uploadUrl: string; storagePath: string; contentType: string }>('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'presign', filename: file.name, size: file.size, parent_id: parent }) });
-        const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': pre.contentType }, body: file });
-        if (!put.ok) throw new Error(`Couldn’t upload “${file.name}” — try again`);
+        setUpInfo({ name: file.name, pct: 0 });
+        const sent = await new Promise<boolean>(resolve => {
+          const x = new XMLHttpRequest();
+          x.open('PUT', pre.uploadUrl); x.setRequestHeader('Content-Type', pre.contentType);
+          x.upload.onprogress = ev => { if (ev.lengthComputable) setUpInfo({ name: file.name, pct: Math.min(99, Math.round((ev.loaded / ev.total) * 100)) }); };
+          x.onload = () => resolve(x.status >= 200 && x.status < 300);
+          x.onerror = () => resolve(false);
+          x.send(file);
+        });
+        if (!sent) throw new Error(`Couldn’t upload “${file.name}” — try again`);
         const saved = await api<{ file?: { id: string } }>('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'confirm', storagePath: pre.storagePath, filename: file.name, parent_id: parent }) });
         ok += 1;
         // A Word / text file is also made editable right away (a live document next to it); a problem here is only mentioned.
@@ -439,6 +458,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
       } catch (e) { failed.push((e as Error).message); }
       finally { setUploading(n => n - 1); }
     }
+    setUpInfo(null);
     if (failed.length) onToast(failed.length === 1 && !ok ? failed[0] : `${ok ? `${ok} uploaded. ` : ''}${failed.length} couldn’t be uploaded — ${failed.join(' · ')}`);
     if (ok) {
       const editable = all.some(f => canEditFile(f.name)), oldWord = all.some(f => /\.(doc|rtf)$/i.test(f.name));
@@ -540,7 +560,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   };
   // Trash keeps things for 30 days (a daily job then removes them for good).
   const daysLeft = (it: Item) => Math.max(0, 30 - Math.floor((Date.now() - new Date(it.trashed_at ?? it.updated_at).getTime()) / 86_400_000));
-  const rowSub = (kind: Kind, it: Item) => `${who(it.created_by)} · ${kind === 'file' && (it as DriveFile).size ? `${fmtSize((it as DriveFile).size)} · ` : ''}${kind === 'form' ? `${(it as DriveFormItem).form_code ? `${(it as DriveFormItem).form_code} · ` : ''}${(it as DriveFormItem).has_pdf ? 'saved' : 'in progress'} · ` : ''}${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}${inTrash ? ` · ${daysLeft(it)} d left` : ''}`;
+  const rowSub = (kind: Kind, it: Item) => `${kind === 'doc' && (it as DriveDoc).updated_by && (it as DriveDoc).updated_by !== it.created_by ? `Edited by ${who((it as DriveDoc).updated_by)}` : who(it.created_by)} · ${kind === 'file' && (it as DriveFile).size ? `${fmtSize((it as DriveFile).size)} · ` : ''}${kind === 'form' ? `${(it as DriveFormItem).form_code ? `${(it as DriveFormItem).form_code} · ` : ''}${(it as DriveFormItem).has_pdf ? 'saved' : 'in progress'} · ` : ''}${accessLabel(it)} · ${fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}${inTrash ? ` · ${daysLeft(it)} d left` : ''}`;
   const tone = (kind: Kind, it: Item) => toneFor(kind, kind === 'file' ? { name: (it as DriveFile).name, mime: (it as DriveFile).mime } : { visibility: it.visibility, deal_id: it.deal_id, sheet: kind === 'doc' && (it as DriveDoc).kind === 'sheet' });
   const ownerChip = (id: string | null) => {
     const n = who(id);
@@ -733,6 +753,13 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           onDrop={e => { setDragOver(false); if (!inTrash && view === 'folder' && e.dataTransfer.files.length) { e.preventDefault(); void uploadFiles(e.dataTransfer.files); } }}
           style={{ borderRadius: 14, outline: dragOver ? `2px dashed ${GOLD}` : 'none', outlineOffset: 4, background: dragOver ? `${GOLD}0d` : 'transparent' }}>
           <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}.dd-narrow-sub{display:none}@container (max-width:860px){.dd-owner,.dd-access,.dd-mod{display:none!important}.dd-narrow-sub{display:block}}.dd-chk{opacity:0;transition:opacity .1s}.dd-row:hover .dd-chk,.dd-card:hover .dd-chk,.dd-selecting .dd-chk,.dd-chk:focus-within{opacity:1}`}</style>
+      {undo && (
+        <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: isMobile ? 88 : 28, zIndex: 3000, background: 'var(--k-1a1a1a)', color: '#fff', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 28px rgba(0,0,0,.3)', fontSize: 13.5, maxWidth: 'calc(100vw - 24px)' }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>“{undo.name}” moved to trash</span>
+          <button type="button" onClick={() => { const u = undo; setUndo(null); void patch(u.kind, u.item, { trash: false }, 'Restored'); }} style={{ background: 'none', border: 'none', color: '#f5c55a', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', padding: '4px 6px', flexShrink: 0 }}>Undo</button>
+          <button type="button" aria-label="Dismiss" onClick={() => setUndo(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 16, cursor: 'pointer', padding: '2px 4px', flexShrink: 0 }}>×</button>
+        </div>
+      )}
           {view === 'folder' && folderId === null && !filtering && suggested.length > 0 && (
             <div style={{ marginBottom: 18 }}>
               {sectionLabel('Suggested')}
@@ -778,7 +805,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
               })()}
             </div>
           )}
-          {uploading > 0 && <div style={{ padding: '10px 16px', marginBottom: 10, borderRadius: 10, fontSize: 13, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', display: 'flex', alignItems: 'center', gap: 8 }}><DI n="upload" size={15} />Uploading {uploading} file{uploading === 1 ? '' : 's'}…</div>}
+          {uploading > 0 && <div style={{ padding: '10px 16px', marginBottom: 10, borderRadius: 10, fontSize: 13, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', display: 'flex', alignItems: 'center', gap: 8 }}><DI n="upload" size={15} />{upInfo ? <>Uploading “{upInfo.name}” — {upInfo.pct}%{uploading > 1 ? ` · ${uploading - 1} more waiting` : ''}</> : <>Uploading {uploading} file{uploading === 1 ? '' : 's'}…</>}</div>}
           {loading && !data && <div style={{ padding: 28, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>}
           {cardsView && folders.length > 0 && (
             <div style={{ marginBottom: 18 }}>

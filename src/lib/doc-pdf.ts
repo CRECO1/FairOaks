@@ -16,7 +16,7 @@ const PW = 612, PH = 792, ML = 64, MR = 64, MT = 64, MB = 62;
 const CW = PW - ML - MR;
 const INK = rgb(0.1, 0.1, 0.12), GREY = rgb(0.36, 0.38, 0.42), GOLD = rgb(0.79, 0.57, 0.17), LINE = rgb(0.82, 0.84, 0.87), BLUE = rgb(0.11, 0.31, 0.85);
 
-const winAnsi = (s: string) => (s || '')
+export const winAnsi = (s: string) => (s || '')
   .replace(/[‘’‚′]/g, "'").replace(/[“”„″]/g, '"').replace(/[–—−]/g, '-').replace(/…/g, '...').replace(/[•●]/g, '*').replace(/[✓✔✅☑]/g, 'x').replace(/ /g, ' ')
   // eslint-disable-next-line no-control-regex
   .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '');

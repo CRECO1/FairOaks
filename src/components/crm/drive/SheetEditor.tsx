@@ -869,6 +869,16 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   // ── export ──
   const textOf = (t: TabInfo) => { const ev = new Evaluator(getter, t.name, extData); return (r: number, c: number) => { const sv = fmtMap(ydoc).get(mkey(t.id, r, c)); let f: CellFmt = {}; try { f = sv ? JSON.parse(sv) : {}; } catch { /* plain */ } const out = formatVal(ev.value(null, r, c), f); return out.startsWith('\u0001spark:') ? '' : f.rt ? stripRich(out) : out; }; };
   const gridOf = (t: TabInfo): string[][] => { const pg = pivotGrids.get(t.name); return pg ?? tabGrid(t.map, textOf(t)); };
+  const downloadPdf = async () => {
+    if (!tab) return;
+    try {
+      const g = gridOf(tab); if (!g.length) { onToast('Nothing to put in a PDF on this tab'); return; }
+      const { sheetToPdf } = await import('@/lib/sheet-pdf');
+      const { saveBytes } = await import('@/lib/doc-pdf');
+      const base = (title || 'spreadsheet').replace(/[^\w\- ]+/g, '').trim() || 'spreadsheet';
+      saveBytes(await sheetToPdf(ydoc, tab, g, title), `${base} - ${tab.name}.pdf`);
+    } catch (e) { console.error('[sheet pdf]', e); onToast('Could not make the PDF'); }
+  };
   const download = async (kind: 'csv' | 'xlsx') => {
     if (!tab) return;
     const base = (title || 'spreadsheet').replace(/[^\w\- ]+/g, '').trim() || 'spreadsheet';
@@ -1268,7 +1278,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     { group: 'Data', label: 'Trim extra spaces', run: trimSel }, { group: 'Data', label: 'Change to UPPERCASE', run: () => caseSel('upper') }, { group: 'Data', label: 'Change to lowercase', run: () => caseSel('lower') }, { group: 'Data', label: 'Capitalize Each Word', run: () => caseSel('proper') },
     { group: 'Data', label: 'Turn text into numbers', run: numbersSel }, { group: 'Data', label: 'Split text into columns', run: () => setCleanDlg('split') }, { group: 'Data', label: 'Highlight duplicate rows', run: highlightDuplicates }, { group: 'Data', label: 'Remove duplicate rows', run: () => setCleanDlg('dedupe') },
     ...(hasFeed ? [{ group: 'Data', label: 'Refresh from the CRM', run: () => void refreshFeed(false) }] : []),
-    { group: 'File', label: 'Print or save as PDF', hint: 'Ctrl+P', run: printTab }, { group: 'File', label: 'Download as CSV', run: () => void download('csv') }, { group: 'File', label: 'Download as Excel', run: () => void download('xlsx') }, { group: 'File', label: 'Version history', run: onHistory },
+    { group: 'File', label: 'Print or save as PDF', hint: 'Ctrl+P', run: printTab }, { group: 'File', label: 'Download as PDF', run: () => void downloadPdf() }, { group: 'File', label: 'Download as CSV', run: () => void download('csv') }, { group: 'File', label: 'Download as Excel', run: () => void download('xlsx') }, { group: 'File', label: 'Version history', run: onHistory },
     { group: 'Help', label: 'Keyboard shortcuts', run: () => setHelpDlg('keys') }, { group: 'Help', label: 'Function list', run: () => setHelpDlg('funcs') },
   ] : [];
   if (!tab) return <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Opening…</div>;
@@ -1280,6 +1290,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         <Pop className="sx-mb" title="File" label="File">
           {close => (<>
             <Item hint="Ctrl+P" onClick={() => { printTab(); close(); }}>Print or save as PDF</Item>
+            <Item onClick={() => { void downloadPdf(); close(); }}>Download as PDF</Item>
             <Divider />
             <Item onClick={() => { void download('csv'); close(); }}>Download this tab as CSV</Item>
             <Item onClick={() => { void download('xlsx'); close(); }}>Download as Excel (.xlsx)</Item>
