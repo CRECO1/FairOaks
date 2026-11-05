@@ -146,9 +146,10 @@ async function buildEmails(dc: DriveContext, cfg: Cfg, feed: string, title: stri
 export const buildRobertEmails = (dc: DriveContext) => buildEmails(dc, ROBERT_CFG, 'robert_emails', 'Robert’s outreach emails');
 export const buildBrianEmails = (dc: DriveContext) => buildEmails(dc, BRIAN_CFG, 'brian_emails', 'Brian');
 
-export async function buildRobertSummary(dc: DriveContext): Promise<FeedData> {
-  const mail = (await loadMail(dc)).filter(m => !m.scheduled);
-  const queued = (await loadMail(dc)).filter(m => m.scheduled && !m.failed);
+async function buildSummary(dc: DriveContext, cfg: Cfg, feed: string): Promise<FeedData> {
+  const all = await loadMail(dc, cfg);
+  const mail = all.filter(m => !m.scheduled);
+  const queued = all.filter(m => m.scheduled && !m.failed);
   const props = [...new Set([...mail, ...queued].map(m => m.property || 'Other'))].sort();
   const line = (name: string, list: Mail[], q: Mail[]) => {
     const tracked = list.filter(m => m.tracked), opened = tracked.filter(m => m.opens > 0).length;
@@ -158,8 +159,11 @@ export async function buildRobertSummary(dc: DriveContext): Promise<FeedData> {
   };
   const rows = [line('All listings', mail, queued), ...props.map(p => line(p, mail.filter(m => (m.property || 'Other') === p), queued.filter(m => (m.property || 'Other') === p)))];
   return {
-    feed: 'robert_summary', title: 'Open + reply rates',
+    feed, title: 'Open + reply rates',
     header: ['Property', 'Emails sent', 'Tracked', 'Opened', 'Open rate', 'Replies', 'Reply rate', 'Of those: not a fit', 'Robert answered', 'Answer owed', 'Bounced', 'Scheduled'],
     widths: [220, 100, 80, 80, 90, 80, 90, 130, 120, 110, 80, 100], rows, layout: 1, freezeCols: 1,
   };
 }
+
+export const buildRobertSummary = (dc: DriveContext) => buildSummary(dc, ROBERT_CFG, 'robert_summary');
+export const buildBrianSummary = (dc: DriveContext) => buildSummary(dc, BRIAN_CFG, 'brian_summary');
