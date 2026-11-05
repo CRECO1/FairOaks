@@ -12,7 +12,8 @@ import { hydrateAttachments } from '@/lib/copilot-attachments';
 
 export const runtime = 'nodejs';
 // Web research adds server-side search/fetch rounds inside each Claude call.
-export const maxDuration = 120;
+// Research questions run several web searches in one turn (a batch of businesses is the worst case), so this is the long ceiling.
+export const maxDuration = 300;
 
 const MODEL = process.env.CRM_ASSISTANT_MODEL || 'claude-sonnet-5';
 
@@ -170,11 +171,12 @@ export async function POST(req: NextRequest) {
   const clientActions: ClientAction[] = [];
 
   try {
-    for (let round = 0; round < 6; round++) {
+    for (let round = 0; round < 8; round++) {
       const res = await client.messages.create({
         model: MODEL,
-        max_tokens: 4000,
-        system: systemPrompt(ctx, prof?.first_name || 'the agent', open),
+        max_tokens: 6000,
+        // The prompt + tool list are ~35k tokens and a research turn makes several calls in a row — cache them so rounds 2+ bill at the cache rate.
+        system: [{ type: 'text', text: systemPrompt(ctx, prof?.first_name || 'the agent', open), cache_control: { type: 'ephemeral' } }],
         tools: [...TOOLS.filter(t => !DRIVE_TOOLS.has(t.name) || canUseDrive(ctx)), ...WEB_TOOLS],
         messages: await hydrateAttachments(db, ctx.userId, messages, attachmentCache),
       });

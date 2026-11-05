@@ -15,6 +15,7 @@ import { exhibitLetter, type LoiExhibit } from '@/lib/loi-spec';
 import { liveEnvelope, logDocEdit, restampOverlay, OUT_FOR_SIGNATURE } from '@/lib/doc-edit';
 import { chicagoToday, chicagoDateUS } from '@/lib/chicago-time';
 import { detectSigningSpots, type PrepField } from '@/lib/esign-prep';
+import { searchTexasEntities, texasEntityDetail, containsPhrase } from '@/lib/texas-entity';
 
 // token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
 // form-submissions) as the agent, so the copilot goes through the exact same auth, RBAC
@@ -420,7 +421,7 @@ export const canUseDrive = (ctx: AgentCtx) => !!ctx.role;
 export const DRIVE_WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'edit_drive_doc', 'link_drive_doc']);
 
 export const WRITE_TOOLS = new Set(['create_drive_folder', 'create_drive_doc', 'edit_drive_doc', 'link_drive_doc', 'create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'prepare_esign', 'send_for_signature', 'send_email', 'schedule_event',
-  'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
+  'create_contact', 'update_contact', 'create_property', 'update_property', 'link_property_contact', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
   'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit', 'edit_file', 'enroll_campaign_contacts', 'duplicate_campaign']);
 
 // Which screen data a confirmed write makes stale — the panel tells the CRM to reload it, so a deal the
@@ -560,11 +561,17 @@ export const TOOLS: Anthropic.Tool[] = [
 
   // ── Records & documents (Layer 4) ─────────────────────────────────────────
   { name: 'create_contact', description: `Add a new contact to the CRM. Search first with search_contacts so you don't create a duplicate. Type must be one of: ${CONTACT_TYPES.join(', ')}. WRITE — confirm the details with the agent first.`,
-    input_schema: { type: 'object', properties: { first_name: { type: 'string' }, last_name: { type: 'string' }, business_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, cell_phone: { type: 'string' }, type: { type: 'string', enum: CONTACT_TYPES }, brokerage: { type: 'string' }, notes: { type: 'string' }, lead_source: { type: 'string' } }, required: ['type'] } },
-  { name: 'update_contact', description: "Update an existing contact's details (name, business, email, phone, type, brokerage). Only the fields you pass are changed. To append to their notes use add_note instead. WRITE — confirm with the agent first.",
-    input_schema: { type: 'object', properties: { contact_id: { type: 'string' }, first_name: { type: 'string' }, last_name: { type: 'string' }, business_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, cell_phone: { type: 'string' }, type: { type: 'string', enum: CONTACT_TYPES }, brokerage: { type: 'string' } }, required: ['contact_id'] } },
+    input_schema: { type: 'object', properties: { first_name: { type: 'string' }, last_name: { type: 'string' }, business_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, cell_phone: { type: 'string' }, type: { type: 'string', enum: CONTACT_TYPES }, brokerage: { type: 'string' }, notes: { type: 'string' }, lead_source: { type: 'string' }, address: { type: 'string', description: 'Street address only (no city/state)' }, city: { type: 'string' }, state: { type: 'string', description: '2-letter state' }, zip: { type: 'string' }, tags: { type: 'array', items: { type: 'string' }, description: 'e.g. ["Boerne Business Owner"]' } }, required: ['type'] } },
+  { name: 'update_contact', description: "Update an existing contact's details (name, business, email, phone, mailing/business address, type, brokerage) and add tags. Only the fields you pass are changed. Use it to fill in what online research turned up (street address, city, state, zip, a better phone or email). To append to their notes (website, owner, source links) use add_note instead. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { contact_id: { type: 'string' }, first_name: { type: 'string' }, last_name: { type: 'string' }, business_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, cell_phone: { type: 'string' }, type: { type: 'string', enum: CONTACT_TYPES }, brokerage: { type: 'string' }, address: { type: 'string', description: 'Street address only (no city/state)' }, city: { type: 'string' }, state: { type: 'string', description: '2-letter state' }, zip: { type: 'string' }, add_tags: { type: 'array', items: { type: 'string' }, description: 'Tags to ADD (existing tags are kept), e.g. "Boerne Business Owner"' } }, required: ['contact_id'] } },
   { name: 'create_property', description: 'Add a property/listing to the CRM. Check find_property first so you don\'t duplicate one. WRITE — confirm the details with the agent first.',
     input_schema: { type: 'object', properties: { name: { type: 'string' }, address: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' }, zip: { type: 'string' }, type: { type: 'string', description: 'e.g. Industrial, Retail, Office, Land' }, status: { type: 'string', description: 'e.g. active, pending' }, asking_price: { type: 'number' }, sq_ft: { type: 'number' }, lot_size: { type: 'string' }, zoning: { type: 'string' }, description: { type: 'string' }, highlights: { type: 'string' } }, required: ['name'] } },
+  { name: 'lookup_texas_entity', description: "Look up a Texas business entity (LLC, corporation, LP) in the state's PUBLIC Comptroller / Secretary of State records: its legal name, registered address, status, formation date, registered agent and the officers / members / directors on its latest report. Use it to find WHO OWNS a business or property-owning company — the web rarely shows an LLC's members. Pass `name` (and `city` to narrow it) to search; pass `taxpayer_number` from an earlier search to get the full detail with officers. Free and read-only. It only covers registered entities — a sole proprietor or a trade name (DBA) won't be in it, so fall back to web_search for those. Officer streets are deliberately not returned.",
+    input_schema: { type: 'object', properties: { name: { type: 'string', description: 'Legal or trade name to search, e.g. \"Boerne Hardware\"' }, city: { type: 'string', description: 'Narrow to entities whose registered address is in this city' }, taxpayer_number: { type: 'string', description: 'Texas taxpayer number from a previous search — returns registered agent and officers' } } } },
+  { name: 'update_property', description: "Update an existing property/listing's details from research: address, city, state, zip, type, size, lot size, year built, zoning, description, highlights — and `notes_append` to ADD a dated note (owner, county record, source links) without replacing the notes already there. Only the fields you pass change. Never overwrite a value the agent entered without saying so. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { listing_id: { type: 'string' }, address: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' }, zip: { type: 'string' }, type: { type: 'string' }, sq_ft: { type: 'number' }, lot_size: { type: 'string' }, year_built: { type: 'number' }, zoning: { type: 'string' }, description: { type: 'string' }, highlights: { type: 'string' }, notes_append: { type: 'string', description: 'Text to add to the end of the property notes (a date stamp is added for you)' } }, required: ['listing_id'] } },
+  { name: 'link_property_contact', description: "Link a contact to a property folder with a role — Owner, Tenant, Property Manager, Landlord, Broker, Lender, etc. — so the owner/tenant shows on the property card. Linking twice with the same role is harmless. Create the contact first (create_contact) if it isn't in the CRM. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { listing_id: { type: 'string' }, contact_id: { type: 'string' }, role: { type: 'string', description: 'e.g. Owner, Tenant, Property Manager' } }, required: ['listing_id', 'contact_id', 'role'] } },
   { name: 'read_document', description: 'Read a saved contract/form document (a form submission) — its title, status and the field values currently filled in. Use before fill_document so you edit against what is actually there. Pass deal_id or listing_id to list the documents on that deal/property, or `query` to find documents by title (e.g. "Chestnut") when you do not know the deal.',
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, deal_id: { type: 'string' }, listing_id: { type: 'string' }, query: { type: 'string', description: 'Case-insensitive words from the document title.' } } } },
   { name: 'fill_document', description: "Fill in or edit fields on a contract/form document — e.g. dropping a contact's name, company, email and phone into the right blanks. Pass only the fields you're setting; everything else is left alone. Read it with read_document first. WRITE — confirm with the agent first. This edits the draft only; it does not send or sign anything.",
@@ -1506,12 +1513,14 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
           type: input.type, business_unit: ctx.businessUnit ?? 'commercial', agent_id: ctx.userId,
           last_touched_at: new Date().toISOString(),
         };
-        for (const f of ['first_name', 'last_name', 'business_name', 'email', 'phone', 'cell_phone', 'brokerage', 'notes', 'lead_source']) {
+        for (const f of ['first_name', 'last_name', 'business_name', 'email', 'phone', 'cell_phone', 'brokerage', 'notes', 'lead_source', 'address', 'city', 'state', 'zip']) {
           if (input[f]) row[f] = String(input[f]).trim();
         }
+        const tags = (Array.isArray(input.tags) ? input.tags : []).map((t: unknown) => String(t ?? '').trim()).filter(Boolean).slice(0, 10);
+        if (tags.length) row.tags = tags;
         const dup = await findDuplicateContact(db, ctx, input);
         if (dup) return j({ error: `Not added — ${dup.label} is already in the CRM with ${dup.why}. I didn’t create a duplicate.`, duplicate: true, existing_contact_id: dup.id, hint: 'Offer to open or update that contact (open_record / update_contact) instead.' });
-        const { data, error } = await db.from('crm_clients').insert(row).select('id, first_name, last_name, business_name, email, type').single();
+        const { data, error } = await db.from('crm_clients').insert(row).select('id, first_name, last_name, business_name, email, phone, address, city, state, zip, tags, type').single();
         if (error) return j({ error: /idx_crm_clients_email_bu|duplicate key/i.test(error.message) ? 'Not added — a contact with that email address is already in the CRM. I didn’t create a duplicate.' : error.message });
         await logCopilot(db, ctx, `Added contact “${data.business_name || `${data.first_name ?? ''} ${data.last_name ?? ''}`.trim()}”`, data.id);
         return j({ ok: true, created: data });
@@ -1523,12 +1532,21 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (ctx.role === 'agent' && c.agent_id !== ctx.userId && !((c.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return j({ error: "That contact isn't assigned to you" });
         if (input.type && !CONTACT_TYPES.includes(input.type)) return j({ error: `type must be one of: ${CONTACT_TYPES.join(', ')}` });
         const patch: Record<string, any> = {};
-        for (const f of ['first_name', 'last_name', 'business_name', 'email', 'phone', 'cell_phone', 'brokerage', 'type']) {
-          if (input[f] !== undefined) patch[f] = input[f] === null ? null : String(input[f]).trim();
+        // address/city/state/zip are NOT NULL with an empty-string default: a cleared value is '', never null.
+        for (const f of ['first_name', 'last_name', 'business_name', 'email', 'phone', 'cell_phone', 'brokerage', 'type', 'address', 'city', 'state', 'zip']) {
+          if (input[f] === undefined) continue;
+          const blankOk = ['address', 'city', 'state', 'zip'].includes(f);
+          patch[f] = input[f] === null ? (blankOk ? '' : null) : String(input[f]).trim();
+        }
+        const addTags = (Array.isArray(input.add_tags) ? input.add_tags : []).map((t: unknown) => String(t ?? '').trim()).filter(Boolean).slice(0, 10);
+        if (addTags.length) {
+          const { data: cur } = await db.from('crm_clients').select('tags').eq('id', input.contact_id).maybeSingle();
+          const have = ((cur?.tags as string[] | null) ?? []);
+          patch.tags = [...have, ...addTags.filter((t: string) => !have.some(h => h.toLowerCase() === t.toLowerCase()))];
         }
         if (Object.keys(patch).length === 0) return j({ error: 'Nothing to update' });
         patch.last_touched_at = new Date().toISOString();
-        const { data, error } = await db.from('crm_clients').update(patch).eq('id', input.contact_id).select('id, first_name, last_name, business_name, email, phone, type').single();
+        const { data, error } = await db.from('crm_clients').update(patch).eq('id', input.contact_id).select('id, first_name, last_name, business_name, email, phone, address, city, state, zip, tags, type').single();
         if (error) return j({ error: error.message });
         await logCopilot(db, ctx, `Updated contact details (${Object.keys(patch).filter(k => k !== 'last_touched_at').join(', ')})`, input.contact_id);
         return j({ ok: true, updated: data });
@@ -1547,6 +1565,51 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (error) return j({ error: error.message });
         await logCopilot(db, ctx, `Added property “${data.name}”`);
         return j({ ok: true, created: data });
+      }
+      case 'lookup_texas_entity': {
+        const tn = String(input.taxpayer_number ?? '').replace(/\D/g, '');
+        if (tn) {
+          const d = await texasEntityDetail(tn);
+          return j(d ? { entity: d, source: 'Texas Comptroller public records (comptroller.texas.gov franchise-tax account status)' } : { error: 'No Comptroller record for that taxpayer number.' });
+        }
+        const name = String(input.name ?? '').trim();
+        if (name.length < 3) return j({ error: 'Pass the business name (at least 3 letters) or a taxpayer_number.' });
+        const matches = await searchTexasEntities(name, input.city ? String(input.city) : undefined);
+        if (!matches.length) return j({ matches: [], note: 'No registered Texas entity matched. It may be a sole proprietor or a trade name (DBA), be registered under a different legal name, or be outside the filter. Try web_search, or retry without the city.' });
+        // One clear match → include the officers so the agent gets the answer in a single step.
+        if (matches.length === 1 || (containsPhrase(matches[0].name, name) && !matches.slice(1).some(m => containsPhrase(m.name, name)))) {
+          const d = await texasEntityDetail(matches[0].taxpayer_number, matches[0]);
+          return j({ matches, detail: d, source: 'Texas Comptroller public records' });
+        }
+        return j({ matches, note: 'Several entities matched — pick the right one with the agent (compare the address), then call again with its taxpayer_number to get the officers.', source: 'Texas Comptroller public records' });
+      }
+      case 'update_property': {
+        const patch: Record<string, unknown> = {};
+        for (const f of ['address', 'city', 'state', 'zip', 'type', 'lot_size', 'zoning', 'description', 'highlights']) if (input[f] !== undefined) patch[f] = String(input[f]).trim();
+        for (const f of ['sq_ft', 'year_built']) if (input[f] !== undefined && input[f] !== null && input[f] !== '') { const n = Number(input[f]); if (Number.isFinite(n)) patch[f] = n; }
+        const add = String(input.notes_append ?? '').trim();
+        if (add) {
+          const { data: cur } = await db.from('crm_listings').select('notes, business_unit').eq('id', input.listing_id).maybeSingle();
+          if (!cur) return j({ error: 'Property not found' });
+          if (ctx.businessUnit && cur.business_unit !== ctx.businessUnit) return j({ error: 'Property is in a different workspace' });
+          const stamp = `[Copilot research · ${chicagoDateUS()}]`;
+          patch.notes = `${String(cur.notes ?? '').trim()}${cur.notes ? '\n\n' : ''}${stamp} ${add}`;
+        }
+        if (!Object.keys(patch).length) return j({ error: 'Nothing to update' });
+        const r = await crmFetch(ctx, `/api/crm/listings/${encodeURIComponent(String(input.listing_id))}`, 'PATCH', patch);
+        if (!r.ok) return j({ error: r.data?.error || `Could not update the property (${r.status})` });
+        await logCopilot(db, ctx, `Updated property details (${Object.keys(patch).join(', ')})`);
+        const l = r.data?.listing ?? {};
+        return j({ ok: true, updated: { id: l.id, name: l.name, address: l.address, city: l.city, state: l.state, zip: l.zip, type: l.type, sq_ft: l.sq_ft, lot_size: l.lot_size, year_built: l.year_built, zoning: l.zoning } });
+      }
+      case 'link_property_contact': {
+        const bad = await outOfWorkspace(db, ctx, 'crm_clients', String(input.contact_id), 'Contact'); if (bad) return bad;
+        const role = String(input.role ?? '').trim().slice(0, 40);
+        if (!role) return j({ error: 'A role is required (Owner, Tenant, Property Manager…)' });
+        const r = await crmFetch(ctx, '/api/crm/listing-contacts', 'POST', { listing_id: input.listing_id, client_id: input.contact_id, role });
+        if (!r.ok) return j({ error: r.data?.error || `Could not link the contact (${r.status})` });
+        await logCopilot(db, ctx, `Linked a contact to a property as ${role}`, String(input.contact_id));
+        return j({ ok: true, linked: { listing_id: input.listing_id, contact_id: input.contact_id, role } });
       }
       case 'read_document': {
         if (input.submission_id) {
@@ -1949,9 +2012,11 @@ export function describeWrite(name: string, input: Record<string, any>): string 
       const guests: string[] = Array.isArray(input.attendees) ? input.attendees : [];
       return `📅 Add “${input.title}” to your calendar on ${input.date}${input.time ? ` at ${input.time}` : ' (all day)'}${input.time && guests.length ? ` and send a calendar invite to ${guests.join(', ')}` : ' — no one is invited'}`;
     }
-    case 'create_contact': return `Add contact ${input.business_name || `${input.first_name ?? ''} ${input.last_name ?? ''}`.trim()} (${input.type})`;
+    case 'create_contact': return `Add contact ${[`${input.first_name ?? ''} ${input.last_name ?? ''}`.trim(), input.business_name].filter(Boolean).join(' — ')} (${input.type})${valueList({ phone: input.phone, email: input.email, address: [input.address, input.city, input.state, input.zip].filter(Boolean).join(', ') || undefined, tags: Array.isArray(input.tags) && input.tags.length ? input.tags.join(', ') : undefined }, []) ? `: ${valueList({ phone: input.phone, email: input.email, address: [input.address, input.city, input.state, input.zip].filter(Boolean).join(', ') || undefined, tags: Array.isArray(input.tags) && input.tags.length ? input.tags.join(', ') : undefined }, [])}` : ''}`;
     case 'update_contact': return `Update this contact: ${valueList(input, ['contact_id']) || 'details'}`;
     case 'create_property': return `Add property “${input.name}”${input.address ? ` — ${input.address}` : ''}${input.asking_price ? ` at $${Number(input.asking_price).toLocaleString()}` : ''}`;
+    case 'update_property': return `Update this property: ${valueList(input, ['listing_id'])}`;
+    case 'link_property_contact': return `Link this contact to the property as ${input.role}`;
     case 'fill_document': return `Fill in ${Object.keys(input.fields ?? {}).length || 'the'} field${Object.keys(input.fields ?? {}).length === 1 ? '' : 's'} on this document${input.contact_id ? " from the contact's details" : ''}${Object.keys(input.fields ?? {}).length ? `: ${valueList(input.fields as Record<string, unknown>, [])}` : ''}`;
     case 'draft_campaign': return `Save “${input.name}” as an UNSENT draft campaign — nothing is emailed`;
     case 'enroll_campaign_contacts': return 'Add recipients to a draft campaign — nothing is emailed';

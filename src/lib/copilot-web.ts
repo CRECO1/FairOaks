@@ -18,9 +18,13 @@ export const FETCH_ALLOWED_DOMAINS = [
   'cbre.com', 'jll.com', 'cushmanwakefield.com', 'colliers.com', 'marcusmillichap.com', 'lee-associates.com', 'naiglobal.com', 'kwcommercial.com',
   // county / city / state / federal records
   'bcad.org', 'kendallad.org', 'comalad.org', 'bexar.org', 'sanantonio.gov', 'boerne-tx.gov', 'ci.boerne.tx.us', 'fairoaksranchtx.org',
-  'texas.gov', 'census.gov', 'fema.gov', 'hud.gov', 'sba.gov',
+  'texas.gov', 'sos.state.tx.us', 'census.gov', 'fema.gov', 'hud.gov', 'sba.gov',
+  // other counties' appraisal portals (Bexar + Kendall run on trueautomation), county sites
+  'trueautomation.com', 'dallascad.org', 'guadalupead.org', 'traviscad.org', 'bandera-cad.org', 'kendallcounty.gov', 'co.kendall.tx.us',
   // business + person lookups, news
   'linkedin.com', 'bizapedia.com', 'opencorporates.com', 'bbb.org', 'google.com/maps', 'wikipedia.org',
+  // local business listings: phone, address, hours, owner name (Boerne Chamber lives at business.boerne.org), state license holders
+  'boerne.org', 'yelp.com', 'yellowpages.com', 'mapquest.com', 'manta.com', 'facebook.com', 'texasbar.com', 'tdlr.texas.gov', 'tabc.texas.gov',
   'sanantonioreport.org', 'therealdeal.com', 'bisnow.com',
   // ours
   'crecotx.com', 'fairoaksrealtygroup.com',
@@ -30,14 +34,14 @@ export const WEB_TOOLS: Anthropic.ToolUnion[] = [
   {
     type: 'web_search_20260209',
     name: 'web_search',
-    max_uses: 5,
+    max_uses: 8,
     // Our market — biases "near me" style results toward the brokerage's area.
     user_location: { type: 'approximate', city: 'San Antonio', region: 'Texas', country: 'US', timezone: 'America/Chicago' },
   },
   {
     type: 'web_fetch_20260209',
     name: 'web_fetch',
-    max_uses: 3,
+    max_uses: 4,
     allowed_domains: FETCH_ALLOWED_DOMAINS,
     // A listing page or article is plenty at this size; whole sites are not.
     max_content_tokens: 20_000,
