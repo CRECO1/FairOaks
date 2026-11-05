@@ -1,7 +1,7 @@
 import type { DriveContext } from '@/lib/drive-server';
 import type { FeedData } from '@/lib/drive-sheet';
 import { buildFrenchCalls, buildFrenchTenants } from '@/lib/drive-sheet-feeds-french';
-import { buildRobertEmails, buildRobertSummary } from '@/lib/drive-sheet-feeds-robert';
+import { buildBrianEmails, buildRobertEmails, buildRobertSummary } from '@/lib/drive-sheet-feeds-robert';
 
 // Live CRM feeds for My Drive spreadsheets. Contacts are read AS THE CALLER (RLS decides which people they may see); the call and
 // email history tables are service-only, so they are read with the service role but only for those same contacts.
@@ -13,6 +13,7 @@ export const FEEDS = {
   french_pl_calls: { name: 'Call Log', build: buildFrenchCalls },
   robert_emails: { name: 'Robert’s outreach emails', build: buildRobertEmails },
   robert_summary: { name: 'Open + reply rates', build: buildRobertSummary },
+  brian_emails: { name: 'Brian', build: buildBrianEmails },
 } as const;
 export type FeedKey = keyof typeof FEEDS;
 export const isFeed = (k: unknown): k is FeedKey => typeof k === 'string' && k in FEEDS;

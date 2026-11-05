@@ -7,6 +7,14 @@ import type { FeedData } from '@/lib/drive-sheet';
 // Two tabs: the email-by-email list (opens, replies, whether Robert has answered) and a per-property summary (open + reply rates).
 
 const ROBERT_EMAIL = 'robert@crecotx.com';
+const BRIAN_EMAIL = 'brian@crecotx.com';
+// Robert's outreach is recognised by the listing flyer attached to it. Brian's outreach carries no flyer (the link sits in the text), so
+// it is recognised by naming one of our listings in the subject or body, and only mail to outside contacts counts.
+type Cfg = { email: string; byMention: boolean };
+const ROBERT_CFG: Cfg = { email: ROBERT_EMAIL, byMention: false };
+const BRIAN_CFG: Cfg = { email: BRIAN_EMAIL, byMention: true };
+const INTERNAL = /@(crecotx\.com|fairoaksrealtygroup\.com|highgroundautomation\.com)$/i;
+const norm = (s: string) => s.toLowerCase().replace(/&amp;/g, '&').replace(/[^a-z0-9& ]+/g, ' ').replace(/\s+/g, ' ').trim();
 const stamp = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('en-CA', { timeZone: 'America/Chicago', hour12: false }).replace(',', '').slice(0, 16) : '';
 const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 const personName = (c: { first_name?: string | null; last_name?: string | null }) => [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
@@ -25,22 +33,37 @@ const clip = (s: string, n: number) => s.replace(/\s+/g, ' ').trim().slice(0, n)
 // What the person actually wrote: drop the quoted thread below ("On … wrote:", "From:", "-----Original").
 const fresh = (body: string) => body.split(/\n\s*(On .{5,120}wrote:|From:|-{3,}\s*Original|>{1})/)[0] ?? body;
 
-async function loadMail(dc: DriveContext): Promise<Mail[]> {
-  const { data: prof } = await dc.admin.from('crm_profiles').select('id').ilike('email', ROBERT_EMAIL).maybeSingle();
+async function loadMail(dc: DriveContext, cfg: Cfg = ROBERT_CFG): Promise<Mail[]> {
+  const { data: prof } = await dc.admin.from('crm_profiles').select('id').ilike('email', cfg.email).maybeSingle();
   const robert = (prof?.id as string) ?? '';
 
-  type Sent = { id: string; client_id: string | null; to_email: string | null; subject: string | null; created_at: string; email_at: string | null; opened_at: string | null; last_opened_at: string | null; open_count: number | null; listing_id: string | null; gmail_thread_id: string | null; tracked: boolean | null };
+  type Sent = { id: string; client_id: string | null; to_email: string | null; subject: string | null; created_at: string; email_at: string | null; opened_at: string | null; last_opened_at: string | null; open_count: number | null; listing_id: string | null; gmail_thread_id: string | null; tracked: boolean | null; body?: string | null };
   const sent: Sent[] = [];
   for (let from = 0; from < 5000; from += 1000) {
-    const { data } = await dc.admin.from('crm_deal_emails')
-      .select('id,client_id,to_email,subject,created_at,email_at,opened_at,last_opened_at,open_count,listing_id,gmail_thread_id,tracked')
-      .eq('direction', 'sent').ilike('from_email', ROBERT_EMAIL).not('listing_id', 'is', null).not('subject', 'ilike', '%SAMPLE%')
-      .order('created_at', { ascending: false }).range(from, from + 999);
-    sent.push(...((data ?? []) as Sent[])); if (!data || data.length < 1000) break;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let qb: any = dc.admin.from('crm_deal_emails')
+      .select(cfg.byMention ? 'id,client_id,to_email,subject,created_at,email_at,opened_at,last_opened_at,open_count,listing_id,gmail_thread_id,tracked,body' : 'id,client_id,to_email,subject,created_at,email_at,opened_at,last_opened_at,open_count,listing_id,gmail_thread_id,tracked')
+      .eq('direction', 'sent').ilike('from_email', cfg.email).not('subject', 'ilike', '%SAMPLE%');
+    qb = cfg.byMention ? qb.not('client_id', 'is', null).gte('created_at', new Date(Date.now() - 120 * 864e5).toISOString()) : qb.not('listing_id', 'is', null);
+    const { data } = await qb.order('created_at', { ascending: false }).range(from, from + 999);
+    sent.push(...((data ?? []) as unknown as Sent[])); if (!data || data.length < 1000) break;
+  }
+  if (cfg.byMention) {
+    // keep only first-touch emails to outside contacts that name one of our listings; the listing it names becomes the Property
+    const { data: all } = await dc.admin.from('crm_listings').select('id,name,address').eq('business_unit', 'commercial');
+    const keys = ((all ?? []) as Array<{ id: string; name: string | null; address: string | null }>).flatMap(l => [l.name, (l.address ?? '').split(',')[0]].map(x => ({ id: l.id, k: norm(x ?? '') })).filter(x => x.k.length >= 6));
+    const kept: Sent[] = [];
+    for (const s of sent) {
+      if (/^\s*(re|fwd?)\s*:/i.test(s.subject ?? '') || INTERNAL.test(s.to_email ?? '')) continue;
+      const text = norm(`${s.subject ?? ''} ${(s.body ?? '').replace(/<[^>]+>/g, ' ')}`);
+      const hit = keys.filter(x => text.includes(x.k)).sort((a, b) => b.k.length - a.k.length)[0];
+      if (hit) kept.push({ ...s, listing_id: hit.id, body: null });
+    }
+    sent.length = 0; sent.push(...kept);
   }
 
   type Queued = { id: string; status: string; send_at: string; summary_subject: string | null; summary_to: string | null; last_error: string | null; payload: { clientId?: string; crmAttachments?: Array<{ kind?: string; id?: string }> } | null };
-  const { data: q } = robert ? await dc.admin.from('crm_scheduled_emails').select('id,status,send_at,summary_subject,summary_to,last_error,payload')
+  const { data: q } = robert && !cfg.byMention ? await dc.admin.from('crm_scheduled_emails').select('id,status,send_at,summary_subject,summary_to,last_error,payload')
     .eq('user_id', robert).in('status', ['pending', 'sending', 'failed']).order('send_at', { ascending: true }).limit(500) : { data: [] };
   const queued = ((q ?? []) as Queued[]).filter(r => (r.payload?.crmAttachments ?? []).some(a => a.kind === 'listing_flyer') && !/SAMPLE/i.test(r.summary_subject ?? ''));
 
@@ -94,8 +117,8 @@ async function loadMail(dc: DriveContext): Promise<Mail[]> {
 
 type WithClient = Mail & { _c?: Client };
 
-export async function buildRobertEmails(dc: DriveContext): Promise<FeedData> {
-  const mail = (await loadMail(dc)) as WithClient[];
+async function buildEmails(dc: DriveContext, cfg: Cfg, feed: string, title: string): Promise<FeedData> {
+  const mail = (await loadMail(dc, cfg)) as WithClient[];
   // Order: waiting to go out (soonest first) → replies Robert still owes an answer → everything else sent, newest first.
   const owed = (m: Mail) => !!m.reply && m.reply.kind !== 'Auto-reply' && !m.robertReplied;
   const queuedRows = mail.filter(m => m.scheduled).sort((a, b) => a.at.localeCompare(b.at));
@@ -114,11 +137,14 @@ export async function buildRobertEmails(dc: DriveContext): Promise<FeedData> {
     };
   });
   return {
-    feed: 'robert_emails', title: 'Robert’s outreach emails',
+    feed, title,
     header: ['#', 'Sent / goes out (CT)', 'Contact', 'Business', 'Email', 'Subject', 'Property', 'Status', 'Opened?', 'Opens', 'Last opened (CT)', 'Reply', 'Reply received (CT)', 'What they said', 'Robert answered?', 'Robert’s answer (CT)', 'Action', 'Phone'],
     widths: [40, 140, 150, 220, 220, 320, 160, 110, 80, 60, 140, 90, 140, 360, 110, 140, 200, 120], rows, extraHeaders: ['Team notes'], layout: 2, freezeCols: 0,
   };
 }
+
+export const buildRobertEmails = (dc: DriveContext) => buildEmails(dc, ROBERT_CFG, 'robert_emails', 'Robert’s outreach emails');
+export const buildBrianEmails = (dc: DriveContext) => buildEmails(dc, BRIAN_CFG, 'brian_emails', 'Brian');
 
 export async function buildRobertSummary(dc: DriveContext): Promise<FeedData> {
   const mail = (await loadMail(dc)).filter(m => !m.scheduled);
