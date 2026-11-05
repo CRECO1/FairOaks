@@ -562,7 +562,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           <Tile n={t.icon} color={t.color} />
           <span style={{ minWidth: 0, flex: 1 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <span style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{title}</span>
+              <span title={title} style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--k-1a1a1a)', lineHeight: 1.3, overflowWrap: 'anywhere', minWidth: 0 }}>{title}</span>
               {kind === 'doc' && !!(it as DriveDoc).linked_cards && (
                 <span title="Shown live on a deal or contact card" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, height: 20, padding: '0 8px', borderRadius: 10, background: '#2563eb1a', color: '#2563eb', fontSize: 11, fontWeight: 700 }}><DI n="briefcase" size={11} />{(it as DriveDoc).linked_cards === 1 ? 'On a card' : `On ${(it as DriveDoc).linked_cards} cards`}</span>
               )}
@@ -617,7 +617,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px 8px 10px' }}>
           <span style={{ color: t.color, display: 'inline-flex' }}><DI n={t.icon} size={17} /></span>
           <button type="button" onClick={() => openItem(kind, it)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-            <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+            <span title={title} style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', lineHeight: 1.3, overflow: 'hidden', overflowWrap: 'anywhere' }}>{title}</span>
             <span style={{ display: 'block', fontSize: 11.5, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{who(it.created_by)} · {fmtWhen(it.updated_at)}</span>
           </button>
           {dotsBtn(kind, it, title)}
