@@ -240,6 +240,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   // After moving ONE item to the trash, a short "Undo" bar (a mis-click shouldn't cost anything).
   const [undo, setUndo] = useState<{ kind: Kind; item: Item; name: string } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
   const patch = (kind: Kind, item: Item, body: Record<string, unknown>, ok?: string) =>
     act(() => api(`/api/crm/drive/items/${kind}/${item.id}`, { method: 'PATCH', body: JSON.stringify(body) }), ok).then(done => {
       if (done && body.trash === true) {
@@ -891,7 +892,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
                {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as Word (.docx)" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocWord(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && canEditFile((dlg.item as DriveFile).name) && <MenuBtn icon="✎" label="Edit as a live document" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void editFile(d.item as DriveFile); }} />}
-              {dlg.kind === 'doc' && !!(dlg.item as DriveDoc).source_file && <MenuBtn icon="↓" label={`Download the original (${(dlg.item as DriveDoc).source_file!.name.split('.').pop()?.toLowerCase()})`} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile({ id: (d.item as DriveDoc).source_file!.id } as DriveFile); }} />}
+              {dlg.kind === 'doc' && !!(dlg.item as DriveDoc).source_file && <MenuBtn icon="↓" label={`Download the original (.${(dlg.item as DriveDoc).source_file!.name.split('.').pop()?.toLowerCase()})`} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile({ id: (d.item as DriveDoc).source_file!.id } as DriveFile); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="⭐" label={isStar(dlg.kind, dlg.item) ? 'Remove from Starred' : 'Add to Starred'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); toggleStar(d.kind, d.item); }} />
               {dlg.kind === 'doc' && <MenuBtn icon="🔗" label="Copy link" isMobile={isMobile} onClick={() => { const id = dlg.item.id; setDlg(null); const url = `${window.location.origin}/crm?doc=${id}`; navigator.clipboard.writeText(url).then(() => onToast('Link copied — anyone with access can open it'), () => onToast(url)); }} />}

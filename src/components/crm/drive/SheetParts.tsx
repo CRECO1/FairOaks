@@ -361,19 +361,20 @@ export function Ico({ n, size = 17 }: { n: IcoName; size?: number }) {
  * The groups are measured in a hidden copy, so it re-fits whenever the row is resized (side panels opening, window resizing, phones).
  */
 export function OverflowRow({ children, style, moreTitle = 'More tools' }: { children: ReactNode; style?: CSSProperties; moreTitle?: string }) {
+  // Buttons are hidden ONE AT A TIME from the end (not a whole group at once), so a toolbar uses all the room it has; what doesn't fit sits under "⋯".
   const items = Children.toArray(children);
-  const groups: ReactNode[][] = [[]];
-  for (const it of items) { if (isValidElement(it) && it.type === TSep) groups.push([]); else groups[groups.length - 1].push(it); }
-  const list = groups.filter(g => g.length);
+  const flat: Array<{ node: ReactNode; sep: boolean }> = [];
+  let sep = false;
+  for (const it of items) { if (isValidElement(it) && it.type === TSep) { sep = flat.length > 0; continue; } flat.push({ node: it, sep }); sep = false; }
   const row = useRef<HTMLDivElement>(null), probe = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState(list.length);
-  const n = list.length;
+  const [fit, setFit] = useState(flat.length);
+  const n = flat.length;
   const measure = () => {
     const r = row.current, p = probe.current; if (!r || !p) return;
     const avail = r.clientWidth, kids = Array.from(p.children) as HTMLElement[];
-    const w = kids.map(k => k.offsetWidth + 9);   // + the separator that follows a group
-    if (w.reduce((a, b) => a + b, 0) - 9 <= avail) { setFit(kids.length); return; }
-    let used = 40, k = 0;                          // 40 = the "⋯" button
+    const w = kids.map((k, i) => k.offsetWidth + 1 + (flat[i]?.sep ? 9 : 0));   // 1px gap, + the separator that comes before a group
+    if (w.reduce((a, b) => a + b, 0) <= avail) { setFit(kids.length); return; }
+    let used = 40, k = 0;                                                       // 40 = the "⋯" button
     while (k < w.length && used + w[k] <= avail) { used += w[k]; k++; }
     setFit(Math.max(1, k));
   };
@@ -384,14 +385,15 @@ export function OverflowRow({ children, style, moreTitle = 'More tools' }: { chi
     return () => ro.disconnect();
   }, []);
   const shown = Math.min(fit, n);
+  const cell = (it: { node: ReactNode; sep: boolean }, i: number, lead: boolean) => <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>{lead && it.sep && <TSep />}{it.node}</span>;
   return (
     <div style={{ position: 'relative', display: 'flex', alignItems: 'center', ...style }}>
       <div ref={row} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1, overflow: 'hidden', height: 32 }}>
-        {list.slice(0, shown).map((g, i) => <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>{i > 0 && <TSep />}{g}</span>)}
-        {shown < n && <><TSep /><Pop className="sx-btn" title={moreTitle} label={<Ico n="more" />} align="right">{() => <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', maxWidth: 'min(340px, 88vw)', padding: 6 }}>{list.slice(shown).map((g, i) => <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>{g}</span>)}</div>}</Pop></>}
+        {flat.slice(0, shown).map((it, i) => cell(it, i, i > 0))}
+        {shown < n && <><TSep /><Pop className="sx-btn" title={moreTitle} label={<Ico n="more" />} align="right">{() => <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', maxWidth: 'min(340px, 88vw)', padding: 6 }}>{flat.slice(shown).map((it, i) => cell(it, i, false))}</div>}</Pop></>}
       </div>
       <div ref={probe} aria-hidden style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none', left: 0, top: 0, height: 0, overflow: 'hidden', display: 'flex', whiteSpace: 'nowrap' }}>
-        {list.map((g, i) => <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>{g}</span>)}
+        {flat.map((it, i) => <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>{it.node}</span>)}
       </div>
     </div>
   );

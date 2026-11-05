@@ -37,9 +37,12 @@ export async function sheetToPdf(ydoc: Y.Doc, t: TabInfo, grid: string[][], titl
   let pg: { orientation?: string } = {};
   try { pg = JSON.parse(ext.get(`${t.id}|page`) ?? '{}') ?? {}; } catch { /* default */ }
   const portrait = pg.orientation === 'portrait';
-  const PW = portrait ? 612 : 792, PH = portrait ? 792 : 612, M = 24, FOOT = 18;
+  const M = 24, FOOT = 18;
   const widthsPx = Array.from({ length: maxC }, (_, c) => { const w = Number(cols.get(String(c))); return w > 0 ? w : DEF_W; });
   const totalPx = widthsPx.reduce((a, b) => a + b, 0);
+  // US Letter, unless the sheet is so wide the text would be tiny: then Tabloid (11 × 17 in) landscape, which reads at about 60% instead of 40%.
+  let PW = portrait ? 612 : 792, PH = portrait ? 792 : 612;
+  if (!portrait && (PW - 2 * M) / totalPx < 0.5) { PW = 1224; PH = 792; }
   const f = Math.min(0.75, (PW - 2 * M) / totalPx);                    // px → pt (never bigger than 100% screen size)
   const xs = widthsPx.map(w => w * f).reduce<number[]>((a, w) => (a.push(a[a.length - 1] + w), a), [0]);
 
@@ -94,9 +97,11 @@ export async function sheetToPdf(ydoc: Y.Doc, t: TabInfo, grid: string[][], titl
     for (const cell of cells) {
       const x = M + xs[cell.c], { fmt } = cell;
       const bg = hexRgb(fmt.bg);
-      if (bg) page.drawRectangle({ x, y: y - h, width: cell.w, height: h, color: bg });
-      page.drawLine({ start: { x, y: y - h }, end: { x: x + cell.w, y: y - h }, thickness: 0.3, color: HAIR });
-      page.drawLine({ start: { x: x + cell.w, y }, end: { x: x + cell.w, y: y - h }, thickness: 0.3, color: HAIR });
+      if (bg) page.drawRectangle({ x, y: y - h - 0.35, width: cell.w + 0.35, height: h + 0.35, color: bg });   // a hair of overlap: no white seams between filled cells
+      if (!bg) {   // the faint grid only on unfilled cells (a pale line across a dark fill shows as a white seam)
+        page.drawLine({ start: { x, y: y - h }, end: { x: x + cell.w, y: y - h }, thickness: 0.3, color: HAIR });
+        page.drawLine({ start: { x: x + cell.w, y }, end: { x: x + cell.w, y: y - h }, thickness: 0.3, color: HAIR });
+      }
       const bd = fmt.bd ?? '', bc = hexRgb(fmt.bdc) ?? rgb(0.61, 0.64, 0.69);
       if (bd.includes('b')) page.drawLine({ start: { x, y: y - h }, end: { x: x + cell.w, y: y - h }, thickness: 0.6, color: bc });
       if (bd.includes('t')) page.drawLine({ start: { x, y }, end: { x: x + cell.w, y }, thickness: 0.6, color: bc });
