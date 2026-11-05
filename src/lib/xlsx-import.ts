@@ -12,6 +12,11 @@ const hex = (argb?: string): string | undefined => {
   const h = argb.slice(-6).toUpperCase();
   return /^[0-9A-F]{6}$/.test(h) ? `#${h}` : undefined;
 };
+// exceljs prints a date cell as a long JS date string unless told otherwise; follow the cell's own number format (m.d.yy or m/d/yyyy).
+const dateText = (d: Date, nf?: string) => {
+  const m = d.getUTCMonth() + 1, day = d.getUTCDate(), y = d.getUTCFullYear();
+  return /^m\.d\.yy/i.test(nf ?? '') ? `${m}.${day}.${String(y).slice(-2)}` : `${m}/${day}/${y}`;
+};
 const px = (pt: number) => Math.round(pt * 4 / 3);
 const FONT_SIZES = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];
 
@@ -35,7 +40,7 @@ export async function xlsxToTabs(buf: Buffer): Promise<ImportTab[]> {
         const key = `${r - 1}:${c - 1}`;
         // a merged range holds its text in the top-left cell only
         const slave = cell.isMerged && cell.master && cell.master.address !== cell.address;
-        if (!slave) { try { line[c - 1] = cell.text ?? ''; } catch { line[c - 1] = ''; } }
+        if (!slave) { try { line[c - 1] = cell.value instanceof Date ? dateText(cell.value, cell.numFmt) : cell.text ?? ''; } catch { line[c - 1] = ''; } }
         const f: CellFmt = {};
         const fill = cell.fill as { type?: string; pattern?: string; fgColor?: { argb?: string } } | undefined;
         if (fill?.type === 'pattern' && fill.pattern === 'solid') { const bg = hex(fill.fgColor?.argb); if (bg && bg !== '#FFFFFF') f.bg = bg; }
