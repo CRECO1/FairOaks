@@ -867,7 +867,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   }, [importKeys, authToken]);
 
   // ── export ──
-  const textOf = (t: TabInfo) => { const ev = new Evaluator(getter, t.name, extData); return (r: number, c: number) => { const sv = fmtMap(ydoc).get(mkey(t.id, r, c)); let f: CellFmt = {}; try { f = sv ? JSON.parse(sv) : {}; } catch { /* plain */ } const out = formatVal(ev.value(null, r, c), f); return out.startsWith('\u0001spark:') ? '' : f.rt ? stripRich(out) : out; }; };
+  const textOf = (t: TabInfo) => { const ev = new Evaluator(getter, t.name, extData); return (r: number, c: number) => { const sv = fmtMap(ydoc).get(mkey(t.id, r, c)); let f: CellFmt = {}; try { f = sv ? JSON.parse(sv) : {}; } catch { /* plain */ } const out = formatVal(ev.value(null, r, c), f); return out.startsWith('\u0001spark:') ? '' : f.rt || /\{#[0-9a-fA-F]{6}\|/.test(out) ? stripRich(out) : out; }; };
   const gridOf = (t: TabInfo): string[][] => { const pg = pivotGrids.get(t.name); return pg ?? tabGrid(t.map, textOf(t)); };
   const downloadPdf = async () => {
     if (!tab) return;
