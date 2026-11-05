@@ -113,12 +113,29 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     try { setStars(new Set(JSON.parse(localStorage.getItem(starKey) || '[]') as string[])); } catch { /* no storage: stars just last this visit */ }
     try { if (localStorage.getItem('crm-drive-layout') === 'grid') setLayout('grid'); } catch { /* default list */ }
   }, [starKey]);
-  const toggleStar = (kind: Kind, it: Item) => setStars(prev => {
-    const n = new Set(prev); const k = `${kind}:${it.id}`;
-    if (n.has(k)) n.delete(k); else n.add(k);
-    try { localStorage.setItem(starKey, JSON.stringify([...n])); } catch { /* ignore */ }
-    return n;
-  });
+  // Stars live on the server (so phone and desktop agree); this browser keeps a copy for instant paint and offline, and anything starred
+  // here before stars were synced is uploaded once.
+  const saveStars = (keys: { add?: string[]; remove?: string[] }, n: Set<string>) => { try { localStorage.setItem(starKey, JSON.stringify([...n])); } catch { /* ignore */ } void fetch('/api/crm/drive/stars', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }, body: JSON.stringify(keys) }).catch(() => {}); };
+  useEffect(() => {
+    let off = false;
+    fetch('/api/crm/drive/stars', { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} }).then(r => r.ok ? r.json() : null).then((j: { keys?: string[] } | null) => {
+      if (off || !j?.keys) return;
+      setStars(prev => {
+        const server = new Set(j.keys), extra = [...prev].filter(k => !server.has(k));
+        if (extra.length) void fetch('/api/crm/drive/stars', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }, body: JSON.stringify({ add: extra }) }).catch(() => {});
+        const n = new Set([...server, ...extra]);
+        try { localStorage.setItem(starKey, JSON.stringify([...n])); } catch { /* ignore */ }
+        return n;
+      });
+    }).catch(() => {});
+    return () => { off = true; };
+  }, [starKey, authToken]);
+  const toggleStar = (kind: Kind, it: Item) => {
+    const k = `${kind}:${it.id}`, n = new Set(starsRef.current), had = n.has(k);
+    if (had) n.delete(k); else n.add(k);
+    setStars(n); starsRef.current = n;
+    saveStars(had ? { remove: [k] } : { add: [k] }, n);
+  };
   const starsRef = useRef(stars); starsRef.current = stars;
   const isStar = (kind: Kind, it: Item) => stars.has(`${kind}:${it.id}`);
   const setLayoutTo = (l: 'list' | 'grid') => { setLayout(l); try { localStorage.setItem('crm-drive-layout', l); } catch { /* ignore */ } };
