@@ -532,7 +532,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     return (
       <span title={deal ? 'Only people on the linked deal' : priv ? (it.shared_with.length ? 'Shared with specific people' : 'Only you can open this') : 'Everyone on the team can open this'}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 9px', borderRadius: 11, background: `${color}1a`, color, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
-        <DI n={deal ? 'briefcase' : priv ? 'lock' : 'users'} size={12} />{accessLabel(it)}
+        <DI n={deal ? 'briefcase' : priv ? 'lock' : 'users'} size={12} /><span className="dd-access-label">{accessLabel(it)}</span>
       </span>
     );
   };
@@ -544,7 +544,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     const n = who(id);
     return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
       <span style={{ width: 24, height: 24, borderRadius: 12, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{initials(n)}</span>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n}</span>
+      <span className="dd-owner-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n}</span>
     </span>;
   };
   const dotsBtn = (kind: Kind, it: Item, title: string) => (
@@ -562,17 +562,18 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           <Tile n={t.icon} color={t.color} />
           <span style={{ minWidth: 0, flex: 1 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <span title={title} style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--k-1a1a1a)', lineHeight: 1.3, overflowWrap: 'anywhere', minWidth: 0 }}>{title}</span>
+              <MidText text={title} style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--k-1a1a1a)' }} />
               {kind === 'doc' && !!(it as DriveDoc).linked_cards && (
                 <span title="Shown live on a deal or contact card" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, height: 20, padding: '0 8px', borderRadius: 10, background: '#2563eb1a', color: '#2563eb', fontSize: 11, fontWeight: 700 }}><DI n="briefcase" size={11} />{(it as DriveDoc).linked_cards === 1 ? 'On a card' : `On ${(it as DriveDoc).linked_cards} cards`}</span>
               )}
             </span>
-            {(isMobile || snippet) && <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet ?? rowSub(kind, it)}</span>}
+            {(isMobile || snippet) ? <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet ?? rowSub(kind, it)}</span>
+              : <span className="dd-narrow-sub" style={{ fontSize: 12, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rowSub(kind, it)}</span>}
           </span>
         </button>
         {!isMobile && <>
-          <span style={{ width: 120, fontSize: 12.5, color: 'var(--k-6b7280)', minWidth: 0 }}>{ownerChip(it.created_by)}</span>
-          <span style={{ width: 118 }}>{accessPill(it)}</span>
+          <span className="dd-owner" style={{ width: 120, fontSize: 12.5, color: 'var(--k-6b7280)', minWidth: 0 }}>{ownerChip(it.created_by)}</span>
+          <span className="dd-access" style={{ width: 118 }}>{accessPill(it)}</span>
           <span style={{ width: 84, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}{inTrash && <span style={{ display: 'block', fontSize: 10.5, color: daysLeft(it) <= 3 ? 'var(--k-dc2626)' : 'var(--k-9ca3af)' }}>{daysLeft(it)} d left</span>}</span>
         </>}
         {!isMobile && !inTrash && starBtn(kind, it)}
@@ -728,7 +729,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         <div className={`dd-scope${selecting ? ' dd-selecting' : ''}`} onDragOver={e => { if (!inTrash && view === 'folder' && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)}
           onDrop={e => { setDragOver(false); if (!inTrash && view === 'folder' && e.dataTransfer.files.length) { e.preventDefault(); void uploadFiles(e.dataTransfer.files); } }}
           style={{ borderRadius: 14, outline: dragOver ? `2px dashed ${GOLD}` : 'none', outlineOffset: 4, background: dragOver ? `${GOLD}0d` : 'transparent' }}>
-          <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}.dd-chk{opacity:0;transition:opacity .1s}.dd-row:hover .dd-chk,.dd-card:hover .dd-chk,.dd-selecting .dd-chk,.dd-chk:focus-within{opacity:1}`}</style>
+          <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}.dd-narrow-sub{display:none}@container (max-width:860px){.dd-owner,.dd-access{width:34px!important;flex-shrink:0}.dd-owner-name,.dd-access-label{display:none}.dd-hd{font-size:0!important}.dd-access span:first-child{padding:0 8px!important}.dd-narrow-sub{display:block}}.dd-chk{opacity:0;transition:opacity .1s}.dd-row:hover .dd-chk,.dd-card:hover .dd-chk,.dd-selecting .dd-chk,.dd-chk:focus-within{opacity:1}`}</style>
           {view === 'folder' && folderId === null && !filtering && suggested.length > 0 && (
             <div style={{ marginBottom: 18 }}>
               {sectionLabel('Suggested')}
@@ -793,11 +794,11 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                   {files.map(f => gridCard('file', f))}
                 </div>
               ) : (
-              <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, overflow: 'hidden' }}>
+              <div className="dd-list" style={{ background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, overflow: 'hidden', containerType: 'inline-size' }}>
                 {!isMobile && (
                   <div style={{ display: 'flex', gap: 10, padding: '9px 10px 9px 14px', borderBottom: '1px solid var(--k-eef0f2)', background: 'var(--k-fafafa)', fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>
                     <span style={{ width: 22, flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select everything in this list" style={{ width: 16, height: 16, margin: 0, accentColor: GOLD, cursor: 'pointer' }} /></span>
-                    <span style={{ flex: 1, paddingLeft: 48 }}>Name</span><span style={{ width: 120 }}>Owner</span><span style={{ width: 118 }}>Access</span><span style={{ width: 84 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 32 + (inTrash ? 0 : 64) }} />
+                    <span style={{ flex: 1, paddingLeft: 48 }}>Name</span><span className="dd-owner dd-hd" style={{ width: 120 }}>Owner</span><span className="dd-access dd-hd" style={{ width: 118 }}>Access</span><span style={{ width: 84 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 32 + (inTrash ? 0 : 64) }} />
                   </div>
                 )}
                 {!cardsView && folders.map(f => row('folder', f))}
@@ -940,6 +941,16 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   );
 }
 
+/** A name on one line that, when it doesn't fit, cuts the MIDDLE (keeping the start and the last 12 characters — the date / extension) instead of the end. */
+function MidText({ text, style }: { text: string; style?: React.CSSProperties }) {
+  const k = text.length > 30 ? 12 : 0;
+  return (
+    <span title={text} style={{ display: 'flex', minWidth: 0, ...style }}>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{k ? text.slice(0, -k) : text}</span>
+      {k > 0 && <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{text.slice(-k)}</span>}
+    </span>
+  );
+}
 const crumb = (current: boolean): React.CSSProperties => ({ background: 'none', border: 'none', padding: '6px 6px', borderRadius: 6, cursor: current ? 'default' : 'pointer', fontSize: 'inherit', fontWeight: current ? 700 : 600, color: current ? 'var(--k-1a1a1a)' : 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif", maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 
 const MENU_ICON: Record<string, DIName> = { '▦': 'sheet', '📄': 'doc', '📋': 'template', '📁': 'folder', '📝': 'form', '⬆': 'upload', '↩': 'restore', '🗑': 'trash', '↗': 'open', '👁': 'eye', '⬇': 'download', '↓': 'download', '💼': 'briefcase', '👤': 'user', '✎': 'pen', '👥': 'users', '⭐': 'star' };
