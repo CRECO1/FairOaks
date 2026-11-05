@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { sendScheduledRow } from '@/lib/scheduled-emails';
+import { resolveSignature, withSignature } from '@/lib/agent-signature';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // Your scheduled ("send later") emails. Personal: you only ever see and change your own.
 // GET                          → { items: [...] }  pending + failed ones
+// GET ?id=<id>                 → { preview } the full email as it will go out (signature included), for the Preview button
 // POST { send_at, payload }    → schedule (payload = what Compose would POST to /api/gmail/send)
 // PATCH { id, action: 'cancel' | 'send_now' | 'reschedule', send_at? }
 const MAX_PENDING = 50;
@@ -16,6 +18,22 @@ const MAX_PAYLOAD = 400_000; // characters of JSON — scheduled mail carries CR
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  const previewId = req.nextUrl.searchParams.get('id');
+  if (previewId) {
+    const db = adminClient();
+    const { data: row } = await db.from('crm_scheduled_emails').select('id, user_id, send_at, payload, status').eq('id', previewId).maybeSingle();
+    if (!row || row.user_id !== ctx.userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const p = (row.payload ?? {}) as { to?: string; cc?: string; bcc?: string; subject?: string; body?: string; crmAttachments?: Array<{ kind?: string; id?: string }> };
+    const sig = await resolveSignature(db, { agentId: ctx.userId });
+    const files: string[] = [];
+    for (const a of Array.isArray(p.crmAttachments) ? p.crmAttachments : []) {
+      if (a?.kind === 'listing_flyer' && typeof a.id === 'string') {
+        const { data: l } = await db.from('crm_listings').select('name').eq('id', a.id).maybeSingle();
+        files.push(l?.name ? `Property flyer — ${l.name}` : 'Property flyer');
+      } else files.push('Attachment from the CRM');
+    }
+    return NextResponse.json({ preview: { to: p.to ?? '', cc: p.cc ?? '', bcc: p.bcc ?? '', subject: p.subject ?? '', html: withSignature(String(p.body ?? ''), sig), files } });
+  }
   const { data, error } = await adminClient().from('crm_scheduled_emails')
     .select('id, send_at, summary_to, summary_subject, status, attempts, last_error, created_at')
     .eq('user_id', ctx.userId).in('status', ['pending', 'sending', 'failed']).order('send_at', { ascending: true }).limit(100);
