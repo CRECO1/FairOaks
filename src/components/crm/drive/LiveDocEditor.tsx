@@ -27,7 +27,7 @@ import type { DriveComment, DriveDoc } from '@/lib/drive-types';
 import { docExtensions } from './doc-extensions';
 import { DocStyles } from './DocStyles';
 import { LetterheadHeader, LetterheadFooter } from './Letterhead';
-import { exportDocPdf, exportDocDocx } from './doc-export';
+import { exportDocPdf, exportDocDocx, printDocPdf } from './doc-export';
 import { ActivityPanel, CommentsPanel, HistoryPanel } from './DocPanel';
 import { SuggestTracking, listSuggestions, resolveSuggestions, type Suggestion } from '@/lib/collab/suggest-marks';
 import { safeImageSrc } from '@/lib/collab/image-node';
@@ -105,6 +105,14 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
   const me = useMemo<Peer>(() => ({ name: user.name || 'Teammate', color: colorFor(user.id) }), [user.id, user.name]);
   const [panel, setPanel] = useState<null | 'comments' | 'history' | 'activity'>(null);
   const [dlOpen, setDlOpen] = useState(false);   // phones: PDF and Word share one ⬇ menu so the header stays on two rows
+  // Print straight from the document (button, or Ctrl/Cmd+P): the same pages as the PDF, sent to the printer dialog.
+  const doPrint = async () => { if (!editor) return; try { await flushRef.current(); await printDocPdf(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not print this document'); } };
+  const doPrintRef = useRef(doPrint); doPrintRef.current = doPrint;
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); void doPrintRef.current(); } };
+    window.addEventListener('keydown', h, true);
+    return () => window.removeEventListener('keydown', h, true);
+  }, []);
   const [comments, setComments] = useState<DriveComment[]>([]);
   const [anchor, setAnchor] = useState<{ from: number; to: number; text: string } | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -277,6 +285,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
           const doWord = async () => { if (!editor) return; try { await flushRef.current(); await exportDocDocx(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not make the Word file'); } };
           if (!isMobile) return (
             <>
+              <button type="button" disabled={!editor} onClick={() => void doPrint()} aria-label="Print" title="Print this document (Ctrl+P)" style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px' }}>🖨 Print</button>
               <button type="button" disabled={!editor} onClick={() => void doPdf()} aria-label="Download as PDF" title="Download as PDF" style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px' }}>⬇ PDF</button>
               <button type="button" disabled={!editor} onClick={() => void doWord()} aria-label="Download as Word" title="Download as a Word (.docx) file you can edit in Word" style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px' }}>⬇ Word</button>
             </>
@@ -288,7 +297,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
                 <>
                   <div onClick={() => setDlOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
                   <div role="menu" style={{ position: 'absolute', left: 0, top: 'calc(100% + 4px)', zIndex: 41, minWidth: 190, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 6 }}>
-                    {([['PDF', doPdf], ['Word (.docx)', doWord]] as Array<[string, () => Promise<void>]>).map(([label, fn]) => (
+                    {([['Print', doPrint], ['PDF', doPdf], ['Word (.docx)', doWord]] as Array<[string, () => Promise<void>]>).map(([label, fn]) => (
                       <button key={label} type="button" role="menuitem" onClick={() => { setDlOpen(false); void fn(); }}
                         style={{ display: 'block', width: '100%', textAlign: 'left', minHeight: 46, padding: '0 14px', border: 'none', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 15, fontWeight: 600, color: 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }}>⬇ {label}</button>
                     ))}

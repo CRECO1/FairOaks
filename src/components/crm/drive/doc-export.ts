@@ -2,7 +2,7 @@
 import * as Y from 'yjs';
 import { fromBase64 } from 'lib0/buffer';
 import { yXmlFragmentToProsemirrorJSON } from '@tiptap/y-tiptap';
-import { docToPdf, pdfName, saveBytes, type PMNode } from '@/lib/doc-pdf';
+import { docToPdf, pdfName, printBytes, saveBytes, type PMNode } from '@/lib/doc-pdf';
 
 /** A live document's saved content as ProseMirror JSON (for a read-only preview or a PDF), straight from the server copy. */
 export async function loadDocJson(docId: string, authToken?: string): Promise<{ title: string; json: PMNode; empty: boolean; letterhead: boolean }> {
@@ -30,4 +30,10 @@ export async function exportDocPdf(docId: string, authToken?: string, titleHint?
   const { title, json, letterhead } = await loadDocJson(docId, authToken);
   const t = titleHint || title;
   saveBytes(await docToPdf(json, t, { letterhead }), pdfName(t));
+}
+
+/** Print a document straight from the app (the same pages as the PDF — letterhead, fonts and colours included). */
+export async function printDocPdf(docId: string, authToken?: string, titleHint?: string): Promise<void> {
+  const { title, json, letterhead } = await loadDocJson(docId, authToken);
+  printBytes(await docToPdf(json, titleHint || title, { letterhead }));
 }

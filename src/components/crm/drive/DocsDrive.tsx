@@ -376,6 +376,11 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     try { const { exportDocDocx } = await import('./doc-export'); await exportDocDocx(d.id, authToken, d.title); }
     catch (e) { onToast((e as Error).message || 'Could not make the Word file'); }
   };
+  const printDoc = async (d: DriveDoc) => {
+    onToast('Preparing to print…');
+    try { const { printDocPdf } = await import('./doc-export'); await printDocPdf(d.id, authToken, d.title); }
+    catch (e) { onToast((e as Error).message || 'Could not print this document'); }
+  };
   const downloadDocPdf = async (d: DriveDoc) => {
     onToast('Preparing the PDF…');
     try { const { exportDocPdf } = await import('./doc-export'); await exportDocPdf(d.id, authToken, d.title); }
@@ -889,6 +894,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
               {dlg.kind === 'form' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFormPdf(d.item as DriveFormItem); }} />}
               {(dlg.kind === 'file' || dlg.kind === 'form' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && deals.length > 0 && <MenuBtn icon="💼" label={dlg.kind === 'doc' ? 'Link to a deal…' : 'Add to a deal…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toDeal', kind: dlg.kind, item: dlg.item })} />}
               {(dlg.kind === 'file' || (dlg.kind === 'doc' && !(dlg.item as DriveDoc).is_template)) && contacts.length > 0 && <MenuBtn icon="👤" label={dlg.kind === 'doc' ? 'Link to a contact…' : 'Add to a contact…'} isMobile={isMobile} onClick={() => setDlg({ t: 'toContact', kind: dlg.kind, item: dlg.item })} />}
+               {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="🖨" label="Print" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void printDoc(d.item as DriveDoc); }} />}
                {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
                {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as Word (.docx)" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocWord(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && canEditFile((dlg.item as DriveFile).name) && <MenuBtn icon="✎" label="Edit as a live document" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void editFile(d.item as DriveFile); }} />}
