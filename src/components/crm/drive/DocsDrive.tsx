@@ -708,7 +708,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                     <MenuBtn onClick={() => void createDoc()} icon="📄" label="Document" isMobile={isMobile} />
                     <MenuBtn onClick={() => void createDoc('sheet')} icon="▦" label="Spreadsheet" isMobile={isMobile} />
                     <MenuBtn onClick={() => void createDoc('sheet', ['elkhorn_tenants', 'elkhorn_calls'])} icon="▦" label="Elkhorn call tracker (live)" isMobile={isMobile} />
-                    <MenuBtn onClick={() => void createDoc('sheet', ['robert_emails'], 'Robert’s outreach emails')} icon="▦" label="Robert’s email tracker (live)" isMobile={isMobile} />
+                    <MenuBtn onClick={() => void createDoc('sheet', ['robert_emails', 'robert_summary'], 'Robert’s outreach emails')} icon="▦" label="Robert’s email tracker (live)" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'gallery' }); }} icon="📋" label="Template gallery…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'template' }); }} icon="📋" label="Your team’s templates…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'newFolder' }); }} icon="📁" label="Folder" isMobile={isMobile} />
