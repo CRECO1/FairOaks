@@ -28,6 +28,7 @@ import type { DriveComment } from '@/lib/drive-types';
 import SendToCrmDialog from './SheetCrm';
 import { OverflowRow, CommandPalette, CondDialog, DedupeDialog, Divider, FunctionsDialog, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, ShortcutsDialog, SplitDialog, TBtn, TSep, ValidDialog, type Command, type LockInfo, type PivotForm } from './SheetParts';
 import { ChartDialog, ChartSvg, type ChartData } from './SheetChart';
+import { sheetPrintHtml } from '@/lib/sheet-print';
 import type { DrivePerson } from './DocsDrive';
 
 interface Props {
@@ -886,6 +887,13 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const printTab = () => {
     if (!tab) return;
     const g = gridOf(tab); if (!g.length) { onToast('Nothing to print on this tab'); return; }
+    // A sheet with any look to it (colours, merges, widths…) prints as it appears; a plain one keeps the simple table below.
+    const looks = [...fmtMap(ydoc).keys()].some(k => k.startsWith(`${tab.id}|`)) || mergeList(ydoc).toArray().some(m => { try { return (JSON.parse(m) as { tab: string }).tab === tab.id; } catch { return false; } });
+    if (looks) {
+      const w2 = window.open('', '_blank'); if (!w2) { onToast('Allow pop-ups for this site to print'); return; }
+      w2.document.write(sheetPrintHtml(ydoc, tab, g, title)); w2.document.close(); w2.focus(); setTimeout(() => w2.print(), 400);
+      return;
+    }
     const esc = (v: string) => v.replace(/[&<>]/g, ch => (ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : '&gt;'));
     const head = Math.max(1, frozen) ;
     const cell = (v: string, tag: 'td' | 'th') => `<${tag}${/^-?[\d,.$%]+$/.test(v) && v !== '' ? ' class="n"' : ''}>${esc(v)}</${tag}>`;
@@ -1260,7 +1268,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     { group: 'Data', label: 'Trim extra spaces', run: trimSel }, { group: 'Data', label: 'Change to UPPERCASE', run: () => caseSel('upper') }, { group: 'Data', label: 'Change to lowercase', run: () => caseSel('lower') }, { group: 'Data', label: 'Capitalize Each Word', run: () => caseSel('proper') },
     { group: 'Data', label: 'Turn text into numbers', run: numbersSel }, { group: 'Data', label: 'Split text into columns', run: () => setCleanDlg('split') }, { group: 'Data', label: 'Highlight duplicate rows', run: highlightDuplicates }, { group: 'Data', label: 'Remove duplicate rows', run: () => setCleanDlg('dedupe') },
     ...(hasFeed ? [{ group: 'Data', label: 'Refresh from the CRM', run: () => void refreshFeed(false) }] : []),
-    { group: 'File', label: 'Print this tab', hint: 'Ctrl+P', run: printTab }, { group: 'File', label: 'Download as CSV', run: () => void download('csv') }, { group: 'File', label: 'Download as Excel', run: () => void download('xlsx') }, { group: 'File', label: 'Version history', run: onHistory },
+    { group: 'File', label: 'Print or save as PDF', hint: 'Ctrl+P', run: printTab }, { group: 'File', label: 'Download as CSV', run: () => void download('csv') }, { group: 'File', label: 'Download as Excel', run: () => void download('xlsx') }, { group: 'File', label: 'Version history', run: onHistory },
     { group: 'Help', label: 'Keyboard shortcuts', run: () => setHelpDlg('keys') }, { group: 'Help', label: 'Function list', run: () => setHelpDlg('funcs') },
   ] : [];
   if (!tab) return <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Opening…</div>;
@@ -1271,7 +1279,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
       <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: isMobile ? '4px 8px 0' : '4px 10px 0', overflowX: 'auto', flexWrap: 'nowrap' }}>
         <Pop className="sx-mb" title="File" label="File">
           {close => (<>
-            <Item hint="Ctrl+P" onClick={() => { printTab(); close(); }}>Print this tab</Item>
+            <Item hint="Ctrl+P" onClick={() => { printTab(); close(); }}>Print or save as PDF</Item>
             <Divider />
             <Item onClick={() => { void download('csv'); close(); }}>Download this tab as CSV</Item>
             <Item onClick={() => { void download('xlsx'); close(); }}>Download as Excel (.xlsx)</Item>
@@ -1422,7 +1430,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         <TBtn title="Search the menus (Alt+/)" onClick={() => setPalette(true)}><Ico n="menus" /></TBtn>
         <TBtn title="Undo (Ctrl+Z)" onClick={() => undo.undo()}><Ico n="undo" /></TBtn>
         <TBtn title="Redo (Ctrl+Y)" onClick={() => undo.redo()}><Ico n="redo" /></TBtn>
-        <TBtn title="Print this tab (Ctrl+P)" onClick={printTab}><Ico n="print" /></TBtn>
+        <TBtn title="Print or save as PDF (Ctrl+P)" onClick={printTab}><Ico n="print" /></TBtn>
         <TBtn title="Paint format: copy this cell's look, then select the cells to give it to" on={!!painter} onClick={() => (painter ? setPainter(null) : startPainter())}><Ico n="brush" /></TBtn>
         <TBtn title="Clear formatting" onClick={clearFormat}><Ico n="clear" /></TBtn>
         <TSep />

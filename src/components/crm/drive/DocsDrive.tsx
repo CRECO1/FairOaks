@@ -422,6 +422,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     if (!all.length) return;
     setUploading(n => n + all.length);
     let ok = 0, madeEditable = 0;
+    const failed: string[] = [];   // one message at the end, not one toast per file (the last would hide the rest)
     for (const file of all) {
       try {
         if (file.size > DRIVE_FILE_MAX) throw new Error(`“${file.name}” is over 50 MB`);
@@ -435,12 +436,13 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           try { await api(`/api/crm/drive/file/${saved.file.id}/convert`, { method: 'POST' }); madeEditable += 1; }
           catch (e) { onToast(`“${file.name}” was uploaded, but ${((e as Error).message || 'it could not be made editable').replace(/^./, c => c.toLowerCase())}`); }
         }
-      } catch (e) { onToast((e as Error).message); }
+      } catch (e) { failed.push((e as Error).message); }
       finally { setUploading(n => n - 1); }
     }
+    if (failed.length) onToast(failed.length === 1 && !ok ? failed[0] : `${ok ? `${ok} uploaded. ` : ''}${failed.length} couldn’t be uploaded — ${failed.join(' · ')}`);
     if (ok) {
       const editable = all.some(f => canEditFile(f.name)), oldWord = all.some(f => /\.(doc|rtf)$/i.test(f.name));
-      onToast(madeEditable ? `Uploaded — ${madeEditable === 1 ? 'it opens as a live, editable document' : `${madeEditable} files open as live, editable documents`}` : editable ? 'Uploaded — click the file (or the pencil) to edit it as a live document' : oldWord ? 'Uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that' : ok === 1 ? 'File uploaded' : `${ok} files uploaded`);
+      if (!failed.length) onToast(madeEditable ? `Uploaded — ${madeEditable === 1 ? 'it opens as a live, editable document' : `${madeEditable} files open as live, editable documents`}` : editable ? 'Uploaded — click the file (or the pencil) to edit it as a live document' : oldWord ? 'Uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that' : ok === 1 ? 'File uploaded' : `${ok} files uploaded`);
       refresh();
     }
   };
@@ -811,7 +813,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
             </>
           )}
           {noMatch && <div style={{ padding: '34px 20px', textAlign: 'center', color: 'var(--k-6b7280)', fontSize: 14, background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 14 }}>Nothing here matches those filters. <button type="button" onClick={() => { setChip('all'); setMine(false); setWeek(false); }} style={{ background: 'none', border: 'none', color: 'var(--k-a06a12)', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>Clear filters</button></div>}
-          {empty && (
+          {empty && uploading === 0 && (
             <div style={{ padding: '54px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
               <Tile n={view === 'trash' ? 'trash' : view === 'shared' ? 'users' : view === 'templates' ? 'template' : view === 'search' ? 'search' : view === 'recent' ? 'clock' : view === 'starred' ? 'star' : 'folder'} color={GOLD} size={52} />
               <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--k-1a1a1a)', marginTop: 8 }}>
