@@ -490,17 +490,24 @@ export function parseCsv(text: string): string[][] {
 }
 
 /** Build a whole sheet (one tab per entry) as a saved Yjs state. */
-export function sheetStateFromTabs(tabs: Array<{ name: string; grid: string[][]; frozen?: number; feed?: string; widths?: Record<number, number>; bold?: string[] }>): { ystate: string; text: string } {
+export interface ImportTab { name: string; grid: string[][]; frozen?: number; feed?: string; widths?: Record<number, number>; bold?: string[];
+  /** Imported from Excel: per-cell look keyed "r:c", merged ranges [r1, c1, r2, c2], and row heights in px keyed by row. */
+  fmts?: Record<string, CellFmt>; merges?: Array<[number, number, number, number]>; rowHeights?: Record<number, number> }
+export function sheetStateFromTabs(tabs: ImportTab[]): { ystate: string; text: string } {
   const doc = new Y.Doc();
   try {
     doc.transact(() => {
       tabs.forEach((t, i) => {
         const m = newTabMap(t.name.slice(0, 60), i, 100, 12, t.frozen ?? 0);
-        tabsMap(doc).set(i === 0 ? 'tab1' : newId(), m);
+        const id = i === 0 ? 'tab1' : newId();
+        tabsMap(doc).set(id, m);
         fillTabFromGrid(m, t.grid);
         if (t.feed) m.set('feed', t.feed);
         for (const [c, w] of Object.entries(t.widths ?? {})) tCols(m).set(String(c), w);
         for (const k of t.bold ?? []) tBold(m).set(k, true);
+        for (const [k, f] of Object.entries(t.fmts ?? {})) { const [r, c] = parseKey(k); if (Object.keys(f).length) fmtMap(doc).set(mkey(id, r, c), JSON.stringify(f)); }
+        for (const [r1, c1, r2, c2] of t.merges ?? []) mergeList(doc).push([JSON.stringify({ tab: id, r1, c1, r2, c2 } satisfies MergeRange)]);
+        for (const [r, h] of Object.entries(t.rowHeights ?? {})) extMap(doc).set(`${id}|rh|${r}`, String(h));
       });
     });
     return { ystate: Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64'), text: sheetText(doc) };

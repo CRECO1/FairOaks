@@ -6,6 +6,7 @@ import { jsonToDriveState } from '@/lib/drive-markdown';
 import { logDocEvent } from '@/lib/drive-events';
 import { DOC_COLS } from '@/lib/drive-types';
 import { parseCsv, sheetStateFromTabs } from '@/lib/drive-sheet';
+import { xlsxToTabs } from '@/lib/xlsx-import';
 
 // "Edit as a live document": turns an uploaded Word (.docx) or plain-text (.txt) file into a NEW live My Drive document (same folder, same sharing), so it
 // can be edited together like any other document. The uploaded file is left exactly as it is, and a file is converted ONCE: asking again
@@ -44,12 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (isSheet) {
       if (isCsv) state = sheetStateFromTabs([{ name: 'Sheet1', grid: parseCsv(buf.toString('utf8')), frozen: 1 }]);
       else {
-        const XLSX = await import('xlsx');
-        const wb = XLSX.read(buf, { type: 'buffer' });
-        state = sheetStateFromTabs(wb.SheetNames.slice(0, 20).map((n, i) => ({
-          name: n || `Sheet${i + 1}`, frozen: 0,
-          grid: (XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }) as unknown[][]).slice(0, 5000).map(r => r.slice(0, 60).map(v => String(v ?? ''))),
-        })));
+        state = sheetStateFromTabs(await xlsxToTabs(buf));
       }
     } else {
       const json = isDocx ? (await docxToDocJson(buf)).json : textToDocJson(buf.toString('utf8'));
