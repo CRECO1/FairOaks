@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       const hint = ext === 'heic' || ext === 'heif' ? ' Share the photo as a JPG, or set Camera → Formats to Most Compatible.' : '';
       return NextResponse.json({ error: `.${ext || '?'} files can't be uploaded here — use PDF, Word, Excel, PowerPoint, an image, CSV or text.${hint}` }, { status: 400 });
     }
-    if (Number(body.size) > DRIVE_FILE_MAX) return NextResponse.json({ error: 'A file must be 50 MB or smaller' }, { status: 400 });
+    if (Number(body.size) > DRIVE_FILE_MAX) return NextResponse.json({ error: 'A file must be 25 MB or smaller' }, { status: 400 });
     const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
     const storagePath = `${bu}/${crypto.randomUUID()}/${safe}`;
     const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(storagePath);

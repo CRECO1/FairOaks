@@ -18,7 +18,9 @@ const MESSAGE_ID_RE = /^<[^<>\s]+>$/;
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const MAX_ATTACHMENTS = 10;
 const MAX_ATTACHMENT_B64 = 20_000_000;   // per file, base64 chars (~15 MB)
-const MAX_TOTAL_B64 = 33_000_000;        // all files together (~25 MB, Gmail's message limit)
+const MAX_TOTAL_B64 = 24_000_000;        // all files together: ~18 MB of files, which encodes to just under Gmail's 25 MB message limit (the old 33M let ~25 MB of files through, ~34 MB once encoded)
+
+const tooLarge = (single: boolean) => single ? 'A file is over 15 MB — too large to email. Share a link instead.' : 'The attachments add up to more than 18 MB — mail servers won’t deliver that. Remove one, send it in a second email, or share a link.';
 
 interface GmailConnection {
   id: string;
@@ -232,7 +234,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
       const data = typeof a?.data === 'string' ? a.data.replace(/\s+/g, '') : '';
       if (!data || data.length % 4 !== 0 || !BASE64_RE.test(data)) return NextResponse.json({ error: 'An attachment is not valid base64 data' }, { status: 400 });
       totalB64 += data.length;
-      if (data.length > MAX_ATTACHMENT_B64 || totalB64 > MAX_TOTAL_B64) return NextResponse.json({ error: 'Attachments are too large' }, { status: 413 });
+      if (data.length > MAX_ATTACHMENT_B64 || totalB64 > MAX_TOTAL_B64) return NextResponse.json({ error: tooLarge(data.length > MAX_ATTACHMENT_B64) }, { status: 413 });
       attList.push({
         name: stripLineBreaks(String(a?.name ?? 'attachment')).slice(0, 255) || 'attachment',
         mimeType: typeof a?.mimeType === 'string' && MIME_TYPE_RE.test(a.mimeType) ? a.mimeType : 'application/octet-stream',
@@ -258,7 +260,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
         linkedListingId = refs.find(r => r.kind === 'listing_flyer')?.id ?? null;   // resolved above, so the caller may open this property
         for (const f of got.files) {
           totalB64 += f.data.length;
-          if (f.data.length > MAX_ATTACHMENT_B64 || totalB64 > MAX_TOTAL_B64) return NextResponse.json({ error: 'Attachments are too large' }, { status: 413 });
+          if (f.data.length > MAX_ATTACHMENT_B64 || totalB64 > MAX_TOTAL_B64) return NextResponse.json({ error: tooLarge(f.data.length > MAX_ATTACHMENT_B64) }, { status: 413 });
           attList.push({ name: stripLineBreaks(f.name).slice(0, 255) || 'attachment', mimeType: MIME_TYPE_RE.test(f.mimeType) ? f.mimeType : 'application/octet-stream', data: f.data });
         }
       }

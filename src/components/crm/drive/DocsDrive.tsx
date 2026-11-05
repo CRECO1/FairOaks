@@ -14,7 +14,8 @@ import { recallView, rememberView, useRememberedSelection } from '@/lib/view-mem
 import { useBackToClose } from '@/lib/use-back-to-close';
 import DocPreviewModal from '../DocPreviewModal';
 import type { DriveDoc, DriveFile, DriveFolder, DriveFormItem, DriveListing, DriveTreeFolder } from '@/lib/drive-types';
-import { DRIVE_FILE_MAX } from '@/lib/drive-types';
+import { DRIVE_FILE_MAX, DRIVE_EMAIL_MAX } from '@/lib/drive-types';
+import { shrinkImage } from '@/lib/image-shrink';
 import { BUILTIN_TEMPLATES, type BuiltinTemplate } from '@/lib/drive-builtin-templates';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
@@ -440,9 +441,13 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     setUploading(n => n + all.length);
     let ok = 0, madeEditable = 0;
     const failed: string[] = [];   // one message at the end, not one toast per file (the last would hide the rest)
-    for (const file of all) {
+    const tooBigToEmail: string[] = [];
+    for (const original of all) {
+      let file = original;
       try {
-        if (file.size > DRIVE_FILE_MAX) throw new Error(`“${file.name}” is over 50 MB`);
+        // Phone photos are 4–12 MB; stored as a normal-sized JPEG they are a fraction of that and still email fine.
+        file = await shrinkImage(original, { maxSide: 2400, quality: 0.85 });
+        if (file.size > DRIVE_FILE_MAX) throw new Error(`“${original.name}” is over 25 MB — shrink or split it first`);
         const pre = await api<{ uploadUrl: string; storagePath: string; contentType: string }>('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'presign', filename: file.name, size: file.size, parent_id: parent }) });
         setUpInfo({ name: file.name, pct: 0 });
         const sent = await new Promise<boolean>(resolve => {
@@ -456,6 +461,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         if (!sent) throw new Error(`Couldn’t upload “${file.name}” — try again`);
         const saved = await api<{ file?: { id: string } }>('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'confirm', storagePath: pre.storagePath, filename: file.name, parent_id: parent }) });
         ok += 1;
+        if (file.size > DRIVE_EMAIL_MAX) tooBigToEmail.push(file.name);
         // A Word / text file is also made editable right away (a live document next to it); a problem here is only mentioned.
         if (canEditFile(file.name) && saved.file?.id) {
           try { await api(`/api/crm/drive/file/${saved.file.id}/convert`, { method: 'POST' }); madeEditable += 1; }
@@ -468,7 +474,8 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     if (failed.length) onToast(failed.length === 1 && !ok ? failed[0] : `${ok ? `${ok} uploaded. ` : ''}${failed.length} couldn’t be uploaded — ${failed.join(' · ')}`);
     if (ok) {
       const editable = all.some(f => canEditFile(f.name)), oldWord = all.some(f => /\.(doc|rtf)$/i.test(f.name));
-      if (!failed.length) onToast(madeEditable ? `Uploaded — ${madeEditable === 1 ? 'it opens as a live, editable document' : `${madeEditable} files open as live, editable documents`}` : editable ? 'Uploaded — click the file (or the pencil) to edit it as a live document' : oldWord ? 'Uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that' : ok === 1 ? 'File uploaded' : `${ok} files uploaded`);
+      const emailNote = tooBigToEmail.length ? ` ${tooBigToEmail.length === 1 ? `“${tooBigToEmail[0]}” is` : `${tooBigToEmail.length} files are`} over 15 MB, so ${tooBigToEmail.length === 1 ? 'it' : 'they'} can’t be attached to an email — share a link instead.` : '';
+      if (!failed.length) onToast((madeEditable ? `Uploaded — ${madeEditable === 1 ? 'it opens as a live, editable document' : `${madeEditable} files open as live, editable documents`}` : editable ? 'Uploaded — click the file (or the pencil) to edit it as a live document' : oldWord ? 'Uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that' : ok === 1 ? 'File uploaded' : `${ok} files uploaded`) + emailNote);
       refresh();
     }
   };

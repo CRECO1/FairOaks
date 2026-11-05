@@ -107,7 +107,10 @@ export const DRIVE_FILE_TYPES: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
   txt: 'text/plain',
 };
-export const DRIVE_FILE_MAX = 50 * 1024 * 1024;
+/** Largest file My Drive takes (25 MB, same as deal and contact files). Pictures are shrunk in the browser first, so this is for PDFs and Office files. */
+export const DRIVE_FILE_MAX = 25 * 1024 * 1024;
+/** Largest file that can still be attached to an email (see attach-upload). Bigger Drive files are kept, just not emailable. */
+export const DRIVE_EMAIL_MAX = 15 * 1024 * 1024;
 
 /** A comment or reply on a live document. A top-level comment's id is also the id of its highlight mark in the document. */
 export interface DriveComment {

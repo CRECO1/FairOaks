@@ -7,6 +7,7 @@ import { sanitizeHtml } from '@/lib/sanitize';
 import { confirmDialog } from '@/lib/confirm-dialog';
 import { getDraft, saveDraft, deleteDraft, type DraftContext } from '@/lib/email-drafts';
 import { chicagoLocalToUTC, chicagoToday } from '@/lib/chicago-time';
+import { shrinkImage } from '@/lib/image-shrink';
 
 // One composer for every "write an email" surface (deal Emails tab, contact card, inline thread
 // reply, and the docked global Compose window). State and sending stay with the caller — this is
@@ -42,21 +43,8 @@ const ROW: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', ga
 const CHIP: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%', padding: '3px 4px 3px 9px', background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, fontSize: 13, color: 'var(--k-374151)' };
 
 const BIG_FILE_MAX = 15 * 1024 * 1024; // the most a single emailed file may be (uploaded straight to storage when it won't fit in the request)
+const EMAIL_TOTAL_MAX = 18 * 1024 * 1024; // all files on one email: Gmail's 25 MB message limit minus the ~1/3 base64 adds
 const UPLOAD_BUDGET = 3_200_000; // bytes of files per email sent from this window (request limit ~4.5 MB, base64 adds a third)
-
-/** Big pictures (phone photos) → a normal-sized JPEG, so they fit. Anything else, or a failure, comes back unchanged. */
-async function shrinkImage(file: File): Promise<File> {
-  if (!/^image\/(jpeg|png|webp|heic|heif)$/i.test(file.type) || file.size < 900_000 || typeof createImageBitmap === 'undefined') return file;
-  try {
-    const bmp = await createImageBitmap(file);
-    const scale = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
-    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(bmp.width * scale)); c.height = Math.max(1, Math.round(bmp.height * scale));
-    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height); bmp.close?.();
-    const blob = await new Promise<Blob | null>(r => c.toBlob(r, 'image/jpeg', 0.82));
-    if (!blob || blob.size >= file.size) return file;
-    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
-  } catch { return file; }
-}
 
 // Chips + a free-typing tail with contact suggestions. The parent only ever sees one comma-separated
 // string of plain emails, and anything still being typed is included in it, so a pending address is
@@ -457,8 +445,11 @@ export default function EmailComposer(p: EmailComposerProps) {
   };
   const addFiles = async (incoming: File[]) => {
     const taken: File[] = []; let room = attachRoom.current;
+    let used = p.attachments.reduce((n, f) => n + f.size, 0) + (p.crmFiles?.items ?? []).reduce((n, f) => n + (f.size ?? 0), 0);
     for (const f of incoming) {
       const small = await shrinkImage(f);
+      if (used + small.size > EMAIL_TOTAL_MAX) { p.notify?.(`Adding “${f.name}” (${(small.size / 1048576).toFixed(1)} MB) would put this email over 18 MB of attachments, which mail servers won’t deliver. Send it in a second email or share a link.`); continue; }
+      used += small.size;
       // Files from this computer go to storage right away and ride along by reference, so a saved draft keeps them
       // (a File held only in the browser is lost the moment the draft is closed). Falls back to the in-browser copy if the upload fails.
       if (p.crmFiles && small.size <= BIG_FILE_MAX && await uploadBig(small)) continue;
