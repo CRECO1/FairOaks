@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { chicagoLocalToUTC, chicagoToday } from '@/lib/chicago-time';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { MessageFrame } from './MessageFrame';
+import { confirmDialog } from '@/lib/confirm-dialog';
 
 // Emails you scheduled with "Send later" (and any that failed). Sits above the saved drafts on the Emails → Drafts tab.
 
@@ -21,25 +22,43 @@ export default function ScheduledEmails({ isMobile, notify }: { isMobile: boolea
   const [form, setForm] = useState<{ to: string; cc: string; subject: string } | null>(null); // set while the open email is being edited
   const [dirty, setDirty] = useState(false);                                                    // the body text was touched
   const bodyRef = React.useRef<HTMLDivElement>(null);
+  const reqRef = React.useRef(0);                                                          // newest preview request wins, so a slow answer for another row can't overwrite this one
   const loadPreview = async (it: Item) => {
+    const mine = ++reqRef.current;
     setOpenId(it.id); setPv('loading');
     try {
       const r = await fetch(`/api/crm/scheduled-emails?id=${encodeURIComponent(it.id)}`, { cache: 'no-store' });
       const j = r.ok ? await r.json() : null;
-      setPv(j?.preview ? (j.preview as Preview) : 'error');
-      return (j?.preview as Preview | undefined) ?? null;
-    } catch { setPv('error'); return null; }
+      const p = (j?.preview as Preview | undefined) ?? null;
+      if (mine === reqRef.current) setPv(p ?? 'error');
+      return mine === reqRef.current ? p : null;
+    } catch { if (mine === reqRef.current) setPv('error'); return null; }
   };
+  // Leaving an edit you changed asks first, so a stray click never throws your text away.
+  const okToLeave = async () => {
+    if (!form || !dirty) return true;
+    return confirmDialog('Discard your changes to this email?', { confirmLabel: 'Discard changes' });
+  };
+  const closeEdit = () => { setForm(null); setDirty(false); };
   const togglePreview = async (it: Item) => {
+    if (!(await okToLeave())) return;
     if (openId === it.id && !form) { setOpenId(null); setPv(null); return; }
-    setForm(null);
+    closeEdit();
     await loadPreview(it);
   };
   const startEdit = async (it: Item) => {
+    if (form && openId === it.id) { bodyRef.current?.focus(); return; }
+    if (!(await okToLeave())) return;
     setDirty(false);
     const p = await loadPreview(it);
     if (p) setForm({ to: p.to, cc: p.cc, subject: p.subject });
   };
+  const editing_ = !!form;
+  useEffect(() => { if (editing_) bodyRef.current?.focus(); }, [editing_, openId]);
+  // Bold / italic / underline on the selection (the buttons keep the selection by not taking focus).
+  const fmt = (cmd: 'bold' | 'italic' | 'underline') => { bodyRef.current?.focus(); document.execCommand(cmd); setDirty(true); };
+  // Pasting brings the other page's fonts and colours with it; keep just the words.
+  const pastePlain = (e: React.ClipboardEvent) => { e.preventDefault(); document.execCommand('insertText', false, e.clipboardData.getData('text/plain')); };
   const saveEdit = async (it: Item) => {
     if (!form) return;
     setBusy(it.id);
@@ -48,7 +67,7 @@ export default function ScheduledEmails({ isMobile, notify }: { isMobile: boolea
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { notify(j.error ?? 'Could not save your changes.'); return; }
       notify('Changes saved — the email will go out as edited.');
-      setForm(null); setDirty(false);
+      closeEdit();
       await loadPreview(it);
       void load();
     } finally { setBusy(null); }
@@ -102,7 +121,7 @@ export default function ScheduledEmails({ isMobile, notify }: { isMobile: boolea
                   {failed ? `⚠ Did not send — ${it.last_error ?? 'unknown error'}` : it.status === 'sending' ? 'Sending now…' : `Sends ${whenLabel(it.send_at)}`}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button type="button" style={btn} aria-pressed={openId === it.id && !form} onClick={() => void togglePreview(it)} title="See the email exactly as the recipient will get it">{openId === it.id && !form ? 'Close preview' : '👁 Preview'}</button>
                 {it.status !== 'sending' && <button type="button" style={btn} disabled={busy === it.id} onClick={() => void startEdit(it)} title="Change the recipient, subject or text">✏️ Edit</button>}
                 {!failed && it.status === 'pending' && (editing === it.id
@@ -124,13 +143,20 @@ export default function ScheduledEmails({ isMobile, notify }: { isMobile: boolea
                         <input value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} placeholder={k === 'cc' ? '(optional)' : ''} style={{ flex: 1, minWidth: 0, height: isMobile ? 40 : 32, padding: '0 10px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)' }} />
                       </label>
                     ))}
-                    <div ref={bodyRef} contentEditable suppressContentEditableWarning onInput={() => setDirty(true)} aria-label="Email text"
-                      style={{ marginTop: 6, background: '#fff', color: '#222', border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '14px 16px', fontSize: 14, lineHeight: 1.55, minHeight: 160, maxHeight: 420, overflowY: 'auto', overflowWrap: 'anywhere', outline: 'none' }}
+                    <div role="toolbar" aria-label="Text formatting" style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                      {([['bold', 'B', 800, 'normal', 'none'], ['italic', 'I', 600, 'italic', 'none'], ['underline', 'U', 600, 'normal', 'underline']] as const).map(([cmd, label, w, st, dec]) => (
+                        <button key={cmd} type="button" title={cmd[0].toUpperCase() + cmd.slice(1)} aria-label={cmd} onMouseDown={e => e.preventDefault()} onClick={() => fmt(cmd)}
+                          style={{ ...btn, minHeight: isMobile ? 36 : 28, minWidth: 32, padding: '0 8px', fontWeight: w, fontStyle: st, textDecoration: dec }}>{label}</button>
+                      ))}
+                    </div>
+                    <div ref={bodyRef} contentEditable suppressContentEditableWarning onInput={() => setDirty(true)} onPaste={pastePlain} aria-label="Email text" aria-multiline="true" role="textbox"
+                      onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); void (async () => { if (await okToLeave()) closeEdit(); })(); } }}
+                      style={{ marginTop: 4, background: '#fff', color: '#222', border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '14px 16px', fontSize: 14, lineHeight: 1.55, minHeight: 160, maxHeight: 420, overflowY: 'auto', overflowWrap: 'anywhere', outline: 'none' }}
                       dangerouslySetInnerHTML={{ __html: sanitizeHtml(pv.body) }} />
-                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--k-9ca3af)' }}>Your signature{pv.files.length ? ' and the attached file' : ''} are added automatically when it sends. Save, then Preview to see the finished email.</div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--k-9ca3af)' }}>Your signature{pv.files.length ? ' and the attached file' : ''} {pv.files.length ? 'are' : 'is'} added automatically when it sends. Save to see the finished email.</div>
                     <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" style={{ ...btn, borderColor: '#c9922c', color: '#92400e' }} disabled={busy === it.id} onClick={() => void saveEdit(it)}>{busy === it.id ? 'Saving…' : 'Save changes'}</button>
-                      <button type="button" style={btn} disabled={busy === it.id} onClick={() => { setForm(null); setDirty(false); }}>Cancel</button>
+                      <button type="button" style={{ ...btn, borderColor: '#c9922c', color: '#92400e' }} disabled={busy === it.id || !form.to.trim() || !form.subject.trim()} title={!form.to.trim() || !form.subject.trim() ? 'It needs a recipient and a subject' : undefined} onClick={() => void saveEdit(it)}>{busy === it.id ? 'Saving…' : 'Save changes'}</button>
+                      <button type="button" style={btn} disabled={busy === it.id} onClick={() => void (async () => { if (await okToLeave()) closeEdit(); })()}>Cancel</button>
                     </div>
                   </>
                 )}
