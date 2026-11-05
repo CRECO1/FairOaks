@@ -387,6 +387,7 @@ export default function GmailMailbox(p: Props) {
   };
   const [asThreads, setAsThreads] = useState(false); // Files chip: show conversations that have files instead of the file list
   const [noReply, setNoReply] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);   // the "More filters" popover
   const [waiting, setWaiting] = useState(false); // Inbox: a person/deal in the CRM wrote last and you haven't answered
   // AI inbox sort: each conversation gets reply / fyi / junk (kept per conversation + latest message, so a new message re-sorts it).
   const TRIAGE_KEY = 'crm-gmail-triage';
@@ -598,42 +599,16 @@ export default function GmailMailbox(p: Props) {
   // Phone / narrow: the conversation replaces the list.
   if (open && !wide) return <div>{reader(false)}{toast && <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: p.isMobile ? 84 : 24, zIndex: 80, display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', background: '#111', color: '#fff', borderRadius: 10, fontSize: 13.5, fontWeight: 600 }}>{toast.msg}{toast.undo && <button type="button" onClick={toast.undo} style={{ border: 'none', background: 'none', color: '#e8b563', fontWeight: 800, cursor: 'pointer', fontSize: 13.5 }}>Undo</button>}</div>}</div>;
 
+  const moreCount = (filter === 'files' ? 1 : 0) + (who !== 'all' ? 1 : 0) + (labelId ? 1 : 0);
   const toolbar = (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-      <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%' }}>
-        <button onClick={() => setFilter('all')} style={chip(filter === 'all')}>{p.box === 'inbox' ? 'All inbox' : 'All sent'}</button>
-        {p.box === 'inbox' && <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>}
-        {p.box === 'inbox' && (() => {
-          const need = (threads ?? []).filter(t => triOf(t)?.c === 'reply').length;
-          return (
-            <>
-              <button type="button" disabled={sorting || !threads?.length} onClick={() => void sortInbox()} title="Let the assistant sort what is loaded into: needs a reply, FYI, likely junk. It only labels — nothing is archived or changed." style={chip(false)}>{sorting ? '✨ Sorting…' : '✨ Sort inbox'}</button>
-              {need > 0 && <button type="button" onClick={() => setTriF(v => !v)} aria-pressed={triF} title="Conversations the assistant thinks are waiting on an answer from you" style={chip(triF)}>↩ Needs reply<span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{need}</span></button>}
-            </>
-          );
-        })()}
-        <button onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 Files</button>
-        <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
-        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'opened' ? 'all' : 'opened'))} aria-pressed={trackF === 'opened'} title="Sent from the CRM and the recipient opened it (of what is loaded)" style={chip(trackF === 'opened')}>👁 Opened</button>}
-        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'unopened' ? 'all' : 'unopened'))} aria-pressed={trackF === 'unopened'} title="Sent from the CRM and not opened yet (of what is loaded)" style={chip(trackF === 'unopened')}>Not opened</button>}
-        {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
-        {p.box === 'inbox' && <button onClick={() => setWaiting(v => !v)} aria-pressed={waiting} title="People in your CRM who wrote in the last 30 days and haven’t had an answer from you (of what is loaded)" style={chip(waiting)}>↩ Waiting on you</button>}
-        <button onClick={() => setWho(v => (v === 'deals' ? 'all' : 'deals'))} aria-pressed={who === 'deals'} title="People with a deal (of what is loaded)" style={chip(who === 'deals')}>💼 Deals</button>
-        <button onClick={() => setWho(v => (v === 'contacts' ? 'all' : 'contacts'))} aria-pressed={who === 'contacts'} title="Anyone who is in your CRM (of what is loaded)" style={chip(who === 'contacts')}>👤 Contacts</button>
-        <button onClick={() => setWho(v => (v === 'other' ? 'all' : 'other'))} aria-pressed={who === 'other'} title="People who are NOT in your CRM — newsletters, notices, strangers (of what is loaded)" style={chip(who === 'other')}>📭 Not in CRM</button>
-        {labels.length > 0 && (
-          <select value={labelId} onChange={e => setLabelId(e.target.value)} aria-label="Show one Gmail label"
-            style={{ height: p.isMobile ? 38 : 32, borderRadius: 999, border: `1px solid ${labelId ? '#111' : 'var(--k-e5e7eb)'}`, background: labelId ? '#111' : 'var(--k-fff)', color: labelId ? '#fff' : 'var(--k-374151)', fontSize: 13, fontWeight: 600, padding: '0 10px', fontFamily: "'DM Sans',sans-serif" }}>
-            <option value="">🏷 All labels</option>
-            {labels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
-        )}
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: p.isMobile || wide ? 0 : 'auto', flexWrap: 'wrap', width: p.isMobile || wide ? '100%' : undefined }}>
-        <div style={{ position: 'relative', flex: p.isMobile || wide ? '1 1 0' : '0 1 300px', minWidth: 0 }}>
+    <div style={{ marginBottom: 12 }}>
+      {/* row 1: search first — it is what people reach for most — with refresh and shortcuts beside it */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 0 }}>
+          <span aria-hidden style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--k-9ca3af)', fontSize: 14, pointerEvents: 'none' }}>⌕</span>
           <input ref={searchRef} value={q} onChange={e => { setQ(e.target.value); setSugOpen(true); }} onFocus={() => setSugOpen(true)} onBlur={() => setTimeout(() => setSugOpen(false), 150)}
-            placeholder="Search mail or type a name  ·  press /" aria-label="Search Gmail" aria-autocomplete="list"
-            style={{ width: '100%', boxSizing: 'border-box', height: p.isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
+            placeholder={p.isMobile ? 'Search mail or a name' : 'Search mail, or type a name…   (press / to jump here)'} aria-label="Search Gmail" aria-autocomplete="list"
+            style={{ width: '100%', boxSizing: 'border-box', height: p.isMobile ? 44 : 38, padding: '0 14px 0 36px', borderRadius: 10, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
           {q.trim() && (
             <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => putHist({ ...hist, saved: hist.saved.includes(q.trim()) ? hist.saved.filter(x => x !== q.trim()) : [q.trim(), ...hist.saved].slice(0, 12) })}
               title={hist.saved.includes(q.trim()) ? 'Remove from saved searches' : 'Save this search'} aria-label="Save this search"
@@ -682,6 +657,57 @@ export default function GmailMailbox(p: Props) {
           style={{ height: p.isMobile ? 42 : 34, width: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 15, cursor: 'pointer', opacity: refreshing ? 0.5 : 1 }}>{refreshing ? '…' : '↻'}</button>
         {!p.isMobile && <button type="button" onClick={() => setHelp(true)} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"
           style={{ height: 34, width: 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 15, cursor: 'pointer' }}>⌨</button>}
+      </div>
+      {/* row 2: the few filters people actually use; everything else sits under "More filters" */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: p.isMobile ? 'nowrap' : 'wrap', overflowX: p.isMobile ? 'auto' : undefined, paddingBottom: p.isMobile ? 2 : 0 }} className="crm-tabs-scroll">
+        <button onClick={() => setFilter('all')} style={chip(filter === 'all')}>{p.box === 'inbox' ? 'All inbox' : 'All sent'}</button>
+        {p.box === 'inbox' && <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>}
+        <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
+        {p.box === 'inbox' && <button onClick={() => setWaiting(v => !v)} aria-pressed={waiting} title="People in your CRM who wrote in the last 30 days and haven’t had an answer from you (of what is loaded)" style={chip(waiting)}>↩ Waiting on you</button>}
+        {p.box === 'inbox' && (() => {
+          const need = (threads ?? []).filter(t => triOf(t)?.c === 'reply').length;
+          return need > 0 ? <button type="button" onClick={() => setTriF(v => !v)} aria-pressed={triF} title="Conversations the assistant thinks are waiting on an answer from you" style={chip(triF)}>↩ Needs reply<span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{need}</span></button> : null;
+        })()}
+        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'opened' ? 'all' : 'opened'))} aria-pressed={trackF === 'opened'} title="Sent from the CRM and the recipient opened it (of what is loaded)" style={chip(trackF === 'opened')}>👁 Opened</button>}
+        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'unopened' ? 'all' : 'unopened'))} aria-pressed={trackF === 'unopened'} title="Sent from the CRM and not opened yet (of what is loaded)" style={chip(trackF === 'unopened')}>Not opened</button>}
+        {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
+        <span style={{ position: 'relative', flexShrink: 0 }}>
+          <button type="button" onClick={() => setMoreOpen(v => !v)} aria-expanded={moreOpen} aria-haspopup="true" style={chip(moreOpen || moreCount > 0)}>More filters ▾{moreCount > 0 && <span style={{ marginLeft: 6, opacity: 0.8 }}>· {moreCount}</span>}</button>
+          {moreOpen && (
+            <>
+              <div onClick={() => setMoreOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
+              <div role="menu" style={{ position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 31, width: 'min(330px, 86vw)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.18)', padding: 12 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 8 }}>Who it&rsquo;s from</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                  <button onClick={() => setWho(v => (v === 'deals' ? 'all' : 'deals'))} aria-pressed={who === 'deals'} title="People with a deal (of what is loaded)" style={chip(who === 'deals')}>💼 Deals</button>
+                  <button onClick={() => setWho(v => (v === 'contacts' ? 'all' : 'contacts'))} aria-pressed={who === 'contacts'} title="Anyone who is in your CRM (of what is loaded)" style={chip(who === 'contacts')}>👤 Contacts</button>
+                  <button onClick={() => setWho(v => (v === 'other' ? 'all' : 'other'))} aria-pressed={who === 'other'} title="People who are NOT in your CRM — newsletters, notices, strangers (of what is loaded)" style={chip(who === 'other')}>📭 Not in CRM</button>
+                </div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 8 }}>What&rsquo;s in it</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: labels.length > 0 || p.box === 'inbox' ? 12 : 0 }}>
+                  <button onClick={() => setFilter(f => (f === 'files' ? 'all' : 'files'))} style={chip(filter === 'files')}>📎 Has files</button>
+                </div>
+                {p.box === 'inbox' && (
+                  <div style={{ marginBottom: labels.length > 0 ? 12 : 0 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 8 }}>Assistant</div>
+                    <button type="button" disabled={sorting || !threads?.length} onClick={() => void sortInbox()} title="Let the assistant sort what is loaded into: needs a reply, FYI, likely junk. It only labels — nothing is archived or changed." style={chip(false)}>{sorting ? '✨ Sorting…' : '✨ Sort my inbox'}</button>
+                  </div>
+                )}
+                {labels.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 8 }}>Gmail label</div>
+                    <select value={labelId} onChange={e => setLabelId(e.target.value)} aria-label="Show one Gmail label"
+                      style={{ height: p.isMobile ? 40 : 34, width: '100%', borderRadius: 8, border: `1px solid ${labelId ? '#111' : 'var(--k-e5e7eb)'}`, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, fontWeight: 600, padding: '0 10px', fontFamily: "'DM Sans',sans-serif" }}>
+                      <option value="">🏷 All labels</option>
+                      {labels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                  </>
+                )}
+                {moreCount > 0 && <button type="button" onClick={() => { setFilter('all'); setWho('all'); setLabelId(''); }} style={{ marginTop: 12, border: 'none', background: 'none', color: '#a06a12', fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: "'DM Sans',sans-serif" }}>Clear these filters</button>}
+              </div>
+            </>
+          )}
+        </span>
       </div>
     </div>
   );

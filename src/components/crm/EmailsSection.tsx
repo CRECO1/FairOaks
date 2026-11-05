@@ -113,7 +113,7 @@ export default function EmailsSection(p: Props) {
             : <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />}
         </>
       )}
-      {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} signature={p.signature} onResume={p.onResumeDraft} nameFor={p.nameFor} onEditGmail={p.onEditGmailDraft} notify={p.notify} /></>)}
+      {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} onCompose={p.onCompose} signature={p.signature} onResume={p.onResumeDraft} nameFor={p.nameFor} onEditGmail={p.onEditGmailDraft} notify={p.notify} /></>)}
       {p.tab === 'sent' && (
         <>
           {!(p.isMobile && reading) && toggle('All sent', 'Tracked opens')}

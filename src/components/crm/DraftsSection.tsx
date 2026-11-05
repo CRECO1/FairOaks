@@ -58,9 +58,11 @@ type Props = {
   notify?: (msg: string) => void;
   /** The sender's Gmail signature, so a saved draft previews with the signature it will be sent with. */
   signature?: string | null;
+  /** Opens the composer (the empty state offers it). */
+  onCompose?: () => void;
 };
 
-export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail, notify, signature }: Props) {
+export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail, notify, signature, onCompose }: Props) {
   const [drafts, setDrafts] = useState<EmailDraft[]>(() => listDrafts());
   const [gm, setGm] = useState<{ drafts: GmailDraftRow[]; account: string | null; canModify: boolean; loaded: boolean }>({ drafts: [], account: null, canModify: false, loaded: false });
   const [syncing, setSyncing] = useState(true);
@@ -196,8 +198,8 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
   return (
     <div style={{ maxWidth: 860 }}>
       <style>{'.dr-chk{display:none;position:absolute;inset:0;align-items:center;justify-content:center}.dr-row:hover .dr-av,.dr-sel .dr-av{display:none}.dr-row:hover .dr-chk,.dr-sel .dr-chk{display:flex}.dr-row.dr-gm .dr-chk{display:none!important}.dr-row.dr-gm:hover .dr-av{display:flex!important}@media (hover:none){.dr-row .dr-av{display:flex!important}.dr-row .dr-chk{display:none!important}}'}</style>
-      <p style={{ margin: '0 0 14px', fontSize: 14, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>
-        Everything you started and haven’t sent — saved here in the CRM{deviceOnly ? ' on this device' : ' (it follows you to your phone)'} or sitting in your Gmail. Open a draft to pick up where you left off.
+      <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--k-9ca3af)', lineHeight: 1.5 }}>
+        Emails you started and haven’t sent{deviceOnly ? ' (on this device)' : ' — they follow you to your phone'}. Tap one to pick up where you left off.
       </p>
       {deviceOnly && (
         <div style={{ margin: '0 0 14px', padding: '9px 12px', background: 'var(--k-fef9f0)', border: '1px solid var(--k-fde68a)', borderRadius: 8, fontSize: 12.5, color: 'var(--k-92400e)' }}>
@@ -232,9 +234,10 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
 
       {total === 0 ? (
         <div style={{ padding: '40px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)' }}>
-          <div style={{ fontSize: 30, marginBottom: 8 }}>✎</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>No drafts</div>
+          <div style={{ width: 56, height: 56, borderRadius: 28, background: 'var(--k-fdf6e9)', color: '#c9922c', fontSize: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>✎</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>{syncing || !gm.loaded ? 'Checking for drafts…' : 'No drafts waiting'}</div>
           <div style={{ fontSize: 13, lineHeight: 1.6 }}>{syncing || !gm.loaded ? 'Checking for drafts…' : <>Start an email from Compose, a contact or a deal and it’s saved here if you don’t send it.<br />Press <kbd style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 5, padding: '0 6px' }}>c</kbd> on this page to compose.</>}</div>
+          {!(syncing || !gm.loaded) && onCompose && <button type="button" onClick={onCompose} style={{ marginTop: 14, padding: isMobile ? '12px 20px' : '9px 18px', borderRadius: 22, border: 'none', background: '#c9922c', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✉ Write an email</button>}
         </div>
       ) : shown.length === 0 ? (
         <div style={{ padding: '32px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)', fontSize: 14 }}>
