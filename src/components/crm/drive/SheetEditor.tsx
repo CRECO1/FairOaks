@@ -863,10 +863,9 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         const csv = gridOf(tab).map(r => r.map(csvEscape).join(',')).join('\n');
         const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' })); a.download = `${base} - ${tab.name}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       } else {
-        const XLSX = await import('xlsx');
-        const wb = XLSX.utils.book_new();
-        for (const t of tabs) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gridOf(t).map(r => r.map(v => (v !== '' && !Number.isNaN(Number(v.replace(/,/g, ''))) && !/^0\d/.test(v) ? Number(v.replace(/,/g, '')) : v)))), t.name.slice(0, 31).replace(/[\\/?*[\]:]/g, ' '));
-        XLSX.writeFile(wb, `${base}.xlsx`);
+        const { sheetToXlsxBuffer } = await import('@/lib/sheet-xlsx');
+        const buf = await sheetToXlsxBuffer(ydoc, tabs, gridOf);
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = `${base}.xlsx`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       }
     } catch { onToast('Could not make that download'); }
   };
