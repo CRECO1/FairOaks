@@ -574,7 +574,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         {!isMobile && <>
           <span className="dd-owner" style={{ width: 120, fontSize: 12.5, color: 'var(--k-6b7280)', minWidth: 0 }}>{ownerChip(it.created_by)}</span>
           <span className="dd-access" style={{ width: 118 }}>{accessPill(it)}</span>
-          <span style={{ width: 84, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}{inTrash && <span style={{ display: 'block', fontSize: 10.5, color: daysLeft(it) <= 3 ? 'var(--k-dc2626)' : 'var(--k-9ca3af)' }}>{daysLeft(it)} d left</span>}</span>
+          <span className="dd-mod" style={{ width: 84, fontSize: 12.5, color: 'var(--k-6b7280)', whiteSpace: 'nowrap' }}>{fmtWhen(inTrash ? (it.trashed_at ?? it.updated_at) : it.updated_at)}{inTrash && <span style={{ display: 'block', fontSize: 10.5, color: daysLeft(it) <= 3 ? 'var(--k-dc2626)' : 'var(--k-9ca3af)' }}>{daysLeft(it)} d left</span>}</span>
         </>}
         {!isMobile && !inTrash && starBtn(kind, it)}
         {kind === 'doc' && !isMobile && !inTrash && (
@@ -729,7 +729,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         <div className={`dd-scope${selecting ? ' dd-selecting' : ''}`} onDragOver={e => { if (!inTrash && view === 'folder' && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)}
           onDrop={e => { setDragOver(false); if (!inTrash && view === 'folder' && e.dataTransfer.files.length) { e.preventDefault(); void uploadFiles(e.dataTransfer.files); } }}
           style={{ borderRadius: 14, outline: dragOver ? `2px dashed ${GOLD}` : 'none', outlineOffset: 4, background: dragOver ? `${GOLD}0d` : 'transparent' }}>
-          <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}.dd-narrow-sub{display:none}@container (max-width:860px){.dd-owner,.dd-access{width:34px!important;flex-shrink:0}.dd-owner-name,.dd-access-label{display:none}.dd-hd{font-size:0!important}.dd-access span:first-child{padding:0 8px!important}.dd-narrow-sub{display:block}}.dd-chk{opacity:0;transition:opacity .1s}.dd-row:hover .dd-chk,.dd-card:hover .dd-chk,.dd-selecting .dd-chk,.dd-chk:focus-within{opacity:1}`}</style>
+          <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}.dd-narrow-sub{display:none}@container (max-width:860px){.dd-owner,.dd-access,.dd-mod{display:none!important}.dd-narrow-sub{display:block}}.dd-chk{opacity:0;transition:opacity .1s}.dd-row:hover .dd-chk,.dd-card:hover .dd-chk,.dd-selecting .dd-chk,.dd-chk:focus-within{opacity:1}`}</style>
           {view === 'folder' && folderId === null && !filtering && suggested.length > 0 && (
             <div style={{ marginBottom: 18 }}>
               {sectionLabel('Suggested')}
@@ -798,7 +798,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                 {!isMobile && (
                   <div style={{ display: 'flex', gap: 10, padding: '9px 10px 9px 14px', borderBottom: '1px solid var(--k-eef0f2)', background: 'var(--k-fafafa)', fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>
                     <span style={{ width: 22, flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select everything in this list" style={{ width: 16, height: 16, margin: 0, accentColor: GOLD, cursor: 'pointer' }} /></span>
-                    <span style={{ flex: 1, paddingLeft: 48 }}>Name</span><span className="dd-owner dd-hd" style={{ width: 120 }}>Owner</span><span className="dd-access dd-hd" style={{ width: 118 }}>Access</span><span style={{ width: 84 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 32 + (inTrash ? 0 : 64) }} />
+                    <span style={{ flex: 1, paddingLeft: 48 }}>Name</span><span className="dd-owner dd-hd" style={{ width: 120 }}>Owner</span><span className="dd-access dd-hd" style={{ width: 118 }}>Access</span><span className="dd-mod" style={{ width: 84 }}>{inTrash ? 'Deleted' : 'Modified'}</span><span style={{ width: 32 + (inTrash ? 0 : 64) }} />
                   </div>
                 )}
                 {!cardsView && folders.map(f => row('folder', f))}
