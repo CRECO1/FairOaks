@@ -857,7 +857,7 @@ export default function GmailMailbox(p: Props) {
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                      <span style={{ fontSize: 14, fontWeight: unread ? 800 : 600, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 14, fontWeight: unread ? 800 : 600, color: unread ? 'var(--k-111)' : 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                         {unread && <span aria-label="Unread" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: '#c9922c', marginRight: 6, verticalAlign: 'middle' }} />}
                         {p.box === 'sent' ? <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}>To: </span> : null}{name}
                         {t.count > 1 && <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}> {t.count}</span>}
@@ -865,11 +865,11 @@ export default function GmailMailbox(p: Props) {
                       </span>
                       <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(t.date)}>{t.files && <span aria-label="Has attachments" title="Has attachments" style={{ marginRight: 5 }}>📎</span>}{when(t.date)}</span>
                     </div>
-                    <div style={{ fontSize: 13.5, color: 'var(--k-111)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 500 }}>{t.subject}</div>
+                    <div style={{ fontSize: 13.5, color: unread ? 'var(--k-111)' : 'var(--k-4b5563)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 400 }}>{t.subject}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decodeSnippet(t.snippet)}</div>
                     {(match || !!triOf(t) || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30)) && (
                       <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
-                        {match && <span style={{ color: 'var(--k-a06a12)' }}>{match.kind === 'deal' ? '💼 Deal' : `👤 ${match.role || 'Contact'}`} · {match.label}</span>}
+                        {match && <span title="This sender is in your CRM" style={{ color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', borderRadius: 10, padding: '0 8px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{match.kind === 'deal' ? '💼 Deal' : `👤 ${match.role || 'Contact'}`}<span style={{ fontWeight: 500 }}> · {match.label}</span></span>}
                         {(() => { const tri = p.box === 'inbox' ? triOf(t) : undefined; if (!tri) return null;
                           const st = tri.c === 'reply' ? { color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)' } : tri.c === 'junk' ? { color: 'var(--k-991b1b)', background: 'var(--k-fef2f2)', border: '1px solid var(--k-fecaca)' } : { color: 'var(--k-6b7280)', background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)' };
                           return <span title={`Assistant: ${tri.why || tri.c}`} style={{ ...st, borderRadius: 10, padding: '0 7px', fontWeight: 600 }}>{tri.c === 'reply' ? '↩ Needs reply' : tri.c === 'junk' ? '🗑 Likely junk' : 'FYI'}{tri.why ? <span style={{ fontWeight: 500, opacity: 0.8 }}> · {tri.why}</span> : null}</span>; })()}
@@ -1383,7 +1383,7 @@ function ThreadReader(p: {
           <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', maxWidth: '100%' }}>
             <a href={`https://mail.google.com/mail/${p.account ? `?authuser=${encodeURIComponent(p.account)}` : ''}#all/${p.t.id}`} target="_blank" rel="noopener noreferrer" title="Open this conversation in Gmail (labels, trash…)"
               style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>Gmail ↗</a>
-            <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, false, p.account)} title="Reply (r)">↩ Reply</button>
+            <button type="button" style={{ ...btn, background: '#c9922c', borderColor: '#c9922c', color: '#fff', fontWeight: 700 }} onClick={() => p.onReply(last, p.t.id, false, p.account)} title="Reply (r)">↩ Reply</button>
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, true, p.account)} title="Reply all (a)">↩↩ All</button>
             <button type="button" style={btn} onClick={() => p.onForward(last, p.t.id, p.account)} title="Forward (f)">↪ Forward</button>
             <div style={{ position: 'relative' }}>
