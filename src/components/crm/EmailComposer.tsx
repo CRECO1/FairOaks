@@ -155,6 +155,8 @@ export type EmailComposerProps = {
   replyingTo?: string | null;
   to?: string;
   toName?: string;
+  /** Other people on this deal (tagged contacts): one click adds them to To. */
+  quickAdd?: Array<{ name: string; email: string }>;
   moreTo: string; setMoreTo: (v: string) => void;
   cc: string; setCc: (v: string) => void;
   bcc?: string; setBcc?: (v: string) => void;
@@ -533,6 +535,20 @@ export default function EmailComposer(p: EmailComposerProps) {
             <AddressField value={bcc} onChange={p.setBcc} placeholder="Bcc — hidden from everyone else" label="Bcc" autoFocus={!bcc.trim()} suggest={p.suggest} nameFor={p.nameFor} />
           </div>
         )}
+        {(() => {
+          const have = new Set([p.to ?? '', ...splitAddrs(p.moreTo), ...splitAddrs(p.cc), ...splitAddrs(p.bcc ?? '')].map(x => x.toLowerCase()));
+          const rest = (p.quickAdd ?? []).filter(q => !have.has(q.email.toLowerCase()));
+          if (!rest.length) return null;
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, padding: '6px 12px 6px 70px', borderBottom: '1px solid var(--k-f3f4f6)', fontSize: 12, color: 'var(--k-6b7280)' }}>
+              <span>On this deal:</span>
+              {rest.map(q => (
+                <button key={q.email} type="button" title={q.email} onClick={() => p.setMoreTo([p.moreTo.trim().replace(/[,;]+$/, ''), q.email].filter(Boolean).join(', '))}
+                  style={{ ...CHIP, cursor: 'pointer', minHeight: p.isMobile ? 32 : undefined }}>＋ {q.name}</button>
+              ))}
+            </div>
+          );
+        })()}
         {p.autoCcLabel && (
           <div style={{ padding: '6px 12px 6px 70px', fontSize: 12, color: 'var(--k-92400e)', background: 'var(--k-fef9f0)', borderBottom: '1px solid var(--k-f3f4f6)' }}>
             Also copied to tagged agents: {p.autoCcLabel}

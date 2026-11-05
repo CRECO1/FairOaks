@@ -11621,8 +11621,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <div style={{ padding: isMobile ? (dealCompact ? '10px 14px' : '14px 14px 12px 18px') : '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flexWrap: isMobile ? 'wrap' : 'nowrap', borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile && dealCompact ? 19 : 22, fontWeight: 600, flex: 1, minWidth: 0, ...(isMobile ? { order: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>{activeDeal.client}</h3>
               {isMobile && !dealCompact && <div aria-hidden style={{ order: 2, flexBasis: '100%', height: 0 }} />}
-              {gmailConnected && activeDeal.client_email && (
-                <button type="button" aria-label={`Email ${activeDeal.client}`} title={`Email ${activeDeal.client_email}`}
+              {gmailConnected && (
+                <button type="button" aria-label={`Email ${activeDeal.client}`} title={activeDeal.client_email ? `Email ${activeDeal.client_email}` : 'Write an email for this deal'}
                   onClick={() => {
                     setDealTab('emails'); setReplyToEmail(null);
                     clearComposeBody(); resetComposeFiles();
@@ -11951,7 +11951,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   )}
                   {/* Compose button. Once the deal has a thread, "Reply in thread" (reply-all to its latest message) is
                       the main action, so follow-ups stay in one chain instead of a new email each time (Zack, 2026-10-27). */}
-                  {gmailConnected && activeDeal?.client_email && (
+                  {gmailConnected && activeDeal && (
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 10 }}>
                       {!showCompose && dealEmails.length > 0 && (() => {
                         const latest = newestEmail(dealEmails);
@@ -11966,7 +11966,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => {
                         if (!showCompose) {
                           clearComposeBody();
-                          setComposeSubject(''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
+                          setComposeSubject(activeDeal?.property ?? ''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
                         }
                         setReplyToEmail(null);
                         setShowCompose(v => !v);
@@ -11983,7 +11983,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {showCompose && activeDeal && (
                     <div id="deal-compose">
                     <EmailComposer isMobile={isMobile} title={replyToEmail ? 'Reply' : 'New email'} replyingTo={replyToEmail?.subject}
-                      to={activeDeal.client_email} toName={activeDeal.client}
+                      to={activeDeal.client_email || undefined} toName={activeDeal.client}
+                      quickAdd={(activeDeal.tagged_contact_ids ?? []).map(id => clients.find(c => c.id === id)).filter((c): c is Client => !!c && !!c.email).map(c => ({ name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.email, email: c.email }))}
                       mergeName={(activeDeal.client ?? '').trim().split(/\s+/)[0]} mergeProperty={activeDeal.property}
                       bcc={composeBcc} setBcc={setComposeBcc} suggest={suggestContacts} nameFor={nameForEmail} notify={showToast} draftKey={`deal:${activeDeal.id}:${replyToEmail?.gmail_thread_id ?? 'new'}`} draftContext={{ kind: 'deal', id: activeDeal.id, label: activeDeal.client, replyToId: replyToEmail?.id }}
                       moreTo={composeMoreTo} setMoreTo={setComposeMoreTo} cc={composeCc} setCc={setComposeCc}
