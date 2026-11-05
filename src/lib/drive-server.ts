@@ -144,3 +144,53 @@ export async function hydrateDriveForms(dc: DriveContext, links: Array<Record<st
   return out;
 }
 export { FORM_LINK_COLS };
+
+
+// ── Uploaded file + its live copy = one item ─────────────────────────────────────────────────────────────────────────────────────────────
+// Uploading a Word / Excel / CSV / text file also makes a live, editable document from it (the event log remembers which file: detail.from_file_id).
+// The lists show only the live document; the original stays in storage and is one click away in the document's menu.
+
+const chunk = <T,>(a: T[], n = 100) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
+
+/** file ↔ live document pairs, looked up from either side. */
+export async function liveCopies(admin: SupabaseClient, opts: { fileIds?: string[]; docIds?: string[] }): Promise<Array<{ doc_id: string; file_id: string }>> {
+  const out: Array<{ doc_id: string; file_id: string }> = [];
+  try {
+    const ids = opts.fileIds ?? opts.docIds ?? [];
+    for (const part of chunk([...new Set(ids)])) {
+      const q = admin.from('crm_drive_doc_events').select('doc_id, detail, created_at').eq('kind', 'created').order('created_at', { ascending: false });
+      const { data } = opts.fileIds ? await q.in('detail->>from_file_id', part) : await q.in('doc_id', part);
+      for (const r of data ?? []) { const f = (r.detail as { from_file_id?: string } | null)?.from_file_id; if (f) out.push({ doc_id: r.doc_id as string, file_id: f }); }
+    }
+  } catch { /* the event log is best effort: without it every file simply shows */ }
+  return out;
+}
+
+/** Drops each uploaded file that has a live copy in the same state (both active, or both in the trash) the caller can see. */
+export async function hideSourceFiles<T extends { id: string }>(dc: DriveContext, files: T[], trashed = false): Promise<T[]> {
+  if (!files.length) return files;
+  const pairs = await liveCopies(dc.admin, { fileIds: files.map(f => f.id) });
+  if (!pairs.length) return files;
+  const alive = new Set<string>();
+  for (const part of chunk([...new Set(pairs.map(p => p.doc_id))])) {
+    const q = dc.userDb.from('crm_drive_docs').select('id').eq('business_unit', dc.bu).in('id', part);
+    const { data } = await (trashed ? q.not('trashed_at', 'is', null) : q.is('trashed_at', null));
+    for (const d of data ?? []) alive.add(d.id as string);
+  }
+  const hide = new Set(pairs.filter(p => alive.has(p.doc_id)).map(p => p.file_id));
+  return files.filter(f => !hide.has(f.id));
+}
+
+/** Adds `source_file` ({id, name}) to documents that were made from an uploaded file. */
+export async function withSourceFile<T extends { id: string }>(admin: SupabaseClient, docs: T[]): Promise<Array<T & { source_file: { id: string; name: string } | null }>> {
+  if (!docs.length) return [];
+  const pairs = await liveCopies(admin, { docIds: docs.map(d => d.id) });
+  const names = new Map<string, string>();
+  for (const part of chunk([...new Set(pairs.map(p => p.file_id))])) {
+    const { data } = await admin.from('crm_drive_files').select('id, name').in('id', part);
+    for (const f of data ?? []) names.set(f.id as string, f.name as string);
+  }
+  const byDoc = new Map<string, string>();
+  for (const p of pairs) if (!byDoc.has(p.doc_id) && names.has(p.file_id)) byDoc.set(p.doc_id, p.file_id);
+  return docs.map(d => { const fid = byDoc.get(d.id); return { ...d, source_file: fid ? { id: fid, name: names.get(fid)! } : null }; });
+}

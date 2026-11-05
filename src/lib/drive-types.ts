@@ -20,6 +20,8 @@ export interface DriveDoc {
   id: string;
   /** How many deal / contact cards this document is shown on (a count only — added by the list API). */
   linked_cards?: number;
+  /** The uploaded file this live document was made from (Word / Excel / CSV / text), so the list shows ONE item and the menu can still hand back the original. */
+  source_file?: { id: string; name: string } | null;
   business_unit: string;
   folder_id: string | null;
   title: string;

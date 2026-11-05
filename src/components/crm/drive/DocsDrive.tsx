@@ -440,7 +440,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     }
     if (ok) {
       const editable = all.some(f => canEditFile(f.name)), oldWord = all.some(f => /\.(doc|rtf)$/i.test(f.name));
-      onToast(madeEditable ? `Uploaded — ${madeEditable === 1 ? 'a live, editable copy was made next to it' : `${madeEditable} live, editable copies were made next to them`}` : editable ? 'Uploaded — click the file (or the pencil) to edit it as a live document' : oldWord ? 'Uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that' : ok === 1 ? 'File uploaded' : `${ok} files uploaded`);
+      onToast(madeEditable ? `Uploaded — ${madeEditable === 1 ? 'it opens as a live, editable document' : `${madeEditable} files open as live, editable documents`}` : editable ? 'Uploaded — click the file (or the pencil) to edit it as a live document' : oldWord ? 'Uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that' : ok === 1 ? 'File uploaded' : `${ok} files uploaded`);
       refresh();
     }
   };
@@ -861,6 +861,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
                {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as Word (.docx)" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocWord(d.item as DriveDoc); }} />}
               {dlg.kind === 'file' && canEditFile((dlg.item as DriveFile).name) && <MenuBtn icon="✎" label="Edit as a live document" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void editFile(d.item as DriveFile); }} />}
+              {dlg.kind === 'doc' && !!(dlg.item as DriveDoc).source_file && <MenuBtn icon="↓" label={`Download the original (${(dlg.item as DriveDoc).source_file!.name.split('.').pop()?.toLowerCase()})`} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile({ id: (d.item as DriveDoc).source_file!.id } as DriveFile); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="⭐" label={isStar(dlg.kind, dlg.item) ? 'Remove from Starred' : 'Add to Starred'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); toggleStar(d.kind, d.item); }} />
               {dlg.kind === 'doc' && <MenuBtn icon="🔗" label="Copy link" isMobile={isMobile} onClick={() => { const id = dlg.item.id; setDlg(null); const url = `${window.location.origin}/crm?doc=${id}`; navigator.clipboard.writeText(url).then(() => onToast('Link copied — anyone with access can open it'), () => onToast(url)); }} />}

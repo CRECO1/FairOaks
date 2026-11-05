@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound, forbidden } from '@/lib/crm-auth';
-import { driveContext, descendantFolderIds, type DriveContext } from '@/lib/drive-server';
+import { driveContext, descendantFolderIds, liveCopies, type DriveContext } from '@/lib/drive-server';
 import { logDocEvent } from '@/lib/drive-events';
 import { pushBellNotification, senderName } from '@/lib/notify';
 import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS } from '@/lib/drive-types';
@@ -174,6 +174,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
     }
   }
 
+  // A live document made from an uploaded file moves, shares and goes to / comes back from the trash together with that file
+  // (the lists show them as ONE item, so the file must never be left behind in the open).
+  if (kind === 'doc' && (body.move || body.share || body.trash !== undefined)) {
+    const pair = (await liveCopies(dc.admin, { docIds: [id] }))[0];
+    if (pair) {
+      const { data: d } = await dc.admin.from('crm_drive_docs').select('folder_id,visibility,shared_with,deal_id,trashed_at').eq('id', id).maybeSingle();
+      if (d) await dc.admin.from('crm_drive_files').update({ folder_id: d.folder_id, visibility: d.visibility, shared_with: d.shared_with, deal_id: d.deal_id, trashed_at: d.trashed_at, updated_at: now }).eq('id', pair.file_id);
+    }
+  }
+
   // Activity log (documents): what just happened, in the order the rules above ran.
   if (kind === 'doc') {
     const ev = (k: Parameters<typeof logDocEvent>[1]['kind'], detail: Record<string, unknown> = {}) => logDocEvent(dc.admin, { docId: id, bu: dc.bu, actor: dc.ctx.userId, kind: k, detail });
@@ -211,8 +221,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ k
     const { data } = await dc.admin.from('crm_drive_files').select('storage_path').eq('id', id).maybeSingle();
     if (data?.storage_path) paths = [data.storage_path as string];
   }
+  // Deleting a live document for good also removes the uploaded file it was made from (they were shown as one item).
+  let sourceFileId: string | null = null;
+  if (kind === 'doc') {
+    sourceFileId = (await liveCopies(dc.admin, { docIds: [id] }))[0]?.file_id ?? null;
+    if (sourceFileId) {
+      const { data } = await dc.admin.from('crm_drive_files').select('storage_path').eq('id', sourceFileId).maybeSingle();
+      if (data?.storage_path) paths = [data.storage_path as string];
+    }
+  }
   const { error } = await dc.admin.from(tableOf(kind)!).delete().eq('id', id);
   if (error) return NextResponse.json({ error: 'Could not delete' }, { status: 500 });
+  if (sourceFileId) await dc.admin.from('crm_drive_files').delete().eq('id', sourceFileId);
   if (kind === 'doc') await logDocEvent(dc.admin, { docId: id, bu: dc.bu, actor: dc.ctx.userId, kind: 'deleted', detail: { title: (row as unknown as { title?: string }).title ?? '' } });
   if (paths.length) await dc.admin.storage.from('drive-files').remove(paths);
   return NextResponse.json({ ok: true });
