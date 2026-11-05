@@ -135,7 +135,8 @@ function dateSerialRaw(s: string): number | null {
 }
 export const fmtDate = (serial: number) => { const d = dateOf(serial); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}/${d.getUTCFullYear()}`; };
 
-export interface CellFmt { i?: 1; u?: 1; s?: 1; bg?: string; fg?: string; al?: 'l' | 'c' | 'r'; nf?: 'plain' | 'num' | 'cur' | 'pct' | 'date' | 'text'; dp?: number; wr?: 1; bd?: string; /** font family (a name from FONT_FAMILIES) and size in px (13 is the default) */ ff?: string; fs?: number; /** rich text: words inside the cell carry their own bold / colour marks */ rt?: 1 }
+export interface CellFmt { i?: 1; u?: 1; s?: 1; bg?: string; fg?: string; al?: 'l' | 'c' | 'r'; nf?: 'plain' | 'num' | 'cur' | 'pct' | 'date' | 'text'; dp?: number; wr?: 1; bd?: string; /** font family (a name from FONT_FAMILIES) and size in px (13 is the default) */ ff?: string; fs?: number; /** rich text: words inside the cell carry their own bold / colour marks */ rt?: 1;
+  /** From an Excel import, kept so Download as Excel can mirror the original: vertical align, the Excel number format, border colour, the exact font name */ va?: 't' | 'm' | 'b'; xf?: string; bdc?: string; fn?: string }
 
 const withCommas = (n: number, dp: number) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 /** What a cell shows, after its number format (the typed text / formula is unchanged). */
@@ -492,7 +493,7 @@ export function parseCsv(text: string): string[][] {
 /** Build a whole sheet (one tab per entry) as a saved Yjs state. */
 export interface ImportTab { name: string; grid: string[][]; frozen?: number; feed?: string; widths?: Record<number, number>; bold?: string[];
   /** Imported from Excel: per-cell look keyed "r:c", merged ranges [r1, c1, r2, c2], and row heights in px keyed by row. */
-  fmts?: Record<string, CellFmt>; merges?: Array<[number, number, number, number]>; rowHeights?: Record<number, number> }
+  fmts?: Record<string, CellFmt>; merges?: Array<[number, number, number, number]>; rowHeights?: Record<number, number>; page?: Record<string, unknown> }
 export function sheetStateFromTabs(tabs: ImportTab[]): { ystate: string; text: string } {
   const doc = new Y.Doc();
   try {
@@ -508,6 +509,7 @@ export function sheetStateFromTabs(tabs: ImportTab[]): { ystate: string; text: s
         for (const [k, f] of Object.entries(t.fmts ?? {})) { const [r, c] = parseKey(k); if (Object.keys(f).length) fmtMap(doc).set(mkey(id, r, c), JSON.stringify(f)); }
         for (const [r1, c1, r2, c2] of t.merges ?? []) mergeList(doc).push([JSON.stringify({ tab: id, r1, c1, r2, c2 } satisfies MergeRange)]);
         for (const [r, h] of Object.entries(t.rowHeights ?? {})) extMap(doc).set(`${id}|rh|${r}`, String(h));
+        if (t.page) extMap(doc).set(`${id}|page`, JSON.stringify(t.page));
       });
     });
     return { ystate: Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64'), text: sheetText(doc) };
