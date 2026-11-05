@@ -35,6 +35,7 @@ import { FindReplace, countFind, currentFind, replaceAll, replaceOne, setFind, s
 import type { DrivePerson } from './DocsDrive';
 import { Frame, btnStyle, iconBtn, colorFor } from './DocChrome';
 import SheetWorkspace from './SheetEditor';
+import DocMention from './DocMention';
 
 export interface DocUser { id: string; name: string }
 interface Peer { name: string; color: string }
@@ -310,7 +311,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         {handle ? (
-          <DocSurface handle={handle} me={me} userId={user.id} isMobile={isMobile} onEditor={setEditor}
+          <DocSurface handle={handle} authToken={authToken} me={me} userId={user.id} isMobile={isMobile} onEditor={setEditor}
             onComment={() => {
               if (!editor) return;
               const { from, to } = editor.state.selection;
@@ -336,7 +337,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
   );
 }
 
-function DocSurface({ handle, me, userId, isMobile, onEditor, onComment, onHighlightClick }: { handle: CollabHandle; me: Peer; userId: string; isMobile: boolean; onEditor: (e: Editor | null) => void; onComment: () => void; onHighlightClick: () => void }) {
+function DocSurface({ handle, authToken, me, userId, isMobile, onEditor, onComment, onHighlightClick }: { handle: CollabHandle; authToken?: string; me: Peer; userId: string; isMobile: boolean; onEditor: (e: Editor | null) => void; onComment: () => void; onHighlightClick: () => void }) {
   const clickRef = useRef(onHighlightClick); clickRef.current = onHighlightClick;
   // CRECO letterhead on/off is a setting of the document itself (shared, saved with it), so everyone sees the same page.
   const [letterhead, setLetterhead] = useState(() => handle.ydoc.getMap<unknown>('meta').get('letterhead') === true);
@@ -383,6 +384,7 @@ function DocSurface({ handle, me, userId, isMobile, onEditor, onComment, onHighl
         <div style={{ maxWidth: 816, margin: '0 auto', minHeight: isMobile ? '100%' : 1056, background: 'var(--k-fff)', boxShadow: isMobile ? 'none' : '0 1px 3px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.05)', borderRadius: isMobile ? 0 : 4, padding: isMobile ? '18px 16px 80px' : '56px 72px 80px' }}>
           {letterhead && <LetterheadHeader />}
           <EditorContent editor={editor} />
+          <DocMention editor={editor} authToken={authToken} />
           {letterhead && <LetterheadFooter />}
         </div>
       </div>

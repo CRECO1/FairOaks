@@ -2061,6 +2061,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => subscription.unsubscribe();
   }, []);
 
+  // An "@" chip in a My Drive document was clicked: open that contact or deal.
+  const openRecordRef = useRef<(kind: string, id: string) => void>(() => {});
+  openRecordRef.current = (kind, id) => {
+    if (kind === 'deal') { const d = deals.find(x => x.id === id); if (d) { setPage('deals'); setFilter(''); openDeal(d); } else showToast('That deal is not available to you'); }
+    else { const c = clients.find(x => x.id === id); if (c) { setPage('contacts'); setActiveClient(c); } else showToast('That contact is not available to you'); }
+  };
+  useEffect(() => {
+    const h = (e: Event) => { const d = (e as CustomEvent<{ kind?: string; id?: string }>).detail; if (d?.id) openRecordRef.current(String(d.kind), d.id); };
+    window.addEventListener('crm:open-record', h);
+    return () => window.removeEventListener('crm:open-record', h);
+  }, []);
+
   // Load profile + data once per signed-in user. Keyed on the user id, NOT the session
   // object: getSession(), INITIAL_SESSION, SIGNED_IN and TOKEN_REFRESHED each hand back a
   // fresh session object, and with [session] as the dependency every CRM open ran the whole
@@ -2101,6 +2113,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .catch(() => setGmailChecked(true)); // a failed check must not leave Compose stuck on "still connecting"
     // Handle OAuth redirect result — re-fetch accounts so new connection shows immediately
     const params = new URLSearchParams(window.location.search);
+    // Deep link to a My Drive document or sheet: /crm?doc=<id>
+    const deepDoc = params.get('doc');
+    if (deepDoc && /^[0-9a-f-]{36}$/i.test(deepDoc)) {
+      rememberView(`${businessUnit}:drive-doc`, deepDoc);
+      setPage('transaction-docs');
+      setTimeout(() => window.dispatchEvent(new CustomEvent('crm:open-drive-doc', { detail: { id: deepDoc } })), 900);
+      window.history.replaceState({}, '', '/crm');
+    }
     if (params.get('gmail') === 'connected') {
       const connectedAccount = params.get('account');
       fetch(`/api/gmail/status?userId=${session.user.id}`, { headers: authHeader })

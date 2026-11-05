@@ -55,6 +55,7 @@ export function prepForExport(doc: PMNode): PMNode {
       const marks = (n.marks ?? []).filter(m => m.type !== 'suggestAdd' && m.type !== 'suggestDel');
       return [{ ...n, marks }];
     }
+    if (n.type === 'crmRef') return [{ type: 'text', text: `@${String((n.attrs as { label?: string } | undefined)?.label ?? '')}` }];
     const kids = (n.content ?? []).flatMap(clean);
     if (n.type === 'paragraph' || n.type === 'heading') {
       const imgs = kids.filter(k => k.type === 'image'), rest = kids.filter(k => k.type !== 'image');

@@ -845,6 +845,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
               {dlg.kind === 'file' && canEditFile((dlg.item as DriveFile).name) && <MenuBtn icon="✎" label="Edit as a live document" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void editFile(d.item as DriveFile); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="⭐" label={isStar(dlg.kind, dlg.item) ? 'Remove from Starred' : 'Add to Starred'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); toggleStar(d.kind, d.item); }} />
+              {dlg.kind === 'doc' && <MenuBtn icon="🔗" label="Copy link" isMobile={isMobile} onClick={() => { const id = dlg.item.id; setDlg(null); const url = `${window.location.origin}/crm?doc=${id}`; navigator.clipboard.writeText(url).then(() => onToast('Link copied — anyone with access can open it'), () => onToast(url)); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
               {!(dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template) && <>
                 <MenuBtn icon="📁" label="Move to…" isMobile={isMobile} onClick={() => setDlg({ t: 'move', kind: dlg.kind, item: dlg.item })} />

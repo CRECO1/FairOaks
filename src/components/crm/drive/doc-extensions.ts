@@ -12,6 +12,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { CommentMark } from '@/lib/collab/comment-mark';
 import { SuggestAdd, SuggestDel } from '@/lib/collab/suggest-marks';
 import { ImageNode } from '@/lib/collab/image-node';
+import { CrmRefNode } from '@/lib/collab/crm-ref-node';
 
 /** The document schema — shared by the live editor and the read-only version preview so both render identically. */
 export const docExtensions = () => [
@@ -24,5 +25,5 @@ export const docExtensions = () => [
   TaskItem.configure({ nested: true }),
   Table.configure({ resizable: true }), TableRow, TableHeader, TableCell,
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
-  CommentMark, SuggestAdd, SuggestDel, ImageNode,
+  CommentMark, SuggestAdd, SuggestDel, ImageNode, CrmRefNode,
 ];

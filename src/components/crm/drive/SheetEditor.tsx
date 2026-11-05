@@ -25,6 +25,7 @@ import {
 import { Frame, btnStyle, colorFor, iconBtn } from './DocChrome';
 import { ActivityPanel, CellCommentsPanel, parseCellAnchor } from './DocPanel';
 import type { DriveComment } from '@/lib/drive-types';
+import SendToCrmDialog from './SheetCrm';
 import { OverflowRow, CommandPalette, CondDialog, DedupeDialog, Divider, FunctionsDialog, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, ShortcutsDialog, SplitDialog, TBtn, TSep, ValidDialog, type Command, type LockInfo, type PivotForm } from './SheetParts';
 import { ChartDialog, ChartSvg, type ChartData } from './SheetChart';
 import type { DrivePerson } from './DocsDrive';
@@ -308,6 +309,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const [extData, setExtData] = useState<Map<string, Val[][]>>(new Map());
   const [pivotDlg, setPivotDlg] = useState<null | { edit?: string }>(null);
   const [importDlg, setImportDlg] = useState(false);
+  const [crmRows, setCrmRows] = useState<number[] | null>(null);
   const [sel, setSel] = useState<Sel>({ r: 0, c: 0, r2: 0, c2: 0 });
   const [edit, setEditState] = useState<Edit>(null);
   const editRef = useRef<Edit>(null);   // always current, so keys typed before React re-renders are not lost
@@ -1192,6 +1194,16 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const sep = <span style={{ width: 1, height: 20, background: 'var(--k-e5e7eb)', margin: '0 3px', flexShrink: 0 }} />;
   const selValid = getValid(ydoc, tabId, sel.r, sel.c);
   const selNote = getNote(ydoc, tabId, sel.r, sel.c);
+  // "Send rows to the CRM": the selected rows, or the one row you are on, or (from the header row) every filled row below it.
+  const openSendToCrm = () => {
+    const a = Math.min(R.r1, R.r2), b = Math.min(Math.max(R.r1, R.r2), rows - 1);
+    let list: number[] = [];
+    if (b > a) for (let r = Math.max(1, a); r <= b; r++) list.push(r);
+    else if (a > 0) list = [a];
+    else for (let r = 1; r < rows; r++) { let any = false; for (let c = 0; c < ncols && !any; c++) if (shown(r, c).trim()) any = true; if (any) list.push(r); }
+    if (!list.length) { onToast('Put the headings in row 1 and select the rows to send'); return; }
+    setCrmRows(list);
+  };
 
   const stats = (() => {
     if (R.r1 === R.r2 && R.c1 === R.c2) return null;
@@ -1230,6 +1242,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     { group: 'Format', label: 'Align left', run: () => applyFmt({ al: 'l' }) }, { group: 'Format', label: 'Align center', run: () => applyFmt({ al: 'c' }) }, { group: 'Format', label: 'Align right', run: () => applyFmt({ al: 'r' }) },
     { group: 'Format', label: 'Conditional formatting', run: () => setDlg('cond') },
     { group: 'Data', label: 'Sort the sheet A → Z by this column', run: () => sortBy(sel.c, 1) }, { group: 'Data', label: 'Sort the sheet Z → A by this column', run: () => sortBy(sel.c, -1) },
+    { group: 'Data', label: 'Send rows to the CRM (contacts + call tasks)', run: openSendToCrm },
     { group: 'Data', label: 'Data validation', run: () => setDlg('valid') }, { group: 'Data', label: 'Protect a range', run: () => setDlg('protect') },
     { group: 'Data', label: 'Trim extra spaces', run: trimSel }, { group: 'Data', label: 'Change to UPPERCASE', run: () => caseSel('upper') }, { group: 'Data', label: 'Change to lowercase', run: () => caseSel('lower') }, { group: 'Data', label: 'Capitalize Each Word', run: () => caseSel('proper') },
     { group: 'Data', label: 'Turn text into numbers', run: numbersSel }, { group: 'Data', label: 'Split text into columns', run: () => setCleanDlg('split') }, { group: 'Data', label: 'Highlight duplicate rows', run: highlightDuplicates }, { group: 'Data', label: 'Remove duplicate rows', run: () => setCleanDlg('dedupe') },
@@ -1356,6 +1369,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             <Item onClick={() => { sortBy(sel.c, -1); close(); }}>Sort sheet by {colName(sel.c)}, Z → A</Item>
             <Item checked={filtersOn} onClick={() => { setFiltersOn(o => !o); setFilters({}); setCondFilters({}); close(); }}>Filter</Item>
             <Divider />
+            <Item onClick={() => { openSendToCrm(); close(); }}>Send rows to the CRM…</Item>
             <Item onClick={() => { setDlg('valid'); close(); }}>Data validation (dropdown, checkbox, rules)…</Item>
             <Item onClick={() => { setDlg('protect'); close(); }}>Protect range…{locks.length ? ` (${locks.length})` : ''}</Item>
             <Item onClick={() => { setPivotDlg({}); close(); }}>Pivot table…</Item>
@@ -1741,6 +1755,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
       {dlg === 'chart' && (
         <ChartDialog initial={chartEdit ?? undefined} rangeText={chartEdit ? rangeLabel(chartEdit) : rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} onClose={() => { setDlg(null); setChartEdit(null); }} onSave={v => saveChart(v, chartEdit)} />
       )}
+      {crmRows && <SendToCrmDialog text={shown} rows={crmRows} ncols={ncols} authToken={authToken} onClose={() => setCrmRows(null)} onToast={onToast} />}
       {dlg === 'note' && (
         <NoteDialog addr={addr(sel.r, sel.c)} initial={selNote?.t ?? ''} onClose={() => setDlg(null)}
           onSave={t => tx(() => { const k = mkey(tabId, sel.r, sel.c); if (!t) notesMap(ydoc).delete(k); else notesMap(ydoc).set(k, JSON.stringify({ t, by: me.name, at: Date.now() } satisfies NoteInfo)); })} />

@@ -53,6 +53,7 @@ function fragmentText(frag: Y.XmlFragment): string {
       for (const op of node.toDelta() as Array<{ insert?: unknown }>) if (typeof op.insert === 'string') out.push(op.insert);
       return;
     }
+    if (node instanceof Y.XmlElement && node.nodeName === 'crmRef') { out.push(`@${String(node.getAttribute('label') ?? '')}`); return; }
     if (node instanceof Y.XmlElement || node instanceof Y.XmlFragment) {
       node.forEach(child => walk(child as Y.XmlElement));
       if (node instanceof Y.XmlElement && !/^(text|hardBreak)$/.test(node.nodeName)) out.push('\n');

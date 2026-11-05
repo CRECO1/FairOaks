@@ -38,6 +38,9 @@ export function DocStyles() {
       .drive-doc .sg-add { color: #15803d; background: rgba(34,197,94,.14); text-decoration: underline; text-decoration-color: #22c55e; border-radius: 2px; }
       .drive-doc .sg-del { color: #b91c1c; background: rgba(239,68,68,.12); text-decoration: line-through; border-radius: 2px; }
       .drive-doc img.doc-img { max-width: 100%; height: auto; vertical-align: bottom; border-radius: 4px; }
+      .drive-doc .crm-ref { display: inline-block; padding: 0 6px; border-radius: 10px; background: #fdf6e9; color: #8a5a0b; border: 1px solid #ecd9b0; font-size: .92em; cursor: pointer; white-space: nowrap; }
+      .drive-doc .crm-ref.crm-ref-deal { background: #eef2ff; color: #3730a3; border-color: #c7d2fe; }
+      .drive-doc .crm-ref.ProseMirror-selectednode { outline: 2px solid #c9922c; }
       .drive-doc img.doc-img.ProseMirror-selectednode { outline: 2px solid #c9922c; }
       .drive-doc .comment-hl { background: rgba(250, 204, 21, .32); border-bottom: 2px solid #eab308; cursor: pointer; border-radius: 2px; }
       .collaboration-carets__caret { position: relative; margin-left: -1px; margin-right: -1px; border-left: 1px solid #0d0d0d; border-right: 1px solid #0d0d0d; word-break: normal; pointer-events: none; }
