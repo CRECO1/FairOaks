@@ -152,11 +152,11 @@ export type LeaseAsset = 'office' | 'industrial' | 'generic' | 'shortterm' | 'el
 
 // Elkhorn Point (8923 Dietz Elkhorn Rd, Fair Oaks Ranch) — the developer's (Headwall)
 // standard retail landlord LOI, adapted 2026-10-12: CRECO is the landlord's broker,
-// the landlord entity stays a blank until Headwall confirms it, and delivery is
+// the landlord entity is HW Summerfield, LLC (confirmed by Zack 2026-11-05), and delivery is
 // shell + work letter because the buildings are ground-up build-to-suit. Written
 // FROM the landlord side TO a prospective tenant, so the tenant countersigns.
 const ELKHORN_TERMS: LoiTermRow[] = [
-  { label: 'Landlord:', value: '________ ("Landlord")' },
+  { label: 'Landlord:', value: 'HW Summerfield, LLC ("Landlord")' },
   { label: 'Tenant:', value: '________, doing business as ________ ("Tenant")' },
   { label: 'Guaranty:', value: 'Personal guarantee for the full term of the Lease.' },
   { label: 'Leased Premises:', value: 'Approximately ________ rentable square feet, Suite ________, at Elkhorn Point, 8923 Dietz Elkhorn Rd, Fair Oaks Ranch, Texas 78015, as reflected on the preliminary site plan attached hereto as "Exhibit A - Site Plan".' },
