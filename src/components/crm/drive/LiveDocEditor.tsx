@@ -27,7 +27,7 @@ import type { DriveComment, DriveDoc } from '@/lib/drive-types';
 import { docExtensions } from './doc-extensions';
 import { DocStyles } from './DocStyles';
 import { LetterheadHeader, LetterheadFooter } from './Letterhead';
-import { exportDocPdf, exportDocDocx, printDocPdf } from './doc-export';
+import { exportDocPdf, exportDocDocx, printDoc } from './doc-export';
 import { ActivityPanel, CommentsPanel, HistoryPanel } from './DocPanel';
 import { SuggestTracking, listSuggestions, resolveSuggestions, type Suggestion } from '@/lib/collab/suggest-marks';
 import { safeImageSrc } from '@/lib/collab/image-node';
@@ -106,7 +106,7 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
   const [panel, setPanel] = useState<null | 'comments' | 'history' | 'activity'>(null);
   const [dlOpen, setDlOpen] = useState(false);   // phones: PDF and Word share one ⬇ menu so the header stays on two rows
   // Print straight from the document (button, or Ctrl/Cmd+P): the same pages as the PDF, sent to the printer dialog.
-  const doPrint = async () => { if (!editor) return; try { await flushRef.current(); await printDocPdf(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not print this document'); } };
+  const doPrint = async () => { if (!editor) return; try { await flushRef.current(); await printDoc(doc.id, authToken, title); } catch (e) { onToast((e as Error).message || 'Could not print this document'); } };
   const doPrintRef = useRef(doPrint); doPrintRef.current = doPrint;
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); void doPrintRef.current(); } };

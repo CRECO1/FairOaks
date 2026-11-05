@@ -302,18 +302,3 @@ export function saveBytes(bytes: Uint8Array, filename: string, type = 'applicati
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 export const pdfName = (title: string) => `${(title || 'Document').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Document'}.pdf`;
-
-
-/** Print a PDF straight away: loads it in a hidden frame and opens the browser's print dialog (falls back to opening it in a new tab). */
-export function printBytes(bytes: Uint8Array) {
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
-  const frame = document.createElement('iframe');
-  frame.setAttribute('aria-hidden', 'true');
-  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
-  let printed = false;
-  const fallback = () => { if (!printed) { printed = true; window.open(url, '_blank'); } };
-  frame.onload = () => setTimeout(() => { try { frame.contentWindow?.focus(); frame.contentWindow?.print(); printed = true; } catch { fallback(); } }, 450);
-  frame.src = url;
-  document.body.appendChild(frame);
-  setTimeout(() => { frame.remove(); URL.revokeObjectURL(url); }, 180_000);
-}

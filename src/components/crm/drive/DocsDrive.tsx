@@ -378,7 +378,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   };
   const printDoc = async (d: DriveDoc) => {
     onToast('Preparing to print…');
-    try { const { printDocPdf } = await import('./doc-export'); await printDocPdf(d.id, authToken, d.title); }
+    try { const { printDoc } = await import('./doc-export'); await printDoc(d.id, authToken, d.title); }
     catch (e) { onToast((e as Error).message || 'Could not print this document'); }
   };
   const downloadDocPdf = async (d: DriveDoc) => {
