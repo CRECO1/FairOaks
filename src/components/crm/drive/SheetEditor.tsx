@@ -18,7 +18,7 @@ import { acquireDoc, releaseDoc, type CollabHandle } from '@/lib/collab/doc-regi
 import type { CollabStatus } from '@/lib/collab/supabase-yjs-provider';
 import type { DriveDoc } from '@/lib/drive-types';
 import {
-  Evaluator, FONT_FAMILIES, FONT_SIZES, FUNCTION_DOCS, IMPORT_RE, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, buildPivot, cellKey, chartList, checkValid, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, fontCss, formatVal, getNote, getValid, hasRichMarks, listTabs, lockList, mergeList, mkey, newId, newTabMap, cloneTabMap, parseRich, readRangeFromDoc, refsIn, stripRich, formulaContext,
+  Evaluator, FONT_FAMILIES, FUNCTION_DOCS, IMPORT_RE, MAX_COLS, MAX_ROWS, SheetError, addr, adjustFormula, applyFeed, buildPivot, cellKey, chartList, checkValid, colIndex, colName, condList, condMatch, csvEscape, extMap, fmtMap, fontCss, formatVal, getNote, getValid, hasRichMarks, listTabs, lockList, mergeList, mkey, newId, newTabMap, cloneTabMap, parseRich, readRangeFromDoc, refsIn, stripRich, formulaContext,
   notesMap, parseKey, patchFmt, renameTabRefs, shiftFormula, shiftMeta, swapCols, swapRows, tBold, tCells, tCols, tabGrid, tabsMap, validMap,
   type CellFmt, type CondOp, type CondRule, type ChartDef, type FeedData, type LockRange, type MergeRange, type NoteInfo, type PivotDef, type TabInfo, type ValidRule, type Val,
 } from '@/lib/drive-sheet';
@@ -50,6 +50,19 @@ type Edit = { r: number; c: number; text: string } | null;
 interface ClipCell { raw: string; fmt: string; bold: boolean; valid: string }
 interface Clip { text: string; r1: number; c1: number; cells: ClipCell[][] }
 
+// Vertical alignment of a cell's text (an Excel import keeps its Top / Middle / Bottom). Middle is the default look; a wrapped cell otherwise starts at the top.
+function vaStyle(f: CellFmt, wrap_: boolean, height: number, Z: number): React.CSSProperties {
+  const va = f.va;
+  if (!va) return {};
+  const lh = Math.max(14, Math.round((f.fs ?? 13) * 1.3)) * Z;
+  if (wrap_) return va === 't' ? {} : { display: 'flex', flexDirection: 'column', justifyContent: va === 'b' ? 'flex-end' : 'center' };
+  if (va === 'm') return {};
+  return { lineHeight: `${lh}px`, paddingTop: va === 't' ? 3 * Z : Math.max(0, height - lh - 3 * Z) };
+}
+// Text sizes are stored in px (13 = the default) but shown in POINTS like Excel / Docs: 10 pt is the default, 11 pt = 14.67 px.
+const PT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36];
+const ptOfPx = (px: number) => Math.round(px * 0.75 * 2) / 2;
+const pxOfPt = (pt: number) => (pt === 10 ? null : Math.round(pt * 4 / 3 * 100) / 100);
 const ROW_H = 26, HEAD_H = 26, NUM_W = 48, DEF_W = 120, MIN_W = 36;
 const LOCAL = 'sheet-local';
 const LINK = /^(https?:\/\/\S+|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
@@ -1074,7 +1087,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     const wrap_ = !!f.wr;
     return (
       <div key={key} title={note ? (JSON.parse(note) as NoteInfo).t : undefined} style={{
-        position: 'absolute', top: tops[i], left: lefts[c], width, height, boxSizing: 'border-box', padding: wrap_ ? '4px 6px' : '0 6px', lineHeight: wrap_ ? `${Math.max(17, Math.round((f.fs ?? 13) * 1.3)) * Z}px` : (f.fs ?? 13) > 13 ? `${Math.max(14, height - 1)}px` : `${Math.max(14, Math.min(height, ROW_H * Z) - 1)}px`, fontSize: (f.fs ?? 13) * Z, fontFamily: fontCss(f.ff),
+        position: 'absolute', top: tops[i], left: lefts[c], width, height, boxSizing: 'border-box', padding: wrap_ ? '4px 6px' : '0 6px', lineHeight: wrap_ ? `${Math.max(17, Math.round((f.fs ?? 13) * 1.3)) * Z}px` : (f.fs ?? 13) > 13 ? `${Math.max(14, height - 1)}px` : `${Math.max(14, Math.min(height, ROW_H * Z) - 1)}px`, fontSize: (f.fs ?? 13) * Z, fontFamily: fontCss(f.ff), ...vaStyle(f, wrap_, height, Z),
         overflow: 'hidden', whiteSpace: wrap_ ? 'pre-wrap' : 'nowrap', wordBreak: wrap_ ? 'break-word' : undefined, textOverflow: wrap_ ? 'clip' : 'ellipsis', textAlign: al === 'r' ? 'right' : al === 'c' ? 'center' : 'left',
         fontWeight: bold?.get(key) || cb || r < frozen ? 700 : 400, fontStyle: f.i ? 'italic' : undefined, textDecoration: [f.u || link ? 'underline' : '', f.s ? 'line-through' : ''].filter(Boolean).join(' ') || undefined,
         color: v instanceof SheetError ? 'var(--k-dc2626)' : link ? '#1a56db' : cfg ?? f.fg ?? 'var(--k-1a1a1a)', cursor: link ? 'pointer' : undefined,
@@ -1211,9 +1224,9 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     return { n, sum, count };
   })();
   const stepFont = (dir: 1 | -1) => {
-    const now = cur.fs ?? 13; let i = FONT_SIZES.findIndex(n => n >= now); if (i < 0) i = FONT_SIZES.length - 1;
-    const j = Math.max(0, Math.min(FONT_SIZES.length - 1, dir > 0 ? (FONT_SIZES[i] === now ? i + 1 : i) : i - 1));
-    applyFmt({ fs: FONT_SIZES[j] === 13 ? null : FONT_SIZES[j] });
+    const now = ptOfPx(cur.fs ?? 13); let i = PT_SIZES.findIndex(n => n >= now); if (i < 0) i = PT_SIZES.length - 1;
+    const j = Math.max(0, Math.min(PT_SIZES.length - 1, dir > 0 ? (PT_SIZES[i] === now ? i + 1 : i) : i - 1));
+    applyFmt({ fs: pxOfPt(PT_SIZES[j]) });
   };
   const commands: Command[] = tab ? [
     { group: 'Edit', label: 'Undo', hint: 'Ctrl+Z', run: () => undo.undo() }, { group: 'Edit', label: 'Redo', hint: 'Ctrl+Y', run: () => undo.redo() },
@@ -1239,6 +1252,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     { group: 'Format', label: 'Number format: Currency', run: () => applyFmt({ nf: 'cur', dp: null }) }, { group: 'Format', label: 'Number format: Percent', run: () => applyFmt({ nf: 'pct', dp: null }) }, { group: 'Format', label: 'Number format: Number', run: () => applyFmt({ nf: 'num', dp: null }) },
     { group: 'Format', label: 'Number format: Date', run: () => applyFmt({ nf: 'date', dp: null }) }, { group: 'Format', label: 'Number format: Automatic', run: () => applyFmt({ nf: null, dp: null }) },
     { group: 'Format', label: 'Align left', run: () => applyFmt({ al: 'l' }) }, { group: 'Format', label: 'Align center', run: () => applyFmt({ al: 'c' }) }, { group: 'Format', label: 'Align right', run: () => applyFmt({ al: 'r' }) },
+    { group: 'Format', label: 'Align top', run: () => applyFmt({ va: 't' }) }, { group: 'Format', label: 'Align middle', run: () => applyFmt({ va: null }) }, { group: 'Format', label: 'Align bottom', run: () => applyFmt({ va: 'b' }) },
     { group: 'Format', label: 'Conditional formatting', run: () => setDlg('cond') },
     { group: 'Data', label: 'Sort the sheet A → Z by this column', run: () => sortBy(sel.c, 1) }, { group: 'Data', label: 'Sort the sheet Z → A by this column', run: () => sortBy(sel.c, -1) },
     { group: 'Data', label: 'Send rows to the CRM (contacts + call tasks)', run: openSendToCrm },
@@ -1428,8 +1442,8 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
           {close => (<>{FONT_FAMILIES.map(([name, css]) => <Item key={name} checked={(cur.ff ?? 'Default') === name} onClick={() => { applyFmt({ ff: name === 'Default' ? null : name }); close(); }}><span style={{ fontFamily: css }}>{name}</span></Item>)}</>)}
         </Pop>
         <TBtn title="Smaller text" onClick={() => stepFont(-1)}>−</TBtn>
-        <Pop className="sx-btn" title="Text size" label={<span style={{ minWidth: 20 }}>{cur.fs ?? 13}</span>}>
-          {close => (<>{FONT_SIZES.map(n => <Item key={n} checked={(cur.fs ?? 13) === n} onClick={() => { applyFmt({ fs: n === 13 ? null : n }); close(); }}>{n}{n === 13 ? ' (default)' : ''}</Item>)}</>)}
+        <Pop className="sx-btn" title="Text size (points)" label={<span style={{ minWidth: 20 }}>{ptOfPx(cur.fs ?? 13)}</span>}>
+          {close => (<>{PT_SIZES.map(n => <Item key={n} checked={ptOfPx(cur.fs ?? 13) === n} onClick={() => { applyFmt({ fs: pxOfPt(n) }); close(); }}>{n}{n === 10 ? ' (default)' : ''}</Item>)}</>)}
         </Pop>
         <TBtn title="Bigger text" onClick={() => stepFont(1)}>+</TBtn>
         <TSep />
@@ -1442,6 +1456,9 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         <TSep />
         <Pop className="sx-btn" title="Horizontal align" label={<><Ico n={cur.al === 'c' ? 'center' : cur.al === 'r' ? 'right' : 'left'} />▾</>}>
           {close => (<>{([['l', 'Left'], ['c', 'Center'], ['r', 'Right']] as Array<['l' | 'c' | 'r', string]>).map(([a, l]) => <Item key={a} checked={cur.al === a} onClick={() => { applyFmt({ al: a }); close(); }}>{l}</Item>)}<Item onClick={() => { applyFmt({ al: null }); close(); }}>Automatic</Item></>)}
+        </Pop>
+        <Pop className="sx-btn" title="Vertical align" label={<><span style={{ display: 'inline-flex', flexDirection: 'column', justifyContent: cur.va === 't' ? 'flex-start' : cur.va === 'b' ? 'flex-end' : 'center', height: 15, width: 13, gap: 2 }} aria-hidden><i style={{ display: 'block', height: 2, background: 'currentColor', borderRadius: 1 }} /><i style={{ display: 'block', height: 2, width: 8, background: 'currentColor', borderRadius: 1 }} /></span>▾</>}>
+          {close => (<>{([['t', 'Top'], ['m', 'Middle'], ['b', 'Bottom']] as Array<['t' | 'm' | 'b', string]>).map(([a, l]) => <Item key={a} checked={(cur.va ?? 'm') === a} onClick={() => { applyFmt({ va: a === 'm' ? null : a }); close(); }}>{l}</Item>)}</>)}
         </Pop>
         <TBtn title="Wrap text" on={!!cur.wr} onClick={toggleWrap}><Ico n="wrap" /></TBtn>
         <Pop className="sx-btn" title="Borders" label={<><Ico n="borders" />▾</>}>

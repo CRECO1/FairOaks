@@ -4,6 +4,7 @@
  * lists (nested), quotes, dividers, code blocks and tables. With the CRECO letterhead on, page 1 gets the logo + address block and every page
  * the tagline / address footer, like the PDF. Comment highlights are left out.
  */
+import { fontByCss, rgbOf, sizePt } from '@/lib/doc-fonts';
 import {
   AlignmentType, BorderStyle, Document, ExternalHyperlink, Footer, Header, HeadingLevel, ImageRun, LevelFormat, Packer, PageNumber,
   Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType, type ParagraphChild,
@@ -25,10 +26,12 @@ function inline(nodes: PMNode[] | undefined, base: Marks = {}, size?: number): P
     if (n.type !== 'text') { out.push(...inline(n.content, base, size)); continue; }
     const m = new Set((n.marks ?? []).map(k => k.type));
     const link = (n.marks ?? []).find(k => k.type === 'link')?.attrs?.href as string | undefined;
+    const ts = (n.marks ?? []).find(k => k.type === 'textStyle')?.attrs ?? {};
+    const fnt = fontByCss(ts.fontFamily), pt = sizePt(ts.fontSize), rgbv = rgbOf(ts.color);
     const run = new TextRun({
       text: n.text ?? '', bold: base.bold || m.has('bold'), italics: base.italic || m.has('italic'), strike: m.has('strike'),
-      underline: m.has('underline') || link ? {} : undefined, font: m.has('code') ? MONO : undefined, size,
-      color: link ? '1D4ED8' : undefined,
+      underline: m.has('underline') || link ? {} : undefined, font: m.has('code') ? MONO : fnt?.word ?? undefined, size: pt ? Math.round(pt * 2) : size,
+      color: link ? '1D4ED8' : rgbv ? rgbv.map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() : undefined,
     });
     out.push(link && /^https?:\/\//i.test(link) ? new ExternalHyperlink({ link, children: [run] }) : run);
   }

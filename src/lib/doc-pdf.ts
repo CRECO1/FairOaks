@@ -6,6 +6,7 @@
  * pages, and numbering them. Comment highlights are left out. Helvetica can only draw Latin-1 text, so smart quotes and dashes are
  * mapped to plain ones and anything else (emoji…) is dropped rather than failing the export.
  */
+import { fontByCss, rgbOf, sizePt } from '@/lib/doc-fonts';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 
 type Mark = { type: string; attrs?: Record<string, unknown> };
@@ -20,7 +21,7 @@ const winAnsi = (s: string) => (s || '')
   // eslint-disable-next-line no-control-regex
   .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '');
 
-interface Run { text: string; bold?: boolean; italic?: boolean; code?: boolean; underline?: boolean; strike?: boolean; link?: boolean; size: number; color?: ReturnType<typeof rgb>; br?: boolean }
+interface Run { text: string; fam?: 'sans' | 'serif' | 'mono' | null; bold?: boolean; italic?: boolean; code?: boolean; underline?: boolean; strike?: boolean; link?: boolean; size: number; color?: ReturnType<typeof rgb>; br?: boolean }
 interface Seg { text: string; font: PDFFont; size: number; underline?: boolean; strike?: boolean; color: ReturnType<typeof rgb>; w: number }
 interface Line { segs: Seg[]; w: number }
 
@@ -83,7 +84,13 @@ export async function docToPdf(rawDoc: PMNode, title: string, opts: { letterhead
   const F = {
     r: await pdf.embedFont(StandardFonts.Helvetica), b: await pdf.embedFont(StandardFonts.HelveticaBold),
     i: await pdf.embedFont(StandardFonts.HelveticaOblique), bi: await pdf.embedFont(StandardFonts.HelveticaBoldOblique), c: await pdf.embedFont(StandardFonts.Courier),
+    // serif (Georgia / Times New Roman in the toolbar) and a bold Courier, only embedded when a run asks for them
+    sr: null as PDFFont | null, sb: null as PDFFont | null, si: null as PDFFont | null, sbi: null as PDFFont | null, cb: null as PDFFont | null,
   };
+  const anyFam = (n: PMNode): Set<string> => { const out = new Set<string>(); const w = (x: PMNode) => { for (const k of x.marks ?? []) if (k.type === 'textStyle') { const f = fontByCss(k.attrs?.fontFamily); if (f?.pdf) out.add(f.pdf); } (x.content ?? []).forEach(w); }; w(n); return out; };
+  const fams = anyFam(doc);
+  if (fams.has('serif')) { F.sr = await pdf.embedFont(StandardFonts.TimesRoman); F.sb = await pdf.embedFont(StandardFonts.TimesRomanBold); F.si = await pdf.embedFont(StandardFonts.TimesRomanItalic); F.sbi = await pdf.embedFont(StandardFonts.TimesRomanBoldItalic); }
+  if (fams.has('mono')) F.cb = await pdf.embedFont(StandardFonts.CourierBold);
   const pages: PDFPage[] = [];
   let page: PDFPage, y = 0;
   // Letterhead (as on the preset LOIs): logo block on page 1 only; rule + tagline + address line at the foot of every page.
@@ -117,7 +124,12 @@ export async function docToPdf(rawDoc: PMNode, title: string, opts: { letterhead
   for (const n of findImgs(doc)) { const d = decodeImage(n.attrs?.src); if (!d || d.kind === 'gif') continue; try { embedded.set(n, d.kind === 'png' ? await pdf.embedPng(d.bytes) : await pdf.embedJpg(d.bytes)); } catch { /* shown as [picture] */ } }
   newPage();
   const need = (h: number) => { if (y - h < bottom) newPage(); };
-  const fontOf = (r: Run) => (r.code ? F.c : r.bold && r.italic ? F.bi : r.bold ? F.b : r.italic ? F.i : F.r);
+  const fontOf = (r: Run) => {
+    const fam = r.code ? 'mono' : r.fam;
+    if (fam === 'serif' && F.sr) return r.bold && r.italic ? F.sbi! : r.bold ? F.sb! : r.italic ? F.si! : F.sr;
+    if (fam === 'mono') return r.bold && F.cb ? F.cb : F.c;
+    return r.bold && r.italic ? F.bi : r.bold ? F.b : r.italic ? F.i : F.r;
+  };
 
   // Inline content -> runs
   const runsOf = (n: PMNode, base: Pick<Run, 'size' | 'bold' | 'italic' | 'color'>): Run[] => {
@@ -125,7 +137,8 @@ export async function docToPdf(rawDoc: PMNode, title: string, opts: { letterhead
     const walk = (x: PMNode) => {
       if (x.type === 'text') {
         const m = new Set((x.marks ?? []).map(k => k.type));
-        out.push({ text: winAnsi(x.text ?? ''), size: base.size, bold: base.bold || m.has('bold'), italic: base.italic || m.has('italic'), code: m.has('code'), underline: m.has('underline') || m.has('link'), strike: m.has('strike'), link: m.has('link'), color: m.has('link') ? BLUE : base.color });
+        const ts = (x.marks ?? []).find(k => k.type === 'textStyle')?.attrs ?? {}; const fnt = fontByCss(ts.fontFamily); const rgbv = rgbOf(ts.color); const pt = sizePt(ts.fontSize);
+        out.push({ text: winAnsi(x.text ?? ''), fam: fnt?.pdf ?? null, size: pt ?? base.size, bold: base.bold || m.has('bold'), italic: base.italic || m.has('italic'), code: m.has('code'), underline: m.has('underline') || m.has('link'), strike: m.has('strike'), link: m.has('link'), color: m.has('link') ? BLUE : rgbv ? rgb(rgbv[0] / 255, rgbv[1] / 255, rgbv[2] / 255) : base.color });
       } else if (x.type === 'hardBreak') out.push({ text: '', size: base.size, br: true });
       else (x.content ?? []).forEach(walk);
     };

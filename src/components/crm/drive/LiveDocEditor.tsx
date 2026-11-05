@@ -12,6 +12,7 @@
  * (its own and its peers'), so a doc survives even if the person who typed last closes the laptop mid-sentence.
  */
 
+import { DOC_COLORS, DOC_FONTS, DOC_SIZES, fontByCss, sizePt } from '@/lib/doc-fonts';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import * as Y from 'yjs';
 import { toBase64, fromBase64 } from 'lib0/buffer';
@@ -420,24 +421,47 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
   const align = editor.isActive({ textAlign: 'center' }) ? 'center' : editor.isActive({ textAlign: 'right' }) ? 'right' : 'left';
   const T = ({ title, on, onClick, icon, disabled }: { title: string; on?: boolean; onClick: () => void; icon: IcoName; disabled?: boolean }) => <TBtn title={title} on={on} onClick={onClick} disabled={disabled}><Ico n={icon} /></TBtn>;
   const SWATCHES = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa', '#e9d5ff'];
+  const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
+  const ts = editor.getAttributes('textStyle') as { fontFamily?: string; fontSize?: string; color?: string };
+  const curFont = fontByCss(ts.fontFamily)?.label ?? 'Default';
+  const curPt = sizePt(ts.fontSize);
+  const selStyle = { height: 30, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 6px', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" } as const;
   return (
     <div className={isMobile ? 'dx-m' : undefined} style={{ background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)', flexShrink: 0 }}>
       <style>{SHEET_CSS}{`.dx-m .sx-btn{height:40px;min-width:38px}.dx-m select{height:40px!important}`}</style>
       <div style={{ display: 'flex', alignItems: 'center', padding: '3px 8px', gap: 6 }}>
         <OverflowRow style={{ flex: 1, minWidth: 0 }}>
-          <T title="Undo (Ctrl+Z)" icon="undo" onClick={() => c().undo().run()} />
-          <T title="Redo (Ctrl+Y)" icon="redo" onClick={() => c().redo().run()} />
-          <T title="Find and replace (Ctrl+F)" icon="search" onClick={onFind} />
+          <T title={`Undo (${MOD}Z)`} icon="undo" onClick={() => c().undo().run()} />
+          <T title={`Redo (${MOD}${MOD === '⌘' ? '⇧Z' : 'Y'})`} icon="redo" onClick={() => c().redo().run()} />
+          <T title={`Find and replace (${MOD}F)`} icon="search" onClick={onFind} />
           <TSep />
           <select aria-label="Text style" value={block} onChange={e => { const v = e.target.value; if (v === 'p') c().setParagraph().run(); else c().toggleHeading({ level: Number(v[1]) as 1 | 2 | 3 }).run(); }}
             style={{ height: 30, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 6px', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
             <option value="p">Normal text</option><option value="h1">Title</option><option value="h2">Heading</option><option value="h3">Subheading</option>
           </select>
+          <select aria-label="Font" title="Font" value={curFont} style={{ ...selStyle, maxWidth: 120 }}
+            onChange={e => { const f = DOC_FONTS.find(x => x.label === e.target.value); if (f?.css) c().setFontFamily(f.css).run(); else c().unsetFontFamily().removeEmptyTextStyle().run(); }}>
+            {DOC_FONTS.map(f => <option key={f.label} value={f.label}>{f.label}</option>)}
+          </select>
+          <select aria-label="Font size" title="Font size (points)" value={curPt ? String(curPt) : ''} style={{ ...selStyle, width: 62 }}
+            onChange={e => { const v = e.target.value; if (!v) c().unsetFontSize().removeEmptyTextStyle().run(); else c().setFontSize(`${v}pt`).run(); }}>
+            <option value="">Size</option>
+            {curPt && !DOC_SIZES.includes(curPt) && <option value={String(curPt)}>{curPt}</option>}
+            {DOC_SIZES.map(n => <option key={n} value={String(n)}>{n}</option>)}
+          </select>
           <TSep />
-          <T title="Bold (Ctrl+B)" icon="bold" on={editor.isActive('bold')} onClick={() => c().toggleBold().run()} />
-          <T title="Italic (Ctrl+I)" icon="italic" on={editor.isActive('italic')} onClick={() => c().toggleItalic().run()} />
-          <T title="Underline (Ctrl+U)" icon="underline" on={editor.isActive('underline')} onClick={() => c().toggleUnderline().run()} />
-          <T title="Strikethrough" icon="strike" on={editor.isActive('strike')} onClick={() => c().toggleStrike().run()} />
+          <T title={`Bold (${MOD}B)`} icon="bold" on={editor.isActive('bold')} onClick={() => c().toggleBold().run()} />
+          <T title={`Italic (${MOD}I)`} icon="italic" on={editor.isActive('italic')} onClick={() => c().toggleItalic().run()} />
+          <T title={`Underline (${MOD}U)`} icon="underline" on={editor.isActive('underline')} onClick={() => c().toggleUnderline().run()} />
+          <T title={`Strikethrough (${MOD}${MOD === '⌘' ? '⇧' : 'Shift+'}S)`} icon="strike" on={editor.isActive('strike')} onClick={() => c().toggleStrike().run()} />
+          <Pop className="sx-btn" title="Text color" active={!!ts.color} label={<><span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1, borderBottom: `3px solid ${ts.color ?? 'var(--k-1a1a1a)'}`, padding: '0 1px' }}>A</span><span style={{ fontSize: 9 }}>▾</span></>}>
+            {close => (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 8, flexWrap: 'wrap', maxWidth: 260 }}>
+                {DOC_COLORS.map(col => <button key={col} type="button" aria-label={`Text color ${col}`} onMouseDown={e => e.preventDefault()} onClick={() => { c().setColor(col).run(); close(); }} style={{ width: 26, height: 26, borderRadius: '50%', background: col, border: ts.color === col ? '2px solid var(--k-1a1a1a)' : '1px solid var(--k-d1d5db)', cursor: 'pointer', padding: 0 }} />)}
+                <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { c().unsetColor().removeEmptyTextStyle().run(); close(); }} style={{ ...btnStyle(false), background: 'none' }}>Automatic</button>
+              </div>
+            )}
+          </Pop>
           <Pop className="sx-btn" title="Highlight color" active={editor.isActive('highlight')} label={<><Ico n="highlight" /><span style={{ fontSize: 9 }}>▾</span></>}>
             {close => (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 8, flexWrap: 'wrap', maxWidth: 260 }}>
@@ -446,6 +470,7 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
               </div>
             )}
           </Pop>
+          <T title="Clear formatting (bold, color, size, font…)" icon="clear" onClick={() => c().unsetBold().unsetItalic().unsetUnderline().unsetStrike().unsetHighlight().unsetColor().unsetFontFamily().unsetFontSize().removeEmptyTextStyle().run()} />
           <TSep />
           <T title="Link" icon="link" on={editor.isActive('link')} onClick={openLink} />
           <T title="Insert a picture" icon="image" onClick={() => imgInput.current?.click()} />
@@ -460,10 +485,10 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
           )}
           <T title="Comment on the selected words" icon="comment" onClick={onComment} />
           <TSep />
-          <T title="Bulleted list" icon="bullets" on={editor.isActive('bulletList')} onClick={() => c().toggleBulletList().run()} />
-          <T title="Numbered list" icon="numbered" on={editor.isActive('orderedList')} onClick={() => c().toggleOrderedList().run()} />
-          <T title="Checklist" icon="checklist" on={editor.isActive('taskList')} onClick={() => c().toggleTaskList().run()} />
-          <T title="Quote" icon="quote" on={editor.isActive('blockquote')} onClick={() => c().toggleBlockquote().run()} />
+          <T title={`Bulleted list (${MOD}${MOD === '⌘' ? '⇧' : 'Shift+'}8)`} icon="bullets" on={editor.isActive('bulletList')} onClick={() => c().toggleBulletList().run()} />
+          <T title={`Numbered list (${MOD}${MOD === '⌘' ? '⇧' : 'Shift+'}7)`} icon="numbered" on={editor.isActive('orderedList')} onClick={() => c().toggleOrderedList().run()} />
+          <T title={`Checklist (${MOD}${MOD === '⌘' ? '⇧' : 'Shift+'}9)`} icon="checklist" on={editor.isActive('taskList')} onClick={() => c().toggleTaskList().run()} />
+          <T title={`Quote (${MOD}${MOD === '⌘' ? '⇧' : 'Shift+'}B)`} icon="quote" on={editor.isActive('blockquote')} onClick={() => c().toggleBlockquote().run()} />
           <TSep />
           <Pop className="sx-btn" title="Align" label={<><Ico n={align} /><span style={{ fontSize: 9 }}>▾</span></>}>
             {close => <>
