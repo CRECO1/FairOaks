@@ -45,6 +45,7 @@ type Props = {
   canInboxReplyAll: (r: InboxRow) => boolean;
   onResumeDraft: (d: EmailDraft) => void;
   onEditGmailDraft: (g: GmailDraftBody) => void;
+  signature?: string | null;
   onFollowUp: (o: { to: string; name: string; subject: string; dealId: string | null; clientId: string | null; threadId: string | null; inReplyTo: string | null }) => void;
 };
 
@@ -112,7 +113,7 @@ export default function EmailsSection(p: Props) {
             : <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />}
         </>
       )}
-      {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} onResume={p.onResumeDraft} nameFor={p.nameFor} onEditGmail={p.onEditGmailDraft} notify={p.notify} /></>)}
+      {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} signature={p.signature} onResume={p.onResumeDraft} nameFor={p.nameFor} onEditGmail={p.onEditGmailDraft} notify={p.notify} /></>)}
       {p.tab === 'sent' && (
         <>
           {!(p.isMobile && reading) && toggle('All sent', 'Tracked opens')}

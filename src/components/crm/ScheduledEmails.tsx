@@ -3,11 +3,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { chicagoLocalToUTC, chicagoToday } from '@/lib/chicago-time';
 import { sanitizeHtml } from '@/lib/sanitize';
+import { MessageFrame } from './MessageFrame';
 
 // Emails you scheduled with "Send later" (and any that failed). Sits above the saved drafts on the Emails → Drafts tab.
 
 type Item = { id: string; send_at: string; summary_to: string; summary_subject: string; status: 'pending' | 'sending' | 'failed'; attempts: number; last_error: string | null };
-type Preview = { to: string; cc: string; bcc: string; subject: string; html: string; files: string[] };
+type Preview = { to: string; cc: string; bcc: string; subject: string; html: string; body: string; editable: boolean; files: string[] };
 const CT: Intl.DateTimeFormatOptions = { timeZone: 'America/Chicago' };
 const whenLabel = (iso: string) => new Date(iso).toLocaleString('en-US', { ...CT, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -17,14 +18,40 @@ export default function ScheduledEmails({ isMobile, notify }: { isMobile: boolea
   const [editing, setEditing] = useState<string | null>(null); // the one whose time is being changed
   const [openId, setOpenId] = useState<string | null>(null);   // the one whose full email is open below its row
   const [pv, setPv] = useState<Preview | 'loading' | 'error' | null>(null);
-  const togglePreview = async (it: Item) => {
-    if (openId === it.id) { setOpenId(null); setPv(null); return; }
+  const [form, setForm] = useState<{ to: string; cc: string; subject: string } | null>(null); // set while the open email is being edited
+  const [dirty, setDirty] = useState(false);                                                    // the body text was touched
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  const loadPreview = async (it: Item) => {
     setOpenId(it.id); setPv('loading');
     try {
       const r = await fetch(`/api/crm/scheduled-emails?id=${encodeURIComponent(it.id)}`, { cache: 'no-store' });
       const j = r.ok ? await r.json() : null;
       setPv(j?.preview ? (j.preview as Preview) : 'error');
-    } catch { setPv('error'); }
+      return (j?.preview as Preview | undefined) ?? null;
+    } catch { setPv('error'); return null; }
+  };
+  const togglePreview = async (it: Item) => {
+    if (openId === it.id && !form) { setOpenId(null); setPv(null); return; }
+    setForm(null);
+    await loadPreview(it);
+  };
+  const startEdit = async (it: Item) => {
+    setDirty(false);
+    const p = await loadPreview(it);
+    if (p) setForm({ to: p.to, cc: p.cc, subject: p.subject });
+  };
+  const saveEdit = async (it: Item) => {
+    if (!form) return;
+    setBusy(it.id);
+    try {
+      const r = await fetch('/api/crm/scheduled-emails', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: it.id, action: 'edit', to: form.to, cc: form.cc, subject: form.subject, ...(dirty && bodyRef.current ? { body: bodyRef.current.innerHTML } : {}) }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { notify(j.error ?? 'Could not save your changes.'); return; }
+      notify('Changes saved — the email will go out as edited.');
+      setForm(null); setDirty(false);
+      await loadPreview(it);
+      void load();
+    } finally { setBusy(null); }
   };
   const load = useCallback(async () => {
     try { const r = await fetch('/api/crm/scheduled-emails', { cache: 'no-store' }); if (r.ok) setItems((await r.json()).items as Item[]); else setItems([]); } catch { setItems([]); }
@@ -76,7 +103,8 @@ export default function ScheduledEmails({ isMobile, notify }: { isMobile: boolea
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button type="button" style={btn} aria-pressed={openId === it.id} onClick={() => void togglePreview(it)} title="See the full email exactly as it will go out">{openId === it.id ? 'Close preview' : '👁 Preview'}</button>
+                <button type="button" style={btn} aria-pressed={openId === it.id && !form} onClick={() => void togglePreview(it)} title="See the email exactly as the recipient will get it">{openId === it.id && !form ? 'Close preview' : '👁 Preview'}</button>
+                {it.status !== 'sending' && <button type="button" style={btn} disabled={busy === it.id} onClick={() => void startEdit(it)} title="Change the recipient, subject or text">✏️ Edit</button>}
                 {!failed && it.status === 'pending' && (editing === it.id
                   ? <input type="datetime-local" autoFocus min={`${chicagoToday()}T00:00`} aria-label="New send time (Central)" onChange={e => void resched(it, e.target.value)} onBlur={() => setEditing(null)} style={{ ...btn, padding: '0 6px', fontWeight: 500 }} />
                   : <button type="button" style={btn} disabled={busy === it.id} onClick={() => setEditing(it.id)} title="Pick a new time (Central)">🕐 Change time</button>)}
@@ -88,13 +116,31 @@ export default function ScheduledEmails({ isMobile, notify }: { isMobile: boolea
               <div style={{ padding: isMobile ? '12px 14px 16px' : '14px 20px 18px', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>
                 {pv === 'loading' && <div style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>Loading the email…</div>}
                 {pv === 'error' && <div style={{ fontSize: 13, color: 'var(--k-dc2626)' }}>Could not load the preview — try again.</div>}
-                {pv && typeof pv === 'object' && (
+                {pv && typeof pv === 'object' && form && (
+                  <>
+                    {([['To', 'to'], ['Cc', 'cc'], ['Subject', 'subject']] as const).map(([lab, k]) => (
+                      <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 12.5, color: 'var(--k-6b7280)' }}>
+                        <b style={{ width: 52, flexShrink: 0 }}>{lab}:</b>
+                        <input value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} placeholder={k === 'cc' ? '(optional)' : ''} style={{ flex: 1, minWidth: 0, height: isMobile ? 40 : 32, padding: '0 10px', border: '1px solid var(--k-d1d5db)', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)' }} />
+                      </label>
+                    ))}
+                    <div ref={bodyRef} contentEditable suppressContentEditableWarning onInput={() => setDirty(true)} aria-label="Email text"
+                      style={{ marginTop: 6, background: '#fff', color: '#222', border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '14px 16px', fontSize: 14, lineHeight: 1.55, minHeight: 160, maxHeight: 420, overflowY: 'auto', overflowWrap: 'anywhere', outline: 'none' }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(pv.body) }} />
+                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--k-9ca3af)' }}>Your signature{pv.files.length ? ' and the attached file' : ''} are added automatically when it sends. Save, then Preview to see the finished email.</div>
+                    <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" style={{ ...btn, borderColor: '#c9922c', color: '#92400e' }} disabled={busy === it.id} onClick={() => void saveEdit(it)}>{busy === it.id ? 'Saving…' : 'Save changes'}</button>
+                      <button type="button" style={btn} disabled={busy === it.id} onClick={() => { setForm(null); setDirty(false); }}>Cancel</button>
+                    </div>
+                  </>
+                )}
+                {pv && typeof pv === 'object' && !form && (
                   <>
                     <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 4 }}><b>To:</b> {pv.to}{pv.cc ? <> · <b>Cc:</b> {pv.cc}</> : null}{pv.bcc ? <> · <b>Bcc:</b> {pv.bcc}</> : null}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 10 }}><b>Subject:</b> {pv.subject || '(no subject)'}</div>
-                    <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '14px 16px', fontSize: 14, lineHeight: 1.55, color: 'var(--k-111)', maxHeight: 420, overflowY: 'auto', overflowWrap: 'anywhere' }}
-                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(pv.html) || '<span style="color:#9ca3af">No text</span>' }} />
+                    <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '14px 16px', background: '#fff', maxHeight: 460, overflowY: 'auto' }}><MessageFrame html={pv.html} /></div>
                     {pv.files.length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{pv.files.map(f => <span key={f} style={{ fontSize: 12.5, padding: '3px 10px', borderRadius: 999, background: 'var(--k-fdf6e8)', color: 'var(--k-92400e)', border: '1px solid var(--k-fde68a)' }}>📎 {f}</span>)}</div>}
+                    {pv.editable && <div style={{ marginTop: 12 }}><button type="button" style={btn} onClick={() => void startEdit(it)}>✏️ Edit this email</button></div>}
                   </>
                 )}
               </div>

@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { sendScheduledRow } from '@/lib/scheduled-emails';
-import { resolveSignature, withSignature } from '@/lib/agent-signature';
+import { resolveSignature, withBodyStyle, withSignature } from '@/lib/agent-signature';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // Your scheduled ("send later") emails. Personal: you only ever see and change your own.
 // GET                          → { items: [...] }  pending + failed ones
-// GET ?id=<id>                 → { preview } the full email as it will go out (signature included), for the Preview button
+// GET ?id=<id>                 → { preview } the email as the recipient gets it (body style + signature; the open-tracking pixel is never included), for the Preview button
 // POST { send_at, payload }    → schedule (payload = what Compose would POST to /api/gmail/send)
 // PATCH { id, action: 'cancel' | 'send_now' | 'reschedule', send_at? }
+// PATCH { id, action: 'edit', to?, cc?, subject?, body? } → change what a still-waiting email says (signature is added at send time, so body is the text without it)
 const MAX_PENDING = 50;
 const MAX_PAYLOAD = 400_000; // characters of JSON — scheduled mail carries CRM-file references, never uploaded files
 
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
         files.push(l?.name ? `Property flyer — ${l.name}` : 'Property flyer');
       } else files.push('Attachment from the CRM');
     }
-    return NextResponse.json({ preview: { to: p.to ?? '', cc: p.cc ?? '', bcc: p.bcc ?? '', subject: p.subject ?? '', html: withSignature(String(p.body ?? ''), sig), files } });
+    return NextResponse.json({ preview: { to: p.to ?? '', cc: p.cc ?? '', bcc: p.bcc ?? '', subject: p.subject ?? '', html: withBodyStyle(withSignature(String(p.body ?? ''), sig)), body: String(p.body ?? ''), editable: row.status === 'pending' || row.status === 'failed', files } });
   }
   const { data, error } = await adminClient().from('crm_scheduled_emails')
     .select('id, send_at, summary_to, summary_subject, status, attempts, last_error, created_at')
@@ -69,14 +70,30 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
-  const b = await req.json().catch(() => ({})) as { id?: string; action?: string; send_at?: string };
-  if (!b.id || !['cancel', 'send_now', 'reschedule'].includes(b.action ?? '')) return NextResponse.json({ error: 'id and action required' }, { status: 400 });
+  const b = await req.json().catch(() => ({})) as { id?: string; action?: string; send_at?: string; to?: string; cc?: string; subject?: string; body?: string };
+  if (!b.id || !['cancel', 'send_now', 'reschedule', 'edit'].includes(b.action ?? '')) return NextResponse.json({ error: 'id and action required' }, { status: 400 });
   const db = adminClient();
   const { data: row } = await db.from('crm_scheduled_emails').select('id, user_id, status').eq('id', b.id).maybeSingle();
   if (!row || row.user_id !== ctx.userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (b.action === 'cancel') {
     const { data } = await db.from('crm_scheduled_emails').update({ status: 'cancelled' }).eq('id', b.id).in('status', ['pending', 'failed']).select('id').maybeSingle();
     return data ? NextResponse.json({ ok: true }) : NextResponse.json({ error: 'It was already sent or is sending right now.' }, { status: 409 });
+  }
+  if (b.action === 'edit') {
+    const { data: cur } = await db.from('crm_scheduled_emails').select('payload, status').eq('id', b.id).maybeSingle();
+    if (!cur || (cur.status !== 'pending' && cur.status !== 'failed')) return NextResponse.json({ error: 'It is already sending or was sent, so it can’t be changed.' }, { status: 409 });
+    const p = { ...((cur.payload ?? {}) as Record<string, unknown>) };
+    if (typeof b.to === 'string') p.to = b.to.trim();
+    if (typeof b.cc === 'string') p.cc = b.cc.trim();
+    if (typeof b.subject === 'string') p.subject = b.subject.trim();
+    if (typeof b.body === 'string') p.body = b.body;
+    if (!p.to || !p.subject || !p.body) return NextResponse.json({ error: 'It needs a recipient, a subject and some text.' }, { status: 400 });
+    if (JSON.stringify(p).length > MAX_PAYLOAD) return NextResponse.json({ error: 'That email is too large.' }, { status: 413 });
+    const recipients = String(p.to).split(/[,;]+/).map(x => x.trim()).filter(Boolean);
+    const { data } = await db.from('crm_scheduled_emails').update({
+      payload: p, summary_to: recipients.slice(0, 3).join(', ') + (recipients.length > 3 ? ` +${recipients.length - 3}` : ''), summary_subject: String(p.subject).slice(0, 200),
+    }).eq('id', b.id).in('status', ['pending', 'failed']).select('id').maybeSingle();
+    return data ? NextResponse.json({ ok: true }) : NextResponse.json({ error: 'It is already sending or was sent, so it can’t be changed.' }, { status: 409 });
   }
   if (b.action === 'reschedule') {
     const when = b.send_at ? new Date(b.send_at) : null;

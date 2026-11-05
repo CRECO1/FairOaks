@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listDrafts, deleteDraft, saveDraft, syncDrafts, onDraftsChanged, draftsServerReady, type EmailDraft } from '@/lib/email-drafts';
 import { confirmDialog } from '@/lib/confirm-dialog';
-import { sanitizeHtml } from '@/lib/sanitize';
+import { MessageFrame } from './MessageFrame';
+import { withBodyStyle, withSignature } from '@/lib/agent-signature';
 
 // Everything you started writing and didn't send — the CRM's own saved drafts AND the drafts sitting in Gmail itself — in ONE list,
 // newest first. A CRM draft resumes exactly where you left off (right deal or contact, still inside its thread, CRM files still attached).
@@ -55,9 +56,11 @@ type Props = {
   /** Open a Gmail draft in the CRM composer (so it is tracked and filed). */
   onEditGmail?: (g: GmailDraftBody) => void;
   notify?: (msg: string) => void;
+  /** The sender's Gmail signature, so a saved draft previews with the signature it will be sent with. */
+  signature?: string | null;
 };
 
-export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail, notify }: Props) {
+export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail, notify, signature }: Props) {
   const [drafts, setDrafts] = useState<EmailDraft[]>(() => listDrafts());
   const [gm, setGm] = useState<{ drafts: GmailDraftRow[]; account: string | null; canModify: boolean; loaded: boolean }>({ drafts: [], account: null, canModify: false, loaded: false });
   const [syncing, setSyncing] = useState(true);
@@ -65,6 +68,7 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Set<string>>(() => new Set());
   const [previewKey, setPreviewKey] = useState<string | null>(null);   // the CRM draft whose full text is open below its row
+  const [gPreview, setGPreview] = useState<{ id: string; draft?: GmailDraftBody; error?: string } | null>(null);   // the Gmail draft whose full text is open below its row
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -151,6 +155,16 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
       window.dispatchEvent(new Event('crm-gmail-drafts-changed'));
       flash('Gmail draft discarded');
     } finally { setBusy(null); }
+  };
+  // Show a Gmail draft's full text in place (same fetch as "Edit here", nothing is opened or changed).
+  const toggleGmailPreview = async (g: GmailDraftRow) => {
+    if (gPreview?.id === g.id) { setGPreview(null); return; }
+    setGPreview({ id: g.id });
+    try {
+      const r = await fetch(`/api/gmail/drafts?id=${encodeURIComponent(g.id)}`, { cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      setGPreview(p => (p?.id === g.id ? (r.ok && j.draft ? { id: g.id, draft: j.draft as GmailDraftBody } : { id: g.id, error: j.error ?? 'Could not load that draft.' }) : p));
+    } catch { setGPreview(p => (p?.id === g.id ? { id: g.id, error: 'Could not load that draft.' } : p)); }
   };
   const editGmail = async (g: GmailDraftRow) => {
     if (!onEditGmail) return;
@@ -284,6 +298,9 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
                   </div>
                   {isG ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, ...(isMobile ? { flexBasis: '100%', paddingLeft: 48 } : {}) }} onClick={e => e.stopPropagation()}>
+                      <button type="button" aria-label={gPreview?.id === it.g.id ? 'Close preview' : 'Preview draft'} title={gPreview?.id === it.g.id ? 'Close preview' : 'Preview the full draft'} aria-pressed={gPreview?.id === it.g.id}
+                        onClick={() => void toggleGmailPreview(it.g)}
+                        style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: gPreview?.id === it.g.id ? 'var(--k-fdf6e9)' : 'none', border: 'none', borderRadius: 8, color: 'var(--k-6b7280)', cursor: 'pointer', fontSize: 17 }}>👁</button>
                       {onEditGmail && <button type="button" onClick={() => void editGmail(it.g)} disabled={busy === it.g.id} title="Open it in the CRM composer — sent from here it is tracked (opens) and filed on the deal or contact" style={{ ...btn, borderColor: '#c9922c', color: 'var(--k-92400e)', background: 'var(--k-fffbeb)' }}>{busy === it.g.id ? 'Opening…' : 'Edit here'}</button>}
                       {!isMobile && <a href={gLink} target="_blank" rel="noopener noreferrer" title="Open this draft in Gmail (keeps its attachments)" style={btn}>Gmail ↗</a>}
                       {gm.canModify && <button type="button" aria-label="Discard Gmail draft" title="Discard this draft in Gmail" onClick={() => void discardGmail(it.g)} style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--k-9ca3af)', cursor: 'pointer', fontSize: 17 }}>🗑</button>}
@@ -299,14 +316,37 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
                     </>
                   )}
                 </div>
+                {isG && gPreview?.id === it.g.id && (
+                  <div style={{ padding: isMobile ? '12px 14px 16px' : '14px 20px 18px 64px', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>
+                    {!gPreview.draft && !gPreview.error && <div style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>Loading the draft…</div>}
+                    {gPreview.error && <div style={{ fontSize: 13, color: '#b45309' }}>{gPreview.error}</div>}
+                    {gPreview.draft && (
+                      <>
+                        <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 4 }}><b>To:</b> {gPreview.draft.to || <span style={{ color: '#b45309' }}>nobody yet</span>}</div>
+                        {gPreview.draft.cc && <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 4 }}><b>Cc:</b> {gPreview.draft.cc}</div>}
+                        {gPreview.draft.bcc && <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 4 }}><b>Bcc:</b> {gPreview.draft.bcc}</div>}
+                        <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 10 }}><b>Subject:</b> {gPreview.draft.subject || '(no subject)'}</div>
+                        <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '14px 16px', background: '#fff', maxHeight: 460, overflowY: 'auto' }}>
+                          {plain(gPreview.draft.html) ? <MessageFrame html={gPreview.draft.html} /> : <span style={{ color: '#9ca3af', fontSize: 14 }}>No text yet</span>}
+                        </div>
+                        {gPreview.draft.files.length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{gPreview.draft.files.map(f => <span key={f.name} style={pill('var(--k-fdf6e8)', 'var(--k-92400e)', 'var(--k-fde68a)')}>📎 {f.name}{f.size ? ` (${kb(f.size)})` : ''}</span>)}</div>}
+                      </>
+                    )}
+                    <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {onEditGmail && <button type="button" onClick={() => void editGmail(it.g)} style={{ ...btn, borderColor: '#c9922c', color: '#92400e' }}>Open to edit &amp; send</button>}
+                      <button type="button" onClick={() => setGPreview(null)} style={btn}>Close preview</button>
+                    </div>
+                  </div>
+                )}
                 {previewing && !isG && (
                   <div style={{ padding: isMobile ? '12px 14px 16px' : '14px 20px 18px 64px', background: 'var(--k-fafafa)', borderTop: '1px solid var(--k-f0f0f0)' }}>
                     <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 4 }}>
                       <b>To:</b> {first ? to.map(x => x.name ? `${x.name} <${x.email}>` : x.email).join(', ') : <span style={{ color: '#b45309' }}>nobody yet — add the contact’s email address on their card after your call, then open this draft there to send</span>}
                     </div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 10 }}><b>Subject:</b> {subject || '(no subject)'}</div>
-                    <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '14px 16px', fontSize: 14, lineHeight: 1.55, color: 'var(--k-111)', maxHeight: 420, overflowY: 'auto', overflowWrap: 'anywhere' }}
-                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(it.d.bodyHtml) || '<span style="color:#9ca3af">No text yet</span>' }} />
+                    <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '14px 16px', background: '#fff', maxHeight: 460, overflowY: 'auto' }}>
+                      {plain(it.d.bodyHtml) ? <MessageFrame html={withBodyStyle(withSignature(it.d.bodyHtml, signature))} /> : <span style={{ color: '#9ca3af', fontSize: 14 }}>No text yet</span>}
+                    </div>
                     {files.length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{files.map(f => <span key={f.name} style={pill('var(--k-fdf6e8)', 'var(--k-92400e)', 'var(--k-fde68a)')}>📎 {f.name}{f.size ? ` (${kb(f.size)})` : ''}</span>)}</div>}
                     <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {!noRecipient && <button type="button" onClick={() => onResume(it.d)} style={{ ...btn, borderColor: '#c9922c', color: '#92400e' }}>Open to edit &amp; send</button>}
