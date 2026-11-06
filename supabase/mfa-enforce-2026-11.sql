@@ -1,4 +1,4 @@
--- 2-step verification at the database (2026-11-05).
+-- 2-step verification at the database (2026-11-05). APPLIED to production 2026-11-05 (57 policies; every read check unchanged).
 --
 -- The CRM API already refuses a password-only (aal1) token for any login that has a verified authenticator factor. This closes the other
 -- door: the browser can also talk to Supabase directly under row-level security, so the same rule is added there as a RESTRICTIVE policy
