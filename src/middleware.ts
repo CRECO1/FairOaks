@@ -71,31 +71,55 @@ const apiSessionNoCsrfRoutes = [
   '/api/mls/sync',
 ];
 
-// Security headers applied to every response
-function withSecurityHeaders(res: NextResponse): NextResponse {
+// How the CRM app's pages (/crm/**) treat inline scripts.
+//   'report'  : the old policy (inline scripts allowed) still protects; the STRICT policy runs beside it in report-only mode, and
+//               anything it would have blocked is logged by /api/csp-report. Used to prove the strict policy is safe before enforcing it.
+//   'enforce' : the strict policy is the real one. Only scripts carrying this request's one-time nonce (Next.js adds it to its own
+//               scripts) or loaded from this site run, so injected markup with an inline <script> or onerror= handler does nothing.
+const CRM_CSP_MODE: 'report' | 'enforce' = (process.env.CRM_CSP_MODE === 'enforce' || process.env.CRM_CSP_MODE === 'report' ? process.env.CRM_CSP_MODE : 'report');   // env override is for local testing
+
+const SCRIPT_HOSTS = 'https://maps.googleapis.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://*.clarity.ms https://www.recaptcha.net https://recaptcha.google.com';
+
+function cspFor(nonce?: string): string {
+  return [
+    "default-src 'self'",
+    nonce ? `script-src 'self' 'nonce-${nonce}' ${SCRIPT_HOSTS}` : `script-src 'self' 'unsafe-inline' ${SCRIPT_HOSTS}`,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https:",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.resend.com https://api-sabor.connectmls.com https://maps.googleapis.com https://vitals.vercel-insights.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://www.googletagmanager.com https://*.clarity.ms https://graph.facebook.com https://api.linkedin.com https://api.twitter.com https://accounts.google.com https://www.googleapis.com https://oauth2.googleapis.com",
+    "frame-src 'self' https://www.google.com https://recaptcha.google.com https://www.recaptcha.net",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'",
+  ].join('; ');
+}
+
+// Security headers applied to every response. With a nonce (the CRM app pages) the strict, nonce-based script policy is used per CRM_CSP_MODE.
+function withSecurityHeaders(res: NextResponse, nonce?: string): NextResponse {
   res.headers.set('X-Frame-Options', 'SAMEORIGIN');
   res.headers.set('X-Content-Type-Options', 'nosniff');
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.headers.set('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
   res.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
-  res.headers.set(
-    'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://*.clarity.ms https://www.recaptcha.net https://recaptcha.google.com",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' data: https://fonts.gstatic.com",
-      "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.resend.com https://api-sabor.connectmls.com https://maps.googleapis.com https://vitals.vercel-insights.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://www.googletagmanager.com https://*.clarity.ms https://graph.facebook.com https://api.linkedin.com https://api.twitter.com https://accounts.google.com https://www.googleapis.com https://oauth2.googleapis.com",
-      "frame-src 'self' https://www.google.com https://recaptcha.google.com https://www.recaptcha.net",
-      "worker-src 'self' blob:",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "frame-ancestors 'self'",
-    ].join('; ')
-  );
+  if (nonce && CRM_CSP_MODE === 'enforce') {
+    res.headers.set('Content-Security-Policy', `${cspFor(nonce)}; report-uri /api/csp-report`);
+  } else {
+    res.headers.set('Content-Security-Policy', cspFor());
+    if (nonce) res.headers.set('Content-Security-Policy-Report-Only', `${cspFor(nonce)}; report-uri /api/csp-report`);
+  }
   return res;
+}
+
+/** A CRM app page: a fresh nonce goes into the policy AND into the request, which is how Next.js learns to stamp its own inline scripts. */
+function crmShell(request: NextRequest): NextResponse {
+  const nonce = btoa(crypto.randomUUID());
+  const headers = new Headers(request.headers);
+  headers.set('x-nonce', nonce);
+  headers.set(CRM_CSP_MODE === 'enforce' ? 'content-security-policy' : 'content-security-policy-report-only', cspFor(nonce));
+  return withSecurityHeaders(NextResponse.next({ request: { headers } }), nonce);
 }
 
 // ─── Expired listings → 410 Gone ─────────────────────────────────────────────
@@ -244,6 +268,9 @@ async function handle(request: NextRequest): Promise<NextResponse> {
       return withSecurityHeaders(NextResponse.next());
     }
   }
+
+  // The CRM app pages get the nonce-based script policy (never an auth redirect: the app gates itself).
+  if (pathname === '/crm' || pathname.startsWith('/crm/')) return crmShell(request);
 
   // App shells: security headers only, never an auth redirect (see above).
   if (headerOnlyRoutes.some(route => pathname.startsWith(route))) {
