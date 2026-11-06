@@ -302,6 +302,22 @@ async function safeFetchImage(startUrl: string): Promise<Response | null> {
   return null; // too many redirects
 }
 
+/** Read a response body, giving up (null) as soon as it exceeds `max` bytes. */
+async function readCapped(r: Response, max: number): Promise<Buffer | null> {
+  if (!r.body) return null;
+  const reader = r.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > max) { try { await reader.cancel(); } catch { /* already closed */ } return null; }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks);
+}
+
 /**
  * Broker emails almost always link their property photos remotely (`<img src=…>`)
  * instead of attaching them, so the attachment scan finds nothing. Download the
@@ -322,8 +338,10 @@ export async function fetchHostedImages(
       if (!r || !r.ok) return null;
       const ct = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
       if (!SUPPORTED_IMAGE.has(ct)) return null;
-      const buf = Buffer.from(await r.arrayBuffer());
-      if (buf.length < MIN_IMAGE_BYTES || buf.length > MAX_IMAGE_BYTES) return null;
+      // Stop reading the moment the file passes the size limit: an arbitrary remote host must not be able to make us buffer a huge download.
+      if (Number(r.headers.get('content-length') || 0) > MAX_IMAGE_BYTES) return null;
+      const buf = await readCapped(r, MAX_IMAGE_BYTES);
+      if (!buf || buf.length < MIN_IMAGE_BYTES) return null;
       return { img: { mimeType: ct as GmailImage['mimeType'], data: buf.toString('base64') }, size: buf.length };
     } catch { return null; }
   };

@@ -119,6 +119,7 @@ async function loadEmailAttachments(db: SupabaseClient, ctx: AgentCtx, refs: unk
       const { data: sub } = await db.from('crm_form_submissions').select('id, title, filled_path, source_path, deal_id, business_unit').eq('id', r.submission_id).maybeSingle();
       if (!sub || (sub.deal_id && (await hiddenDeals(db, ctx)).includes(sub.deal_id as string))) return { error: 'Document not found' };
       if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return { error: 'That document is in a different workspace' };
+      if (await outOfWorkspace(db, ctx, 'crm_form_submissions', String(r.submission_id), 'Document')) return { error: 'Document not found' };
       const path = (sub.filled_path || sub.source_path) as string | null;
       if (!path) return { error: `“${sub.title}” has no saved PDF yet — generate or save it first.` };
       const { data, error } = await db.storage.from('transaction-forms').download(path);
@@ -210,6 +211,22 @@ async function loadCampaignForBuild(db: SupabaseClient, ctx: AgentCtx, id: strin
   return c;
 }
 
+/** Campaign projects have no workspace column, so one belongs to the workspace of the person who made it (or to nobody, if unowned). */
+async function visibleProjects(db: SupabaseClient, ctx: AgentCtx, id?: string): Promise<{ id: string; name: string; description: string | null; listing_id: string | null }[]> {
+  let q = db.from('crm_campaign_projects').select('id, name, description, created_by, listing_id').order('name');
+  if (id) q = q.eq('id', id);
+  const { data } = await q;
+  const rows = (data ?? []) as Array<{ id: string; name: string; description: string | null; created_by: string | null; listing_id: string | null }>;
+  if (!ctx.businessUnit) return rows;
+  const makers = [...new Set(rows.map(r => r.created_by).filter(Boolean))] as string[];
+  const { data: profs } = makers.length ? await db.from('crm_profiles').select('id, business_unit').in('id', makers) : { data: [] as any[] };
+  const bu = new Map((profs ?? []).map((p: any) => [p.id as string, p.business_unit as string]));
+  const listingIds = [...new Set(rows.map(r => r.listing_id).filter(Boolean))] as string[];
+  const { data: ls } = listingIds.length ? await db.from('crm_listings').select(LISTING_COLS).in('id', listingIds) : { data: [] as any[] };
+  const lmap = new Map((ls ?? []).map((l: any) => [l.id as string, l]));
+  return rows.filter(r => (!r.created_by || bu.get(r.created_by) === ctx.businessUnit) && (!r.listing_id || (lmap.get(r.listing_id) && canSeeListing(lmap.get(r.listing_id)!, ctx))));
+}
+
 /** Load a deal for a write: in workspace, and for an agent one they own or are assigned to. */
 async function loadDealForWrite(db: SupabaseClient, ctx: AgentCtx, dealId: string): Promise<Record<string, any> | string> {
   const { data: d } = await db.from('crm_deals').select('*').eq('id', dealId).maybeSingle();
@@ -292,6 +309,18 @@ async function outOfWorkspace(db: SupabaseClient, ctx: AgentCtx, table: string, 
     // Restricted ("private") deals belong to their owner/assigned agents and the super_admin; agents see only deals they are on.
     if (ctx.role !== 'super_admin' && data.is_restricted && !onIt(data)) return nf();
     if (ctx.role === 'agent' && !onIt(data)) return JSON.stringify({ error: `That ${label.toLowerCase()} isn't assigned to you` });
+  }
+  if (table === 'crm_form_submissions') {
+    const sub = data as { deal_id?: string | null; listing_id?: string | null; client_id?: string | null };
+    if (sub.deal_id && (await hiddenDeals(db, ctx)).includes(sub.deal_id)) return nf();
+    if (sub.listing_id) {
+      const { data: l } = await db.from('crm_listings').select(LISTING_COLS).eq('id', sub.listing_id).maybeSingle();
+      if (l && !canSeeListing(l, ctx)) return nf();
+    }
+    if (sub.client_id && ctx.role !== 'super_admin') {
+      const { data: cl } = await db.from('crm_clients').select('lead_hold').eq('id', sub.client_id).maybeSingle();
+      if (cl?.lead_hold) return nf();
+    }
   }
   if (table === 'crm_tasks') {
     if (ctx.role === 'agent' && data.agent_id !== ctx.userId && data.assigned_to !== ctx.userId && data.created_by !== ctx.userId) return JSON.stringify({ error: "That task isn't yours" });
@@ -770,7 +799,23 @@ async function resolveDriveFolder(ctx: AgentCtx, a: { folder_id?: unknown; folde
   return { id: parent, path: drivePathOf(tree, parent), created };
 }
 
+// Database wording (table, column and constraint names, policy errors) must not reach the chat or the model: it tells an attacker how
+// the data is laid out and tells an agent nothing useful. The detail goes to the server log instead.
+const DB_WORDING = /violates|duplicate key|relation "|column "|syntax error|schema cache|permission denied|row-level security|JWT|PGRST|invalid input syntax|null value in|foreign key|constraint|could not find the|does not exist|operator does not exist/i;
+const GENERIC_FAIL = 'That did not go through. Check the details and try again; if it keeps happening, tell an admin.';
 export async function runTool(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
+  const out = await runToolRaw(name, input, ctx);
+  try {
+    const parsed = JSON.parse(out) as { error?: unknown };
+    if (parsed && typeof parsed.error === 'string' && DB_WORDING.test(parsed.error)) {
+      console.error(`[copilot tool ${name}]`, parsed.error);
+      return JSON.stringify({ ...parsed, error: GENERIC_FAIL });
+    }
+  } catch { /* not JSON: pass through */ }
+  return out;
+}
+
+async function runToolRaw(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
   const db = admin();
   try {
     switch (name) {
@@ -1391,6 +1436,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const { data: sub } = await db.from('crm_form_submissions').select('id, title, values, business_unit, status, builder_data, filled_path, source_path, deal_id').eq('id', input.submission_id).maybeSingle();
         if (!sub || (sub.deal_id && (await hiddenDeals(db, ctx)).includes(sub.deal_id as string))) return j({ error: 'Document not found' });
         if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return j({ error: 'Document is in a different workspace' });
+        { const bad = await outOfWorkspace(db, ctx, 'crm_form_submissions', String(input.submission_id), 'Document'); if (bad) return bad; }
         if (sub.status === 'executed' || sub.status === 'completed') return j({ error: 'That document is already executed — it can no longer be edited.' });
         if ((sub.builder_data as { terms?: unknown } | null)?.terms) return j({ error: 'That is a Letter of Intent — its signers are set in the letter itself (edit_loi), not placed on the page.' });
         if (await liveEnvelope(db, String(input.submission_id))) return j({ error: OUT_FOR_SIGNATURE });
@@ -1632,6 +1678,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
           const { data: sub } = await db.from('crm_form_submissions').select('id, title, status, values, deal_id, listing_id, client_id, business_unit, created_by').eq('id', input.submission_id).maybeSingle();
           if (!sub || (sub.deal_id && (await hiddenDeals(db, ctx)).includes(sub.deal_id as string))) return j({ error: 'Document not found' });
           if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return j({ error: 'Document is in a different workspace' });
+          { const bad = await outOfWorkspace(db, ctx, 'crm_form_submissions', String(input.submission_id), 'Document'); if (bad) return bad; }
           const { data: bdRow } = await db.from('crm_form_submissions').select('builder_data').eq('id', input.submission_id).maybeSingle();
           const bd = bdRow?.builder_data as { terms?: { label: string; value: string }[]; [k: string]: unknown } | null;
           if (bd && Array.isArray(bd.terms)) {
@@ -1673,6 +1720,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const { data: sub } = await db.from('crm_form_submissions').select('id, title, values, business_unit, status, builder_data').eq('id', input.submission_id).maybeSingle();
         if (!sub) return j({ error: 'Document not found' });
         if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return j({ error: 'Document is in a different workspace' });
+        { const bad = await outOfWorkspace(db, ctx, 'crm_form_submissions', String(input.submission_id), 'Document'); if (bad) return bad; }
         // A document that has already been executed is a signed record, not a draft.
         if (sub.status === 'executed' || sub.status === 'completed') return j({ error: 'That document is already executed — it can no longer be edited.' });
         // A Letter of Intent is a term list, not fillable blanks — it has its own tool.
@@ -1737,7 +1785,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         // (API + database both enforce that), so nothing the copilot creates can go out until the broker activates it.
         let projectId: string | null = null, listingId: string | null = null, sendDate: string | null = null, sendTime: string | null = null;
         if (input.project_id) {
-          const { data: pr } = await db.from('crm_campaign_projects').select('id').eq('id', input.project_id).maybeSingle();
+          const [pr] = await visibleProjects(db, ctx, String(input.project_id));
           if (!pr) return j({ error: 'That campaign project was not found — use list_campaign_projects.' });
           projectId = pr.id;
         }
@@ -1766,7 +1814,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         return j({ ok: true, campaign: data, note: 'Saved as a DRAFT with nobody enrolled — it cannot send. The broker reviews and activates campaigns; offer to add recipients (count_audience, then enroll_campaign_contacts).' });
       }
       case 'list_campaign_projects': {
-        const { data: projects } = await db.from('crm_campaign_projects').select('id, name, description').order('name');
+        const projects = await visibleProjects(db, ctx);
         const { data: camps } = await scoped(db.from('crm_campaigns').select('project_id'), ctx);
         const n = new Map<string, number>(); for (const c of camps ?? []) if (c.project_id) n.set(c.project_id as string, (n.get(c.project_id as string) ?? 0) + 1);
         return j({ projects: (projects ?? []).map(p => ({ id: p.id, name: p.name, description: p.description, campaigns: n.get(p.id) ?? 0 })) });
@@ -1780,6 +1828,8 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (typeof c === 'string') return c;
         if (c.status === 'active') return j({ error: 'That campaign is live — only the broker can add recipients to it.' });
         if (c.status === 'completed') return j({ error: 'That campaign has finished sending. Duplicate it to email more people.' });
+        // A paused campaign can be resumed by the broker at any time, which would email whoever was added while it was paused.
+        if (c.status !== 'draft') return j({ error: `That campaign is ${c.status}, not a draft. Recipients can only be added to a draft — duplicate it to start a new one.` });
         const a = await resolveAudience(db, ctx, input);
         if (!a.ids.length) return j({ error: 'No eligible contacts matched (they need an email and must not have unsubscribed).' });
         const rows = a.ids.map(client_id => ({ campaign_id: c.id, client_id, enrolled_by: ctx.userId, next_send_at: null, active: true, org_id: c.org_id ?? null }));
@@ -1815,7 +1865,8 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         return j({ error: `Unknown tool: ${name}` });
     }
   } catch (e) {
-    return j({ error: (e as Error).message });
+    console.error(`[copilot tool ${name}]`, (e as Error).message);
+    return j({ error: GENERIC_FAIL });
   }
 }
 
@@ -1894,6 +1945,7 @@ async function describeWriteRichBase(name: string, input: Record<string, any>, c
       if (typeof camp !== 'string') {
         if (name === 'enroll_campaign_contacts') {
           if (camp.status === 'active') return `⚠️ “${camp.name}” is LIVE — only the broker can add recipients to it. Confirming will be refused.`;
+          if (camp.status !== 'draft') return `⚠️ “${camp.name}” is ${camp.status}, not a draft — recipients can only be added to a draft. Confirming will be refused.`;
           const a = await resolveAudience(db, ctx, input);
           const how = [(input.types as string[] | undefined)?.length ? `type: ${(input.types as string[]).join(', ')}` : '', (input.tags as string[] | undefined)?.length ? `tags: ${(input.tags as string[]).join(', ')}` : '', (input.contact_ids as string[] | undefined)?.length ? `${(input.contact_ids as string[]).length} named contact(s)` : ''].filter(Boolean).join(' · ');
           return `👥 Add ${a.ids.length} recipient${a.ids.length !== 1 ? 's' : ''} to the ${camp.status} campaign “${camp.name}”${how ? ` (${how})` : ''}\n${a.sample.length ? `e.g. ${a.sample.join(', ')}${a.total > a.sample.length ? '…' : ''}\n` : ''}${a.capped ? 'Capped at 500 — the rest can be added in a second step.\n' : ''}${a.skippedNoEmail ? `${a.skippedNoEmail} matching contact${a.skippedNoEmail !== 1 ? 's have' : ' has'} no email and are skipped.\n` : ''}Nothing is emailed — it only builds the audience; the broker activates campaigns.`;

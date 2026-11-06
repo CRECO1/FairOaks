@@ -191,7 +191,7 @@ async function buildProspects(
   if (listing && /^[a-z]{5,}$/.test(word)) {
     const extra = await all<Client>((a, b) => db.from('crm_clients')
       .select('id, first_name, last_name, business_name, email, phone, cell_phone, tags, unsubscribed_at, notes, type')
-      .eq('business_unit', listing?.business_unit ?? 'commercial').ilike('lead_source', `%${word}%`).order('id').range(a, b));
+      .eq('business_unit', listing?.business_unit ?? 'commercial').or('lead_hold.is.null,lead_hold.eq.false').ilike('lead_source', `%${word}%`).order('id').range(a, b));   // a new lead on hold is the broker's alone until released
     for (const c of extra) {
       if (people.has(c.id)) continue;
       const tags = c.tags ?? [];
