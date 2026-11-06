@@ -72,11 +72,12 @@ const apiSessionNoCsrfRoutes = [
 ];
 
 // How the CRM app's pages (/crm/**) treat inline scripts.
-//   'report'  : the old policy (inline scripts allowed) still protects; the STRICT policy runs beside it in report-only mode, and
-//               anything it would have blocked is logged by /api/csp-report. Used to prove the strict policy is safe before enforcing it.
-//   'enforce' : the strict policy is the real one. Only scripts carrying this request's one-time nonce (Next.js adds it to its own
-//               scripts) or loaded from this site run, so injected markup with an inline <script> or onerror= handler does nothing.
-const CRM_CSP_MODE: 'report' | 'enforce' = (process.env.CRM_CSP_MODE === 'enforce' || process.env.CRM_CSP_MODE === 'report' ? process.env.CRM_CSP_MODE : 'report');   // env override is for local testing
+//   'enforce' : only scripts carrying this request's one-time nonce (Next.js stamps its own scripts with it) or loaded from this site run,
+//               so injected markup with an inline <script> or an onerror= handler does nothing. This is the normal setting.
+//   'report'  : the old policy (inline allowed) protects and the strict one only reports to /api/csp-report. Useful locally, but NOT a faithful
+//               dry run on Vercel: there the response's own policy header is what Next.js reads for the nonce, and in this mode it carries none.
+// To roll back an unexpected problem quickly: set this to 'report' (or revert the commit) and push.
+const CRM_CSP_MODE: 'report' | 'enforce' = process.env.CRM_CSP_MODE === 'report' ? 'report' : 'enforce';
 
 const SCRIPT_HOSTS = 'https://maps.googleapis.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://*.clarity.ms https://www.recaptcha.net https://recaptcha.google.com';
 
@@ -118,8 +119,8 @@ function crmShell(request: NextRequest): NextResponse {
   const nonce = btoa(crypto.randomUUID());
   const headers = new Headers(request.headers);
   headers.set('x-nonce', nonce);
-  // Next.js reads the nonce only from the request's enforcing header, so it is always set here (even in report mode). This header never reaches
-  // the browser: what the browser enforces is decided by the RESPONSE headers in withSecurityHeaders.
+  // Next.js takes the nonce from the policy header it is given (on Vercel, the response's own header). The request copy is set too for hosts that
+  // honour request-header overrides. What the BROWSER enforces is decided by the response headers in withSecurityHeaders.
   headers.set('content-security-policy', cspFor(nonce));
   return withSecurityHeaders(NextResponse.next({ request: { headers } }), nonce);
 }
