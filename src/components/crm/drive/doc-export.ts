@@ -70,7 +70,7 @@ export async function docPrintHtml(docId: string, authToken?: string, titleHint?
   const logo = LETTERHEAD.logoPath.startsWith('http') ? LETTERHEAD.logoPath : `${origin}${LETTERHEAD.logoPath}`;
   const top = letterhead ? `<div class="lh-top"><img src="${escHtml(logo)}" alt="CRECO"><div class="c">${escHtml(LETTERHEAD.contact)}</div><div class="r"></div></div>` : '';
   const foot = letterhead ? `<div class="lh-foot"><div class="t">${escHtml(LETTERHEAD.tagline)}</div><div class="c">${escHtml(LETTERHEAD.footContact)}</div></div>` : '';
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(titleHint || title)}</title><style>${PRINT_CSS}</style></head><body>${top}<div class="doc">${body}</div>${foot}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'; base-uri 'none'"><title>${escHtml(titleHint || title)}</title><style>${PRINT_CSS}</style></head><body>${top}<div class="doc">${body}</div>${foot}</body></html>`;
 }
 
 /** Print a document straight from the app: its pages (letterhead, fonts, sizes, colours) go to the browser's print dialog, no download first. */

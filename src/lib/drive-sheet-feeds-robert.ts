@@ -1,5 +1,6 @@
 import type { DriveContext } from '@/lib/drive-server';
 import type { FeedData } from '@/lib/drive-sheet';
+import { hiddenDealIds } from '@/lib/crm-auth';
 
 // Live feeds for "Robert's outreach emails": the one-to-one emails the team builds for Robert to send to tenants about our listings.
 // Only those: an email counts when it went out from Robert's mailbox with a property flyer attached (filed on that property), or is still
@@ -37,17 +38,20 @@ async function loadMail(dc: DriveContext, cfg: Cfg = ROBERT_CFG): Promise<Mail[]
   const { data: prof } = await dc.admin.from('crm_profiles').select('id').ilike('email', cfg.email).maybeSingle();
   const robert = (prof?.id as string) ?? '';
 
-  type Sent = { id: string; client_id: string | null; to_email: string | null; subject: string | null; created_at: string; email_at: string | null; opened_at: string | null; last_opened_at: string | null; open_count: number | null; listing_id: string | null; gmail_thread_id: string | null; tracked: boolean | null; body?: string | null };
+  type Sent = { id: string; deal_id: string | null; client_id: string | null; to_email: string | null; subject: string | null; created_at: string; email_at: string | null; opened_at: string | null; last_opened_at: string | null; open_count: number | null; listing_id: string | null; gmail_thread_id: string | null; tracked: boolean | null; body?: string | null };
   const sent: Sent[] = [];
   for (let from = 0; from < 5000; from += 1000) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let qb: any = dc.admin.from('crm_deal_emails')
-      .select(cfg.byMention ? 'id,client_id,to_email,subject,created_at,email_at,opened_at,last_opened_at,open_count,listing_id,gmail_thread_id,tracked,body' : 'id,client_id,to_email,subject,created_at,email_at,opened_at,last_opened_at,open_count,listing_id,gmail_thread_id,tracked')
+      .select(cfg.byMention ? 'id,deal_id,client_id,to_email,subject,created_at,email_at,opened_at,last_opened_at,open_count,listing_id,gmail_thread_id,tracked,body' : 'id,deal_id,client_id,to_email,subject,created_at,email_at,opened_at,last_opened_at,open_count,listing_id,gmail_thread_id,tracked')
       .eq('direction', 'sent').ilike('from_email', cfg.email).not('subject', 'ilike', '%SAMPLE%');
     qb = cfg.byMention ? qb.not('client_id', 'is', null).gte('created_at', new Date(Date.now() - 120 * 864e5).toISOString()) : qb.not('listing_id', 'is', null);
     const { data } = await qb.order('created_at', { ascending: false }).range(from, from + 999);
     sent.push(...((data ?? []) as unknown as Sent[])); if (!data || data.length < 1000) break;
   }
+  // Mail on deals the caller is not allowed to see (Restricted deals, deals they are not on) never reaches a sheet.
+  const hidden = new Set(await hiddenDealIds(dc.ctx));
+  if (hidden.size) { const visible = sent.filter(m => !m.deal_id || !hidden.has(m.deal_id)); sent.length = 0; sent.push(...visible); }
   if (cfg.byMention) {
     // keep only first-touch emails to outside contacts that name one of our listings; the listing it names becomes the Property
     const { data: all } = await dc.admin.from('crm_listings').select('id,name,address').eq('business_unit', 'commercial');

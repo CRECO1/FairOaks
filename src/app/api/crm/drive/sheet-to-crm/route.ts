@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
+import { userRateLimit } from '@/lib/user-ratelimit';
 import { adminClient } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,7 @@ const digits = (s: string) => s.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  if (!(await userRateLimit('sheet-to-crm', ctx.userId, 20, '1 h')).success) return NextResponse.json({ error: 'Too many sends. Try again later.' }, { status: 429 });
   const body = await req.json().catch(() => null) as { people?: Person[]; task?: { due?: string } | null } | null;
   const people = (Array.isArray(body?.people) ? body!.people! : []).slice(0, MAX_ROWS + 1);
   if (!people.length) return NextResponse.json({ error: 'Nothing to send' }, { status: 400 });
@@ -24,12 +26,18 @@ export async function POST(req: NextRequest) {
   const unit = ctx.businessUnit ?? 'commercial';
   const db = adminClient();
 
-  // Existing contacts in the caller's workspace, to avoid duplicates.
-  const { data: have } = await db.from('crm_clients').select('id,email,phone').eq('business_unit', unit).limit(50000);
-  const byEmail = new Map<string, string>(), byPhone = new Map<string, string>();
-  for (const c of have ?? []) {
-    if (c.email) byEmail.set(String(c.email).trim().toLowerCase(), c.id as string);
-    const d = digits(String(c.phone ?? '')); if (d.length >= 10) byPhone.set(d, c.id as string);
+  // Existing contacts in the caller's workspace, to avoid duplicates. New leads on hold (visible only to the broker) are never matched,
+  // so a sheet can neither reveal that an email/phone is a held lead nor attach a task to one.
+  const byEmail = new Map<string, string>(), byPhone = new Map<string, string>(), heldEmail = new Set<string>(), heldPhone = new Set<string>();
+  for (let from = 0; from < 50000; from += 1000) {
+    const { data: have } = await db.from('crm_clients').select('id,email,phone,lead_hold').eq('business_unit', unit).order('id').range(from, from + 999);
+    for (const c of have ?? []) {
+      const em = c.email ? String(c.email).trim().toLowerCase() : '', d = digits(String(c.phone ?? ''));
+      if (c.lead_hold && ctx.role !== 'super_admin') { if (em) heldEmail.add(em); if (d.length >= 10) heldPhone.add(d); continue; }
+      if (em) byEmail.set(em, c.id as string);
+      if (d.length >= 10) byPhone.set(d, c.id as string);
+    }
+    if (!have || have.length < 1000) break;
   }
 
   let created = 0, existing = 0, tasks = 0;
@@ -39,6 +47,7 @@ export async function POST(req: NextRequest) {
     const email = clean(p.email).toLowerCase(), phone = clean(p.phone, 40);
     if (!name && !company && !email && !phone) continue;
     const goodEmail = EMAIL_RE.test(email) ? email : '';
+    if ((goodEmail && heldEmail.has(goodEmail)) || (digits(phone).length >= 10 && heldPhone.has(digits(phone)))) { existing++; continue; }
     let id = (goodEmail && byEmail.get(goodEmail)) || (digits(phone).length >= 10 ? byPhone.get(digits(phone)) : undefined) || '';
     if (id) existing++;
     else {

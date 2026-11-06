@@ -32,7 +32,9 @@ const REPRESENTATION_SIDES = ['buyer', 'tenant', 'seller', 'landlord', 'intermed
 
 // Call a CRM API route as the agent (same auth + RBAC as the UI).
 async function crmFetch(ctx: AgentCtx, path: string, method: string, body: unknown): Promise<{ ok: boolean; status: number; data: any }> {
-  const res = await fetch(`${ctx.origin ?? 'https://www.fairoaksrealtygroup.com'}${path}`, {
+  // The internal secret below must only ever go to our own site: in production the address is fixed, never taken from the request.
+  const own = (process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com').replace(/\/$/, '');
+  const res = await fetch(`${process.env.NODE_ENV === 'production' ? own : (ctx.origin ?? own)}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -213,6 +215,7 @@ async function loadDealForWrite(db: SupabaseClient, ctx: AgentCtx, dealId: strin
   const { data: d } = await db.from('crm_deals').select('*').eq('id', dealId).maybeSingle();
   if (!d) return JSON.stringify({ error: 'Deal not found' });
   if (ctx.businessUnit && d.business_unit !== ctx.businessUnit) return JSON.stringify({ error: 'That deal is in a different workspace' });
+  if (d.is_restricted && ctx.role !== 'super_admin' && d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return JSON.stringify({ error: 'Deal not found' });
   if (ctx.role === 'agent' && d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return JSON.stringify({ error: "That deal isn't assigned to you" });
   return d;
 }
@@ -274,11 +277,26 @@ async function heldClientIds(db: SupabaseClient, ctx: { role?: string | null }):
 }
 
 async function outOfWorkspace(db: SupabaseClient, ctx: AgentCtx, table: string, id: string, label: string): Promise<string | null> {
-  if (!ctx.businessUnit || !id) return null;
+  if (!id) return null;
   const { data: row } = await db.from(table).select('*').eq('id', id).maybeSingle();
-  const data = row as { business_unit?: string; lead_hold?: boolean } | null;
-  if (!data || (table === 'crm_clients' && data.lead_hold && ctx.role !== 'super_admin')) return JSON.stringify({ error: `${label} not found` });
-  if (data.business_unit !== ctx.businessUnit) return JSON.stringify({ error: `${label} is in a different workspace` });
+  const data = row as { business_unit?: string; lead_hold?: boolean; is_restricted?: boolean; agent_id?: string | null; assigned_agent_ids?: string[] | null; assigned_to?: string | null; created_by?: string | null; deal_id?: string | null } | null;
+  const nf = () => JSON.stringify({ error: `${label} not found` });
+  if (!data) return nf();
+  if (ctx.businessUnit && data.business_unit !== ctx.businessUnit) return JSON.stringify({ error: `${label} is in a different workspace` });
+  const onIt = (r: { agent_id?: string | null; assigned_agent_ids?: string[] | null }) => r.agent_id === ctx.userId || (r.assigned_agent_ids ?? []).includes(ctx.userId);
+  if (table === 'crm_clients') {
+    if (data.lead_hold && ctx.role !== 'super_admin') return nf();
+    if (ctx.role === 'agent' && !onIt(data)) return JSON.stringify({ error: `That ${label.toLowerCase()} isn't assigned to you` });
+  }
+  if (table === 'crm_deals') {
+    // Restricted ("private") deals belong to their owner/assigned agents and the super_admin; agents see only deals they are on.
+    if (ctx.role !== 'super_admin' && data.is_restricted && !onIt(data)) return nf();
+    if (ctx.role === 'agent' && !onIt(data)) return JSON.stringify({ error: `That ${label.toLowerCase()} isn't assigned to you` });
+  }
+  if (table === 'crm_tasks') {
+    if (ctx.role === 'agent' && data.agent_id !== ctx.userId && data.assigned_to !== ctx.userId && data.created_by !== ctx.userId) return JSON.stringify({ error: "That task isn't yours" });
+    if (data.deal_id && (await hiddenDeals(db, ctx)).includes(data.deal_id)) return nf();
+  }
   return null;
 }
 
@@ -924,9 +942,9 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         return j({ ok: true });
       }
       case 'add_note': {
+        { const bad = await outOfWorkspace(db, ctx, 'crm_clients', input.contact_id, 'Contact'); if (bad) return bad; }
         const { data: c } = await db.from('crm_clients').select('notes, business_unit').eq('id', input.contact_id).single();
         if (!c) return j({ error: 'Contact not found' });
-        if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return j({ error: 'Contact is in a different workspace' });
         const stamp = chicagoDateUS();
         const merged = `${c?.notes ? c.notes + '\n\n' : ''}[${stamp}] ${input.note}`;
         const { error } = await db.from('crm_clients').update({ notes: merged }).eq('id', input.contact_id);
@@ -936,9 +954,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
       }
       case 'update_deal_stage': {
         if (!DEAL_STAGES.includes(input.stage)) return j({ error: `stage must be one of: ${DEAL_STAGES.join(', ')}` });
-        const { data: deal } = await db.from('crm_deals').select('client_id, business_unit').eq('id', input.deal_id).maybeSingle();
-        if (!deal || (await hiddenDeals(db, ctx)).includes(input.deal_id)) return j({ error: 'Deal not found' });
-        if (ctx.businessUnit && deal.business_unit !== ctx.businessUnit) return j({ error: 'That deal is in a different workspace' });
+        const deal = await loadDealForWrite(db, ctx, input.deal_id); if (typeof deal === 'string') return deal;
         const { error } = await db.from('crm_deals').update({ stage: input.stage, last_touch: chicagoToday() }).eq('id', input.deal_id);
         if (error) return j({ error: error.message });
         await logCopilot(db, ctx, `Moved a deal to “${input.stage}”`, deal?.client_id);
@@ -1842,7 +1858,7 @@ export async function precheckWrite(name: string, input: Record<string, any>, ct
   return null;
 }
 
-export async function describeWriteRich(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
+async function describeWriteRichBase(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
   if (name === 'edit_drive_doc') {
     const trim = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
     const base = describeWrite(name, input);
@@ -1867,7 +1883,7 @@ export async function describeWriteRich(name: string, input: Record<string, any>
           const loaded = await loadEmailAttachments(db, ctx, input.attachments);
           attLine = 'error' in loaded ? `\n⚠️ Attachments: ${loaded.error}` : `\n📎 Attached: ${loaded.files.map(f => `${f.name} (${Math.max(1, Math.round(f.size / 1024))} KB)`).join(', ')}`;
         }
-        return `📧 Send from your Gmail to ${who} <${c.email ?? 'no email on file'}>${ccLine}\nSubject: ${input.subject}${attLine}\n\n${body.slice(0, 1200)}${body.length > 1200 ? '…' : ''}`;
+        return `📧 Send from your Gmail to ${who} <${c.email ?? 'no email on file'}>${ccLine}\nSubject: ${input.subject}${attLine}\n\n${body}`;
       }
     } catch { /* fall through to the generic text */ }
   }
@@ -1971,6 +1987,49 @@ export async function describeWriteRich(name: string, input: Record<string, any>
   return describeWrite(name, input);
 }
 
+
+const CARD_TARGET_TOOLS = new Set(['update_deal_stage', 'complete_task', 'add_note', 'update_contact', 'update_property', 'link_property_contact', 'fill_document', 'prepare_esign', 'send_for_signature', 'create_task', 'send_email', 'update_deal']);
+
+/**
+ * What the agent sees on an approval card. The base text says WHAT is being done; this adds WHO/WHICH (the real deal, contact, property,
+ * task or document behind each id the model supplied), every free-text field in full, and the real address behind every link in an email,
+ * so text planted in a note, email or web page cannot steer an action the agent approves without seeing it.
+ */
+export async function describeWriteRich(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
+  const base = await describeWriteRichBase(name, input, ctx);
+  try {
+    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+    const one = async (table: string, id: unknown, cols: string) => (id ? ((await db.from(table).select(cols).eq('id', String(id)).maybeSingle()).data as Record<string, any> | null) : null);
+    const head: string[] = [];
+    if (CARD_TARGET_TOOLS.has(name)) {
+      const [deal, contact, listing, sub, task] = await Promise.all([
+        one('crm_deals', input.deal_id, 'client, property, stage'), one('crm_clients', input.contact_id, 'first_name, last_name, business_name, email'),
+        one('crm_listings', input.listing_id, 'name, address'), one('crm_form_submissions', input.submission_id, 'title'), one('crm_tasks', input.task_id, 'title, due_date'),
+      ]);
+      if (deal) head.push(`Deal: ${deal.client}${deal.property ? ` — ${deal.property}` : ''} (${deal.stage})`);
+      if (contact && name !== 'send_email') head.push(`Contact: ${contactLabel(contact as any)}`);
+      if (listing) head.push(`Property: ${listing.name}${listing.address ? ` — ${listing.address}` : ''}`);
+      if (sub) head.push(`Document: ${sub.title}`);
+      if (task) head.push(`Task: ${task.title}${task.due_date ? ` (due ${task.due_date})` : ''}`);
+    }
+    const tail: string[] = [];
+    const full = (label: string, v: unknown) => { const t = String(v ?? '').trim(); if (t) tail.push(`${label}: ${t}`); };
+    if (name === 'send_for_signature') full('Message to the signers', input.message);
+    if (name === 'schedule_event') { full('Location', input.location); full('Notes', input.notes); }
+    if (name === 'create_task') full('Notes', input.notes);
+    if (name === 'create_contact') { full('Notes', input.notes); full('Lead source', input.lead_source); }
+    if (name === 'draft_campaign') { const t = String(input.email_body ?? input.body ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); if (t) tail.push(`Email text (${t.length.toLocaleString()} characters):\n${t.slice(0, 2000)}${t.length > 2000 ? '…' : ''}`); }
+    if (name === 'send_email' || name === 'send_for_signature' || name === 'draft_campaign') {
+      const html = String(input.body ?? input.email_body ?? input.message ?? '');
+      const links: string[] = [];
+      for (const m of html.matchAll(/<a\b[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) links.push(`${m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() || '(no text)'} → ${m[1]}`);
+      for (const m of html.replace(/<a\b[\s\S]*?<\/a>/gi, ' ').matchAll(/https?:\/\/[^\s<>"')]+/gi)) links.push(m[0]);
+      if (links.length) tail.push(`🔗 Links in this message (check each address):\n${[...new Set(links)].slice(0, 12).map(l => `  • ${l}`).join('\n')}`);
+    }
+    return `${head.length ? `${head.join(' · ')}\n` : ''}${base}${tail.length ? `\n\n${tail.join('\n')}` : ''}`;
+  } catch { return base; }
+}
+
 // A short human-readable summary of a proposed write, for the confirmation prompt.
 /** "field → value; field → value" for a confirm card, so the agent sees WHAT is being written (an email, a phone, a price), not just which fields. */
 function valueList(obj: Record<string, unknown>, skip: string[]): string {
@@ -1979,7 +2038,7 @@ function valueList(obj: Record<string, unknown>, skip: string[]): string {
     .map(([k, v]) => {
       const raw = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '');
       const t = raw.replace(/\s+/g, ' ').trim();
-      return `${k.replace(/_/g, ' ')} → ${t.length > 90 ? t.slice(0, 90) + '…' : (t || '(blank)')}`;
+      return `${k.replace(/_/g, ' ')} → ${t.length > 400 ? t.slice(0, 400) + `… (${t.length} characters in all)` : (t || '(blank)')}`;
     })
     .join('; ');
 }

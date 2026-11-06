@@ -3,6 +3,7 @@ import { getCrmContext, isAdminRole, unauthorized, notFound, dbError, heldClient
 import { adminClient } from '@/lib/supabase-admin';
 import { refreshTextFollowUps, sendText, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
 import { toE164 } from '@/lib/phone';
+import { userRateLimit } from '@/lib/user-ratelimit';
 
 // Text threads on the Talkroute numbers, for the Calling Log's Texts view and the
 // contact card. Replies go out through Talkroute's messaging API from the same
@@ -83,6 +84,8 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   if (!talkrouteConfigured()) return NextResponse.json({ error: 'Talkroute is not connected' }, { status: 503 });
+  // Every text is a paid message to a real person: cap what one login can send.
+  if (!(await userRateLimit('crm-text', ctx.userId, 60, '1 h')).success) return NextResponse.json({ error: 'Too many texts this hour. Try again later.' }, { status: 429 });
   const b = await req.json().catch(() => ({}));
   const cid = String(b.conversation_id || '');
   const body = String(b.body || '').trim();
@@ -93,6 +96,8 @@ export async function POST(req: NextRequest) {
   // The thread must exist in the caller's workspace — no texting arbitrary numbers from here.
   const { data: existing } = await supabase.from('crm_text_messages').select('business_unit, contact_id').eq('conversation_id', cid).order('sent_at', { ascending: false }).limit(1).maybeSingle();
   if (!existing || (!isAdminRole(ctx.role) && existing.business_unit !== ctx.businessUnit)) return notFound('Conversation not found');
+  // A new lead on hold is visible only to the broker; nobody else may text it (the GET already hides it).
+  if (existing.contact_id && (await heldClientIds(ctx)).has(existing.contact_id as string)) return notFound('Conversation not found');
   try {
     const sent = await sendText(cid, body);
     const [ours, theirs] = cid.split('-');

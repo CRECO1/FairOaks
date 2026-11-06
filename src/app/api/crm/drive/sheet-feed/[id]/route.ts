@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound } from '@/lib/crm-auth';
 import { driveContext } from '@/lib/drive-server';
-import { FEEDS, isFeed } from '@/lib/drive-sheet-feeds';
+import { FEEDS, isFeed, feedsAllowed } from '@/lib/drive-sheet-feeds';
 
 // Live CRM data for a spreadsheet's feed tabs. The browser asks for the rows and writes them into the shared sheet itself, so every
 // teammate who has it open sees the refresh live and the normal save path stores it. Reads respect the caller's own CRM access.
@@ -19,6 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => ({})) as { feeds?: unknown };
   const wanted = (Array.isArray(body.feeds) ? body.feeds : []).filter(isFeed);
   if (!wanted.length) return NextResponse.json({ error: 'No feed requested' }, { status: 400 });
+  if (!(await feedsAllowed(wanted, dc))) return NextResponse.json({ error: 'That feed is private to its owner and the admins' }, { status: 403 });
   try {
     const feeds = await Promise.all(wanted.map(k => FEEDS[k].build(dc)));
     return NextResponse.json({ feeds, message: `Refreshed ${feeds.map(f => f.title).join(' and ')} from the CRM` });

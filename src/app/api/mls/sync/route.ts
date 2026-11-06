@@ -16,6 +16,7 @@
  *   { filter?: string }  — override filter for this call only
  */
 
+import { needsSecondFactor } from '@/lib/mfa';
 import { NextRequest, NextResponse } from 'next/server';
 import { safeEqual } from '@/lib/secret-compare';
 import { createClient } from '@supabase/supabase-js';
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
         { auth: { autoRefreshToken: false, persistSession: false } }
       );
       const { data: { user } } = await verifier.auth.getUser(bearerToken);
-      if (user) {
+      if (user && !needsSecondFactor(user, bearerToken)) {
         const { data } = await verifier.from('crm_profiles').select('role').eq('id', user.id).single();
         isAdmin = data?.role === 'admin' || data?.role === 'super_admin';
       }

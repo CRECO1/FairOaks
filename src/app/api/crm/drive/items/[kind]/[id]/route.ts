@@ -25,18 +25,37 @@ async function loadVisible(dc: DriveContext, kind: Kind, id: string): Promise<Ro
   return row && kind === 'form' ? { ...row, visibility: 'team', shared_with: [], deal_id: null } : row;
 }
 
-/** Folder ids in a folder's subtree (itself included) and the documents inside them. */
-async function subtree(dc: DriveContext, folderId: string) {
-  const { data } = await dc.admin.from('crm_drive_folders').select('id,parent_id').eq('business_unit', dc.bu);
-  const folderIds = [folderId, ...descendantFolderIds((data ?? []) as Array<{ id: string; parent_id: string | null }>, folderId)];
-  const { data: docs } = await dc.admin.from('crm_drive_docs').select('id').eq('business_unit', dc.bu).in('folder_id', folderIds);
-  const { data: files } = await dc.admin.from('crm_drive_files').select('id,storage_path').eq('business_unit', dc.bu).in('folder_id', folderIds);
-  const { data: forms } = await dc.admin.from('crm_drive_forms').select('id').eq('business_unit', dc.bu).in('folder_id', folderIds);
-  return { formIds: ((forms ?? []) as Array<{ id: string }>).map(f => f.id), folderIds, docIds: ((docs ?? []) as Array<{ id: string }>).map(d => d.id), fileIds: ((files ?? []) as Array<{ id: string }>).map(d => d.id), filePaths: ((files ?? []) as Array<{ storage_path: string }>).map(d => d.storage_path) };
+/**
+ * Folder ids in a folder's subtree (itself included) and the documents inside them.
+ * Reads go through the CALLER's access (RLS) by default, so a folder action never reaches an item the caller cannot see; `all`
+ * reads everything (only used to find out whether other people's items sit inside, before a permanent delete).
+ * `mine` is the subset the caller created, which is all a non-admin may re-share.
+ */
+async function subtree(dc: DriveContext, folderId: string, opts?: { all?: boolean }) {
+  const db = opts?.all ? dc.admin : dc.userDb;
+  const me = dc.ctx.userId;
+  type Item = { id: string; created_by: string | null };
+  const { data } = await db.from('crm_drive_folders').select('id,parent_id,created_by').eq('business_unit', dc.bu);
+  const allFolders = (data ?? []) as Array<Item & { parent_id: string | null }>;
+  const folderIds = [folderId, ...descendantFolderIds(allFolders, folderId)];
+  const { data: docs } = await db.from('crm_drive_docs').select('id,created_by').eq('business_unit', dc.bu).in('folder_id', folderIds);
+  const { data: files } = await db.from('crm_drive_files').select('id,storage_path,created_by').eq('business_unit', dc.bu).in('folder_id', folderIds);
+  const { data: forms } = await db.from('crm_drive_forms').select('id').eq('business_unit', dc.bu).in('folder_id', folderIds);
+  const d = (docs ?? []) as Item[], f = (files ?? []) as Array<Item & { storage_path: string }>;
+  const sub = allFolders.filter(x => folderIds.includes(x.id) && x.id !== folderId);
+  return {
+    formIds: ((forms ?? []) as Array<{ id: string }>).map(x => x.id), folderIds, docIds: d.map(x => x.id), fileIds: f.map(x => x.id), filePaths: f.map(x => x.storage_path),
+    mine: { folderIds: folderIds.filter(id => id === folderId || allFolders.find(x => x.id === id)?.created_by === me), docIds: d.filter(x => x.created_by === me).map(x => x.id), fileIds: f.filter(x => x.created_by === me).map(x => x.id) },
+    foreign: sub.filter(x => x.created_by !== me).length + d.filter(x => x.created_by !== me).length + f.filter(x => x.created_by !== me).length,
+  };
 }
 
+/** Apply a patch to a folder and what is inside it. Sharing/visibility changes by a non-admin only reach the items they created. */
 async function applyToSubtree(dc: DriveContext, folderId: string, patch: Record<string, unknown>) {
-  const { folderIds, docIds, fileIds, formIds } = await subtree(dc, folderId);
+  const st = await subtree(dc, folderId);
+  const own = !dc.isAdmin && ('visibility' in patch || 'shared_with' in patch || 'deal_id' in patch);
+  const { folderIds, docIds, fileIds } = own ? st.mine : st;
+  const { formIds } = st;
   const stamp = { ...patch, updated_at: new Date().toISOString() };
   // forms carry only the trash stamp (their sharing is fixed: always the team)
   if (formIds.length && 'trashed_at' in patch) await dc.admin.from('crm_drive_forms').update({ trashed_at: patch.trashed_at, updated_at: stamp.updated_at }).in('id', formIds);
@@ -216,7 +235,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ k
   // Uploaded files live in storage too: remove the objects (this one, or everything under a deleted folder) with the rows.
   let paths: string[] = [];
   if (kind === 'file') paths = [String((row as unknown as { storage_path?: string }).storage_path ?? '')].filter(Boolean);
-  else if (kind === 'folder') paths = (await subtree(dc, id)).filePaths;
+  else if (kind === 'folder') {
+    // Deleting a folder for good also deletes everything inside it (the database cascades), so a non-admin owner can only do that
+    // when every item in it is theirs.
+    const st = await subtree(dc, id, { all: true });
+    if (!dc.isAdmin && st.foreign > 0) return forbidden('This folder holds items that belong to other people. Move them out, or ask an admin.');
+    paths = st.filePaths;
+  }
   if (kind === 'file' && !paths.length) {
     const { data } = await dc.admin.from('crm_drive_files').select('storage_path').eq('id', id).maybeSingle();
     if (data?.storage_path) paths = [data.storage_path as string];

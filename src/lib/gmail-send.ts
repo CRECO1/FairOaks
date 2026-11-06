@@ -1,3 +1,4 @@
+import { userRateLimit } from '@/lib/user-ratelimit';
 import { htmlToText } from '@/lib/html-text';
 import { storeOutgoingAttachments, EMAIL_ATTACH_BUCKET } from '@/lib/email-attachments';
 import { resolveCrmAttachments, CRM_ATTACH_KINDS, EMAIL_ATT_ID, GMAIL_ATT_ID, UPLOAD_ID, type CrmAttachKind } from '@/lib/crm-attachments';
@@ -159,6 +160,9 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
     // authenticate it — send_email failed with a misleading "connect Gmail in Settings".
     const ctx = presetCtx ?? await getCrmContext(req as NextRequest);
     if (!ctx) return unauthorized();
+    // Direct sends (the composer, Copilot, document email) are capped per login so a stolen session or a rogue login can't mass-mail from
+    // the brand. Scheduled sends arrive with a preset context and are already bounded by the 50-pending cap.
+    if (!presetCtx && !(await userRateLimit('gmail-send', ctx.userId, 150, '1 h')).success) return NextResponse.json({ error: 'Too many emails this hour. Try again later.' }, { status: 429 });
     const caller = { id: ctx.userId };
 
     const { userId, dealId, clientId: clientIdIn, to: toRaw, cc: ccRaw, bcc: bccRaw, toName, resolveClient, individual: individualRaw, subject, body, agentName, ccAgentIds, threadId: threadIdRaw, inReplyTo: inReplyToRaw, attachments, crmAttachments, followUpDays: followUpRaw } = await req.json();

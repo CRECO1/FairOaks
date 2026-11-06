@@ -425,7 +425,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
     const w = window.open('', '_blank');
     if (!w) { onToast?.('Pop-up blocked — allow pop-ups to export.'); return; }
     w.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>8000 Fair Oaks Pkwy — ${bLabel} Floorplans</title>` +
+      `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'">` + `<title>8000 Fair Oaks Pkwy — ${bLabel} Floorplans</title>` +
       `<style>@page{size:landscape;margin:0}html,body{margin:0;padding:0}` +
       `.sheet{padding:24px;box-sizing:border-box;page-break-after:always}` +
       `.sheet:last-child{page-break-after:auto}` +

@@ -54,7 +54,7 @@ export async function xlsxToTabs(buf: Buffer): Promise<ImportTab[]> {
           if (font.italic) f.i = 1;
           if (font.underline) f.u = 1;
           if (font.strike) f.s = 1;
-          if (font.name) { f.fn = font.name; if (FONT_FAMILIES.some(x => x[0] === font.name)) f.ff = font.name; }
+          if (font.name && /^[A-Za-z0-9 ._-]{1,60}$/.test(font.name)) { f.fn = font.name; if (FONT_FAMILIES.some(x => x[0] === font.name)) f.ff = font.name; }
           if (font.size && font.size !== 10) f.fs = px(font.size);   // 10pt is the sheet's default look; anything else is kept exactly
         }
         const al = cell.alignment;

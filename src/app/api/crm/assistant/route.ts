@@ -1,3 +1,4 @@
+import { userRateLimit } from '@/lib/user-ratelimit';
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
@@ -94,6 +95,10 @@ export async function POST(req: NextRequest) {
   // results fed back in. Auth alone bounds WHO can spend that, not HOW MUCH.
   const { success } = await rateLimit(req, 'copilot');
   if (!success) return NextResponse.json({ error: "You're going a bit fast for me — give it a minute." }, { status: 429 });
+  // The IP limit above is easy to sidestep from many addresses, so the real spending cap is per signed-in user.
+  if (!(await userRateLimit('copilot-hour', ctx.userId, 60, '1 h')).success || !(await userRateLimit('copilot-day', ctx.userId, 300, '1 d')).success) {
+    return NextResponse.json({ error: "That's a lot of Copilot requests for one day. It resets shortly — ask the account owner if you need more." }, { status: 429 });
+  }
 
   const { messages: incoming = [], confirm = [], openDoc }: ReqBody = await req.json();
   if (!Array.isArray(incoming) || incoming.length === 0) return NextResponse.json({ error: 'messages required' }, { status: 400 });

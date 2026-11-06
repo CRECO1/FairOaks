@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unauthorized, notFound } from '@/lib/crm-auth';
 import { driveContext } from '@/lib/drive-server';
+import { userRateLimit } from '@/lib/user-ratelimit';
 import { DRIVE_FILE_MAX, DRIVE_FILE_TYPES, FILE_COLS } from '@/lib/drive-types';
 
 // Upload a file into a Drive folder. The browser PUTs the bytes straight to storage (a posted body is capped at ~4.5 MB on Vercel),
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === 'presign') {
+    if (!(await userRateLimit('drive-upload', ctx.userId, 120, '1 h')).success) return NextResponse.json({ error: 'Too many uploads this hour. Try again later.' }, { status: 429 });
     const contentType = DRIVE_FILE_TYPES[extOf(filename)];
     if (!contentType) {
       const ext = extOf(filename);
@@ -58,6 +60,11 @@ export async function POST(req: NextRequest) {
     const obj = listed?.find(o => o.name === m[2]);
     if (!obj) return NextResponse.json({ error: 'The file didn’t reach storage — try the upload again' }, { status: 400 });
     const meta = (obj.metadata ?? {}) as { size?: number; mimetype?: string };
+    // The 25 MB cap is checked here against the real object (the size sent at presign time is only the browser's word).
+    if (Number(meta.size ?? 0) > DRIVE_FILE_MAX) {
+      await admin.storage.from(BUCKET).remove([path]);
+      return NextResponse.json({ error: 'A file must be 25 MB or smaller' }, { status: 400 });
+    }
     const { data, error } = await admin.from('crm_drive_files').insert({
       business_unit: bu, folder_id: parentId, name: filename, storage_path: path, size: meta.size ?? null,
       mime: meta.mimetype || DRIVE_FILE_TYPES[extOf(filename)] || 'application/octet-stream', created_by: ctx.userId, ...inherit,

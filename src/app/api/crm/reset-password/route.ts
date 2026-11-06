@@ -1,3 +1,4 @@
+import { needsSecondFactor } from '@/lib/mfa';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmAdmin, getCrmSuperAdmin, forbidden } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
@@ -13,7 +14,7 @@ async function getAdminId(req: NextRequest): Promise<string | null> {
   if (token) {
     const admin = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: { user } } = await admin.auth.getUser(token);
-    if (user) {
+    if (user && !needsSecondFactor(user, token)) {
       const { data } = await admin.from('crm_profiles').select('role').eq('id', user.id).single();
       return (data?.role === 'admin' || data?.role === 'super_admin') ? user.id : null;
     }

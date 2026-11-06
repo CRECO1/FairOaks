@@ -1,3 +1,4 @@
+import { needsSecondFactor } from '@/lib/mfa';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { adminClient } from '@/lib/supabase-admin';
@@ -66,6 +67,8 @@ export async function getCrmUser(req?: NextRequest) {
     const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: { user }, error } = await admin.auth.getUser(token);
     if (!error && user) {
+      // A login with 2-step verification turned on must have used it: a password-only token gets nothing.
+      if (needsSecondFactor(user, token)) return null;
       if (cacheable) {
         const exp = tokenExpiryMs(token);
         const until = Math.min(Date.now() + AUTH_CACHE_MS, exp || 0);   // unreadable expiry -> don't cache
@@ -79,6 +82,10 @@ export async function getCrmUser(req?: NextRequest) {
   const supabase = await createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
+  if (user.factors?.some(f => f.status === 'verified')) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (needsSecondFactor(user, session?.access_token)) return null;
+  }
   return user;
 }
 

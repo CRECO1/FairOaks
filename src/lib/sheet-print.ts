@@ -8,6 +8,12 @@ import { cellKey, extMap, fmtMap, fontCss, mergeList, tBold, tCols, type CellFmt
 const DEF_W = 120;
 const esc = (v: string) => v.replace(/[&<>"]/g, ch => (ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : '&quot;'));
 const color = (c?: string) => (c && /^#[0-9a-f]{3,8}$/i.test(c) ? c : undefined);
+// Cell formats are stored in the shared sheet, so anyone who can edit it (or an uploaded .xlsx) controls these strings.
+// They land in a style="" attribute, so only plain font names and a bounded numeric size get through.
+const safeFont = (n?: string) => (typeof n === 'string' && /^[A-Za-z0-9 ._-]{1,60}$/.test(n) ? n : undefined);
+const safeSize = (n: unknown) => { const v = Number(n); return Number.isFinite(v) ? Math.min(200, Math.max(4, v)) : 13; };
+// The print page has no scripts of its own; this policy keeps it that way even if markup ever slips through.
+export const PRINT_CSP = '<meta http-equiv="Content-Security-Policy" content="script-src \'none\'; object-src \'none\'; base-uri \'none\'">';
 const numeric = (v: string) => v !== '' && /^-?[\d,.$%]+$/.test(v.trim());
 
 export function sheetPrintHtml(ydoc: Y.Doc, t: TabInfo, grid: string[][], title: string): string {
@@ -40,8 +46,8 @@ export function sheetPrintHtml(ydoc: Y.Doc, t: TabInfo, grid: string[][], title:
     if (isB) css.push('font-weight:700');
     if (f.i) css.push('font-style:italic');
     const deco = [f.u ? 'underline' : '', f.s ? 'line-through' : ''].filter(Boolean).join(' '); if (deco) css.push(`text-decoration:${deco}`);
-    const fam = f.fn ? `'${f.fn.replace(/'/g, '')}', Arial, sans-serif` : fontCss(f.ff); if (fam) css.push(`font-family:${fam}`);
-    css.push(`font-size:${f.fs ?? 13}px`);
+    const fn = safeFont(f.fn); const fam = fn ? `'${fn}', Arial, sans-serif` : fontCss(f.ff); if (fam) css.push(`font-family:${fam}`);
+    css.push(`font-size:${safeSize(f.fs ?? 13)}px`);
     css.push(`text-align:${f.al === 'c' ? 'center' : f.al === 'r' || (!f.al && numeric(v)) ? 'right' : 'left'}`);
     css.push(`vertical-align:${f.va === 't' ? 'top' : f.va === 'b' ? 'bottom' : f.wr && !f.va ? 'top' : 'middle'}`);
     css.push(f.wr ? 'white-space:pre-wrap;word-break:break-word' : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis');
@@ -57,13 +63,13 @@ export function sheetPrintHtml(ydoc: Y.Doc, t: TabInfo, grid: string[][], title:
       if (covered.has(key)) continue;
       const m = master.get(key);
       const v = grid[r]?.[c] ?? '';
-      tds.push(`<td${m ? ` colspan="${m.c2 - m.c1 + 1}" rowspan="${m.r2 - m.r1 + 1}"` : ''} style="${tdStyle(r, c, v)}">${esc(v)}</td>`);
+      tds.push(`<td${m ? ` colspan="${m.c2 - m.c1 + 1}" rowspan="${m.r2 - m.r1 + 1}"` : ''} style="${esc(tdStyle(r, c, v))}">${esc(v)}</td>`);
     }
     return `<tr${h > 0 ? ` style="height:${h}px"` : ''}>${tds.join('')}</tr>`;
   };
   const head = Array.from({ length: frozen }, (_, r) => row(r, true)).join('');
   const body = Array.from({ length: Math.max(0, maxR - frozen) }, (_, i) => row(frozen + i, false)).join('');
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)} — ${esc(t.name)}</title><style>
+  return `<!doctype html><html><head><meta charset="utf-8">${PRINT_CSP}<title>${esc(title)} — ${esc(t.name)}</title><style>
 @page{size:${portrait ? 'portrait' : 'landscape'};margin:8mm}
 html,body{margin:0;padding:0;background:#fff}
 body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:Arial,Helvetica,sans-serif;color:#111}

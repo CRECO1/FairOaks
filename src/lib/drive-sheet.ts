@@ -474,7 +474,12 @@ export function tabGrid(tab: Y.Map<unknown>, evaluated?: (r: number, c: number) 
   return out;
 }
 
-export function csvEscape(v: string) { return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
+// Spreadsheet apps run a cell that starts with = + - @ (or a tab / CR) as a formula, so text from the outside (email replies, lead
+// names) must not start that way in a downloaded file. A plain negative number is left alone.
+export function csvEscape(v0: string) {
+  const v = /^[=+\-@\t\r]/.test(v0) && !/^-?[\d.,]+%?$/.test(v0) ? `'${v0}` : v0;
+  return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = []; let row: string[] = [], cur = '', q = false;
   const src = text.replace(/^﻿/, '');

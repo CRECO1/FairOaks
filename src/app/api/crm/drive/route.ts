@@ -7,7 +7,7 @@ import { logDocEvent } from '@/lib/drive-events';
 import { markdownToDriveState } from '@/lib/drive-markdown';
 import * as YY from 'yjs';
 import { applyFeed, blankSheetState, newTabMap, sheetText, tabsMap } from '@/lib/drive-sheet';
-import { FEEDS, isFeed } from '@/lib/drive-sheet-feeds';
+import { FEEDS, isFeed, feedsAllowed } from '@/lib/drive-sheet-feeds';
 import { builtinById } from '@/lib/drive-builtin-templates';
 import { buildBuiltin } from '@/lib/drive-builtin-build';
 import { DOC_COLS, FILE_COLS, FOLDER_COLS, FORM_LINK_COLS, type DriveDoc, type DriveFile, type DriveFolder, type DriveListing } from '@/lib/drive-types';
@@ -202,10 +202,12 @@ export async function POST(req: NextRequest) {
     const srcId = (body.template_id || body.from_doc_id) as string;
     if (!UUID.test(srcId)) return NextResponse.json({ error: 'invalid document' }, { status: 400 });
     const asTemplate = !!body.from_doc_id && body.as_template === true;
-    const { data: seen } = await userDb.from('crm_drive_docs').select('id,title,deal_id,is_template,trashed_at').eq('id', srcId).eq('business_unit', bu).maybeSingle();
+    const { data: seen } = await userDb.from('crm_drive_docs').select('id,title,deal_id,is_template,trashed_at,visibility,created_by').eq('id', srcId).eq('business_unit', bu).maybeSingle();
     if (!seen || seen.trashed_at || (body.template_id && !seen.is_template)) return notFound('That document is not available');
     // A document linked to a deal can't become a team-wide template (its contents belong to that deal's people).
     if (asTemplate && seen.deal_id) return NextResponse.json({ error: 'A document linked to a deal can’t be saved as a template' }, { status: 400 });
+    // A template is open to the whole team, so a private document can only be published by its owner (or an admin), never by someone it was shared with.
+    if (asTemplate && seen.visibility === 'private' && !dc.isAdmin && seen.created_by !== dc.ctx.userId) return NextResponse.json({ error: 'Only the owner or an admin can save a private document as a team template' }, { status: 403 });
     const { data: srcRow } = await admin.from('crm_drive_docs').select('ystate,content_text').eq('id', srcId).single();
     if (!srcRow) return notFound('That document is not available');
     // A template with {{fields}} used here (no deal or contact involved): the broker and today's date fill in, the rest go back to friendly [blanks].
@@ -248,6 +250,7 @@ export async function POST(req: NextRequest) {
   } else if (isSheet) {
     // A sheet can start with live CRM tabs (one per requested feed), filled right away from the CRM.
     const wantedFeeds = (Array.isArray(body.feeds) ? body.feeds : []).filter(isFeed);
+    if (wantedFeeds.length && !(await feedsAllowed(wantedFeeds, dc))) return NextResponse.json({ error: 'That feed is private to its owner and the admins' }, { status: 403 });
     if (wantedFeeds.length) {
       const ydoc = new YY.Doc();
       try {

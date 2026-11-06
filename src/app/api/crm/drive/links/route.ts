@@ -72,8 +72,10 @@ export async function POST(req: NextRequest) {
   const kind = b.deal_id ? 'deal' : b.client_id ? 'client' : null;
   const cardId = b.deal_id ?? b.client_id ?? '';
   if (!b.doc_id || !UUID_RE.test(b.doc_id) || !kind || !UUID_RE.test(cardId)) return NextResponse.json({ error: 'doc_id and a deal_id or client_id are required' }, { status: 400 });
-  const { data: doc } = await dc.userDb.from('crm_drive_docs').select('id,title,trashed_at,is_template').eq('id', b.doc_id).eq('business_unit', dc.bu).maybeSingle();
+  const { data: doc } = await dc.userDb.from('crm_drive_docs').select('id,title,trashed_at,is_template,visibility,created_by').eq('id', b.doc_id).eq('business_unit', dc.bu).maybeSingle();
   if (!doc || doc.trashed_at) return notFound('That document is not available');
+  // Linking shows the document to everyone who can open that deal or contact, so a private document can only be linked by its owner or an admin.
+  if (doc.visibility === 'private' && !dc.isAdmin && doc.created_by !== dc.ctx.userId) return forbidden('Only the owner or an admin can link a private document');
   if (doc.is_template) return NextResponse.json({ error: 'A template can’t be linked — make a document from it first' }, { status: 400 });
   if (!(await canOpenCard(dc, kind, cardId))) return notFound('That deal or contact is not available');
 

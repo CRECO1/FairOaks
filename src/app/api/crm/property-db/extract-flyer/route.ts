@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { userRateLimit } from '@/lib/user-ratelimit';
 import { extractListingFromMedia } from '@/lib/broker-ingest/extract';
 
 /**
@@ -59,6 +60,8 @@ export async function PUT(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
+  // Each read is a paid vision call: cap how many one login can run.
+  if (!(await userRateLimit('extract-flyer', ctx.userId, 20, '1 h')).success) return NextResponse.json({ error: 'You have scanned a lot of flyers this hour. Try again later.' }, { status: 429 });
   const { storage_path, mime } = await req.json().catch(() => ({}));
   if (!storage_path) return NextResponse.json({ error: 'storage_path required' }, { status: 400 });
   // A caller can only process an upload under their own prefix.
@@ -74,6 +77,11 @@ export async function PUT(req: NextRequest) {
   const supabase = adminClient();
   const { data: blob } = await supabase.storage.from(BUCKET).download(storage_path);
   if (!blob) return NextResponse.json({ error: 'The upload did not finish — try again.' }, { status: 400 });
+  // The size the browser claimed at upload time is not enforced by storage, so check the real object before reading it into memory.
+  if (blob.size > MAX_BYTES) {
+    try { await supabase.storage.from(BUCKET).remove([storage_path]); } catch { /* best effort */ }
+    return NextResponse.json({ error: 'That file is over 25 MB — try a smaller one.' }, { status: 413 });
+  }
   const data = Buffer.from(await blob.arrayBuffer()).toString('base64');
 
   let extraction;

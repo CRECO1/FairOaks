@@ -28,7 +28,7 @@ import type { DriveComment } from '@/lib/drive-types';
 import SendToCrmDialog from './SheetCrm';
 import { OverflowRow, CommandPalette, CondDialog, DedupeDialog, Divider, FunctionsDialog, HistoryDialog, Ico, Item, MenuLabel, Modal, NoteDialog, Palette, Pop, PivotDialog, ProtectDialog, SHEET_CSS, ShortcutsDialog, SplitDialog, TBtn, TSep, ValidDialog, type Command, type LockInfo, type PivotForm } from './SheetParts';
 import { ChartDialog, ChartSvg, type ChartData } from './SheetChart';
-import { sheetPrintHtml } from '@/lib/sheet-print';
+import { sheetPrintHtml, PRINT_CSP } from '@/lib/sheet-print';
 import type { DrivePerson } from './DocsDrive';
 
 interface Props {
@@ -907,7 +907,7 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
     const esc = (v: string) => v.replace(/[&<>]/g, ch => (ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : '&gt;'));
     const head = Math.max(1, frozen) ;
     const cell = (v: string, tag: 'td' | 'th') => `<${tag}${/^-?[\d,.$%]+$/.test(v) && v !== '' ? ' class="n"' : ''}>${esc(v)}</${tag}>`;
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)} — ${esc(tab.name)}</title><style>@page{size:landscape;margin:12mm}body{font:11px/1.35 Arial,Helvetica,sans-serif;color:#111;margin:0}h1{font-size:14px;margin:0 0 2px}p{margin:0 0 8px;color:#666}table{border-collapse:collapse;width:100%}thead{display:table-header-group}tr{break-inside:avoid}td,th{border:1px solid #bbb;padding:3px 5px;text-align:left;vertical-align:top;word-break:break-word}th{background:#efefef}tbody tr:nth-child(even) td{background:#fafafa}.n{text-align:right}</style></head><body><h1>${esc(title)}</h1><p>${esc(tab.name)} · printed ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago' })}</p><table><thead>${g.slice(0, head).map(r => `<tr>${r.map(v => cell(v, 'th')).join('')}</tr>`).join('')}</thead><tbody>${g.slice(head).map(r => `<tr>${r.map(v => cell(v, 'td')).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8">${PRINT_CSP}<title>${esc(title)} — ${esc(tab.name)}</title><style>@page{size:landscape;margin:12mm}body{font:11px/1.35 Arial,Helvetica,sans-serif;color:#111;margin:0}h1{font-size:14px;margin:0 0 2px}p{margin:0 0 8px;color:#666}table{border-collapse:collapse;width:100%}thead{display:table-header-group}tr{break-inside:avoid}td,th{border:1px solid #bbb;padding:3px 5px;text-align:left;vertical-align:top;word-break:break-word}th{background:#efefef}tbody tr:nth-child(even) td{background:#fafafa}.n{text-align:right}</style></head><body><h1>${esc(title)}</h1><p>${esc(tab.name)} · printed ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago' })}</p><table><thead>${g.slice(0, head).map(r => `<tr>${r.map(v => cell(v, 'th')).join('')}</tr>`).join('')}</thead><tbody>${g.slice(head).map(r => `<tr>${r.map(v => cell(v, 'td')).join('')}</tr>`).join('')}</tbody></table></body></html>`;
     const w = window.open('', '_blank'); if (!w) { onToast('Allow pop-ups for this site to print'); return; }
     w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
   };

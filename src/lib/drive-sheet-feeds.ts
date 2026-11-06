@@ -17,6 +17,21 @@ export const FEEDS = {
   brian_emails: { name: 'Brian', build: buildBrianEmails },
 } as const;
 export type FeedKey = keyof typeof FEEDS;
+// Outreach feeds hold one broker's sent mail, replies and send-later queue, read with the service key — so only that person or an
+// admin may build them. Everything else (contact + call feeds) is limited by the contacts the caller can already see.
+const FEED_OWNER: Partial<Record<FeedKey, string>> = {
+  robert_emails: 'robert@crecotx.com', robert_summary: 'robert@crecotx.com',
+  brian_emails: 'brian@crecotx.com', brian_summary: 'brian@crecotx.com',
+};
+export async function feedsAllowed(keys: FeedKey[], dc: DriveContext): Promise<boolean> {
+  if (dc.isAdmin) return true;
+  for (const k of keys) {
+    const owner = FEED_OWNER[k]; if (!owner) continue;
+    const { data } = await dc.admin.from('crm_profiles').select('id').ilike('email', owner).maybeSingle();
+    if (!data?.id || data.id !== dc.ctx.userId) return false;
+  }
+  return true;
+}
 export const isFeed = (k: unknown): k is FeedKey => typeof k === 'string' && k in FEEDS;
 
 const CALLER_EMAIL = 'brian@crecotx.com';                 // whose calls the Elkhorn sheet tracks

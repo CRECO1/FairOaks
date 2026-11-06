@@ -7,6 +7,9 @@ import { businessMinutesBetween, fmtMins, stlTone, STL_COLORS, STL_LATE_MIN, wai
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml, sanitizeEmailHtml } from '@/lib/sanitize';
 import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
+import MfaChallenge from './MfaChallenge';
+import MfaSettings from './MfaSettings';
+import { needsSecondFactor, hasVerifiedFactor } from '@/lib/mfa';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import EmailsSection, { type EmailsTab } from './EmailsSection';
 import type { ContactMatch } from './GmailMailbox';
@@ -1028,6 +1031,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const brand = BRANDING[businessUnit];
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
+  // 2-step verification: a password-only session for a login that has it turned on waits for the code and is NOT let into the app.
+  const [mfaPending, setMfaPending] = useState(false);
+  const [showMfa, setShowMfa] = useState(false);
+  const [hasMfa, setHasMfa] = useState(true);   // assume on until the profile says otherwise (no flash of the reminder)
+  const acceptSession = useCallback((s: Session | null) => {
+    if (s && needsSecondFactor(s.user, s.access_token)) { setMfaPending(true); setSession(null); setLoading(false); return; }
+    setMfaPending(false); setSession(s);
+  }, []);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -2051,15 +2062,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Auth init
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+      acceptSession(data.session);
       if (!data.session) setLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s);
+      acceptSession(s);
       if (!s) { setProfile(null); setLoading(false); }
     });
     return () => subscription.unsubscribe();
-  }, []);
+  }, [acceptSession]);
+  const [mfaNagOff, setMfaNagOff] = useState(false);
+  useEffect(() => { if (session) setHasMfa(hasVerifiedFactor(session.user)); }, [session?.user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // An "@" chip in a My Drive document was clicked: open that contact or deal.
   const openRecordRef = useRef<(kind: string, id: string) => void>(() => {});
@@ -5618,7 +5631,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
-  if (!session) return <LoginScreen onLogin={s => { setSession(s); setLoading(true); }} brandName={brand.name} />;
+  if (mfaPending && !session) return <MfaChallenge brandName={brand.name} onVerified={() => { void supabase.auth.getSession().then(({ data }) => { acceptSession(data.session); setLoading(true); }); }} />;
+  if (!session) return <LoginScreen onLogin={s => { if (needsSecondFactor(s.user, s.access_token)) acceptSession(s); else { setSession(s); setLoading(true); } }} brandName={brand.name} />;
   if (!profile) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', color: '#fff', fontFamily: 'sans-serif' }}>Setting up your profile…</div>;
 
   // super_admin is a strict superset of admin — passes every admin gate, plus
@@ -5828,6 +5842,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   return (
     <div className="crm-app-shell" data-crm-theme={crmTheme} style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: isTabletOrMobile ? '100dvh' : '100vh', overflow: 'hidden', background: 'var(--k-f2f2f2)' }}>
       <CrmShield exempt={isSuperAdmin} name={`${profile.first_name} ${profile.last_name}`.trim()} email={profile.email} token={session?.access_token} page={page} />
+      {showMfa && <MfaSettings onClose={() => setShowMfa(false)} onChange={setHasMfa} />}
+      {isAdmin && !hasMfa && !showMfa && !mfaNagOff && (
+        <div role="status" style={{ position: 'fixed', left: '50%', bottom: 16, transform: 'translateX(-50%)', zIndex: 2500, background: '#111', color: '#fff', border: '1px solid #c9922c', borderRadius: 10, padding: '10px 14px', fontSize: 13, display: 'flex', gap: 12, alignItems: 'center', maxWidth: '92vw', boxShadow: '0 10px 30px rgba(0,0,0,.35)' }}>
+          <span>Protect this account: turn on 2-step verification.</span>
+          <button onClick={() => setShowMfa(true)} style={{ background: '#c9922c', color: '#111', border: 'none', borderRadius: 6, padding: '5px 12px', fontWeight: 700, cursor: 'pointer' }}>Set up</button>
+          <button onClick={() => setMfaNagOff(true)} aria-label="Remind me later" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.55)', cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )}
       <style>{`
         /* Design tokens. Light values equal the colours the CRM already used, so light mode is unchanged; dark swaps them. */
         .crm-app-shell{color:var(--c-text);--c-text:#1a1a1a;--c-canvas:#f2f2f2;--c-surface:#ffffff;--c-surface-2:#fafafa;--c-ink:#111111;--c-ink-2:#374151;--c-muted:#6b7280;--c-faint:#9ca3af;--c-line:#e0e0e0;--c-line-2:#f0f0f0;--c-header:#ffffff;
@@ -6246,6 +6268,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
             </div>
+            <button className="crm-icon-btn" onClick={() => setShowMfa(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 15 }} title="2-step verification" aria-label="2-step verification">🔒</button>
             <button className="crm-icon-btn" onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 16 }} title="Sign out">⏻</button>
           </div>
         </div>
@@ -6422,6 +6445,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
                   </div>
+                  <button className="crm-icon-btn" onClick={() => setShowMfa(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 16 }} title="2-step verification" aria-label="2-step verification">🔒</button>
                   <button className="crm-icon-btn" onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 18 }} title="Sign out">⏻</button>
                 </div>
               </div>
