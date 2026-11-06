@@ -118,7 +118,9 @@ function crmShell(request: NextRequest): NextResponse {
   const nonce = btoa(crypto.randomUUID());
   const headers = new Headers(request.headers);
   headers.set('x-nonce', nonce);
-  headers.set(CRM_CSP_MODE === 'enforce' ? 'content-security-policy' : 'content-security-policy-report-only', cspFor(nonce));
+  // Next.js reads the nonce only from the request's enforcing header, so it is always set here (even in report mode). This header never reaches
+  // the browser: what the browser enforces is decided by the RESPONSE headers in withSecurityHeaders.
+  headers.set('content-security-policy', cspFor(nonce));
   return withSecurityHeaders(NextResponse.next({ request: { headers } }), nonce);
 }
 
