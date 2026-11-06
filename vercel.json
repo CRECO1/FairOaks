@@ -12,6 +12,10 @@
       "schedule": "0 10 * * *"
     },
     {
+      "path": "/api/cron/backup-watch",
+      "schedule": "0 14 * * *"
+    },
+    {
       "path": "/api/cron/action-plans",
       "schedule": "*/15 * * * *"
     },
