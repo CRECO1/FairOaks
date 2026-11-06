@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,9 @@ export const viewport: Viewport = {
   themeColor: '#111111',
 };
 
-export default function CRMLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+export default async function CRMLayout({ children }: { children: React.ReactNode }) {
+  // TEMPORARY DIAGNOSTIC (removed in the next commit): what does the render step receive from the middleware?
+  const h = await headers();
+  const dbg = `x-nonce=${h.get('x-nonce') ? 'yes' : 'no'}; csp=${(h.get('content-security-policy') ?? 'none').slice(0, 60)}; ro=${h.get('content-security-policy-report-only') ? 'yes' : 'no'}; names=${[...h.keys()].filter(k => /csp|nonce|middleware|security/i.test(k)).join(',')}`;
+  return <><meta name="csp-diagnostic" content={dbg} />{children}</>;
 }
