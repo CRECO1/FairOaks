@@ -5,7 +5,13 @@ import { dmRoom } from '@/lib/team-chat';
 
 // TeamChat: a team room + 1-to-1 messages. Plain polling (3s while a conversation is open, 15s for the list) keeps it simple
 // and independent of realtime setup; everything goes through /api/crm/chat, which enforces who may open what.
-type Msg = { id: string; sender_id: string; body: string; created_at: string };
+type Att = { path: string; name: string; size: number; type: string };
+type Lnk = { kind: 'deal' | 'contact' | 'doc'; id: string; label: string };
+type Msg = { id: string; sender_id: string; body: string; created_at: string; attachments?: Att[]; links?: Lnk[] };
+export type ChatOption = { id: string; label: string };
+const fmtSize = (n: number) => n < 1e6 ? `${Math.max(1, Math.round(n / 1e3))} KB` : `${(n / 1e6).toFixed(1)} MB`;
+const ICON: Record<Lnk['kind'], string> = { deal: '🏷️', contact: '👤', doc: '📄' };
+const KIND: Record<Lnk['kind'], string> = { deal: 'Deal', contact: 'Contact', doc: 'Document' };
 type RoomInfo = { room: string; other: string | null; last: { sender_id: string; body: string; created_at: string } | null; unread: number };
 export type ChatPerson = { id: string; name: string };
 
@@ -34,7 +40,7 @@ function Avatar({ name, team, size = 34 }: { name: string; team?: boolean; size?
   return <span aria-hidden style={{ width: size, height: size, borderRadius: '50%', background: team ? '#111' : 'rgba(201,146,44,.22)', color: team ? '#c9922c' : '#8a6317', fontWeight: 700, fontSize: size * 0.38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{team ? '#' : initials(name)}</span>;
 }
 
-export default function TeamChat({ token, meId, people, isMobile, onUnread, initialRoom }: { token?: string; meId: string; people: ChatPerson[]; isMobile: boolean; onUnread?: (n: number) => void; initialRoom?: string }) {
+export default function TeamChat({ token, meId, people, isMobile, onUnread, initialRoom, deals = [], contacts = [], onOpenLink }: { token?: string; meId: string; people: ChatPerson[]; isMobile: boolean; onUnread?: (n: number) => void; initialRoom?: string; deals?: ChatOption[]; contacts?: ChatOption[]; onOpenLink?: (l: Lnk) => void }) {
   const [rooms, setRooms] = useState<Record<string, RoomInfo>>({});
   const [room, setRoom] = useState<string | null>(initialRoom ?? (isMobile ? null : 'team'));
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -46,6 +52,13 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   const [otherRead, setOtherRead] = useState<string | null>(null);
   const [find, setFind] = useState<string | null>(null);   // null = search closed
   const input = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [pendAtt, setPendAtt] = useState<Att[]>([]);
+  const [pendLinks, setPendLinks] = useState<Lnk[]>([]);
+  const [uploading, setUploading] = useState(0);
+  const [picker, setPicker] = useState<null | 'deal' | 'contact' | 'doc'>(null);
+  const [pq, setPq] = useState('');
+  const [docs, setDocs] = useState<ChatOption[] | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const roomRef = useRef(room); roomRef.current = room;
   const lastAt = useRef<string | null>(null);
@@ -64,7 +77,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
 
   // open a conversation: load its history, then poll for anything newer
   useEffect(() => {
-    setMsgs([]); lastAt.current = null; setErr(''); setLastRead(null); setLoaded(false); setOtherRead(null); setFind(null); if (room) setTimeout(() => input.current?.focus(), 50);
+    setMsgs([]); lastAt.current = null; setErr(''); setLastRead(null); setLoaded(false); setOtherRead(null); setFind(null); setPendAtt([]); setPendLinks([]); setPicker(null); if (room) setTimeout(() => input.current?.focus(), 50);
     if (!room) return;
     let alive = true;
     let tick = 0;
@@ -99,18 +112,59 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
 
   const send = async () => {
     const body = text.trim();
-    if (!body || !room || sending) return;
+    if ((!body && !pendAtt.length && !pendLinks.length) || !room || sending || uploading) return;
     setSending(true); setErr('');
     try {
-      const r = await fetch('/api/crm/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth() }, body: JSON.stringify({ room, body }) });
+      const r = await fetch('/api/crm/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth() }, body: JSON.stringify({ room, body, attachments: pendAtt, links: pendLinks.map(l => ({ kind: l.kind, id: l.id })) }) });
       const j = await r.json().catch(() => ({})) as { message?: Msg; error?: string };
       if (!r.ok || !j.message) throw new Error(j.error || 'Could not send');
-      setText('');
+      setText(''); setPendAtt([]); setPendLinks([]);
       lastAt.current = j.message.created_at;
       setMsgs(prev => prev.some(m => m.id === j.message!.id) ? prev : [...prev, j.message!]);
       void loadRooms();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not send'); } finally { setSending(false); }
   };
+
+  const uploadFiles = async (files: FileList | null) => {
+    if (!files || !room) return;
+    setErr('');
+    for (const f of Array.from(files).slice(0, 5 - pendAtt.length)) {
+      setUploading(n => n + 1);
+      try {
+        const r = await fetch('/api/crm/chat/upload', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth() }, body: JSON.stringify({ room, filename: f.name, size: f.size }) });
+        const j = await r.json().catch(() => ({})) as { uploadUrl?: string; storagePath?: string; contentType?: string; error?: string };
+        if (!r.ok || !j.uploadUrl || !j.storagePath) throw new Error(j.error || 'Could not upload that file');
+        const put = await fetch(j.uploadUrl, { method: 'PUT', headers: { 'Content-Type': j.contentType || f.type || 'application/octet-stream' }, body: f });
+        if (!put.ok) throw new Error('The upload did not go through — try again');
+        setPendAtt(a => [...a, { path: j.storagePath!, name: f.name, size: f.size, type: j.contentType || f.type }]);
+      } catch (e) { setErr(e instanceof Error ? e.message : 'Could not upload that file'); }
+      finally { setUploading(n => n - 1); }
+    }
+    if (fileInput.current) fileInput.current.value = '';
+  };
+  const openAtt = async (a: Att, download = false) => {
+    if (!room) return;
+    const w = window.open('', '_blank');   // opened first so the popup blocker allows it
+    try {
+      const r = await fetch(`/api/crm/chat/file?${new URLSearchParams({ room, path: a.path, ...(download ? { download: '1' } : {}) })}`, { headers: auth() });
+      const j = await r.json().catch(() => ({})) as { url?: string };
+      if (!r.ok || !j.url) throw new Error('x');
+      if (w) w.location.href = j.url; else window.location.href = j.url;
+    } catch { w?.close(); setErr('Could not open that file'); }
+  };
+  const openPicker = async (k: 'deal' | 'contact' | 'doc') => {
+    setPicker(k); setPq('');
+    if (k === 'doc' && docs === null) {
+      try {
+        const r = await fetch('/api/crm/drive?view=recent', { headers: auth() });
+        const j = await r.json().catch(() => ({})) as { docs?: Array<{ id: string; title: string }> };
+        setDocs((j.docs ?? []).map(d => ({ id: d.id, label: d.title || 'Untitled' })));
+      } catch { setDocs([]); }
+    }
+  };
+  const pickList = picker === 'deal' ? deals : picker === 'contact' ? contacts : (docs ?? []);
+  const pickShown = (pq.trim() ? pickList.filter(o => o.label.toLowerCase().includes(pq.trim().toLowerCase())) : pickList).slice(0, 8);
+  const addLink = (o: ChatOption) => { if (!picker) return; setPendLinks(l => l.some(x => x.id === o.id) || l.length >= 5 ? l : [...l, { kind: picker, id: o.id, label: o.label }]); setPicker(null); input.current?.focus(); };
 
   const remove = async (id: string) => {
     if (!window.confirm('Delete this message for everyone?')) return;
@@ -178,7 +232,10 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
               {firstNew && <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#c9922c', fontSize: 12, fontWeight: 700, margin: '6px 0' }}><span style={{ flex: 1, height: 1, background: '#c9922c', opacity: .5 }} />New<span style={{ flex: 1, height: 1, background: '#c9922c', opacity: .5 }} /></div>}
               <div style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%', marginTop: tight ? -4 : 0 }}>
                 {showName && <div style={{ fontSize: 12, opacity: .65, margin: '0 4px 2px' }}>{nameOf(m.sender_id)}</div>}
-                <div style={{ background: mine ? '#c9922c' : 'var(--c-surface-2, #f1f1f1)', color: mine ? '#fff' : 'inherit', padding: '8px 12px', borderRadius: 14, fontSize: 14.5, lineHeight: 1.4, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{renderBody(m.body, names, mine)}</div>
+                <div style={{ background: mine ? '#c9922c' : 'var(--c-surface-2, #f1f1f1)', color: mine ? '#fff' : 'inherit', padding: '8px 12px', borderRadius: 14, fontSize: 14.5, lineHeight: 1.4, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{m.body && renderBody(m.body, names, mine)}
+                  {(m.links ?? []).map(l => <button key={l.id} onClick={() => onOpenLink?.(l)} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', marginTop: m.body ? 7 : 0, padding: '6px 9px', borderRadius: 8, border: 'none', cursor: 'pointer', background: mine ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.06)', color: 'inherit', fontSize: 13 }}><span>{ICON[l.kind]}</span><span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 10.5, opacity: .7, textTransform: 'uppercase', letterSpacing: .5 }}>{KIND[l.kind]}</span><span style={{ display: 'block', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.label}</span></span></button>)}
+                  {(m.attachments ?? []).map(a => <button key={a.path} onClick={() => void openAtt(a)} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', marginTop: m.body || m.links?.length ? 7 : 0, padding: '6px 9px', borderRadius: 8, border: 'none', cursor: 'pointer', background: mine ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.06)', color: 'inherit', fontSize: 13 }}><span>{a.type.startsWith('image/') ? '🖼️' : '📎'}</span><span style={{ minWidth: 0 }}><span style={{ display: 'block', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span><span style={{ display: 'block', fontSize: 11, opacity: .7 }}>{fmtSize(a.size)} · tap to open</span></span></button>)}
+                </div>
                 <div style={{ fontSize: 11, opacity: .5, margin: '2px 4px 0', textAlign: mine ? 'right' : 'left', display: lastInRun || mine ? 'block' : 'none' }}>{lastInRun ? when(m.created_at) : ''}{mine && <>{lastInRun ? ' · ' : ''}<button onClick={() => void remove(m.id)} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Delete</button>{m.id === lastMine && otherRead && otherRead >= m.created_at && ' · Seen'}</>}</div>
               </div>
             </React.Fragment>
@@ -188,12 +245,31 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
       </div>
       {suggest.length > 0 && <div style={{ display: 'flex', gap: 6, padding: '0 12px 6px', flexWrap: 'wrap' }}>{suggest.map(p => <button key={p.id} onClick={() => setText(t => t.replace(/@[A-Za-z]*$/, `@${p.name.split(' ')[0]} `))} style={{ background: 'rgba(201,146,44,.18)', border: 'none', borderRadius: 14, padding: '4px 11px', fontSize: 13, cursor: 'pointer', color: 'inherit' }}>@{p.name.split(' ')[0]}</button>)}</div>}
       {err && <div style={{ color: '#b3261e', fontSize: 13, padding: '0 16px 6px' }}>{err}</div>}
+      {(pendAtt.length > 0 || pendLinks.length > 0 || uploading > 0) && <div style={{ display: 'flex', gap: 6, padding: '0 12px 6px', flexWrap: 'wrap' }}>
+        {pendLinks.map(l => <span key={l.id} style={{ background: 'rgba(201,146,44,.18)', borderRadius: 14, padding: '4px 6px 4px 10px', fontSize: 12.5, display: 'inline-flex', gap: 6, alignItems: 'center', maxWidth: '100%' }}>{ICON[l.kind]} <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{l.label}</span><button onClick={() => setPendLinks(x => x.filter(y => y.id !== l.id))} aria-label="Remove" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', fontSize: 14, lineHeight: 1 }}>×</button></span>)}
+        {pendAtt.map(a => <span key={a.path} style={{ background: 'rgba(0,0,0,.07)', borderRadius: 14, padding: '4px 6px 4px 10px', fontSize: 12.5, display: 'inline-flex', gap: 6, alignItems: 'center' }}>📎 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{a.name}</span><button onClick={() => setPendAtt(x => x.filter(y => y.path !== a.path))} aria-label="Remove" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', fontSize: 14, lineHeight: 1 }}>×</button></span>)}
+        {uploading > 0 && <span style={{ fontSize: 12.5, opacity: .6, padding: '4px 6px' }}>Uploading…</span>}
+      </div>}
+      {picker && <div style={{ margin: '0 12px 8px', border: '1px solid var(--c-border, #ddd)', borderRadius: 10, background: 'var(--c-surface, #fff)', padding: 8, boxShadow: '0 4px 14px rgba(0,0,0,.08)' }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>{(['deal', 'contact', 'doc'] as const).map(k => <button key={k} onClick={() => void openPicker(k)} style={{ border: 'none', borderRadius: 14, padding: '4px 12px', fontSize: 13, cursor: 'pointer', background: k === picker ? '#c9922c' : 'rgba(0,0,0,.07)', color: k === picker ? '#fff' : 'inherit', fontWeight: 600 }}>{ICON[k]} {k === 'deal' ? 'Deals' : k === 'contact' ? 'Contacts' : 'Documents'}</button>)}<button onClick={() => setPicker(null)} aria-label="Close" style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: 'inherit' }}>×</button></div>
+        <input autoFocus value={pq} onChange={e => setPq(e.target.value)} placeholder={`Search ${picker === 'deal' ? 'deals' : picker === 'contact' ? 'contacts' : 'documents'}…`} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--c-border, #ccc)', fontSize: 16, background: 'var(--c-surface, #fff)', color: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+        <div style={{ maxHeight: 190, overflowY: 'auto', marginTop: 6 }}>
+          {picker === 'doc' && docs === null && <div style={{ padding: 8, opacity: .55, fontSize: 13 }}>Loading…</div>}
+          {pickShown.map(o => <button key={o.id} onClick={() => addLink(o)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', fontSize: 14, borderRadius: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</button>)}
+          {!pickShown.length && !(picker === 'doc' && docs === null) && <div style={{ padding: 8, opacity: .55, fontSize: 13 }}>Nothing found.</div>}
+        </div>
+      </div>}
+      <input ref={fileInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp,.gif" onChange={e => void uploadFiles(e.target.files)} />
       <div style={{ display: 'flex', gap: 8, padding: 12, paddingRight: isMobile ? 12 : 76, borderTop: '1px solid var(--c-border, #e5e5e5)', paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom))' : 12 }}>
+        <span style={{ display: 'inline-flex', gap: 2, alignSelf: 'center' }}>
+          <button onClick={() => fileInput.current?.click()} disabled={pendAtt.length >= 5} title="Attach a file" aria-label="Attach a file" style={{ border: 'none', background: 'none', fontSize: 19, cursor: 'pointer', padding: '4px 5px', opacity: pendAtt.length >= 5 ? .4 : .8 }}>📎</button>
+          <button onClick={() => { if (picker) setPicker(null); else void openPicker('deal'); }} title="Link a deal, contact or document" aria-label="Link a deal, contact or document" style={{ border: 'none', background: picker ? 'rgba(201,146,44,.2)' : 'none', borderRadius: 6, fontSize: 19, cursor: 'pointer', padding: '4px 5px', opacity: .8 }}>🔗</button>
+        </span>
         <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} placeholder="Write a message…" maxLength={4000}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
           style={{ flex: 1, resize: 'none', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--c-border, #ccc)', fontSize: 16, fontFamily: 'inherit', background: 'var(--c-surface, #fff)', color: 'inherit', maxHeight: 120 }} />
-        <button onClick={() => void send()} disabled={!text.trim() || sending}
-          style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 10, padding: '0 18px', fontWeight: 700, cursor: 'pointer', opacity: !text.trim() || sending ? .5 : 1 }}>Send</button>
+        <button onClick={() => void send()} disabled={(!text.trim() && !pendAtt.length && !pendLinks.length) || sending || uploading > 0}
+          style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 10, padding: '0 18px', fontWeight: 700, cursor: 'pointer', opacity: (!text.trim() && !pendAtt.length && !pendLinks.length) || sending || uploading > 0 ? .5 : 1 }}>Send</button>
       </div>
     </div>
   );

@@ -6224,7 +6224,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <Ico n="mail" />Emails
             {emailBadge > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{emailBadge > 99 ? '99+' : emailBadge}</span>}
           </button>
-          <button className={`crm-nav${page === 'teamchat' ? ' active' : ''}`} onClick={() => { setPage('teamchat'); loadProfiles(); }}>
+          <button className={`crm-nav${page === 'teamchat' ? ' active' : ''}`} onClick={() => { setPage('teamchat'); loadProfiles(); if (!clients.length) loadClients(); }}>
             <Ico n="users" />Team Chat
             {chatUnread > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{chatUnread > 99 ? '99+' : chatUnread}</span>}
           </button>
@@ -6458,7 +6458,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ padding: '16px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>More</div>
                 <button className={`crm-nav${page === 'emails' ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab('inbox'); setMobileMenuOpen(false); }}><Ico n="mail" />Emails{emailBadge > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{emailBadge > 99 ? '99+' : emailBadge}</span>}</button>
-                <button className={`crm-nav${page === 'teamchat' ? ' active' : ''}`} onClick={() => { setPage('teamchat'); loadProfiles(); setMobileMenuOpen(false); }}><Ico n="users" />Team Chat{chatUnread > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{chatUnread > 99 ? '99+' : chatUnread}</span>}</button>
+                <button className={`crm-nav${page === 'teamchat' ? ' active' : ''}`} onClick={() => { setPage('teamchat'); loadProfiles(); if (!clients.length) loadClients(); setMobileMenuOpen(false); }}><Ico n="users" />Team Chat{chatUnread > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{chatUnread > 99 ? '99+' : chatUnread}</span>}</button>
                 {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}><Ico n="briefcase" />Broker / Agents</button>}
                 {isAdmin && (
                   <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
@@ -11623,7 +11623,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           )}
           {page === 'teamchat' && profile && (
             <TeamChat token={session?.access_token} meId={profile.id} isMobile={isMobile} onUnread={setChatUnread} initialRoom={chatOpenRoom}
-              people={profiles.filter(x => !!x.first_name && (!x.business_unit || x.business_unit === profile.business_unit)).map(x => ({ id: x.id, name: `${x.first_name} ${x.last_name ?? ''}`.trim() }))} />
+              people={profiles.filter(x => !!x.first_name && (!x.business_unit || x.business_unit === profile.business_unit)).map(x => ({ id: x.id, name: `${x.first_name} ${x.last_name ?? ''}`.trim() }))}
+              deals={deals.map(d => ({ id: d.id, label: [d.client, d.property].filter(Boolean).join(' — ') || 'Deal' }))}
+              contacts={clients.map(c => ({ id: c.id, label: (`${c.first_name} ${c.last_name}`.trim() || c.business_name || c.email || 'Contact') + (c.business_name && `${c.first_name} ${c.last_name}`.trim() ? ` · ${c.business_name}` : '') }))}
+              onOpenLink={l => {
+                if (l.kind === 'deal') { const d = deals.find(x => x.id === l.id); if (d) openDeal(d); else showToast('You are not on that deal, so it can’t be opened here'); }
+                else if (l.kind === 'contact') { const c = clients.find(x => x.id === l.id); if (c) setActiveClient(c); else showToast('That contact isn’t available to you'); }
+                else { rememberView(`${businessUnit}:drive-doc`, l.id); setPage('transaction-docs'); setTimeout(() => window.dispatchEvent(new CustomEvent('crm:open-drive-doc', { detail: { id: l.id } })), 900); }
+              }} />
           )}
 
           {page === 'emails' && (

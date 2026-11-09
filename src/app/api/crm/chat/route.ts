@@ -2,22 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { sendPushToProfiles } from '@/lib/push';
-import { dmOther, isDmRoom, MAX_BODY } from '@/lib/team-chat';
+import { dmOther, MAX_BODY } from '@/lib/team-chat';
+import { roomAllowed, cleanAttachments, resolveLinks } from '@/lib/team-chat-server';
 
 export const dynamic = 'force-dynamic';
 
 // TeamChat. Reads and writes go through here (the tables have no browser access). A room is either 'team' (everyone in the
 // caller's workspace) or a direct message that only its two people can open.
-
-type Ctx = NonNullable<Awaited<ReturnType<typeof getCrmContext>>>;
-async function roomAllowed(db: ReturnType<typeof adminClient>, ctx: Ctx, room: string): Promise<{ ok: boolean; other?: string }> {
-  if (room === 'team') return { ok: !!ctx.businessUnit };
-  if (!isDmRoom(room)) return { ok: false };
-  const other = dmOther(room, ctx.userId);
-  if (!other) return { ok: false };
-  const { data } = await db.from('crm_profiles').select('id').eq('id', other).eq('business_unit', ctx.businessUnit ?? '').maybeSingle();
-  return { ok: !!data, other };
-}
 
 // GET ?room=…&after=<iso>  → messages (oldest first). Opening a room marks it read.
 export async function GET(req: NextRequest) {
@@ -26,8 +17,8 @@ export async function GET(req: NextRequest) {
   const db = adminClient();
   const room = req.nextUrl.searchParams.get('room') ?? '';
   const after = req.nextUrl.searchParams.get('after');
-  if (!(await roomAllowed(db, ctx, room)).ok) return NextResponse.json({ error: 'No such conversation' }, { status: 404 });
-  let q = db.from('crm_chat_messages').select('id, sender_id, body, created_at').eq('business_unit', ctx.businessUnit).eq('room', room);
+  if (!(await roomAllowed(ctx, room)).ok) return NextResponse.json({ error: 'No such conversation' }, { status: 404 });
+  let q = db.from('crm_chat_messages').select('id, sender_id, body, created_at, attachments, links').eq('business_unit', ctx.businessUnit).eq('room', room);
   q = after && !Number.isNaN(Date.parse(after)) ? q.gt('created_at', after).order('created_at', { ascending: true }).limit(200) : q.order('created_at', { ascending: false }).limit(100);
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: 'Could not load messages' }, { status: 500 });
@@ -44,14 +35,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx || !ctx.businessUnit) return unauthorized();
-  const body = (await req.json().catch(() => ({}))) as { room?: unknown; body?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { room?: unknown; body?: unknown; attachments?: unknown; links?: unknown };
   const room = typeof body.room === 'string' ? body.room : '';
   const text = typeof body.body === 'string' ? body.body.trim() : '';
-  if (!text || text.length > MAX_BODY) return NextResponse.json({ error: `Message must be 1–${MAX_BODY} characters` }, { status: 400 });
+  if (text.length > MAX_BODY) return NextResponse.json({ error: `Message can be at most ${MAX_BODY} characters` }, { status: 400 });
   const db = adminClient();
-  const { ok, other } = await roomAllowed(db, ctx, room);
+  const { ok, other } = await roomAllowed(ctx, room);
   if (!ok) return NextResponse.json({ error: 'No such conversation' }, { status: 404 });
-  const { data: msg, error } = await db.from('crm_chat_messages').insert({ business_unit: ctx.businessUnit, room, sender_id: ctx.userId, body: text }).select('id, sender_id, body, created_at').single();
+  const attachments = cleanAttachments(body.attachments, ctx, room);
+  const links = await resolveLinks(req, body.links, ctx);
+  if (!text && !attachments.length && !links.length) return NextResponse.json({ error: 'Write a message or add a file or link' }, { status: 400 });
+  const { data: msg, error } = await db.from('crm_chat_messages').insert({ business_unit: ctx.businessUnit, room, sender_id: ctx.userId, body: text, attachments, links }).select('id, sender_id, body, created_at, attachments, links').single();
   if (error || !msg) return NextResponse.json({ error: 'Could not send' }, { status: 500 });
   await db.from('crm_chat_reads').upsert({ user_id: ctx.userId, room, last_read_at: msg.created_at });
 
@@ -63,7 +57,7 @@ export async function POST(req: NextRequest) {
       const { data: mates } = await db.from('crm_profiles').select('id, first_name').eq('business_unit', ctx.businessUnit).neq('id', ctx.userId);
       to = (mates ?? []).filter(p => p.first_name && new RegExp(`@${String(p.first_name).replace(/[^A-Za-z]/g, '')}\\b`, 'i').test(text)).map(p => p.id as string);
     }
-    if (to.length) await sendPushToProfiles(to, { title: room === 'team' ? `${who} in Team chat` : who, body: text.slice(0, 140), url: '/crm/commercial#teamchat', tag: `chat-${room}`, category: 'mentions', businessUnit: ctx.businessUnit }, { db });
+    if (to.length) await sendPushToProfiles(to, { title: room === 'team' ? `${who} in Team chat` : who, body: (text || (attachments.length ? `📎 ${attachments[0].name}` : links[0]?.label ?? '')).slice(0, 140), url: '/crm/commercial#teamchat', tag: `chat-${room}`, category: 'mentions', businessUnit: ctx.businessUnit }, { db });
   } catch (e) { console.error('[chat] push failed (message was sent):', e); }
   return NextResponse.json({ message: msg });
 }
