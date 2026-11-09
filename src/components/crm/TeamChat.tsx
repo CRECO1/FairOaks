@@ -15,6 +15,25 @@ const when = (iso: string) => {
   return d.toDateString() === now.toDateString() ? t : `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${t}`;
 };
 
+const dayLabel = (iso: string) => {
+  const d = new Date(iso), now = new Date(), y = new Date(now.getTime() - 864e5);
+  return d.toDateString() === now.toDateString() ? 'Today' : d.toDateString() === y.toDateString() ? 'Yesterday' : d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+};
+// message text → clickable links + highlighted @names
+function renderBody(text: string, names: string[], mine: boolean) {
+  const re = new RegExp(`(https?://[^\\s<]+|@(?:${names.map(n => n.replace(/[^A-Za-z]/g, '')).filter(Boolean).join('|') || '$^'})\\b)`, 'gi');
+  return text.split(re).map((part, i) => {
+    if (/^https?:\/\//i.test(part)) { const t = part.replace(/[.,;:!?)]+$/, ''); return <React.Fragment key={i}><a href={t} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t}</a>{part.slice(t.length)}</React.Fragment>; }
+    if (part.startsWith('@') && part.length > 1) return <b key={i} style={{ background: mine ? 'rgba(255,255,255,.25)' : 'rgba(201,146,44,.25)', borderRadius: 4, padding: '0 3px' }}>{part}</b>;
+    return part;
+  });
+}
+
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]!.toUpperCase()).join('') || '?';
+function Avatar({ name, team, size = 34 }: { name: string; team?: boolean; size?: number }) {
+  return <span aria-hidden style={{ width: size, height: size, borderRadius: '50%', background: team ? '#111' : 'rgba(201,146,44,.22)', color: team ? '#c9922c' : '#8a6317', fontWeight: 700, fontSize: size * 0.38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{team ? '#' : initials(name)}</span>;
+}
+
 export default function TeamChat({ token, meId, people, isMobile, onUnread, initialRoom }: { token?: string; meId: string; people: ChatPerson[]; isMobile: boolean; onUnread?: (n: number) => void; initialRoom?: string }) {
   const [rooms, setRooms] = useState<Record<string, RoomInfo>>({});
   const [room, setRoom] = useState<string | null>(initialRoom ?? (isMobile ? null : 'team'));
@@ -22,6 +41,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState('');
+  const [lastRead, setLastRead] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const roomRef = useRef(room); roomRef.current = room;
   const lastAt = useRef<string | null>(null);
@@ -40,24 +60,32 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
 
   // open a conversation: load its history, then poll for anything newer
   useEffect(() => {
-    setMsgs([]); lastAt.current = null; setErr('');
+    setMsgs([]); lastAt.current = null; setErr(''); setLastRead(null);
     if (!room) return;
     let alive = true;
+    let tick = 0;
     const pull = async (first: boolean) => {
       try {
         const q = new URLSearchParams({ room }); if (!first && lastAt.current) q.set('after', lastAt.current);
+        const full = first || !lastAt.current;
         const r = await fetch(`/api/crm/chat?${q}`, { headers: auth(), cache: 'no-store' });
         if (!alive || roomRef.current !== room) return;
         if (!r.ok) { if (first) setErr('Could not open this conversation'); return; }
-        const { messages } = await r.json() as { messages: Msg[] };
+        const { messages, lastRead: lr } = await r.json() as { messages: Msg[]; lastRead?: string | null };
+        if (first) setLastRead(lr ?? null);
         if (!messages.length) return;
         lastAt.current = messages[messages.length - 1].created_at;
+        if (full) { setMsgs(messages); void loadRooms(); return; }
         setMsgs(prev => { const have = new Set(prev.map(m => m.id)); const add = messages.filter(m => !have.has(m.id)); return add.length ? [...prev, ...add] : prev; });
         void loadRooms();
       } catch { /* try again on the next tick */ }
     };
     void pull(true);
-    const t = setInterval(() => { if (document.visibilityState === 'visible') void pull(false); }, 3000);
+    const t = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      // every ~15s reload the whole thread so a message someone deleted disappears here too
+      if (++tick % 5 === 0) { lastAt.current = null; void pull(false); } else void pull(false);
+    }, 3000);
     return () => { alive = false; clearInterval(t); };
   }, [room, auth, loadRooms]);
 
@@ -79,7 +107,15 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not send'); } finally { setSending(false); }
   };
 
+  const remove = async (id: string) => {
+    if (!window.confirm('Delete this message for everyone?')) return;
+    setMsgs(prev => prev.filter(m => m.id !== id));
+    await fetch(`/api/crm/chat?id=${id}`, { method: 'DELETE', headers: auth() }).catch(() => undefined);
+  };
   const others = people.filter(p => p.id !== meId);
+  const atWord = /(?:^|\s)@([A-Za-z]*)$/.exec(text);
+  const suggest = atWord ? others.filter(p => p.name.split(' ')[0].toLowerCase().startsWith(atWord[1].toLowerCase())).slice(0, 5) : [];
+  const names = others.map(p => p.name.split(' ')[0]);
   const items = [{ room: 'team', title: 'Team', sub: 'Everyone' }, ...others.map(p => ({ room: dmRoom(meId, p.id), title: p.name, sub: '' }))]
     .map(i => ({ ...i, info: rooms[i.room] }))
     .sort((a, b) => (a.room === 'team' ? -1 : b.room === 'team' ? 1 : (b.info?.last?.created_at ?? '').localeCompare(a.info?.last?.created_at ?? '') || a.title.localeCompare(b.title)));
@@ -89,14 +125,20 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
     <div style={{ width: isMobile ? '100%' : 270, borderRight: isMobile ? 'none' : '1px solid var(--c-border, #e5e5e5)', overflowY: 'auto', flexShrink: 0 }}>
       {items.map(i => (
         <button key={i.room} onClick={() => { setRoom(i.room); setRooms(r => r[i.room] ? { ...r, [i.room]: { ...r[i.room], unread: 0 } } : r); }}
-          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid var(--c-border, #eee)', background: i.room === room ? 'rgba(201,146,44,.14)' : 'transparent', cursor: 'pointer', color: 'inherit' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontWeight: i.info?.unread ? 700 : 600, fontSize: 14.5 }}>{i.room === 'team' ? '# ' : ''}{i.title}</span>
-            {!!i.info?.unread && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{i.info.unread > 99 ? '99+' : i.info.unread}</span>}
-          </div>
-          <div style={{ fontSize: 12.5, opacity: .65, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>
-            {i.info?.last ? `${i.info.last.sender_id === meId ? 'You: ' : i.room === 'team' ? `${nameOf(i.info.last.sender_id).split(' ')[0]}: ` : ''}${i.info.last.body}` : (i.sub || 'No messages yet')}
-          </div>
+          style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid var(--c-border, #eee)', background: i.room === room ? 'rgba(201,146,44,.14)' : 'transparent', cursor: 'pointer', color: 'inherit' }}>
+          <Avatar name={i.title} team={i.room === 'team'} />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontWeight: i.info?.unread ? 700 : 600, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</span>
+              {i.info?.last && <span style={{ marginLeft: 'auto', fontSize: 11, opacity: .5, flexShrink: 0 }}>{when(i.info.last.created_at)}</span>}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+              <span style={{ fontSize: 12.5, opacity: i.info?.unread ? .85 : .6, fontWeight: i.info?.unread ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {i.info?.last ? `${i.info.last.sender_id === meId ? 'You: ' : i.room === 'team' ? `${nameOf(i.info.last.sender_id).split(' ')[0]}: ` : ''}${i.info.last.body}` : (i.sub || 'No messages yet')}
+              </span>
+              {!!i.info?.unread && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10, flexShrink: 0 }}>{i.info.unread > 99 ? '99+' : i.info.unread}</span>}
+            </span>
+          </span>
         </button>
       ))}
     </div>
@@ -106,24 +148,32 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border, #e5e5e5)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
         {isMobile && <button onClick={() => setRoom(null)} style={{ border: 'none', background: 'none', fontSize: 20, cursor: 'pointer', color: 'inherit' }} aria-label="Back">‹</button>}
-        {cur ? (cur.room === 'team' ? '# Team' : cur.title) : ''}
-        {cur?.room === 'team' && <span style={{ fontWeight: 400, fontSize: 12.5, opacity: .6 }}>@FirstName to alert someone’s phone</span>}
+        {cur && <Avatar name={cur.title} team={cur.room === 'team'} size={30} />}
+        {cur ? (cur.room === 'team' ? 'Team' : cur.title) : ''}
+        {cur?.room === 'team' && !isMobile && <span style={{ fontWeight: 400, fontSize: 12.5, opacity: .55, marginLeft: 'auto' }}>Type @name to alert someone’s phone</span>}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {!msgs.length && !err && <div style={{ opacity: .55, textAlign: 'center', marginTop: 30, fontSize: 14 }}>No messages yet — say hi.</div>}
         {msgs.map((m, i) => {
           const mine = m.sender_id === meId, prev = msgs[i - 1];
-          const showName = !mine && (!prev || prev.sender_id !== m.sender_id);
+          const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
+          const firstNew = !!lastRead && !mine && m.created_at > lastRead && !msgs.slice(0, i).some(x => x.sender_id !== meId && x.created_at > lastRead);
+          const showName = !mine && (!prev || prev.sender_id !== m.sender_id || newDay || firstNew);
           return (
-            <div key={m.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
-              {showName && <div style={{ fontSize: 12, opacity: .65, margin: '0 4px 2px' }}>{nameOf(m.sender_id)}</div>}
-              <div style={{ background: mine ? '#c9922c' : 'var(--c-surface-2, #f1f1f1)', color: mine ? '#fff' : 'inherit', padding: '8px 12px', borderRadius: 14, fontSize: 14.5, lineHeight: 1.4, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{m.body}</div>
-              <div style={{ fontSize: 11, opacity: .5, margin: '2px 4px 0', textAlign: mine ? 'right' : 'left' }}>{when(m.created_at)}</div>
-            </div>
+            <React.Fragment key={m.id}>
+              {newDay && <div style={{ textAlign: 'center', fontSize: 12, opacity: .55, margin: '8px 0 2px' }}>{dayLabel(m.created_at)}</div>}
+              {firstNew && <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#c9922c', fontSize: 12, fontWeight: 700, margin: '6px 0' }}><span style={{ flex: 1, height: 1, background: '#c9922c', opacity: .5 }} />New<span style={{ flex: 1, height: 1, background: '#c9922c', opacity: .5 }} /></div>}
+              <div style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
+                {showName && <div style={{ fontSize: 12, opacity: .65, margin: '0 4px 2px' }}>{nameOf(m.sender_id)}</div>}
+                <div style={{ background: mine ? '#c9922c' : 'var(--c-surface-2, #f1f1f1)', color: mine ? '#fff' : 'inherit', padding: '8px 12px', borderRadius: 14, fontSize: 14.5, lineHeight: 1.4, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{renderBody(m.body, names, mine)}</div>
+                <div style={{ fontSize: 11, opacity: .5, margin: '2px 4px 0', textAlign: mine ? 'right' : 'left' }}>{when(m.created_at)}{mine && <> · <button onClick={() => void remove(m.id)} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Delete</button></>}</div>
+              </div>
+            </React.Fragment>
           );
         })}
         <div ref={bottom} />
       </div>
+      {suggest.length > 0 && <div style={{ display: 'flex', gap: 6, padding: '0 12px 6px', flexWrap: 'wrap' }}>{suggest.map(p => <button key={p.id} onClick={() => setText(t => t.replace(/@[A-Za-z]*$/, `@${p.name.split(' ')[0]} `))} style={{ background: 'rgba(201,146,44,.18)', border: 'none', borderRadius: 14, padding: '4px 11px', fontSize: 13, cursor: 'pointer', color: 'inherit' }}>@{p.name.split(' ')[0]}</button>)}</div>}
       {err && <div style={{ color: '#b3261e', fontSize: 13, padding: '0 16px 6px' }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--c-border, #e5e5e5)', paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom))' : 12 }}>
         <textarea value={text} onChange={e => setText(e.target.value)} rows={1} placeholder="Write a message…" maxLength={4000}

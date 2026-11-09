@@ -32,8 +32,9 @@ export async function GET(req: NextRequest) {
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: 'Could not load messages' }, { status: 500 });
   const messages = after ? (data ?? []) : (data ?? []).reverse();
+  const { data: prior } = after ? { data: null } : await db.from('crm_chat_reads').select('last_read_at').eq('user_id', ctx.userId).eq('room', room).maybeSingle();
   await db.from('crm_chat_reads').upsert({ user_id: ctx.userId, room, last_read_at: new Date().toISOString() });
-  return NextResponse.json({ messages });
+  return NextResponse.json({ messages, ...(after ? {} : { lastRead: (prior?.last_read_at as string | undefined) ?? null }) });
 }
 
 // POST { room, body }  → send. A DM alerts the other person's phone; in the team room only people who are @named get one.
@@ -62,4 +63,15 @@ export async function POST(req: NextRequest) {
     if (to.length) await sendPushToProfiles(to, { title: room === 'team' ? `${who} in Team chat` : who, body: text.slice(0, 140), url: '/crm/commercial#teamchat', tag: `chat-${room}`, category: 'mentions', businessUnit: ctx.businessUnit }, { db });
   } catch (e) { console.error('[chat] push failed (message was sent):', e); }
   return NextResponse.json({ message: msg });
+}
+
+// DELETE ?id=…  → remove one of YOUR OWN messages (in a conversation you are allowed to open).
+export async function DELETE(req: NextRequest) {
+  const ctx = await getCrmContext(req);
+  if (!ctx || !ctx.businessUnit) return unauthorized();
+  const id = req.nextUrl.searchParams.get('id') ?? '';
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: 'Bad id' }, { status: 400 });
+  const { error } = await adminClient().from('crm_chat_messages').delete().eq('id', id).eq('sender_id', ctx.userId).eq('business_unit', ctx.businessUnit);
+  if (error) return NextResponse.json({ error: 'Could not delete' }, { status: 500 });
+  return NextResponse.json({ ok: true });
 }
