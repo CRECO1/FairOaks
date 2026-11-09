@@ -173,13 +173,13 @@ export async function docToPdf(rawDoc: PMNode, title: string, opts: { letterhead
   const lineH = (l: Line, size: number) => Math.max(size, ...l.segs.map(s => s.size)) * 1.38;
 
   // Draw wrapped lines at x..x+width, breaking pages as needed. `first` runs once with the page + baseline of the first line.
-  const paragraph = (runs: Run[], o: { x?: number; width?: number; align?: string; size?: number; after?: number; before?: number; first?: (p: PDFPage, baseline: number) => void; bar?: boolean }) => {
+  const paragraph = (runs: Run[], o: { x?: number; width?: number; align?: string; size?: number; after?: number; before?: number; ls?: number; first?: (p: PDFPage, baseline: number) => void; bar?: boolean }) => {
     const x0 = o.x ?? ML, width = o.width ?? CW, size = o.size ?? 11;
     const lines = wrap(runs, width);
     if (o.before) y -= o.before;
     let firstDone = false, barTop = y;
     for (const l of lines) {
-      const h = lineH(l, size);
+      const h = lineH(l, size) * (o.ls ? o.ls / 1.15 : 1);
       if (y - h < bottom) { if (o.bar) page.drawRectangle({ x: x0 - 9, y, width: 3, height: barTop - y, color: GOLD }); newPage(); barTop = y; }
       const base = y - size;
       let x = x0 + (o.align === 'center' ? (width - l.w) / 2 : o.align === 'right' ? width - l.w : 0);
@@ -201,14 +201,15 @@ export async function docToPdf(rawDoc: PMNode, title: string, opts: { letterhead
   const blocks = (nodes: PMNode[], x: number, width: number) => { for (const n of nodes) block(n, x, width); };
   const block = (n: PMNode, x: number, width: number) => {
     const align = n.attrs?.textAlign as string | undefined;
+    const ind = Math.min(width * 0.6, Math.max(0, Number(n.attrs?.indent) || 0) * 36), ls = Number(n.attrs?.lineSpacing) || undefined;
     switch (n.type) {
       case 'heading': {
         const lv = Number(n.attrs?.level ?? 1), size = lv === 1 ? 22 : lv === 2 ? 16.5 : 13.5;
         need(size * 3);
-        paragraph(runsOf(n, { size, bold: true, color: INK }), { x, width, align, size, before: lv === 1 ? 4 : 10, after: 5 });
+        paragraph(runsOf(n, { size, bold: true, color: INK }), { x: x + ind, width: width - ind, align, size, before: lv === 1 ? 4 : 10, after: 5, ls });
         break;
       }
-      case 'paragraph': paragraph(runsOf(n, { size: 11, color: INK }), { x, width, align, size: 11, after: 6 }); break;
+      case 'paragraph': paragraph(runsOf(n, { size: 11, color: INK }), { x: x + ind, width: width - ind, align, size: 11, after: 6, ls }); break;
       case 'image': {
         const img = decodeImage(n.attrs?.src);
         if (!img || img.kind === 'gif') { paragraph([{ text: '[picture]', size: 10, color: GREY, italic: true }], { x, width, size: 10, after: 6 }); break; }

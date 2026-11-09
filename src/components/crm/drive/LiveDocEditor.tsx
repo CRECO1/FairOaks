@@ -12,7 +12,7 @@
  * (its own and its peers'), so a doc survives even if the person who typed last closes the laptop mid-sentence.
  */
 
-import { DOC_COLORS, DOC_FONTS, DOC_SIZES, fontByCss, sizePt } from '@/lib/doc-fonts';
+import { COLOR_GRID, DOC_COLORS, DOC_FONTS, DOC_SIZES, fontByCss, sizePt } from '@/lib/doc-fonts';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import * as Y from 'yjs';
 import { toBase64, fromBase64 } from 'lib0/buffer';
@@ -29,6 +29,7 @@ import { DocStyles } from './DocStyles';
 import { LetterheadHeader, LetterheadFooter } from './Letterhead';
 import { exportDocPdf, exportDocDocx, printDoc } from './doc-export';
 import { ActivityPanel, CommentsPanel, HistoryPanel } from './DocPanel';
+import { LINE_SPACINGS } from '@/lib/collab/block-format';
 import { SuggestTracking, listSuggestions, resolveSuggestions, type Suggestion } from '@/lib/collab/suggest-marks';
 import { safeImageSrc } from '@/lib/collab/image-node';
 import { OverflowRow, TBtn, TSep, Ico, Pop, Item, SHEET_CSS, type IcoName } from './SheetParts';
@@ -405,11 +406,60 @@ function DocSurface({ handle, authToken, me, userId, isMobile, onEditor, onComme
   );
 }
 
+/** Font size: − [size] + with any size typeable and presets in the list. Shows 11 (the document's default) when nothing is set. */
+function SizeBox({ pt, isMobile, onSet }: { pt: number | undefined; isMobile: boolean; onSet: (n: number | null) => void }) {
+  const shown = pt ?? 11;
+  const [txt, setTxt] = useState<string | null>(null);
+  const h = isMobile ? 40 : 30;
+  const step = (dir: 1 | -1) => {
+    const next = dir > 0 ? (DOC_SIZES.find(n => n > shown) ?? Math.min(400, Math.floor(shown) + 4)) : ([...DOC_SIZES].reverse().find(n => n < shown) ?? Math.max(1, Math.ceil(shown) - 1));
+    onSet(next); setTxt(null);
+  };
+  const commit = () => { if (txt === null) return; const n = parseFloat(txt); setTxt(null); if (Number.isFinite(n) && n >= 1 && n <= 400) onSet(Math.round(n * 2) / 2); };
+  const b = { width: isMobile ? 34 : 26, height: h, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: 0, flexShrink: 0, fontFamily: "'DM Sans',sans-serif" } as const;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+      <button type="button" title="Smaller text" aria-label="Decrease font size" onMouseDown={e => e.preventDefault()} onClick={() => step(-1)} style={{ ...b, borderRadius: '6px 0 0 6px' }}>−</button>
+      <input aria-label="Font size (points)" title="Font size in points — type any size, or use the list" list="dx-sizes" inputMode="decimal" value={txt ?? String(shown)}
+        onFocus={e => e.currentTarget.select()} onChange={e => setTxt(e.target.value)} onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } else if (e.key === 'Escape') setTxt(null); }}
+        style={{ width: 42, height: h, boxSizing: 'border-box', textAlign: 'center', border: '1px solid var(--k-e5e7eb)', borderLeft: 'none', borderRight: 'none', background: 'var(--k-fff)', color: pt ? 'var(--k-1a1a1a)' : 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", padding: 0 }} />
+      <datalist id="dx-sizes">{DOC_SIZES.map(n => <option key={n} value={n} />)}</datalist>
+      <button type="button" title="Bigger text" aria-label="Increase font size" onMouseDown={e => e.preventDefault()} onClick={() => step(1)} style={{ ...b, borderRadius: '0 6px 6px 0' }}>+</button>
+    </span>
+  );
+}
+
+/** Colour picker body: full grid, recently used, and any custom colour. */
+function ColorPanel({ heading, current, recent, noneLabel, isMobile, onPick, onNone }: { heading: string; current?: string; recent: string[]; noneLabel: string; isMobile: boolean; onPick: (c: string) => void; onNone: () => void }) {
+  const sw = isMobile ? 30 : 24;
+  const dot = (col: string, key: string) => (
+    <button key={key} type="button" aria-label={`${heading} ${col}`} title={col} onMouseDown={e => e.preventDefault()} onClick={() => onPick(col)}
+      style={{ width: sw, height: sw, borderRadius: 5, background: col, border: current?.toLowerCase() === col ? '2px solid var(--k-1a1a1a)' : '1px solid var(--k-d1d5db)', cursor: 'pointer', padding: 0 }} />
+  );
+  return (
+    <div style={{ padding: 10, width: sw * 8 + 7 * 4 + 20 }}>
+      <button type="button" onMouseDown={e => e.preventDefault()} onClick={onNone} style={{ ...btnStyle(false), width: '100%', background: 'none', marginBottom: 8 }}>{noneLabel}</button>
+      {COLOR_GRID.map((row, i) => <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>{row.map(col => dot(col, col))}</div>)}
+      {recent.length > 0 && <>
+        <div style={{ fontSize: 10.5, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, margin: '8px 0 4px' }}>Recent</div>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{recent.map(col => dot(col, `r${col}`))}</div>
+      </>}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12.5, fontWeight: 600, color: 'var(--k-374151)', cursor: 'pointer' }}>
+        <input type="color" aria-label={`Custom ${heading.toLowerCase()} colour`} defaultValue={/^#[0-9a-f]{6}$/i.test(current ?? '') ? current : '#c9922c'} onChange={e => onPick(e.target.value)} style={{ width: 34, height: 28, padding: 0, border: '1px solid var(--k-d1d5db)', borderRadius: 6, background: 'none', cursor: 'pointer' }} />
+        Custom colour…
+      </label>
+    </div>
+  );
+}
+
 // ── toolbar ────────────────────────────────────────────────────────────────
 
 function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, suggesting, onSuggesting, side, onSide, onFind }: { editor: Editor | null; isMobile: boolean; onComment: () => void; letterhead: boolean; onLetterhead: () => void; suggesting: boolean; onSuggesting: (v: boolean) => void; side: null | 'outline' | 'suggestions'; onSide: (v: null | 'outline' | 'suggestions') => void; onFind: () => void }) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
+  const [recent, setRecent] = useState<string[]>(() => { try { const j = JSON.parse(localStorage.getItem('dx-recent-colors') ?? '[]'); return Array.isArray(j) ? j.filter((x: unknown) => typeof x === 'string').slice(0, 8) : []; } catch { return []; } });
+  const remember = (col: string) => setRecent(r => { const n = [col, ...r.filter(x => x !== col)].slice(0, 8); try { localStorage.setItem('dx-recent-colors', JSON.stringify(n)); } catch { /* optional */ } return n; });
   const imgInput = useRef<HTMLInputElement>(null);
   const [, force] = useState(0);
   useEffect(() => {
@@ -427,9 +477,10 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
   const c = () => editor.chain().focus();
   const block = editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p';
   const inTable = editor.isActive('table');
+  const inList = editor.isActive('bulletList') || editor.isActive('orderedList') || editor.isActive('taskList');
+  const lineSp = (editor.getAttributes(editor.isActive('heading') ? 'heading' : 'paragraph').lineSpacing as number | null | undefined) ?? null;
   const align = editor.isActive({ textAlign: 'center' }) ? 'center' : editor.isActive({ textAlign: 'right' }) ? 'right' : 'left';
   const T = ({ title, on, onClick, icon, disabled }: { title: string; on?: boolean; onClick: () => void; icon: IcoName; disabled?: boolean }) => <TBtn title={title} on={on} onClick={onClick} disabled={disabled}><Ico n={icon} /></TBtn>;
-  const SWATCHES = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa', '#e9d5ff'];
   const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
   const ts = editor.getAttributes('textStyle') as { fontFamily?: string; fontSize?: string; color?: string };
   const curFont = fontByCss(ts.fontFamily)?.label ?? 'Default';
@@ -452,34 +503,25 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
             onChange={e => { const f = DOC_FONTS.find(x => x.label === e.target.value); if (f?.css) c().setFontFamily(f.css).run(); else c().unsetFontFamily().removeEmptyTextStyle().run(); }}>
             {DOC_FONTS.map(f => <option key={f.label} value={f.label}>{f.label}</option>)}
           </select>
-          <select aria-label="Font size" title="Font size (points)" value={curPt ? String(curPt) : ''} style={{ ...selStyle, width: 62 }}
-            onChange={e => { const v = e.target.value; if (!v) c().unsetFontSize().removeEmptyTextStyle().run(); else c().setFontSize(`${v}pt`).run(); }}>
-            <option value="">Size</option>
-            {curPt && !DOC_SIZES.includes(curPt) && <option value={String(curPt)}>{curPt}</option>}
-            {DOC_SIZES.map(n => <option key={n} value={String(n)}>{n}</option>)}
-          </select>
+          <SizeBox pt={curPt} isMobile={isMobile} onSet={n => { if (n === null) c().unsetFontSize().removeEmptyTextStyle().run(); else c().setFontSize(`${n}pt`).run(); }} />
           <TSep />
           <T title={`Bold (${MOD}B)`} icon="bold" on={editor.isActive('bold')} onClick={() => c().toggleBold().run()} />
           <T title={`Italic (${MOD}I)`} icon="italic" on={editor.isActive('italic')} onClick={() => c().toggleItalic().run()} />
           <T title={`Underline (${MOD}U)`} icon="underline" on={editor.isActive('underline')} onClick={() => c().toggleUnderline().run()} />
           <T title={`Strikethrough (${MOD}${MOD === '⌘' ? '⇧' : 'Shift+'}S)`} icon="strike" on={editor.isActive('strike')} onClick={() => c().toggleStrike().run()} />
           <Pop className="sx-btn" title="Text color" active={!!ts.color} label={<><span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1, borderBottom: `3px solid ${ts.color ?? 'var(--k-1a1a1a)'}`, padding: '0 1px' }}>A</span><span style={{ fontSize: 9 }}>▾</span></>}>
-            {close => (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 8, flexWrap: 'wrap', maxWidth: 260 }}>
-                {DOC_COLORS.map(col => <button key={col} type="button" aria-label={`Text color ${col}`} onMouseDown={e => e.preventDefault()} onClick={() => { c().setColor(col).run(); close(); }} style={{ width: 26, height: 26, borderRadius: '50%', background: col, border: ts.color === col ? '2px solid var(--k-1a1a1a)' : '1px solid var(--k-d1d5db)', cursor: 'pointer', padding: 0 }} />)}
-                <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { c().unsetColor().removeEmptyTextStyle().run(); close(); }} style={{ ...btnStyle(false), background: 'none' }}>Automatic</button>
-              </div>
-            )}
+            {close => <ColorPanel heading="Text color" current={ts.color} recent={recent} noneLabel="Automatic" isMobile={isMobile}
+              onPick={col => { c().setColor(col).run(); remember(col); close(); }}
+              onNone={() => { c().unsetColor().removeEmptyTextStyle().run(); close(); }} />}
           </Pop>
           <Pop className="sx-btn" title="Highlight color" active={editor.isActive('highlight')} label={<><Ico n="highlight" /><span style={{ fontSize: 9 }}>▾</span></>}>
-            {close => (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 8, flexWrap: 'wrap', maxWidth: 260 }}>
-                {SWATCHES.map(col => <button key={col} type="button" aria-label={`Highlight ${col}`} onMouseDown={e => e.preventDefault()} onClick={() => { c().setHighlight({ color: col }).run(); close(); }} style={{ width: 26, height: 26, borderRadius: '50%', background: col, border: '1px solid var(--k-d1d5db)', cursor: 'pointer' }} />)}
-                <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { c().unsetHighlight().run(); close(); }} style={{ ...btnStyle(false), background: 'none' }}>No highlight</button>
-              </div>
-            )}
+            {close => <ColorPanel heading="Highlight" current={editor.getAttributes('highlight').color as string | undefined} recent={recent} noneLabel="No highlight" isMobile={isMobile}
+              onPick={col => { c().setHighlight({ color: col }).run(); remember(col); close(); }}
+              onNone={() => { c().unsetHighlight().run(); close(); }} />}
           </Pop>
-          <T title="Clear formatting (bold, color, size, font…)" icon="clear" onClick={() => c().unsetBold().unsetItalic().unsetUnderline().unsetStrike().unsetHighlight().unsetColor().unsetFontFamily().unsetFontSize().removeEmptyTextStyle().run()} />
+          <TBtn title={`Superscript (${MOD}.)`} on={editor.isActive('superscript')} onClick={() => c().toggleMark('superscript').run()}><span style={{ fontSize: 13, fontWeight: 600 }}>x<sup style={{ fontSize: 9 }}>2</sup></span></TBtn>
+          <TBtn title={`Subscript (${MOD},)`} on={editor.isActive('subscript')} onClick={() => c().toggleMark('subscript').run()}><span style={{ fontSize: 13, fontWeight: 600 }}>x<sub style={{ fontSize: 9 }}>2</sub></span></TBtn>
+          <T title="Clear formatting (bold, color, size, font…)" icon="clear" onClick={() => c().unsetBold().unsetItalic().unsetUnderline().unsetStrike().unsetHighlight().unsetColor().unsetFontFamily().unsetFontSize().unsetMark('subscript').unsetMark('superscript').removeEmptyTextStyle().run()} />
           <TSep />
           <T title="Link" icon="link" on={editor.isActive('link')} onClick={openLink} />
           <T title="Insert a picture" icon="image" onClick={() => imgInput.current?.click()} />
@@ -504,6 +546,15 @@ function Toolbar({ editor, isMobile, onComment, letterhead, onLetterhead, sugges
               <Item checked={align === 'left'} onClick={() => { c().setTextAlign('left').run(); close(); }}>Left</Item>
               <Item checked={align === 'center'} onClick={() => { c().setTextAlign('center').run(); close(); }}>Center</Item>
               <Item checked={align === 'right'} onClick={() => { c().setTextAlign('right').run(); close(); }}>Right</Item>
+            </>}
+          </Pop>
+          <TBtn title="Decrease indent" onClick={() => { if (inList) c().liftListItem(editor.isActive('taskItem') ? 'taskItem' : 'listItem').run(); else c().outdentBlock().run(); }}><span style={{ fontSize: 15, lineHeight: 1 }}>⇤</span></TBtn>
+          <TBtn title="Increase indent" onClick={() => { if (inList) c().sinkListItem(editor.isActive('taskItem') ? 'taskItem' : 'listItem').run(); else c().indentBlock().run(); }}><span style={{ fontSize: 15, lineHeight: 1 }}>⇥</span></TBtn>
+          <Pop className="sx-btn" title="Line spacing" active={!!lineSp} label={<><span style={{ fontSize: 14, lineHeight: 1 }}>↕</span><span style={{ fontSize: 9 }}>▾</span></>}>
+            {close => <>
+              {[null, ...LINE_SPACINGS].map(v => (
+                <Item key={String(v)} checked={(lineSp ?? null) === v} onClick={() => { c().setLineSpacing(v).run(); close(); }}>{v === null ? 'Default' : v === 1 ? 'Single' : v === 2 ? 'Double' : String(v)}</Item>
+              ))}
             </>}
           </Pop>
           <Pop className="sx-btn" title="Table" active={inTable} label={<><Ico n="table" /><span style={{ fontSize: 9 }}>▾</span></>}>

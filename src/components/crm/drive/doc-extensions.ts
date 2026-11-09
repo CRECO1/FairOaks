@@ -10,6 +10,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import Highlight from '@tiptap/extension-highlight';
 import TextAlign from '@tiptap/extension-text-align';
 import { TextStyleKit } from '@tiptap/extension-text-style';
+import { BlockFormat, Subscript, Superscript } from '@/lib/collab/block-format';
 import { CommentMark } from '@/lib/collab/comment-mark';
 import { SuggestAdd, SuggestDel } from '@/lib/collab/suggest-marks';
 import { ImageNode } from '@/lib/collab/image-node';
@@ -28,5 +29,6 @@ export const docExtensions = () => [
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   // font family / size / text colour live on one `textStyle` mark; the Word and PDF writers read it (see doc-docx.ts, doc-pdf.ts)
   TextStyleKit.configure({ backgroundColor: false, lineHeight: false }),
+  BlockFormat, Subscript, Superscript,
   CommentMark, SuggestAdd, SuggestDel, ImageNode, CrmRefNode,
 ];

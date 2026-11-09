@@ -6,7 +6,7 @@
  */
 import { fontByCss, rgbOf, sizePt } from '@/lib/doc-fonts';
 import {
-  AlignmentType, BorderStyle, Document, ExternalHyperlink, Footer, Header, HeadingLevel, ImageRun, LevelFormat, Packer, PageNumber,
+  AlignmentType, BorderStyle, LineRuleType, Document, ExternalHyperlink, Footer, Header, HeadingLevel, ImageRun, LevelFormat, Packer, PageNumber,
   Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType, type ParagraphChild,
 } from 'docx';
 import { LETTERHEAD, decodeImage, letterheadLogo, prepForExport, type PMNode } from '@/lib/doc-pdf';
@@ -30,12 +30,24 @@ function inline(nodes: PMNode[] | undefined, base: Marks = {}, size?: number): P
     const fnt = fontByCss(ts.fontFamily), pt = sizePt(ts.fontSize), rgbv = rgbOf(ts.color);
     const run = new TextRun({
       text: n.text ?? '', bold: base.bold || m.has('bold'), italics: base.italic || m.has('italic'), strike: m.has('strike'),
+      subScript: m.has('subscript') || undefined, superScript: m.has('superscript') || undefined,
       underline: m.has('underline') || link ? {} : undefined, font: m.has('code') ? MONO : fnt?.word ?? undefined, size: pt ? Math.round(pt * 2) : size,
       color: link ? '1D4ED8' : rgbv ? rgbv.map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() : undefined,
     });
     out.push(link && /^https?:\/\//i.test(link) ? new ExternalHyperlink({ link, children: [run] }) : run);
   }
   return out;
+}
+
+/** Paragraph / heading layout: alignment, indent (0.5" per level) and line spacing from the block's attrs. */
+function blockProps(n: PMNode, spacing: { after: number } | undefined, quote: object): Record<string, unknown> {
+  const a = n.attrs ?? {};
+  const align = a.textAlign === 'center' ? AlignmentType.CENTER : a.textAlign === 'right' ? AlignmentType.RIGHT : undefined;
+  const ind = Math.max(0, Number(a.indent) || 0), ls = Number(a.lineSpacing) || 0;
+  const base = { ...quote } as { indent?: { left: number } };
+  if (ind) base.indent = { left: (base.indent?.left ?? 0) + ind * 720 };
+  const sp = { ...(spacing ?? {}), ...(ls ? { line: Math.round(ls * 240), lineRule: LineRuleType.AUTO } : {}) };
+  return { ...base, ...(align ? { alignment: align } : {}), ...(Object.keys(sp).length ? { spacing: sp } : {}) };
 }
 
 const HEADING = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3];
@@ -49,7 +61,7 @@ function blocks(nodes: PMNode[] | undefined, ctx: { quote?: boolean } = {}): Blo
   const quoteProps = ctx.quote ? { indent: { left: 560 }, border: { left: { style: BorderStyle.SINGLE, size: 18, color: GOLD, space: 8 } } } : {};
   for (const n of nodes ?? []) {
     switch (n.type) {
-      case 'paragraph': out.push(new Paragraph({ children: inline(n.content), spacing: { after: 120 }, ...quoteProps })); break;
+      case 'paragraph': out.push(new Paragraph({ children: inline(n.content), ...blockProps(n, { after: 120 }, quoteProps) })); break;
       case 'image': {
         const img = decodeImage(n.attrs?.src);
         if (!img) { out.push(new Paragraph({ children: [new TextRun({ text: '[picture]', italics: true })], spacing: { after: 120 } })); break; }
@@ -59,7 +71,7 @@ function blocks(nodes: PMNode[] | undefined, ctx: { quote?: boolean } = {}): Blo
       }
       case 'heading': {
         const level = Math.min(3, Math.max(1, Number(n.attrs?.level ?? 1)));
-        out.push(new Paragraph({ heading: HEADING[level - 1], children: inline(n.content, { bold: true }, [34, 28, 24][level - 1]), ...quoteProps }));   // formatted directly too, so viewers that ignore styles still show a heading
+        out.push(new Paragraph({ heading: HEADING[level - 1], children: inline(n.content, { bold: true }, [34, 28, 24][level - 1]), ...blockProps(n, undefined, quoteProps) }));   // formatted directly too, so viewers that ignore styles still show a heading
         break;
       }
       case 'bulletList': case 'orderedList': case 'taskList': out.push(...list(n, 0, n.type === 'orderedList' ? ++orderedInstance : 0, ctx)); break;
