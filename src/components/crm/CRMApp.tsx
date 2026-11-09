@@ -13540,7 +13540,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {clientEnrollments.map(e => {
                         const off = e.active === false || ['paused', 'completed', 'draft'].includes(e.campaign_status ?? '');
-                        const label = e.active === false ? 'Unsubscribed' : (e.campaign_status && e.campaign_status !== 'active') ? e.campaign_status : 'Active';
+                        // An enrollment goes inactive for several reasons (the sequence finished, someone took the contact off, or they unsubscribed) — only the last one is an unsubscribe, so say that only when the contact actually opted out.
+                        const label = e.active === false ? (c.unsubscribed_at ? 'Unsubscribed' : e.campaign_status === 'completed' ? 'Completed' : 'Ended') : (e.campaign_status && e.campaign_status !== 'active') ? e.campaign_status : 'Active';
                         return (
                           <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: off ? 'var(--k-f9fafb)' : 'var(--k-f0f7ff)', border: `1px solid ${off ? 'var(--k-e5e7eb)' : '#cfe3fb'}`, borderRadius: 8, padding: '9px 12px' }}>
                             <span style={{ fontSize: 16, flexShrink: 0 }}>{e.campaign_type === 'sms' ? '💬' : '📣'}</span>
