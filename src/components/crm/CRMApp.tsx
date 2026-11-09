@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
-import { Session } from '@supabase/supabase-js';
+import { Session, createClient as createPlainClient } from '@supabase/supabase-js';
 import { businessMinutesBetween, fmtMins, stlTone, STL_COLORS, STL_LATE_MIN, waitingLabel, isOpenNow, pickedUpHint, bestHours, hourLabel, isConnectNote } from '@/lib/speed-to-lead';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml, sanitizeEmailHtml } from '@/lib/sanitize';
@@ -962,6 +962,7 @@ function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; br
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -975,6 +976,17 @@ function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; br
     });
     return () => subscription.unsubscribe();
   }, []); // eslint-disable-line
+
+  // Emails a reset link that lands on /crm/setup (which already handles invite + recovery links with the plain
+  // client). Uses the plain supabase-js client, not the cookie one: the cookie client would send a PKCE link that
+  // /crm/setup can't complete. The answer is the same whether or not the address has an account.
+  async function handleForgot() {
+    setError(''); setNotice('');
+    if (!email.trim()) { setError('Enter your email above, then tap “Forgot password?”'); return; }
+    const plain = createPlainClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
+    await plain.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/crm/setup` });
+    setNotice('If that email has an account, a reset link is on its way. Check your inbox (and spam).');
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -1005,6 +1017,7 @@ function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; br
         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#c9922c', marginBottom: 4 }}>{brandName}</div>
         <div style={{ fontSize: 14, color: 'var(--k-6b7280)', marginBottom: 24 }}>Agent CRM — Sign In</div>
         {error && <div style={{ background: 'var(--k-fee2e2)', color: 'var(--k-991b1b)', padding: '8px 12px', borderRadius: 6, fontSize: 14, marginBottom: 14 }}>{error}</div>}
+        {notice && <div style={{ background: '#dcfce7', color: '#166534', padding: '8px 12px', borderRadius: 6, fontSize: 14, marginBottom: 14 }}>{notice}</div>}
         <form onSubmit={handleLogin}>
           <label style={labelStyle}>Email</label>
           <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@fairoaksrealtygroup.com" required style={inputStyle} />
@@ -1013,6 +1026,10 @@ function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; br
           <button type="submit" disabled={loading}
             style={{ width: '100%', padding: '10px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
             {loading ? 'Signing in…' : 'Sign In'}
+          </button>
+          <button type="button" onClick={handleForgot}
+            style={{ display: 'block', margin: '14px auto 0', background: 'none', border: 'none', color: 'var(--k-6b7280)', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>
+            Forgot password?
           </button>
         </form>
       </div>
