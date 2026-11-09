@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const [{ data: reads }, { data: recent }] = await Promise.all([
     db.from('crm_chat_reads').select('room, last_read_at').eq('user_id', ctx.userId),
     db.from('crm_chat_messages').select('room, sender_id, body, created_at').eq('business_unit', ctx.businessUnit)
-      .or(`room.eq.team,room.like.dm:%${me}%`).order('created_at', { ascending: false }).limit(1500),
+      .or(`room.eq.team,room.like.dm:%${me}%`).order('created_at', { ascending: false }).limit(400),
   ]);
   const seen = new Map((reads ?? []).map(r => [r.room as string, r.last_read_at as string]));
   const rooms = new Map<string, { room: string; other: string | null; last: { sender_id: string; body: string; created_at: string } | null; unread: number }>();

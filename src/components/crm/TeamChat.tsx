@@ -17,7 +17,7 @@ const when = (iso: string) => {
 
 export default function TeamChat({ token, meId, people, isMobile, onUnread, initialRoom }: { token?: string; meId: string; people: ChatPerson[]; isMobile: boolean; onUnread?: (n: number) => void; initialRoom?: string }) {
   const [rooms, setRooms] = useState<Record<string, RoomInfo>>({});
-  const [room, setRoom] = useState<string | null>(isMobile ? null : (initialRoom ?? 'team'));
+  const [room, setRoom] = useState<string | null>(initialRoom ?? (isMobile ? null : 'team'));
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);

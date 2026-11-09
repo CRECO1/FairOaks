@@ -1322,17 +1322,37 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [gmailConnected]);
   const emailBadge = gmailConnected ? (gmailUnread ?? 0) : inbox.unreadMine;
   const [chatUnread, setChatUnread] = useState(0);
-  // Team chat unread badge: checked every 45s in the background (the chat page itself polls faster while it is open).
+  const [chatPop, setChatPop] = useState<{ room: string; from: string; text: string } | null>(null);
+  const [chatOpenRoom, setChatOpenRoom] = useState<string | undefined>(undefined);
+  const chatSeen = useRef<string | null>(null);   // newest message time already accounted for (so only NEW ones pop up)
+  const pageRef = useRef(page); pageRef.current = page;
+  // Team chat: unread badge + a small pop-up when a message arrives while you are elsewhere in the CRM (checked every 15s).
   useEffect(() => {
-    if (!session?.access_token || page === 'teamchat') return;
+    if (!session?.access_token || !profile?.id) return;
     let alive = true;
     const tick = async () => {
       if (document.visibilityState !== 'visible') return;
-      try { const r = await fetch('/api/crm/chat/summary', { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' }); if (r.ok && alive) setChatUnread(((await r.json()) as { unread: number }).unread ?? 0); } catch { /* ignore */ }
+      try {
+        const r = await fetch('/api/crm/chat/summary', { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' });
+        if (!r.ok || !alive) return;
+        const j = await r.json() as { unread: number; rooms: Array<{ room: string; last: { sender_id: string; body: string; created_at: string } | null; unread: number }> };
+        setChatUnread(j.unread ?? 0);
+        const newest = j.rooms.map(x => x.last?.created_at ?? '').sort().pop() ?? '';
+        const base = chatSeen.current;
+        chatSeen.current = newest > (base ?? '') ? newest : base ?? '';
+        if (base === null || pageRef.current === 'teamchat') return;   // first look only sets the baseline; no pop-ups on the chat page itself
+        const fresh = j.rooms.filter(x => x.unread > 0 && x.last && x.last.sender_id !== profile.id && x.last.created_at > base).sort((x, y) => y.last!.created_at.localeCompare(x.last!.created_at))[0];
+        if (fresh?.last) {
+          const who = profiles.find(x => x.id === fresh.last!.sender_id);
+          setChatPop({ room: fresh.room, from: who ? `${who.first_name} ${who.last_name ?? ''}`.trim() : 'A teammate', text: fresh.last.body.slice(0, 120) });
+        }
+      } catch { /* ignore */ }
     };
-    void tick(); const t = setInterval(tick, 45000);
+    void tick(); const t = setInterval(tick, 15000);
     return () => { alive = false; clearInterval(t); };
-  }, [session?.access_token, page]);
+  }, [session?.access_token, profile?.id, profiles]);
+  useEffect(() => { if (page === 'teamchat' && chatOpenRoom) { const t = setTimeout(() => setChatOpenRoom(undefined), 0); return () => clearTimeout(t); } }, [page, chatOpenRoom]);
+  useEffect(() => { if (!chatPop) return; const t = setTimeout(() => setChatPop(null), 8000); return () => clearTimeout(t); }, [chatPop]);
   // The home-screen icon of the installed app shows the unread count (iOS 16.4+ / Android / desktop PWAs; a no-op elsewhere).
   useEffect(() => {
     const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
@@ -11597,8 +11617,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             />
           )}
 
+          {chatPop && page !== 'teamchat' && (
+            <div role="alert" onClick={() => { setChatOpenRoom(chatPop.room); setPage('teamchat'); loadProfiles(); setChatPop(null); }}
+              style={{ position: 'fixed', top: isMobile ? 'calc(10px + env(safe-area-inset-top))' : 18, right: isMobile ? 10 : 18, left: isMobile ? 10 : 'auto', width: isMobile ? 'auto' : 340, zIndex: 9999, background: '#111', color: '#fff', borderLeft: '4px solid #c9922c', borderRadius: 10, padding: '11px 14px', boxShadow: '0 8px 28px rgba(0,0,0,.35)', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700 }}>
+                <span>💬 {chatPop.from}</span>
+                <button onClick={e => { e.stopPropagation(); setChatPop(null); }} aria-label="Dismiss" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+              </div>
+              <div style={{ fontSize: 13.5, marginTop: 3, opacity: .9, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{chatPop.text}</div>
+            </div>
+          )}
           {page === 'teamchat' && profile && (
-            <TeamChat token={session?.access_token} meId={profile.id} isMobile={isMobile} onUnread={setChatUnread}
+            <TeamChat token={session?.access_token} meId={profile.id} isMobile={isMobile} onUnread={setChatUnread} initialRoom={chatOpenRoom}
               people={profiles.filter(x => !!x.first_name && (!x.business_unit || x.business_unit === profile.business_unit)).map(x => ({ id: x.id, name: `${x.first_name} ${x.last_name ?? ''}`.trim() }))} />
           )}
 
