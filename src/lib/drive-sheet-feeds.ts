@@ -1,6 +1,7 @@
 import type { DriveContext } from '@/lib/drive-server';
 import type { FeedData } from '@/lib/drive-sheet';
 import { buildFrenchCalls, buildFrenchTenants } from '@/lib/drive-sheet-feeds-french';
+import { buildRobertCardNotes } from '@/lib/drive-sheet-feeds-card-notes';
 import { buildBrianEmails, buildBrianSummary, buildRobertEmails, buildRobertSummary } from '@/lib/drive-sheet-feeds-robert';
 
 // Live CRM feeds for My Drive spreadsheets. Contacts are read AS THE CALLER (RLS decides which people they may see); the call and
@@ -15,12 +16,13 @@ export const FEEDS = {
   robert_summary: { name: 'Open + reply rates', build: buildRobertSummary },
   brian_summary: { name: 'Open + reply rates', build: buildBrianSummary },
   brian_emails: { name: 'Brian', build: buildBrianEmails },
+  robert_card_notes: { name: 'Card notes', build: buildRobertCardNotes },
 } as const;
 export type FeedKey = keyof typeof FEEDS;
 // Outreach feeds hold one broker's sent mail, replies and send-later queue, read with the service key — so only that person or an
 // admin may build them. Everything else (contact + call feeds) is limited by the contacts the caller can already see.
 const FEED_OWNER: Partial<Record<FeedKey, string>> = {
-  robert_emails: 'robert@crecotx.com', robert_summary: 'robert@crecotx.com',
+  robert_emails: 'robert@crecotx.com', robert_summary: 'robert@crecotx.com', robert_card_notes: 'robert@crecotx.com',
   brian_emails: 'brian@crecotx.com', brian_summary: 'brian@crecotx.com',
 };
 export async function feedsAllowed(keys: FeedKey[], dc: DriveContext): Promise<boolean> {
