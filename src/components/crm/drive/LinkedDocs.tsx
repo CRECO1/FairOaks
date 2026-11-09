@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import DI from './DriveIcons';
 import type { DrivePerson } from './DocsDrive';
 import { OPEN_LIVE_DOC, LIVE_DOCS_CHANGED } from './card-edit';
+import { openDriveTab, driveDocPath } from './open-tab';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
 
@@ -34,6 +35,8 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
 }) {
   const [items, setItems] = useState<Linked[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // A document opens in its own browser tab (on a phone, or when the browser blocks the tab, in place).
+  const openDoc = (id: string) => { if (!openDriveTab(driveDocPath(id))) setOpenId(id); };
   const [busy, setBusy] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [tpls, setTpls] = useState<Tpl[] | null>(null);
@@ -52,7 +55,7 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
   useEffect(() => { setItems(null); void load(); }, [load]);
   // A Word / text file on this card was just made editable: refresh the list and open it (only the first mounted section takes the event).
   useEffect(() => {
-    const h = (e: Event) => { const d = (e as CustomEvent<{ id: string; handled: boolean }>).detail; if (!d || d.handled) return; d.handled = true; setOpenId(d.id); void load(); };
+    const h = (e: Event) => { const d = (e as CustomEvent<{ id: string; handled: boolean }>).detail; if (!d || d.handled) return; d.handled = true; openDoc(d.id); void load(); };
     const changed = () => { void load(); };
     window.addEventListener(OPEN_LIVE_DOC, h);
     window.addEventListener(LIVE_DOCS_CHANGED, changed);
@@ -80,7 +83,7 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error((j as { error?: string }).error || 'Could not create the document');
       await load();
-      setOpenId((j as { item: { id: string } }).item.id);
+      openDoc((j as { item: { id: string } }).item.id);
     } catch (e) { onToast((e as Error).message); }
     setCreating(false);
   };
@@ -151,7 +154,7 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
                 {busy === `${l.id}:${k}` ? '…' : k === 'pdf' ? '⬇ PDF' : '⬇ Word'}
               </button>
             ))}
-            <button type="button" onClick={() => setOpenId(l.doc_id)} style={{ ...smallBtn, color: '#fff', background: '#111', border: 'none', padding: '5px 12px', cursor: 'pointer' }}>Open</button>
+            <button type="button" onClick={() => openDoc(l.doc_id)} style={{ ...smallBtn, color: '#fff', background: '#111', border: 'none', padding: '5px 12px', cursor: 'pointer' }}>Open</button>
             {(isAdmin || l.linked_by === currentUser.id) && (
               <button type="button" onClick={() => void unlink(l)} title="Remove from this card" aria-label={`Remove ${l.title} from this card`}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 12, textDecoration: 'underline', padding: isMobile ? '8px 6px' : '4px 2px', minHeight: isMobile ? 36 : undefined, flexShrink: 0 }}>Remove</button>

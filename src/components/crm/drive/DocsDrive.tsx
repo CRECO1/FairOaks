@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DI, { toneFor, type DIName } from './DriveIcons';
 import dynamic from 'next/dynamic';
+import { openDriveTab, driveDocPath, driveFormPath } from './open-tab';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import { useBackToClose } from '@/lib/use-back-to-close';
 import DocPreviewModal from '../DocPreviewModal';
@@ -197,9 +198,11 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
 
   const go = (id: string | null) => { setQ(''); setView('folder'); setFolderId(id); setDlg(null); };
   const refresh = () => { void load(); void loadTree(); };
+  // Documents and sheets open in their own browser tab (like Google Drive); on a phone, or when the browser blocks the new tab, they open in place.
+  const openDoc = (id: string) => { if (!openDriveTab(driveDocPath(id, businessUnit))) setOpenDocId(id); };
   // The CRM-wide search (⌘K) picked a document: open it.
   useEffect(() => {
-    const h = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) setOpenDocId(id); };
+    const h = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) openDoc(id); };
     window.addEventListener('crm:open-drive-doc', h);
     return () => window.removeEventListener('crm:open-drive-doc', h);
   }, []);
@@ -217,7 +220,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     setNewOpen(false);
     try {
       const j = await api<{ item: DriveDoc }>('/api/crm/drive', { method: 'POST', body: JSON.stringify({ type: kind, feeds, title: feeds ? (title ?? 'Elkhorn Point call tracker') : undefined, parent_id: view === 'folder' ? folderId : null }) });
-      refresh(); setOpenDocId(j.item.id);
+      refresh(); openDoc(j.item.id);
     } catch (e) { onToast((e as Error).message); }
   };
   // A copy of a template, in the folder you are looking at (or at the top level when you aren't in a folder), opened straight away.
@@ -225,7 +228,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     setDlg(null); setNewOpen(false);
     try {
       const j = await api<{ item: DriveDoc }>('/api/crm/drive', { method: 'POST', body: JSON.stringify({ type: 'doc', template_id: templateId, parent_id: view === 'folder' ? folderId : null }) });
-      refresh(); setOpenDocId(j.item.id);
+      refresh(); openDoc(j.item.id);
     } catch (e) { onToast((e as Error).message); }
   };
   // A ready-made starting point from the Template gallery (lives in code, same for every team): a copy in the folder you are looking at, opened straight away.
@@ -233,7 +236,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     setDlg(null); setNewOpen(false);
     try {
       const j = await api<{ item: DriveDoc }>('/api/crm/drive', { method: 'POST', body: JSON.stringify({ builtin: id, parent_id: view === 'folder' ? folderId : null }) });
-      refresh(); setOpenDocId(j.item.id);
+      refresh(); openDoc(j.item.id);
     } catch (e) { onToast((e as Error).message); }
   };
   const saveAsTemplate = (doc: DriveDoc, title: string) => act(async () => {
@@ -400,6 +403,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     if (!f.form_id) { onToast('This form has no blank to open'); return; }
     try {
       const j = await api<{ url: string }>(`/api/crm/forms/${f.form_id}/url`);
+      if (f.submission_id && openDriveTab(driveFormPath(f.submission_id, f.form_id, f.form_name || f.title, businessUnit))) return;
       setFormEditor({ form: { id: f.form_id, name: f.form_name || f.title }, url: j.url, submissionId: f.submission_id });
     } catch (e) { onToast((e as Error).message || 'Could not open the form'); }
   };
@@ -423,14 +427,14 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
       refresh(); await openFormItem(j.item);
     } catch (e) { onToast((e as Error).message); }
   };
-  const openItem = (kind: Kind, item: Item) => { if (inTrash || view === 'templates') { setDlg({ t: 'menu', kind, item }); return; } if (kind === 'folder') go(item.id); else if (kind === 'doc') setOpenDocId(item.id); else if (kind === 'form') void openFormItem(item as DriveFormItem); else if (canEditFile((item as DriveFile).name)) void editFile(item as DriveFile); else void openFile(item as DriveFile); };
+  const openItem = (kind: Kind, item: Item) => { if (inTrash || view === 'templates') { setDlg({ t: 'menu', kind, item }); return; } if (kind === 'folder') go(item.id); else if (kind === 'doc') openDoc(item.id); else if (kind === 'form') void openFormItem(item as DriveFormItem); else if (canEditFile((item as DriveFile).name)) void editFile(item as DriveFile); else void openFile(item as DriveFile); };
 
   // Word (.docx) and text files can be turned into a live document (made once; opening it again returns the same one).
   const editFile = async (f: DriveFile) => {
     onToast('Opening as an editable document…');
     try {
       const r = await api<{ item: DriveDoc; existing?: boolean }>(`/api/crm/drive/file/${f.id}/convert`, { method: 'POST' });
-      setOpenDocId(r.item.id); refresh();
+      openDoc(r.item.id); refresh();
     } catch (e) { onToast((e as Error).message || 'Could not open it for editing'); }
   };
 
@@ -900,7 +904,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           ) : (
             <>
               {dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template && <MenuBtn icon="📋" label="Use this template" isMobile={isMobile} onClick={() => void startFromTemplate(dlg.item.id)} />}
-              <MenuBtn icon="↗" label={dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template ? 'Edit the template' : 'Open'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); if (d.kind === 'doc') setOpenDocId(d.item.id); else openItem(d.kind, d.item); }} />
+              <MenuBtn icon="↗" label={dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template ? 'Edit the template' : 'Open'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); if (d.kind === 'doc') openDoc(d.item.id); else openItem(d.kind, d.item); }} />
                {dlg.kind === 'doc' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); setQuickDocId(d.item.id); }} />}
               {dlg.kind === 'form' && <MenuBtn icon="👁" label="Quick look" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void quickLookForm(d.item as DriveFormItem); }} />}
               {dlg.kind === 'form' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFormPdf(d.item as DriveFormItem); }} />}
@@ -913,7 +917,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
               {dlg.kind === 'doc' && !!(dlg.item as DriveDoc).source_file && <MenuBtn icon="↓" label={`Download the original (.${(dlg.item as DriveDoc).source_file!.name.split('.').pop()?.toLowerCase()})`} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile({ id: (d.item as DriveDoc).source_file!.id } as DriveFile); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
               <MenuBtn icon="⭐" label={isStar(dlg.kind, dlg.item) ? 'Remove from Starred' : 'Add to Starred'} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); toggleStar(d.kind, d.item); }} />
-              {dlg.kind === 'doc' && <MenuBtn icon="🔗" label="Copy link" isMobile={isMobile} onClick={() => { const id = dlg.item.id; setDlg(null); const url = `${window.location.origin}/crm?doc=${id}`; navigator.clipboard.writeText(url).then(() => onToast('Link copied — anyone with access can open it'), () => onToast(url)); }} />}
+              {dlg.kind === 'doc' && <MenuBtn icon="🔗" label="Copy link" isMobile={isMobile} onClick={() => { const id = dlg.item.id; setDlg(null); const url = `${window.location.origin}${driveDocPath(id, businessUnit)}`; navigator.clipboard.writeText(url).then(() => onToast('Link copied — anyone with access can open it'), () => onToast(url)); }} />}
               <MenuBtn icon="✎" label="Rename" isMobile={isMobile} onClick={() => setDlg({ t: 'rename', kind: dlg.kind, item: dlg.item })} />
               {!(dlg.kind === 'doc' && (dlg.item as DriveDoc).is_template) && <>
                 <MenuBtn icon="📁" label="Move to…" isMobile={isMobile} onClick={() => setDlg({ t: 'move', kind: dlg.kind, item: dlg.item })} />
@@ -977,7 +981,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         <TransactionDocEditor autoSave form={formEditor.form} url={formEditor.url} authToken={authToken} isAdmin={isAdmin} businessUnit={businessUnit} submissionId={formEditor.submissionId} isMobile={isMobile}
           onToast={onToast} onClose={() => { setFormEditor(null); refresh(); }} onSaved={refresh} />
       )}
-      {quickDocId && <DocQuickView docId={quickDocId} authToken={authToken} isMobile={isMobile} onToast={onToast} onClose={() => setQuickDocId(null)} onOpen={id => { setQuickDocId(null); setOpenDocId(id); }} />}
+      {quickDocId && <DocQuickView docId={quickDocId} authToken={authToken} isMobile={isMobile} onToast={onToast} onClose={() => setQuickDocId(null)} onOpen={id => { setQuickDocId(null); openDoc(id); }} />}
 
       {openDocId && (
         <LiveDocEditor docId={openDocId} authToken={authToken} user={currentUser} isMobile={isMobile} people={profiles} isAdmin={isAdmin}
@@ -1090,7 +1094,7 @@ function MoveDialog({ kind, item, bulk, tree, kids, isMobile, onClose, onPick }:
   );
 }
 
-function ShareDialog({ kind, item, bulk, people, can, isMobile, who, onClose, onSave }: { kind: Kind; item: Item; bulk?: Array<{ kind: Kind; item: Item }>; people: DrivePerson[]; can: boolean; isMobile: boolean; who: (id: string | null) => string; onClose: () => void; onSave: (v: 'team' | 'private', shared: string[]) => void }) {
+export function ShareDialog({ kind, item, bulk, people, can, isMobile, who, onClose, onSave }: { kind: Kind; item: Item; bulk?: Array<{ kind: Kind; item: Item }>; people: DrivePerson[]; can: boolean; isMobile: boolean; who: (id: string | null) => string; onClose: () => void; onSave: (v: 'team' | 'private', shared: string[]) => void }) {
   const [vis, setVis] = useState<'team' | 'private'>(item.visibility);
   const [picked, setPicked] = useState<Set<string>>(new Set(bulk ? [] : item.shared_with));
   const radio = (v: 'team' | 'private', label: string, sub: string) => (

@@ -60,9 +60,11 @@ interface Props {
   /** Teammates, for @mentions and for naming who wrote a comment or saved a version. */
   people?: DrivePerson[];
   isAdmin?: boolean;
+  /** The document has loaded (a standalone page uses it to name its browser tab). */
+  onLoaded?: (doc: DriveDoc) => void;
 }
 
-export default function LiveDocEditor({ docId, authToken, user, isMobile, onClose, onShare, onSign, onToast, onTitle, people = [], isAdmin = false }: Props) {
+export default function LiveDocEditor({ docId, authToken, user, isMobile, onClose, onShare, onSign, onToast, onTitle, onLoaded, people = [], isAdmin = false }: Props) {
   const [doc, setDoc] = useState<DriveDoc | null>(null);
   const [state, setState] = useState<Uint8Array | null | undefined>(undefined);
   const [err, setErr] = useState<string | null>(null);
@@ -75,7 +77,7 @@ export default function LiveDocEditor({ docId, authToken, user, isMobile, onClos
         const j = await r.json().catch(() => ({}));
         if (off) return;
         if (!r.ok) { setErr(j?.error || 'Could not open this document'); return; }
-        setDoc(j.doc as DriveDoc);
+        setDoc(j.doc as DriveDoc); onLoaded?.(j.doc as DriveDoc);
         setState(j.state ? fromBase64(j.state) : null);
       } catch { if (!off) setErr('Could not open this document — check your connection'); }
     })();
