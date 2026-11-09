@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { parseRich, drawRichText, drawnWidth, hasMarkup, type RichFonts } from '@/lib/rich-text';
+import { parseRich, drawRichText, drawnWidth, hasMarkup, FORM_FONT_SIZE, type RichFonts } from '@/lib/rich-text';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
@@ -382,11 +382,9 @@ export default function TransactionDocEditor({
     const apply = (clientX: number, clientY: number) => {
       const rz = resize.current;
       if (rz) {
-        // Right drag widens the box; down drag grows the text (a full-page vertical
-        // drag spans ~60pt of font size). Both clamped to sane bounds.
+        // Dragging only changes the box's WIDTH. The text size is locked to the form's one size.
         const dfw = (clientX - rz.sx) / rz.pw;
-        const dsize = (clientY - rz.sy) / rz.ph * 60;
-        setFields(fs => fs.map(f => f.id === rz.id ? { ...f, fw: Math.max(0.03, Math.min(0.97, rz.ofw + dfw)), size: Math.round(Math.max(6, Math.min(48, rz.osize + dsize))) } : f));
+        setFields(fs => fs.map(f => f.id === rz.id ? { ...f, fw: Math.max(0.03, Math.min(0.97, rz.ofw + dfw)), size: FORM_FONT_SIZE } : f));
         return;
       }
       const d = drag.current; if (!d) return;
@@ -493,7 +491,7 @@ export default function TransactionDocEditor({
       // Baseline sits just above the blank line (detected fy = the underline),
       // matching where the on-screen field renders.
       const y = height - f.fy * height + 2;
-      const size = f.size * 0.85;
+      const size = FORM_FONT_SIZE * 0.85;
       if (f.type === 'check') {
         // Centre the X in the printed box (the field is the box: fw wide, bottom at fy)
         // rather than hanging it off the left edge like a line of text.
@@ -514,11 +512,8 @@ export default function TransactionDocEditor({
         drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
       } else if (drawnWidth(font, val, size) <= maxW) {
         pg.drawText(val, { x, y, size, font, color: ink });
-      } else if (drawnWidth(font, val, size) * 0.72 <= maxW) {
-        // Only a little too long for a short printed line (a company name on a signature
-        // block): shrink it onto the line rather than wrapping a word below it.
-        pg.drawText(val, { x, y, size: size * maxW / drawnWidth(font, val, size), font, color: ink });
       } else {
+        // Too long for the blank: wrap at the same size (never shrink), so every field matches.
         drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
       }
     }
@@ -636,7 +631,7 @@ export default function TransactionDocEditor({
   const reportRef = useRef(onFieldsChange);
   reportRef.current = onFieldsChange;
   useEffect(() => {
-    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: f.size, label: f.label })));
+    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: FORM_FONT_SIZE, label: f.label })));
   }, [fields]);
 
   const sendNow = useCallback(async () => {
@@ -644,7 +639,7 @@ export default function TransactionDocEditor({
     if (!sig.length && !window.confirm('No signature fields are placed. Signers will sign on an added Signatures page instead. Continue?')) return;
     await saveToDeal();
     // The label travels with the field so the signer is told what the blank is for.
-    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: f.size, label: f.label })));
+    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: FORM_FONT_SIZE, label: f.label })));
   }, [fields, saveToDeal, onSend]);
 
   // Jump the document pane to a page, and keep the navigator's highlight in step
@@ -953,7 +948,7 @@ export default function TransactionDocEditor({
               // Pin the box BOTTOM to the detected underline (fy) via translateY(-100%),
               // and keep it one tight line tall so adjacent blanks don't merge into a block.
               // The 11px floor keeps the box tappable once the page scales down.
-              const em = f.size * 0.85;
+              const em = FORM_FONT_SIZE * 0.85;
               if (isSig) {
                 const role = f.signerRole || 'client';
                 const rec = f.signerKey ? recByKey.get(f.signerKey) : undefined;
@@ -1052,12 +1047,12 @@ export default function TransactionDocEditor({
                         : { top: isMobile ? -13 : -9, right: isMobile ? -13 : -9 }),
                       width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: isMobile ? 13 : 10, cursor: 'pointer', lineHeight: isMobile ? '26px' : '17px', padding: 0 }}>✕</button>
                 )}
-                {/* Resize: drag right to widen the box, down to grow the text. */}
+                {/* Resize: drag right to widen the box (the text size is the same on every field). */}
                 {!isCheck && (showGrip || isMobile) && (
                   <div
                     onMouseDown={e => onResizeStart(e, f)}
                     onTouchStart={e => onTouchResizeStart(e, f)}
-                    title="Drag to resize — right to widen, down for bigger text"
+                    title="Drag to widen this field (text size is the same on every field)"
                     aria-label="Resize field"
                     style={{ position: 'absolute', bottom: isMobile ? -13 : -9, right: isMobile ? -13 : -9,
                       width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%',

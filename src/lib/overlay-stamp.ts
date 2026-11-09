@@ -4,7 +4,7 @@
 // stamp or the PDF that goes out for signature would still show the OLD text.
 // Keep the layout maths identical to the editor's build().
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { parseRich, drawRichText, drawnWidth, hasMarkup, type RichFonts } from '@/lib/rich-text';
+import { parseRich, drawRichText, drawnWidth, hasMarkup, FORM_FONT_SIZE, type RichFonts } from '@/lib/rich-text';
 
 export interface StampField {
   page: number; fx: number; fy: number; fw: number;
@@ -44,7 +44,7 @@ export async function stampOverlay(blank: Uint8Array, fields: StampField[]): Pro
     const { width, height } = pg.getSize();
     const x = f.fx * width + 2;
     const y = height - f.fy * height + 2;
-    const size = (f.size ?? 11) * 0.85;
+    const size = FORM_FONT_SIZE * 0.85;
     if (f.type === 'check') {
       if (String(f.value ?? '').trim()) {
         const box = f.fw * width;
@@ -61,8 +61,6 @@ export async function stampOverlay(blank: Uint8Array, fields: StampField[]): Pro
       drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
     } else if (drawnWidth(font, val, size) <= maxW) {
       pg.drawText(val, { x, y, size, font, color: ink });
-    } else if (drawnWidth(font, val, size) * 0.72 <= maxW) {
-      pg.drawText(val, { x, y, size: size * maxW / drawnWidth(font, val, size), font, color: ink });
     } else {
       drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
     }

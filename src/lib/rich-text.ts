@@ -5,7 +5,11 @@
 // the TransactionDocEditor overlay) render the same markup via drawRichText; the editor
 // control (RichText.tsx) produces and consumes it. Keep this file DOM-free so it is safe
 // to import anywhere; DOM serialization lives in RichText.tsx.
-import { rgb, type PDFPage, type PDFFont, type Color } from 'pdf-lib';
+import type { PDFPage, PDFFont, Color } from 'pdf-lib';
+
+// Every form field is filled in at ONE font size (in the editor, the saved PDF and the server stamper) so a form always reads the same.
+// Points before the 0.85 scale the editor has always applied.
+export const FORM_FONT_SIZE = 11;
 
 export interface Run { text: string; b: boolean; i: boolean; c?: string }   // c = '#rrggbb' when coloured
 
@@ -49,8 +53,8 @@ export function drawnWidth(font: PDFFont, text: string, size: number): number {
   return w;
 }
 
-const hexColor = (h: string): Color => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
-const runColor = (r: Run, dflt: Color): Color => (r.c ? hexColor(r.c) : dflt);
+// Forms use ONE ink colour. A stored {c:#…} marker (from the brief colour-picker build) is still read so it never prints as stray text, but it is not drawn.
+const runColor = (_r: Run, dflt: Color): Color => dflt;
 const fontFor = (r: Run, f: RichFonts): PDFFont => (r.b && r.i) ? f.boldItal : r.b ? f.bold : r.i ? f.ital : f.reg;
 
 /** Split runs into words (whitespace-separated), each word an array of same-style pieces. */
