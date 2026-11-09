@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
-import { Session, createClient as createPlainClient } from '@supabase/supabase-js';
+import { Session } from '@supabase/supabase-js';
 import { businessMinutesBetween, fmtMins, stlTone, STL_COLORS, STL_LATE_MIN, waitingLabel, isOpenNow, pickedUpHint, bestHours, hourLabel, isConnectNote } from '@/lib/speed-to-lead';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml, sanitizeEmailHtml } from '@/lib/sanitize';
@@ -977,14 +977,15 @@ function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; br
     return () => subscription.unsubscribe();
   }, []); // eslint-disable-line
 
-  // Emails a reset link that lands on /crm/setup (which already handles invite + recovery links with the plain
-  // client). Uses the plain supabase-js client, not the cookie one: the cookie client would send a PKCE link that
-  // /crm/setup can't complete. The answer is the same whether or not the address has an account.
+  // Emails a reset link that lands on /crm/setup. Goes through our own route (Resend), not Supabase's mailer,
+  // which doesn't deliver on this project. The answer is the same whether or not the address has an account.
   async function handleForgot() {
     setError(''); setNotice('');
     if (!email.trim()) { setError('Enter your email above, then tap “Forgot password?”'); return; }
-    const plain = createPlainClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
-    await plain.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/crm/setup` });
+    try {
+      const r = await fetch('/api/crm/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() }) });
+      if (r.status === 429) { setError('Too many requests. Try again in a little while.'); return; }
+    } catch { setError('Could not reach the server. Check your connection and try again.'); return; }
     setNotice('If that email has an account, a reset link is on its way. Check your inbox (and spam).');
   }
 

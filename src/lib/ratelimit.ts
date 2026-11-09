@@ -21,6 +21,8 @@ import { NextRequest } from 'next/server';
 const LIMITS = {
   // Public lead form — 5 submissions per IP per 10 minutes
   leads:       { requests: 5,  window: '10 m' },
+  // CRM login "Forgot password?" — 5 per IP per hour (each one sends an email)
+  'forgot-password': { requests: 5, window: '1 h' },
   // Unsubscribe — 10 per IP per hour (someone clicking multiple links)
   unsubscribe: { requests: 10, window: '1 h'  },
   // Email open pixel — 60 per IP per minute (legit email clients retry)
