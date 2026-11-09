@@ -97,7 +97,7 @@ const supabase = createBrowserClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'agent' | 'admin' | 'super_admin';
-interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; daily_call_goal?: number | null; }
+interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; unit_locked?: boolean; email_signature?: string; daily_call_goal?: number | null; }
 
 interface Client { id: string; agent_id: string; business_unit?: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; lead_hold?: boolean | null; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null; }
 interface CallListPerson {
@@ -2212,7 +2212,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       // Access control: non-admins are locked to their assigned business_unit
       // (super_admin is a superset of admin, so it must never be locked out of a unit)
-      if (updated.role !== 'admin' && updated.role !== 'super_admin' && updated.business_unit && updated.business_unit !== businessUnit) {
+      if ((updated.role !== 'admin' && updated.role !== 'super_admin' || updated.unit_locked === true && updated.role !== 'super_admin') && updated.business_unit && updated.business_unit !== businessUnit) {
         router.replace(`/crm/${updated.business_unit}`);
         return;
       }
@@ -6147,8 +6147,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid rgba(201,146,44,.3)' }}>
           <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 21, fontWeight: 700, color: '#c9922c', lineHeight: 1.2 }}>{brand.name}</div>
           <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.6)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4, marginBottom: 12 }}>{brand.tagline}</div>
-          {/* Workspace switcher — admin only */}
-          {isAdmin && (
+          {/* Workspace switcher — admin only (not for a profile locked to its workspace) */}
+          {isAdmin && !profile.unit_locked && (
             <a
               href={businessUnit === 'residential' ? '/crm/commercial' : '/crm/residential'}
               style={{
@@ -6402,8 +6402,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, color: 'rgba(255,255,255,.6)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
               </div>
 
-              {/* Workspace switcher (admin) */}
-              {isAdmin && (
+              {/* Workspace switcher (admin; not for a locked profile) */}
+              {isAdmin && !profile.unit_locked && (
                 <div style={{ padding: '10px 14px 0' }}>
                   <a href={businessUnit === 'residential' ? '/crm/commercial' : '/crm/residential'}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, padding: '8px 12px', textDecoration: 'none' }}>
