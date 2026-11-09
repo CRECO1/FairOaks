@@ -8,7 +8,7 @@
 // trying to read that plain-text 413 as JSON.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { canEditCardFile, convertCardFile } from '@/components/crm/drive/card-edit';
+import { autoConvertCardFile, convertCardFile } from '@/components/crm/drive/card-edit';
 
 // MIME types as well as extensions: an extension-only list makes Android grey out
 // files whose provider reports no name, and without image types iOS doesn't offer
@@ -74,7 +74,7 @@ export default function DealDocUpload({ dealId, clientId, authToken, showToast, 
     onUploaded(cj.doc);
     // A Word / text file is also made editable right away (a live document linked to this card). The upload already succeeded, so a
     // problem here is only mentioned, never an error.
-    if (canEditCardFile(file.name) && cj.doc?.id) {
+    if (autoConvertCardFile(file.name) && cj.doc?.id) {
       const r = await convertCardFile(clientId ? 'client' : 'deal', cj.doc.id as string, authToken);
       if (r.ok) convertedRef.current += 1; else showToast(`${file.name} was uploaded, but ${r.error.charAt(0).toLowerCase()}${r.error.slice(1)}`);
     } else if (/\.(doc|rtf)$/i.test(file.name)) showToast(`${file.name} was uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that`);

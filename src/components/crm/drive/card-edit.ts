@@ -1,5 +1,7 @@
-/** "Edit as a live document" for a Word / text file on a deal's Docs tab or a contact's Files. */
-export const canEditCardFile = (name: string) => /\.(docx|txt)$/i.test(name);
+/** "Edit as a live document" for a Word / text file — or an Excel / CSV file (it becomes a live sheet, columns can be reordered) — on a deal's Docs tab or a contact's Files. */
+export const canEditCardFile = (name: string) => /\.(docx|txt|xlsx|xlsm|xls|csv)$/i.test(name);
+/** Word / text files are also converted automatically the moment they are uploaded; spreadsheets are only converted when someone presses Edit. */
+export const autoConvertCardFile = (name: string) => /\.(docx|txt)$/i.test(name);
 export const OPEN_LIVE_DOC = 'crm:open-live-doc';
 
 export const LIVE_DOCS_CHANGED = 'crm:live-docs-changed';

@@ -100,7 +100,7 @@ export default function ContactFiles({ clientId, authToken, userId, isAdmin, sho
                   </div>
                 </div>
                 {canEditCardFile(f.name) && (
-                  <button onClick={() => void editCardFile(f.source, f.id, authToken, showToast)} title="Edit as a live document" style={{ fontSize: 12, fontWeight: 600, color: '#a06a12', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0 }}>✎ Edit</button>
+                  <button onClick={() => void editCardFile(f.source, f.id, authToken, showToast)} title="Edit as a live document" style={{ fontSize: 12, fontWeight: 600, color: '#a06a12', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0 }}>{/\.(xlsx|xlsm|xls|csv)$/i.test(f.name) ? '✎ Edit sheet' : '✎ Edit'}</button>
                 )}
                 {PREVIEWABLE.includes(ext) && (
                   <button onClick={() => open(f, true)} style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-6b7280)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>

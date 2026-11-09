@@ -12464,8 +12464,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </div>
                             </div>
                             {canEditCardFile(doc.name) && (
-                              <button onClick={() => void editCardFile('deal', doc.id, session?.access_token, showToast)} title="Edit as a live document — it then shows above as a live document on this deal"
-                                style={{ padding: '5px 12px', background: 'var(--k-fdf6e9)', color: '#a06a12', border: '1px solid var(--k-f0e2c4)', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✎ Edit</button>
+                              <button onClick={() => void editCardFile('deal', doc.id, session?.access_token, showToast)} title="Edit as a live document or sheet — it then shows above on this deal (a spreadsheet opens as a live sheet where columns can be dragged into a new order)"
+                                style={{ padding: '5px 12px', background: 'var(--k-fdf6e9)', color: '#a06a12', border: '1px solid var(--k-f0e2c4)', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>{/\.(xlsx|xlsm|xls|csv)$/i.test(doc.name) ? '✎ Edit sheet' : '✎ Edit'}</button>
                             )}
                             {isPdf && (
                               <button onClick={async () => {
