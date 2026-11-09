@@ -44,6 +44,7 @@ import PhoneFold from '@/components/crm/PhoneFold';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
 import BackupStatus from '@/components/crm/BackupStatus';
+import TeamChat from '@/components/crm/TeamChat';
 import DeletedItems from '@/components/crm/DeletedItems';
 import ContactsView from '@/components/crm/ContactsView';
 import CampaignEngagedPanel from '@/components/crm/CampaignEngagedPanel';
@@ -1062,7 +1063,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'emails'] as const;
+  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'emails', 'teamchat'] as const;
   // The sidebar says "Marketing" but the page is called 'campaigns', so a
   // #marketing link silently left you wherever you already were.
   const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties', 'calling-log': 'calls', calling: 'calls', phone: 'calls', 'sent-mail': 'emails', sent: 'emails', inbox: 'emails', drafts: 'emails', email: 'emails' };
@@ -1320,6 +1321,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { live = false; clearInterval(t); window.removeEventListener('focus', tick); window.removeEventListener('crm-gmail-changed', tick); };
   }, [gmailConnected]);
   const emailBadge = gmailConnected ? (gmailUnread ?? 0) : inbox.unreadMine;
+  const [chatUnread, setChatUnread] = useState(0);
+  // Team chat unread badge: checked every 45s in the background (the chat page itself polls faster while it is open).
+  useEffect(() => {
+    if (!session?.access_token || page === 'teamchat') return;
+    let alive = true;
+    const tick = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try { const r = await fetch('/api/crm/chat/summary', { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' }); if (r.ok && alive) setChatUnread(((await r.json()) as { unread: number }).unread ?? 0); } catch { /* ignore */ }
+    };
+    void tick(); const t = setInterval(tick, 45000);
+    return () => { alive = false; clearInterval(t); };
+  }, [session?.access_token, page]);
   // The home-screen icon of the installed app shows the unread count (iOS 16.4+ / Android / desktop PWAs; a no-op elsewhere).
   useEffect(() => {
     const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
@@ -5667,7 +5680,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
     'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', emails: 'Emails',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'My Drive', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'My Drive', teamchat: 'Team Chat', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -6185,6 +6198,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <Ico n="mail" />Emails
             {emailBadge > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{emailBadge > 99 ? '99+' : emailBadge}</span>}
           </button>
+          <button className={`crm-nav${page === 'teamchat' ? ' active' : ''}`} onClick={() => { setPage('teamchat'); loadProfiles(); }}>
+            <Ico n="users" />Team Chat
+            {chatUnread > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{chatUnread > 99 ? '99+' : chatUnread}</span>}
+          </button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
@@ -6422,6 +6439,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ padding: '16px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>More</div>
                 <button className={`crm-nav${page === 'emails' ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab('inbox'); setMobileMenuOpen(false); }}><Ico n="mail" />Emails{emailBadge > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{emailBadge > 99 ? '99+' : emailBadge}</span>}</button>
+                <button className={`crm-nav${page === 'teamchat' ? ' active' : ''}`} onClick={() => { setPage('teamchat'); loadProfiles(); setMobileMenuOpen(false); }}><Ico n="users" />Team Chat{chatUnread > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{chatUnread > 99 ? '99+' : chatUnread}</span>}</button>
                 {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}><Ico n="briefcase" />Broker / Agents</button>}
                 {isAdmin && (
                   <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
@@ -11577,6 +11595,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               agentPrefill={agentPrefill}
               isMobile={isMobile}
             />
+          )}
+
+          {page === 'teamchat' && profile && (
+            <TeamChat token={session?.access_token} meId={profile.id} isMobile={isMobile} onUnread={setChatUnread}
+              people={profiles.filter(x => !!x.first_name && (!x.business_unit || x.business_unit === profile.business_unit)).map(x => ({ id: x.id, name: `${x.first_name} ${x.last_name ?? ''}`.trim() }))} />
           )}
 
           {page === 'emails' && (
