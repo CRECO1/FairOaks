@@ -42,6 +42,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState('');
   const [lastRead, setLastRead] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
   const roomRef = useRef(room); roomRef.current = room;
   const lastAt = useRef<string | null>(null);
@@ -60,7 +61,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
 
   // open a conversation: load its history, then poll for anything newer
   useEffect(() => {
-    setMsgs([]); lastAt.current = null; setErr(''); setLastRead(null);
+    setMsgs([]); lastAt.current = null; setErr(''); setLastRead(null); setLoaded(false);
     if (!room) return;
     let alive = true;
     let tick = 0;
@@ -72,7 +73,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
         if (!alive || roomRef.current !== room) return;
         if (!r.ok) { if (first) setErr('Could not open this conversation'); return; }
         const { messages, lastRead: lr } = await r.json() as { messages: Msg[]; lastRead?: string | null };
-        if (first) setLastRead(lr ?? null);
+        if (first) { setLastRead(lr ?? null); setLoaded(true); }
         if (!messages.length) return;
         lastAt.current = messages[messages.length - 1].created_at;
         if (full) { setMsgs(messages); void loadRooms(); return; }
@@ -153,7 +154,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
         {cur?.room === 'team' && !isMobile && <span style={{ fontWeight: 400, fontSize: 12.5, opacity: .55, marginLeft: 'auto' }}>Type @name to alert someone’s phone</span>}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {!msgs.length && !err && <div style={{ opacity: .55, textAlign: 'center', marginTop: 30, fontSize: 14 }}>No messages yet — say hi.</div>}
+        {!msgs.length && !err && <div style={{ opacity: .55, textAlign: 'center', marginTop: 30, fontSize: 14 }}>{loaded ? 'No messages yet — say hi.' : 'Loading…'}</div>}
         {msgs.map((m, i) => {
           const mine = m.sender_id === meId, prev = msgs[i - 1];
           const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
@@ -175,7 +176,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
       </div>
       {suggest.length > 0 && <div style={{ display: 'flex', gap: 6, padding: '0 12px 6px', flexWrap: 'wrap' }}>{suggest.map(p => <button key={p.id} onClick={() => setText(t => t.replace(/@[A-Za-z]*$/, `@${p.name.split(' ')[0]} `))} style={{ background: 'rgba(201,146,44,.18)', border: 'none', borderRadius: 14, padding: '4px 11px', fontSize: 13, cursor: 'pointer', color: 'inherit' }}>@{p.name.split(' ')[0]}</button>)}</div>}
       {err && <div style={{ color: '#b3261e', fontSize: 13, padding: '0 16px 6px' }}>{err}</div>}
-      <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--c-border, #e5e5e5)', paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom))' : 12 }}>
+      <div style={{ display: 'flex', gap: 8, padding: 12, paddingRight: isMobile ? 12 : 76, borderTop: '1px solid var(--c-border, #e5e5e5)', paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom))' : 12 }}>
         <textarea value={text} onChange={e => setText(e.target.value)} rows={1} placeholder="Write a message…" maxLength={4000}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
           style={{ flex: 1, resize: 'none', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--c-border, #ccc)', fontSize: 16, fontFamily: 'inherit', background: 'var(--c-surface, #fff)', color: 'inherit', maxHeight: 120 }} />
