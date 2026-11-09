@@ -67,9 +67,11 @@ export async function POST(req: NextRequest) {
   try {
     const buf = Buffer.from(await blob.arrayBuffer());
     if (isSheet) {
+      // The first row is kept as the header (frozen) so sorting a column leaves it on top, as in Google Sheets.
+      const head = (tabs: ImportTab[]) => tabs.map(t => (t.frozen ? t : { ...t, frozen: 1 }));
       if (isCsv) state = sheetStateFromTabs([{ name: 'Sheet1', grid: parseCsv(buf.toString('utf8')), frozen: 1 }]);
-      else if (isXls) state = sheetStateFromTabs(await xlsToTabs(buf));   // old binary Excel: values only (no colours / borders)
-      else state = sheetStateFromTabs(await xlsxToTabs(buf));             // keeps how it looks: fills, fonts, borders, widths, merges
+      else if (isXls) state = sheetStateFromTabs(head(await xlsToTabs(buf)));   // old binary Excel: values only (no colours / borders)
+      else state = sheetStateFromTabs(head(await xlsxToTabs(buf)));             // keeps how it looks: fills, fonts, borders, widths, merges
     } else {
       const json = isDocx ? (await docxToDocJson(buf)).json : textToDocJson(buf.toString('utf8'));
       state = jsonToDriveState(json, { letterhead: true });

@@ -1578,6 +1578,11 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
                 <span role="button" aria-label="Move column left" title="Move column left" onMouseDown={e => { e.stopPropagation(); e.preventDefault(); moveColBy(c, -1); }} onClick={e => e.stopPropagation()} style={{ position: 'absolute', left: 2, top: 0, width: 14, height: HEAD_H, fontSize: 9, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>◀</span>
                 <span role="button" aria-label="Move column right" title="Move column right" onMouseDown={e => { e.stopPropagation(); e.preventDefault(); moveColBy(c, 1); }} onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 8, top: 0, width: 14, height: HEAD_H, fontSize: 9, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>▶</span>
               </>)}
+              {(hoverCol === c || (R.c1 === R.c2 && R.c1 === c && R.r1 === 0 && R.r2 >= rows - 1)) && widths[c] > 70 && (
+                <span role="button" aria-label={`Column ${colName(c)} menu`} title="Column menu — sort A→Z / Z→A, move, insert, delete, hide…"
+                  onMouseDown={e => { e.stopPropagation(); e.preventDefault(); const rc = (e.currentTarget as HTMLElement).getBoundingClientRect(); if (!(c >= R.c1 && c <= R.c2)) setSel({ r: 0, c, r2: rows - 1, c2: c }); setCtx({ x: Math.max(8, rc.left - 150), y: rc.bottom + 2, r: 0, c, head: 'col' }); }} onClick={e => e.stopPropagation()}
+                  style={{ position: 'absolute', right: 24, top: 0, width: 16, height: HEAD_H, fontSize: 11, color: '#a06a12', cursor: 'pointer', zIndex: 3 }}>▾</span>
+              )}
               <span onMouseDown={e => beginResize(c, e)} onDoubleClick={e => { e.stopPropagation(); autoFit(c); }} title="Drag to resize, double-click to fit" style={{ position: 'absolute', right: -3, top: 0, width: 7, height: HEAD_H, cursor: 'col-resize', zIndex: 2 }} />
             </div>
           );
