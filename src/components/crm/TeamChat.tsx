@@ -43,6 +43,9 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   const [err, setErr] = useState('');
   const [lastRead, setLastRead] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [otherRead, setOtherRead] = useState<string | null>(null);
+  const [find, setFind] = useState<string | null>(null);   // null = search closed
+  const input = useRef<HTMLTextAreaElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const roomRef = useRef(room); roomRef.current = room;
   const lastAt = useRef<string | null>(null);
@@ -61,7 +64,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
 
   // open a conversation: load its history, then poll for anything newer
   useEffect(() => {
-    setMsgs([]); lastAt.current = null; setErr(''); setLastRead(null); setLoaded(false);
+    setMsgs([]); lastAt.current = null; setErr(''); setLastRead(null); setLoaded(false); setOtherRead(null); setFind(null); if (room) setTimeout(() => input.current?.focus(), 50);
     if (!room) return;
     let alive = true;
     let tick = 0;
@@ -72,7 +75,8 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
         const r = await fetch(`/api/crm/chat?${q}`, { headers: auth(), cache: 'no-store' });
         if (!alive || roomRef.current !== room) return;
         if (!r.ok) { if (first) setErr('Could not open this conversation'); return; }
-        const { messages, lastRead: lr } = await r.json() as { messages: Msg[]; lastRead?: string | null };
+        const { messages, lastRead: lr, otherRead: or } = await r.json() as { messages: Msg[]; lastRead?: string | null; otherRead?: string | null };
+        setOtherRead(or ?? null);
         if (first) { setLastRead(lr ?? null); setLoaded(true); }
         if (!messages.length) return;
         lastAt.current = messages[messages.length - 1].created_at;
@@ -113,6 +117,8 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
     setMsgs(prev => prev.filter(m => m.id !== id));
     await fetch(`/api/crm/chat?id=${id}`, { method: 'DELETE', headers: auth() }).catch(() => undefined);
   };
+  const shown = find && find.trim() ? msgs.filter(m => m.body.toLowerCase().includes(find.trim().toLowerCase())) : msgs;
+  const lastMine = [...msgs].reverse().find(m => m.sender_id === meId)?.id;
   const others = people.filter(p => p.id !== meId);
   const atWord = /(?:^|\s)@([A-Za-z]*)$/.exec(text);
   const suggest = atWord ? others.filter(p => p.name.split(' ')[0].toLowerCase().startsWith(atWord[1].toLowerCase())).slice(0, 5) : [];
@@ -151,23 +157,29 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
         {isMobile && <button onClick={() => setRoom(null)} style={{ border: 'none', background: 'none', fontSize: 20, cursor: 'pointer', color: 'inherit' }} aria-label="Back">‹</button>}
         {cur && <Avatar name={cur.title} team={cur.room === 'team'} size={30} />}
         {cur ? (cur.room === 'team' ? 'Team' : cur.title) : ''}
-        {cur?.room === 'team' && !isMobile && <span style={{ fontWeight: 400, fontSize: 12.5, opacity: .55, marginLeft: 'auto' }}>Type @name to alert someone’s phone</span>}
+        <button onClick={() => setFind(f => f === null ? '' : null)} aria-label="Search this conversation" title="Search this conversation" style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: 'inherit', opacity: .7 }}>🔍</button>
+        {cur?.room === 'team' && !isMobile && <span style={{ fontWeight: 400, fontSize: 12.5, opacity: .55 }}>Type @name to alert someone’s phone</span>}
       </div>
+      {find !== null && <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--c-border, #e5e5e5)' }}><input autoFocus value={find} onChange={e => setFind(e.target.value)} placeholder="Search this conversation…" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--c-border, #ccc)', fontSize: 16, background: 'var(--c-surface, #fff)', color: 'inherit', fontFamily: 'inherit' }} /></div>}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {find && find.trim() && !shown.length && <div style={{ opacity: .55, textAlign: 'center', marginTop: 30, fontSize: 14 }}>Nothing matches “{find}”.</div>}
         {!msgs.length && !err && <div style={{ opacity: .55, textAlign: 'center', marginTop: 30, fontSize: 14 }}>{loaded ? 'No messages yet — say hi.' : 'Loading…'}</div>}
-        {msgs.map((m, i) => {
-          const mine = m.sender_id === meId, prev = msgs[i - 1];
+        {shown.map((m, i) => {
+          const mine = m.sender_id === meId, prev = shown[i - 1];
+          const tight = !!prev && prev.sender_id === m.sender_id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000 && new Date(prev.created_at).toDateString() === new Date(m.created_at).toDateString();
+          const next = shown[i + 1];
+          const lastInRun = !next || next.sender_id !== m.sender_id || new Date(next.created_at).getTime() - new Date(m.created_at).getTime() >= 5 * 60_000;
           const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
-          const firstNew = !!lastRead && !mine && m.created_at > lastRead && !msgs.slice(0, i).some(x => x.sender_id !== meId && x.created_at > lastRead);
+          const firstNew = !!lastRead && !mine && m.created_at > lastRead && !shown.slice(0, i).some(x => x.sender_id !== meId && x.created_at > lastRead);
           const showName = !mine && (!prev || prev.sender_id !== m.sender_id || newDay || firstNew);
           return (
             <React.Fragment key={m.id}>
               {newDay && <div style={{ textAlign: 'center', fontSize: 12, opacity: .55, margin: '8px 0 2px' }}>{dayLabel(m.created_at)}</div>}
               {firstNew && <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#c9922c', fontSize: 12, fontWeight: 700, margin: '6px 0' }}><span style={{ flex: 1, height: 1, background: '#c9922c', opacity: .5 }} />New<span style={{ flex: 1, height: 1, background: '#c9922c', opacity: .5 }} /></div>}
-              <div style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
+              <div style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%', marginTop: tight ? -4 : 0 }}>
                 {showName && <div style={{ fontSize: 12, opacity: .65, margin: '0 4px 2px' }}>{nameOf(m.sender_id)}</div>}
                 <div style={{ background: mine ? '#c9922c' : 'var(--c-surface-2, #f1f1f1)', color: mine ? '#fff' : 'inherit', padding: '8px 12px', borderRadius: 14, fontSize: 14.5, lineHeight: 1.4, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{renderBody(m.body, names, mine)}</div>
-                <div style={{ fontSize: 11, opacity: .5, margin: '2px 4px 0', textAlign: mine ? 'right' : 'left' }}>{when(m.created_at)}{mine && <> · <button onClick={() => void remove(m.id)} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Delete</button></>}</div>
+                <div style={{ fontSize: 11, opacity: .5, margin: '2px 4px 0', textAlign: mine ? 'right' : 'left', display: lastInRun || mine ? 'block' : 'none' }}>{lastInRun ? when(m.created_at) : ''}{mine && <>{lastInRun ? ' · ' : ''}<button onClick={() => void remove(m.id)} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Delete</button>{m.id === lastMine && otherRead && otherRead >= m.created_at && ' · Seen'}</>}</div>
               </div>
             </React.Fragment>
           );
@@ -177,7 +189,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
       {suggest.length > 0 && <div style={{ display: 'flex', gap: 6, padding: '0 12px 6px', flexWrap: 'wrap' }}>{suggest.map(p => <button key={p.id} onClick={() => setText(t => t.replace(/@[A-Za-z]*$/, `@${p.name.split(' ')[0]} `))} style={{ background: 'rgba(201,146,44,.18)', border: 'none', borderRadius: 14, padding: '4px 11px', fontSize: 13, cursor: 'pointer', color: 'inherit' }}>@{p.name.split(' ')[0]}</button>)}</div>}
       {err && <div style={{ color: '#b3261e', fontSize: 13, padding: '0 16px 6px' }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, padding: 12, paddingRight: isMobile ? 12 : 76, borderTop: '1px solid var(--c-border, #e5e5e5)', paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom))' : 12 }}>
-        <textarea value={text} onChange={e => setText(e.target.value)} rows={1} placeholder="Write a message…" maxLength={4000}
+        <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} placeholder="Write a message…" maxLength={4000}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
           style={{ flex: 1, resize: 'none', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--c-border, #ccc)', fontSize: 16, fontFamily: 'inherit', background: 'var(--c-surface, #fff)', color: 'inherit', maxHeight: 120 }} />
         <button onClick={() => void send()} disabled={!text.trim() || sending}

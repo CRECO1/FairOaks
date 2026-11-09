@@ -1353,6 +1353,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { alive = false; clearInterval(t); };
   }, [session?.access_token, profile?.id, profiles]);
   useEffect(() => { if (page === 'teamchat' && chatOpenRoom) { const t = setTimeout(() => setChatOpenRoom(undefined), 0); return () => clearTimeout(t); } }, [page, chatOpenRoom]);
+  // unread chat count in the browser tab title, e.g. "(2) CRECO CRM — Commercial"
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\)\s*/, '');
+    document.title = chatUnread > 0 ? `(${chatUnread}) ${base}` : base;
+  }, [chatUnread]);
   useEffect(() => { if (!chatPop) return; const t = setTimeout(() => setChatPop(null), 8000); return () => clearTimeout(t); }, [chatPop]);
   // The home-screen icon of the installed app shows the unread count (iOS 16.4+ / Android / desktop PWAs; a no-op elsewhere).
   useEffect(() => {

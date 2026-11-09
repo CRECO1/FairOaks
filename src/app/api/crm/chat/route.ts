@@ -34,7 +34,10 @@ export async function GET(req: NextRequest) {
   const messages = after ? (data ?? []) : (data ?? []).reverse();
   const { data: prior } = after ? { data: null } : await db.from('crm_chat_reads').select('last_read_at').eq('user_id', ctx.userId).eq('room', room).maybeSingle();
   await db.from('crm_chat_reads').upsert({ user_id: ctx.userId, room, last_read_at: new Date().toISOString() });
-  return NextResponse.json({ messages, ...(after ? {} : { lastRead: (prior?.last_read_at as string | undefined) ?? null }) });
+  // In a direct message, when the other person last opened it (drives the "Seen" marker under your last message).
+  const other = dmOther(room, ctx.userId);
+  const { data: theirs } = other ? await db.from('crm_chat_reads').select('last_read_at').eq('user_id', other).eq('room', room).maybeSingle() : { data: null };
+  return NextResponse.json({ messages, otherRead: (theirs?.last_read_at as string | undefined) ?? null, ...(after ? {} : { lastRead: (prior?.last_read_at as string | undefined) ?? null }) });
 }
 
 // POST { room, body }  → send. A DM alerts the other person's phone; in the team room only people who are @named get one.
