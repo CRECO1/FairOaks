@@ -97,7 +97,7 @@ export interface EditorRecipient { key: string; name: string; email: string; rol
 export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string; size?: number; label?: string };
 
 export default function TransactionDocEditor({
-  form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved,
+  form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved, autoSave = false,
 }: {
   form: { id: string; name: string };
   url: string;
@@ -123,6 +123,8 @@ export default function TransactionDocEditor({
   onToast?: (msg: string) => void;
   onClose: () => void;
   onSaved?: () => void;
+  // Forms opened from My Drive save themselves a few seconds after the last change (no need to press Save).
+  autoSave?: boolean;
 }) {
   const [pages, setPages] = useState<PageDim[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
@@ -549,8 +551,12 @@ export default function TransactionDocEditor({
     finally { setBusy(false); }
   }, [fields, authToken, form.id, onToast]);
 
-  const saveToDeal = useCallback(async () => {
-    setBusy(true);
+  // One save at a time. `silent` = an automatic save: no toast, no busy state, no history refresh.
+  const savingRef = useRef(false);
+  const doSave = useCallback(async (silent: boolean): Promise<boolean> => {
+    if (savingRef.current) return false;
+    savingRef.current = true;
+    if (!silent) setBusy(true);
     let saved = false;
     try {
       const out = await build();
@@ -576,10 +582,10 @@ export default function TransactionDocEditor({
         if (j.submission?.id) { subIdRef.current = j.submission.id; setLiveSubId(j.submission.id); }
         syncedVals.current = valsOf(fields);
         if (subIdRef.current) setOpenDoc({ submissionId: subIdRef.current, title: form.name, kind: 'form' });
-        onToast?.(dealSel ? '✓ Saved to the deal' : '✓ Saved to Transaction Docs');
+        if (!silent) onToast?.(dealSel ? '✓ Saved to the deal' : '✓ Saved to Transaction Docs');
         onSaved?.();
         // Pull the freshly-written audit entry so History reflects this save.
-        if (subIdRef.current) {
+        if (!silent && subIdRef.current) {
           try {
             const hr = await fetch(`/api/crm/form-submissions/${subIdRef.current}`, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
             const hj = await hr.json();
@@ -596,9 +602,34 @@ export default function TransactionDocEditor({
       console.error('[saveToDeal]', e);
       onToast?.('Could not save');
     }
-    finally { setBusy(false); }
+    finally { if (!silent) setBusy(false); savingRef.current = false; }
     return saved;
   }, [build, fields, dealSel, dealId, listingId, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
+  const saveToDeal = useCallback(() => doSave(false), [doSave]);
+
+  // Auto-save (My Drive): a few seconds after the last change, save quietly in the background. The first loaded state is the
+  // saved copy, so merely opening a form never saves; closing the form flushes any change that is still waiting.
+  const autoOn = autoSave && !imported && !onSend;
+  const autoRef = useRef('');
+  const latestFields = useRef<Field[]>([]);
+  latestFields.current = fields;
+  const [autoState, setAutoState] = useState<'' | 'saving' | 'saved' | 'error'>('');
+  useEffect(() => {
+    if (!autoOn || status !== 'ready') return;
+    const snap = JSON.stringify(fields);
+    if (!autoRef.current) { autoRef.current = snap; return; }
+    if (snap === autoRef.current) return;
+    const t = setTimeout(async () => {
+      setAutoState('saving');
+      const ok = await doSave(true);
+      if (ok) { autoRef.current = snap; setAutoState('saved'); } else setAutoState('error');
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [fields, autoOn, status, doSave]);
+  const requestClose = useCallback(async () => {
+    if (autoOn && status === 'ready' && autoRef.current && JSON.stringify(latestFields.current) !== autoRef.current) await doSave(true);
+    onClose();
+  }, [autoOn, status, doSave, onClose]);
 
   // Held in a ref so a caller that re-creates the callback each render can't
   // re-fire this effect and loop.
@@ -740,7 +771,7 @@ export default function TransactionDocEditor({
                 style={{ ...actionBtn, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', flexShrink: 0 }}>
                 {zoom === 'fit' ? '🔍 100%' : '🔍 Fit'}
               </button>
-              <button onClick={onClose} aria-label="Close"
+              <button onClick={requestClose} aria-label="Close"
                 style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 44, height: 44, cursor: 'pointer', fontSize: 18, color: '#6b7280', flexShrink: 0 }}>✕</button>
             </>
           )}
@@ -774,11 +805,12 @@ export default function TransactionDocEditor({
               {deals.map(d => <option key={d.id} value={d.id}>{[d.client, d.property].filter(Boolean).join(' · ') || 'Deal'}</option>)}
             </select>
           )}
+          {autoOn && autoState && <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', color: autoState === 'error' ? '#b91c1c' : '#6b7280' }}>{autoState === 'saving' ? 'Saving…' : autoState === 'saved' ? '✓ Saved automatically' : 'Autosave failed — press Save'}</span>}
           {!onSend && <button onClick={saveToDeal} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#166534', border: '1px solid #bbf7d0' }}>{busy ? '…' : (dealSel ? '💾 Save to deal' : listingId ? '💾 Save to property' : '💾 Save')}</button>}
           {!onSend && <button onClick={async () => { if (await saveToDeal() && subIdRef.current) setEmailDocId(subIdRef.current); }} disabled={busy} title="Save, then email the PDF as an attachment" style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>✉ Email</button>}
           <button onClick={download} disabled={busy} style={{ ...actionBtn, background: onSend ? '#fff' : '#c9922c', color: onSend ? '#6b7280' : '#fff', border: onSend ? '1px solid #e5e7eb' : 'none' }}>{busy ? 'Working…' : '⬇ Download'}</button>
           {onSend && <button onClick={sendNow} disabled={busy} style={{ ...actionBtn, background: '#c9922c', color: '#fff', border: 'none' }}>{busy ? 'Working…' : 'Review & Send →'}</button>}
-          {!isMobile && <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>}
+          {!isMobile && <button onClick={requestClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>}
         </div>
       </div>
 

@@ -974,7 +974,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
 
       {preview && <DocPreviewModal file={preview} onClose={() => setPreview(null)} />}
       {formEditor && (
-        <TransactionDocEditor form={formEditor.form} url={formEditor.url} authToken={authToken} isAdmin={isAdmin} businessUnit={businessUnit} submissionId={formEditor.submissionId} isMobile={isMobile}
+        <TransactionDocEditor autoSave form={formEditor.form} url={formEditor.url} authToken={authToken} isAdmin={isAdmin} businessUnit={businessUnit} submissionId={formEditor.submissionId} isMobile={isMobile}
           onToast={onToast} onClose={() => { setFormEditor(null); refresh(); }} onSaved={refresh} />
       )}
       {quickDocId && <DocQuickView docId={quickDocId} authToken={authToken} isMobile={isMobile} onToast={onToast} onClose={() => setQuickDocId(null)} onOpen={id => { setQuickDocId(null); setOpenDocId(id); }} />}

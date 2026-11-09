@@ -1,21 +1,23 @@
 // Shared lightweight rich text for transaction docs. Editable field values are stored
 // as plain strings with markdown-style inline markup — **bold**, *italic*, ***both*** —
-// and a literal * or \ is escaped as \* / \\. Both PDF generators (the LOI builder and
+// and a literal * or \ is escaped as \* / \\. Text colour is {c:#rrggbb}…{/c} (a run with no
+// colour prints in the document's normal ink). Both PDF generators (the LOI builder and
 // the TransactionDocEditor overlay) render the same markup via drawRichText; the editor
 // control (RichText.tsx) produces and consumes it. Keep this file DOM-free so it is safe
 // to import anywhere; DOM serialization lives in RichText.tsx.
-import type { PDFPage, PDFFont, Color } from 'pdf-lib';
+import { rgb, type PDFPage, type PDFFont, type Color } from 'pdf-lib';
 
-export interface Run { text: string; b: boolean; i: boolean }
+export interface Run { text: string; b: boolean; i: boolean; c?: string }   // c = '#rrggbb' when coloured
 
 export interface RichFonts { reg: PDFFont; bold: PDFFont; ital: PDFFont; boldItal: PDFFont }
 
 /** Parse markup into styled runs. Unmatched toggles just carry to the end (harmless);
  *  `\*` and `\\` are literal. */
+const COLOR_OPEN = /^\{c:(#[0-9a-fA-F]{6})\}/;   // '{c:#rrggbb}' is 11 characters
 export function parseRich(s: string): Run[] {
   const runs: Run[] = [];
-  let b = false, it = false, buf = '';
-  const flush = () => { if (buf) { runs.push({ text: buf, b, i: it }); buf = ''; } };
+  let b = false, it = false, col: string | undefined, buf = '';
+  const flush = () => { if (buf) { runs.push({ text: buf, b, i: it, ...(col ? { c: col } : {}) }); buf = ''; } };
   let i = 0;
   const str = s ?? '';
   while (i < str.length) {
@@ -23,6 +25,8 @@ export function parseRich(s: string): Run[] {
     else if (str.startsWith('***', i)) { flush(); b = !b; it = !it; i += 3; }
     else if (str.startsWith('**', i)) { flush(); b = !b; i += 2; }
     else if (str[i] === '*') { flush(); it = !it; i += 1; }
+    else if (str[i] === '{' && COLOR_OPEN.test(str.slice(i, i + 11))) { flush(); col = COLOR_OPEN.exec(str.slice(i, i + 11))![1].toLowerCase(); i += 11; }
+    else if (str.startsWith('{/c}', i)) { flush(); col = undefined; i += 4; }
     else { buf += str[i]; i += 1; }
   }
   flush();
@@ -32,7 +36,7 @@ export function parseRich(s: string): Run[] {
 /** True when the string carries any (unescaped) markup — lets callers keep the plain
  *  fast path for the overwhelmingly common unformatted value. */
 export function hasMarkup(s: string): boolean {
-  return /(^|[^\\])\*/.test(s ?? '');
+  return /(^|[^\\])\*/.test(s ?? '') || /(^|[^\\])\{c:#[0-9a-fA-F]{6}\}/.test(s ?? '');
 }
 
 /** Width a string actually occupies when drawn. pdf-lib's widthOfTextAtSize subtracts
@@ -45,6 +49,8 @@ export function drawnWidth(font: PDFFont, text: string, size: number): number {
   return w;
 }
 
+const hexColor = (h: string): Color => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
+const runColor = (r: Run, dflt: Color): Color => (r.c ? hexColor(r.c) : dflt);
 const fontFor = (r: Run, f: RichFonts): PDFFont => (r.b && r.i) ? f.boldItal : r.b ? f.bold : r.i ? f.ital : f.reg;
 
 /** Split runs into words (whitespace-separated), each word an array of same-style pieces. */
@@ -53,8 +59,8 @@ function toWords(runs: Run[]): Run[][] {
   let cur: Run[] = [];
   const add = (ch: string, r: Run) => {
     const last = cur[cur.length - 1];
-    if (last && last.b === r.b && last.i === r.i) last.text += ch;
-    else cur.push({ text: ch, b: r.b, i: r.i });
+    if (last && last.b === r.b && last.i === r.i && last.c === r.c) last.text += ch;
+    else cur.push({ text: ch, b: r.b, i: r.i, c: r.c });
   };
   for (const r of runs) for (const ch of r.text) {
     if (/\s/.test(ch)) { if (cur.length) { words.push(cur); cur = []; } }
@@ -87,7 +93,7 @@ export function drawRichText(o: RichDrawOpts): number {
     line.forEach((w, wi) => {
       if (wi > 0) cx += spaceW;
       for (const s of w) {
-        o.page.drawText(s.text, { x: cx, y: o.y - lines * o.lineHeight, size: o.size, font: fontFor(s, o.fonts), color: o.color });
+        o.page.drawText(s.text, { x: cx, y: o.y - lines * o.lineHeight, size: o.size, font: fontFor(s, o.fonts), color: runColor(s, o.color) });
         cx += drawnWidth(fontFor(s, o.fonts), s.text, o.size);
       }
     });
