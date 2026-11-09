@@ -101,7 +101,8 @@ export async function sendPushToProfiles(
  * Login emails ≠ alert emails: Zack signs in as info@fairoaksrealtygroup.com but his alerts go to
  * zack@crecotx.com (see known-contact-alert.ts). Resolve an email list to profile ids, matching either.
  */
-const ALIAS: Record<string, string> = { 'zack@crecotx.com': 'info@fairoaksrealtygroup.com', 'info@fairoaksrealtygroup.com': 'zack@crecotx.com' };
+// No aliases: the owner signs in as zack@crecotx.com and info@fairoaksrealtygroup.com is the separate Fair Oaks login (Nov 2026).
+const ALIAS: Record<string, string> = {};
 export async function profileIdsForEmails(emails: (string | null | undefined)[], db: SupabaseClient = adminClient()): Promise<string[]> {
   const wanted = new Set<string>();
   for (const e of emails) {

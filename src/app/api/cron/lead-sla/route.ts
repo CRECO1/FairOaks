@@ -54,12 +54,10 @@ const isSiteForm = (l: Lead) => /^creco website/i.test(l.lead_source ?? '') || /
 const CONTACT_ACTIVITY_TYPES = ['call', 'email', 'note', 'meeting'];
 
 /**
- * Where each CRM login actually reads mail. Zack's profile sits under the
- * Fair Oaks address, but lead alerts belong in his CRECO inbox.
+ * Where a CRM login reads mail when it differs from the login email. Empty now: Zack signs in as
+ * zack@crecotx.com, and info@fairoaksrealtygroup.com is the separate Fair Oaks login.
  */
-const ALERT_INBOX: Record<string, string> = {
-  'info@fairoaksrealtygroup.com': 'zack@crecotx.com',
-};
+const ALERT_INBOX: Record<string, string> = {};
 
 type Lead = {
   id: string;
