@@ -997,9 +997,9 @@ function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; br
   }
 
   const cardStyle = { fontFamily: "'DM Sans',sans-serif", background: '#111', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-  const boxStyle = { background: 'var(--k-fff)', borderRadius: 12, padding: '40px 36px', width: 400, maxWidth: '95vw', boxShadow: '0 20px 60px rgba(0,0,0,.4)' };
-  const labelStyle: React.CSSProperties = { fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 };
-  const inputStyle: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid var(--k-ddd)', borderRadius: 6, fontSize: 14, marginTop: 4, marginBottom: 14, boxSizing: 'border-box', fontFamily: "'DM Sans',sans-serif" };
+  const boxStyle = { background: '#fff', borderRadius: 12, padding: '40px 36px', width: 400, maxWidth: '95vw', boxShadow: '0 20px 60px rgba(0,0,0,.4)' };
+  const labelStyle: React.CSSProperties = { fontSize: 12.5, letterSpacing: 1, textTransform: 'uppercase', color: '#4b5563', fontWeight: 600 };
+  const inputStyle: React.CSSProperties = { background: '#fff', color: '#111', width: '100%', padding: '9px 12px', border: '1px solid #ddd', borderRadius: 6, fontSize: 14, marginTop: 4, marginBottom: 14, boxSizing: 'border-box', fontFamily: "'DM Sans',sans-serif" };
 
   if (loading) return (
     <div style={cardStyle}>
@@ -1015,8 +1015,8 @@ function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; br
     <div style={cardStyle}>
       <div style={boxStyle}>
         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#c9922c', marginBottom: 4 }}>{brandName}</div>
-        <div style={{ fontSize: 14, color: 'var(--k-6b7280)', marginBottom: 24 }}>Agent CRM — Sign In</div>
-        {error && <div style={{ background: 'var(--k-fee2e2)', color: 'var(--k-991b1b)', padding: '8px 12px', borderRadius: 6, fontSize: 14, marginBottom: 14 }}>{error}</div>}
+        <div style={{ fontSize: 14, color: '#4b5563', marginBottom: 24 }}>Agent CRM — Sign In</div>
+        {error && <div style={{ background: '#fee2e2', color: '#991b1b', padding: '8px 12px', borderRadius: 6, fontSize: 14, marginBottom: 14 }}>{error}</div>}
         {notice && <div style={{ background: '#dcfce7', color: '#166534', padding: '8px 12px', borderRadius: 6, fontSize: 14, marginBottom: 14 }}>{notice}</div>}
         <form onSubmit={handleLogin}>
           <label style={labelStyle}>Email</label>
@@ -1028,7 +1028,7 @@ function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; br
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
           <button type="button" onClick={handleForgot}
-            style={{ display: 'block', margin: '14px auto 0', background: 'none', border: 'none', color: 'var(--k-6b7280)', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>
+            style={{ display: 'block', margin: '14px auto 0', background: 'none', border: 'none', color: '#374151', fontSize: 13.5, cursor: 'pointer', textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>
             Forgot password?
           </button>
         </form>
