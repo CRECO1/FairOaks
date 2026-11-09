@@ -13,6 +13,35 @@ export default function CRMSetupPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  // An account with 2-step verification turned on can only change its password from a session that has used the code (aal2), and a reset or
+  // invite link signs in with the password-level only. So the page asks for the 6-digit code first, then shows the new-password form.
+  const [needsCode, setNeedsCode] = useState(false);
+  const [code, setCode] = useState('');
+  const [checkedMfa, setCheckedMfa] = useState(false);
+
+  useEffect(() => {
+    if (status !== 'ready' || checkedMfa) return;
+    setCheckedMfa(true);
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel().then(({ data }) => {
+      if (data && data.nextLevel === 'aal2' && data.currentLevel !== 'aal2') setNeedsCode(true);
+    }).catch(() => { /* if the check fails, the password step still reports any problem */ });
+  }, [status, checkedMfa]);
+
+  async function handleCode(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    const clean = code.replace(/\D/g, '');
+    if (clean.length !== 6) { setError('Enter the 6-digit code from your authenticator app.'); return; }
+    setStatus('saving');
+    const { data: f } = await supabase.auth.mfa.listFactors();
+    const factor = f?.totp?.find(x => x.status === 'verified');
+    if (!factor) { setError('Could not find your 2-step verification. Ask the account owner to reset it.'); setStatus('ready'); return; }
+    const { data: ch, error: ce } = await supabase.auth.mfa.challenge({ factorId: factor.id });
+    if (ce || !ch) { setError(ce?.message ?? 'Could not start the check. Try again.'); setStatus('ready'); return; }
+    const { error: ve } = await supabase.auth.mfa.verify({ factorId: factor.id, challengeId: ch.id, code: clean });
+    if (ve) { setError('That code is not right, or it expired. Wait for the next one and try again.'); setCode(''); setStatus('ready'); return; }
+    setNeedsCode(false); setCode(''); setStatus('ready');
+  }
 
   useEffect(() => {
     // Handles both invite links and password reset links.
@@ -36,7 +65,8 @@ export default function CRMSetupPage() {
     setStatus('saving');
     const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
     if (updateError) {
-      setError(updateError.message);
+      if (/aal2/i.test(updateError.message)) { setNeedsCode(true); setError('Enter your 6-digit code first, then set the new password.'); }
+      else setError(updateError.message);
       setStatus('ready');
       return;
     }
@@ -111,6 +141,18 @@ export default function CRMSetupPage() {
           </div>
         )}
 
+        {needsCode ? (
+          <form onSubmit={handleCode}>
+            <p style={{ fontSize: 14, color: '#374151', lineHeight: 1.5, margin: '0 0 14px' }}>This account has 2-step verification on. Open your authenticator app and enter the 6-digit code to continue.</p>
+            <label style={label}>6-digit code</label>
+            <input inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} onChange={e => setCode(e.target.value)} placeholder="123456" autoFocus
+              style={{ ...input, fontSize: 22, letterSpacing: 6, textAlign: 'center', marginBottom: 20 }} />
+            <button type="submit" disabled={status === 'saving'}
+              style={{ width: '100%', padding: '10px', background: '#c9922c', color: '#111', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+              {status === 'saving' ? 'Checking…' : 'Verify'}
+            </button>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit}>
           <label style={label}>New Password</label>
           <input
@@ -138,6 +180,7 @@ export default function CRMSetupPage() {
             {status === 'saving' ? 'Activating…' : 'Activate My Account'}
           </button>
         </form>
+        )}
       </div>
     </div>
   );
