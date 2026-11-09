@@ -53,6 +53,7 @@ import CallTapPrompt from '@/components/crm/CallTapPrompt';
 import MentionTextarea, { parseMentionContactIds, parseMentionIds } from '@/components/crm/MentionTextarea';
 import Ico, { type IcoName } from '@/components/crm/Ico';
 import PhoneAlerts from '@/components/crm/PhoneAlerts';
+import AlertsPrompt from '@/components/crm/AlertsPrompt';
 
 // Heavy CRM sections are code-split so /crm no longer ships them all in one
 // bundle — each loads its own chunk the first time its tab or modal opens
@@ -11604,14 +11605,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             />
           )}
 
+          {businessUnit === 'commercial' && !!session?.access_token && <AlertsPrompt token={session.access_token} isMobile={isMobile} />}
           {chatPop && page !== 'teamchat' && (
             <div role="alert" onClick={() => { setChatOpenRoom(chatPop.room); setPage('teamchat'); loadProfiles(); setChatPop(null); }}
-              style={{ position: 'fixed', top: isMobile ? 'calc(10px + env(safe-area-inset-top))' : 18, right: isMobile ? 10 : 18, left: isMobile ? 10 : 'auto', width: isMobile ? 'auto' : 340, zIndex: 9999, background: '#111', color: '#fff', borderLeft: '4px solid #c9922c', borderRadius: 10, padding: '11px 14px', boxShadow: '0 8px 28px rgba(0,0,0,.35)', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700 }}>
-                <span>💬 {chatPop.from}</span>
-                <button onClick={e => { e.stopPropagation(); setChatPop(null); }} aria-label="Dismiss" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+              style={{ position: 'fixed', top: isMobile ? 'calc(8px + env(safe-area-inset-top))' : 14, right: isMobile ? 8 : 14, left: isMobile ? 8 : 'auto', width: isMobile ? 'auto' : 250, zIndex: 9999, background: '#111', color: '#fff', borderLeft: '3px solid #c9922c', borderRadius: 8, padding: '7px 10px', boxShadow: '0 4px 16px rgba(0,0,0,.3)', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>💬 {chatPop.from}</span>
+                <button onClick={e => { e.stopPropagation(); setChatPop(null); }} aria-label="Dismiss" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: 0 }}>×</button>
               </div>
-              <div style={{ fontSize: 13.5, marginTop: 3, opacity: .9, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{chatPop.text}</div>
+              <div style={{ fontSize: 12, marginTop: 1, opacity: .85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chatPop.text}</div>
             </div>
           )}
           {page === 'teamchat' && profile && (
