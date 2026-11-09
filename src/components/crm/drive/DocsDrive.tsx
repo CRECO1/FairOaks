@@ -1246,7 +1246,32 @@ function DealPicker({ deals, liveDoc, isMobile, title, onClose, onPick }: { deal
   );
 }
 
-interface LibForm { id: string; name: string; form_code?: string | null; category?: string | null; pinned?: boolean | null }
+interface LibForm { id: string; name: string; form_code?: string | null; category?: string | null; pinned?: boolean | null; page_count?: number | null }
+const CAT_BLURB: Record<string, string> = {
+  'Listing Agreements': 'Sign up a property to list for lease or sale.',
+  'Letters of Intent': 'Non-binding offer terms — send these before a lease or purchase contract.',
+  'Leasing': 'The lease itself, plus applications and subleases.',
+  'Lease Addenda & Exhibits': 'Amendments, construction work letters, guaranties and rules that attach to a lease.',
+  'Purchase': 'Commercial purchase contracts (improved or unimproved).',
+  'Purchase Addenda & Exhibits': 'Amendments, exhibits, financing and termination paperwork for a purchase contract.',
+  'Compensation': 'Broker-to-broker commission and registration agreements.',
+  'Disclosures': 'Required notices to give clients.',
+  '8000 Fair Oaks Plaza': 'Our own lease for the 8000 Fair Oaks building.',
+  'Agent Onboarding': 'Paperwork for bringing on a new agent.',
+  'Representation Agreements': 'Agreements with a client we represent.',
+  'Residential Contracts': 'TREC contracts for home sales — resale, new construction, farm & ranch, condo.',
+  'Residential Addenda': 'TREC addenda that attach to a residential contract (financing, HOA, minerals, back-up…).',
+  'Residential Notices & Disclosures': 'TREC notices, seller disclosures and termination notices.',
+  'Residential Temporary Leases': 'Short-term lease for a buyer or seller who stays after closing.',
+};
+/** Where a form comes from, shown as a small badge — the raw form numbers (722, 12610…) mean nothing to an agent. */
+function formBadge(f: LibForm): { label: string; code: string | null } {
+  const c = (f.form_code ?? '').trim();
+  if (/^residential/i.test(f.category ?? '')) return { label: 'TREC', code: c.replace(/^TREC\s*/i, '') || null };
+  if (/^CRECO-/i.test(c) || /^(agent onboarding|representation)/i.test(f.category ?? '') || /^8000/.test(f.category ?? '')) return { label: 'CRECO', code: null };
+  const txr = c.match(/TXR-?\s*(\d{4})/i);
+  return { label: 'Commercial', code: txr ? `TXR ${txr[1]}` : null };
+}
 /** The whole form library — commercial and TREC residential — grouped by folder, searchable. */
 function FormPicker({ api, businessUnit, isMobile, onClose, onPick }: { api: <T>(path: string, init?: RequestInit) => Promise<T>; businessUnit: string; isMobile: boolean; onClose: () => void; onPick: (id: string) => void }) {
   return (
@@ -1261,7 +1286,7 @@ function FormLibrary({ api, businessUnit, isMobile, onPick }: { api: <T>(path: s
   return (
     <div>
       <div style={{ fontSize: isMobile ? 16 : 17, fontWeight: 700, color: 'var(--k-1a1a1a)', padding: '6px 4px 8px' }}>Forms</div>
-      <FormLibraryBody api={api} businessUnit={businessUnit} isMobile={isMobile} onPick={onPick} blurb="Every internal form we have — all the TREC residential forms plus our commercial forms and agreements. Tap one to start a blank copy in All files; it opens so you and your team can fill it in together." maxH="none" />
+      <FormLibraryBody api={api} businessUnit={businessUnit} isMobile={isMobile} onPick={onPick} blurb="Every internal form we have — all the TREC residential forms plus our commercial forms and agreements. Press Start on one to make a blank copy in All files; it opens so you and your team can fill it in together." maxH="none" />
     </div>
   );
 }
@@ -1291,15 +1316,24 @@ function FormLibraryBody({ api, businessUnit, isMobile, onPick, blurb, maxH }: {
         {forms && shown.length === 0 && <div style={{ padding: 12, color: 'var(--k-9ca3af)', fontSize: 14 }}>No forms match.</div>}
         {cats.map(cat => (
           <div key={cat}>
-            <div style={{ fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 700, padding: '10px 8px 4px' }}>{cat}</div>
+            <div style={{ padding: '14px 8px 4px' }}>
+              <div style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 700 }}>{cat} <span style={{ opacity: .6 }}>· {shown.filter(f => (f.category || 'Other') === cat).length}</span></div>
+              {CAT_BLURB[cat] && <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginTop: 2, lineHeight: 1.4 }}>{CAT_BLURB[cat]}</div>}
+            </div>
             {shown.filter(f => (f.category || 'Other') === cat).map(f => (
               <button key={f.id} type="button" onClick={() => onPick(f.id)}
                 style={{ display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', textAlign: 'left', minHeight: isMobile ? 50 : 40, padding: '7px 8px', border: 'none', borderBottom: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                 <span style={{ fontSize: 18, flexShrink: 0 }}>📝</span>
-                <span style={{ minWidth: 0 }}>
+                <span style={{ minWidth: 0, flex: 1 }}>
                   <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--k-1a1a1a)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{f.name}</span>
-                  {f.form_code && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 1 }}>Form {f.form_code}</span>}
+                  {(() => { const b = formBadge(f); return (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--k-6b7280)' }}>
+                      <span style={{ padding: '1px 7px', borderRadius: 10, background: b.label === 'TREC' ? 'var(--k-eef2ff,#eef2ff)' : 'var(--k-fdf6e9)', color: b.label === 'TREC' ? '#3730a3' : 'var(--k-a06a12)', fontWeight: 700, fontSize: 10.5, letterSpacing: .3 }}>{b.label}</span>
+                      {b.code && <span>{b.code}</span>}
+                      {f.page_count ? <span>· {f.page_count} page{f.page_count === 1 ? '' : 's'}</span> : null}
+                    </span>); })()}
                 </span>
+                <span style={{ flexShrink: 0, alignSelf: 'center', padding: '5px 12px', borderRadius: 8, border: `1px solid ${GOLD}`, color: 'var(--k-a06a12)', fontSize: 12.5, fontWeight: 700 }}>Start</span>
               </button>
             ))}
           </div>
