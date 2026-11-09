@@ -43,7 +43,7 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
-type View = 'folder' | 'recent' | 'shared' | 'trash' | 'search' | 'templates' | 'starred';
+type View = 'folder' | 'recent' | 'shared' | 'trash' | 'search' | 'templates' | 'starred' | 'forms';
 type Chip = 'all' | 'doc' | 'sheet' | 'pdf' | 'image' | 'form' | 'folder';
 const CHIPS: Array<[Chip, string]> = [['doc', 'Documents'], ['sheet', 'Spreadsheets'], ['pdf', 'PDFs'], ['image', 'Images'], ['form', 'Forms'], ['folder', 'Folders']];
 type Kind = 'folder' | 'doc' | 'file' | 'form';
@@ -155,6 +155,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   }, [headers]);
 
   const load = useCallback(async () => {
+    if (view === 'forms') { setLoading(false); return; }
     setLoading(true);
     try {
       const qs = view === 'starred' ? `view=starred&ids=${encodeURIComponent([...starsRef.current].join(','))}` : view === 'folder' ? `view=folder&folder=${folderId ?? 'root'}` : view === 'search' ? `view=search&q=${encodeURIComponent(q)}` : `view=${view}`;
@@ -687,14 +688,14 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const sectionLabel = (t: string) => <div style={{ fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, margin: '2px 2px 8px' }}>{t}</div>;
   const cardsView = view === 'folder';
 
-  const heading = view === 'recent' ? 'Recent' : view === 'shared' ? 'Shared with me' : view === 'trash' ? 'Trash' : view === 'templates' ? 'Templates' : view === 'starred' ? 'Starred' : view === 'search' ? 'Search results' : null;
+  const heading = view === 'recent' ? 'Recent' : view === 'shared' ? 'Shared with me' : view === 'trash' ? 'Trash' : view === 'templates' ? 'Templates' : view === 'forms' ? 'Forms' : view === 'starred' ? 'Starred' : view === 'search' ? 'Search results' : null;
 
   return (
     <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
       {/* Sidebar (desktop) / quick switch (phone) */}
       {isMobile ? (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', width: '100%', paddingBottom: 2 }}>
-          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Starred', view === 'starred', () => { setQ(''); setView('starred'); }], ['Shared', view === 'shared', () => { setQ(''); setView('shared'); }], ['Templates', view === 'templates', () => { setQ(''); setView('templates'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
+          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Starred', view === 'starred', () => { setQ(''); setView('starred'); }], ['Shared', view === 'shared', () => { setQ(''); setView('shared'); }], ['Forms', view === 'forms', () => { setQ(''); setView('forms'); }], ['Templates', view === 'templates', () => { setQ(''); setView('templates'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
             <button key={l} type="button" onClick={fn} style={{ minHeight: 40, padding: '0 16px', borderRadius: 20, border: `1px solid ${on ? GOLD : 'var(--k-e5e7eb)'}`, background: on ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: on ? 'var(--k-a06a12)' : 'var(--k-374151)', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>{l}</button>
           ))}
         </div>
@@ -704,6 +705,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           {navBtn('Recent', view === 'recent', () => { setQ(''); setView('recent'); }, 'clock')}
           {navBtn('Starred', view === 'starred', () => { setQ(''); setView('starred'); }, 'star')}
           {navBtn('Shared with me', view === 'shared', () => { setQ(''); setView('shared'); }, 'users')}
+          {navBtn('Forms', view === 'forms', () => { setQ(''); setView('forms'); }, 'form')}
           {navBtn('Templates', view === 'templates', () => { setQ(''); setView('templates'); }, 'template')}
           {navBtn('Trash', view === 'trash', () => { setQ(''); setView('trash'); }, 'trash')}
           <div style={{ fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, padding: '14px 10px 6px' }}>Folders</div>
@@ -712,6 +714,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
       )}
 
       <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
+        {view === 'forms' ? <FormLibrary api={api} businessUnit={businessUnit} isMobile={isMobile} onPick={id => void createForm(id)} /> : (<>
         {/* Header: breadcrumb + search + New */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <div style={{ flex: '1 1 220px', minWidth: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, fontSize: isMobile ? 16 : 17, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>
@@ -872,6 +875,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
             </div>
           )}
         </div>
+        </>)}
       </div>
 
       <input ref={fileInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.txt" onChange={e => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ''; }} />
@@ -1245,6 +1249,24 @@ function DealPicker({ deals, liveDoc, isMobile, title, onClose, onPick }: { deal
 interface LibForm { id: string; name: string; form_code?: string | null; category?: string | null; pinned?: boolean | null }
 /** The whole form library — commercial and TREC residential — grouped by folder, searchable. */
 function FormPicker({ api, businessUnit, isMobile, onClose, onPick }: { api: <T>(path: string, init?: RequestInit) => Promise<T>; businessUnit: string; isMobile: boolean; onClose: () => void; onPick: (id: string) => void }) {
+  return (
+    <Modal title="Add a form" isMobile={isMobile} onClose={onClose}>
+      <FormLibraryBody api={api} businessUnit={businessUnit} isMobile={isMobile} onPick={onPick} blurb="Pick any form in the library. A blank copy is filed here and opens so you and your team can fill it in together." maxH={isMobile ? '52dvh' : 380} />
+    </Modal>
+  );
+}
+
+/** My Drive → Forms: the full internal form library on the page itself. */
+function FormLibrary({ api, businessUnit, isMobile, onPick }: { api: <T>(path: string, init?: RequestInit) => Promise<T>; businessUnit: string; isMobile: boolean; onPick: (id: string) => void }) {
+  return (
+    <div>
+      <div style={{ fontSize: isMobile ? 16 : 17, fontWeight: 700, color: 'var(--k-1a1a1a)', padding: '6px 4px 8px' }}>Forms</div>
+      <FormLibraryBody api={api} businessUnit={businessUnit} isMobile={isMobile} onPick={onPick} blurb="Every internal form we have — all the TREC residential forms plus our commercial forms and agreements. Tap one to start a blank copy in All files; it opens so you and your team can fill it in together." maxH="none" />
+    </div>
+  );
+}
+
+function FormLibraryBody({ api, businessUnit, isMobile, onPick, blurb, maxH }: { api: <T>(path: string, init?: RequestInit) => Promise<T>; businessUnit: string; isMobile: boolean; onPick: (id: string) => void; blurb: string; maxH: string | number }) {
   const [forms, setForms] = useState<LibForm[] | null>(null);
   const [q, setQ] = useState('');
   const [scope, setScope] = useState<'all' | 'commercial' | 'trec'>('all');
@@ -1260,11 +1282,11 @@ function FormPicker({ api, businessUnit, isMobile, onClose, onPick }: { api: <T>
   );
   const n = (f: (x: LibForm) => boolean) => (forms ?? []).filter(f).length;
   return (
-    <Modal title="Add a form" isMobile={isMobile} onClose={onClose}>
-      <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>Pick any form in the library. A blank copy is filed here and opens so you and your team can fill it in together.</p>
-      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="🔍  Search all forms (name or form number)" style={{ width: '100%', boxSizing: 'border-box', height: isMobile ? 46 : 36, border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '0 12px', fontSize: 14, marginBottom: 8, background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }} />
+    <>
+      <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5 }}>{blurb}</p>
+      <input autoFocus={maxH !== 'none'} value={q} onChange={e => setQ(e.target.value)} placeholder="🔍  Search all forms (name or form number)" style={{ width: '100%', boxSizing: 'border-box', height: isMobile ? 46 : 36, border: '1px solid var(--k-d1d5db)', borderRadius: 8, padding: '0 12px', fontSize: 14, marginBottom: 8, background: 'var(--k-fff)', color: 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }} />
       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>{chip('all', 'All', forms?.length ?? 0)}{chip('commercial', 'Commercial', n(f => !isTrec(f)))}{chip('trec', 'TREC (residential)', n(isTrec))}</div>
-      <div style={{ maxHeight: isMobile ? '52dvh' : 380, overflowY: 'auto' }}>
+      <div style={{ maxHeight: maxH, overflowY: 'auto' }}>
         {forms === null && <div style={{ padding: 12, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading the library…</div>}
         {forms && shown.length === 0 && <div style={{ padding: 12, color: 'var(--k-9ca3af)', fontSize: 14 }}>No forms match.</div>}
         {cats.map(cat => (
@@ -1283,6 +1305,6 @@ function FormPicker({ api, businessUnit, isMobile, onClose, onPick }: { api: <T>
           </div>
         ))}
       </div>
-    </Modal>
+    </>
   );
 }
