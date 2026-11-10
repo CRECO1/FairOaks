@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 // The composer's formatting toolbar: buttons light up for what the cursor is in (bold, list, link…), a proper inline link
 // editor instead of a browser prompt (keeps your selection, fixes "www…" / email addresses, edits or removes an existing
@@ -43,6 +44,8 @@ export default function EmailToolbar(p: {
   onDealDocs?: () => void;
   onAttach?: () => void;
   attachCount: number;
+  /** Desktop: the composer's bottom bar. Aa / attach / link / deal docs / templates render there (Gmail-style) and the formatting row only shows when Aa is on. */
+  slot?: HTMLElement | null;
   /** Called after a change made by a toolbar button, so the composer can autosave. */
   onChange?: () => void;
 }) {
@@ -132,9 +135,21 @@ export default function EmailToolbar(p: {
     <button type="button" onMouseDown={e => { e.preventDefault(); fn(); }} aria-label={label} aria-pressed={active} title={tip} style={btn(active, extra)}>{content}</button>
   );
 
+  const bottom = !p.isMobile && !!p.slot;
+  const ib = (active = false, extra?: React.CSSProperties) => btn(active, { minWidth: 36, height: 36, borderRadius: 18, padding: '0 8px', ...extra });
+  const bottomActions = bottom ? createPortal(
+    <>
+      <button type="button" onClick={p.onToggleMore} aria-label="Formatting options" aria-pressed={p.showMore} title="Formatting options" style={ib(p.showMore, { fontSize: 15, fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 3 })}>A<span style={{ fontSize: 11, textDecoration: 'none', marginLeft: 1 }}>a</span></button>
+      {p.onAttach && <button type="button" onClick={p.onAttach} aria-label="Attach files" title="Attach files from your computer" style={ib(false, { position: 'relative' })}>{ico(I.clip.props.children, 18)}{p.attachCount > 0 && <span style={{ position: 'absolute', top: 1, right: 0, background: '#c9922c', color: '#fff', borderRadius: 8, fontSize: 10, fontWeight: 700, minWidth: 15, height: 15, lineHeight: '15px', textAlign: 'center', padding: '0 3px' }}>{p.attachCount}</span>}</button>}
+      <button type="button" onMouseDown={e => { e.preventDefault(); openLink(); }} aria-label="Add link" title={`Add or edit link (${mod}K)`} style={ib(on.link || !!link)}>{ico(I.link.props.children, 18)}</button>
+      {p.onDealDocs && <button type="button" onClick={p.onDealDocs} aria-label="Attach from the deal" title="Attach a document from this deal — nothing to download" style={ib()}>{ico(I.folder.props.children, 18)}</button>}
+      <button type="button" onClick={p.onToggleTpl} aria-label="Templates" aria-expanded={p.showTpl} title="Templates" style={ib(p.showTpl)}>{ico(I.tpl.props.children, 18)}</button>
+    </>, p.slot as HTMLElement) : null;
+
   return (
     <>
-      <div role="toolbar" aria-label="Formatting"
+      {bottomActions}
+      {(!bottom || p.showMore) && <div role="toolbar" aria-label="Formatting"
         style={{ display: 'flex', alignItems: 'center', flexWrap: p.isMobile ? 'nowrap' : 'wrap', overflowX: p.isMobile ? 'auto' : 'visible', gap: 2, padding: '4px 8px', borderBottom: '1px solid var(--k-f3f4f6)', WebkitOverflowScrolling: 'touch' }}>
         {fmt('Bold', `Bold (${mod}B)`, on.bold, () => run('bold'), 'B', { fontWeight: 800 })}
         {fmt('Italic', `Italic (${mod}I)`, on.italic, () => run('italic'), 'I', { fontStyle: 'italic', fontFamily: 'Georgia,serif' })}
@@ -148,11 +163,11 @@ export default function EmailToolbar(p: {
         {fmt('Add link', `Add or edit link (${mod}K)`, on.link || !!link, openLink, I.link)}
         {fmt('Clear formatting', 'Clear formatting — plain text again', false, () => { run('removeFormat'); run('unlink'); }, I.clear)}
         {sep}
-        <button type="button" onClick={p.onToggleTpl} aria-label="Templates" aria-expanded={p.showTpl} title="Templates" style={btn(p.showTpl, { fontSize: 13, fontWeight: 600 })}>{I.tpl}{!p.isMobile && 'Templates'}</button>
-        <button type="button" onClick={p.onToggleMore} aria-label="More formatting" aria-expanded={p.showMore} title="Font, size, colour, alignment" style={btn(p.showMore, { fontSize: 13, fontWeight: 700 })}>Aa</button>
-        {!p.isMobile && p.onDealDocs && <button type="button" onClick={p.onDealDocs} aria-label="Attach from the deal" title="Attach a document from this deal — nothing to download" style={btn(false, { marginLeft: 'auto', fontSize: 13, fontWeight: 600 })}>{I.folder}Deal docs</button>}
-        {!p.isMobile && p.onAttach && <button type="button" onClick={p.onAttach} aria-label="Attach files" title="Attach files from your computer" style={btn(false, { marginLeft: p.onDealDocs ? 0 : 'auto', fontSize: 13, fontWeight: 600 })}>{I.clip}Attach{p.attachCount > 0 && <span style={{ background: '#c9922c', color: '#fff', borderRadius: 9, fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, lineHeight: '18px', textAlign: 'center', padding: '0 5px' }}>{p.attachCount}</span>}</button>}
-      </div>
+        {!bottom && <button type="button" onClick={p.onToggleTpl} aria-label="Templates" aria-expanded={p.showTpl} title="Templates" style={btn(p.showTpl, { fontSize: 13, fontWeight: 600 })}>{I.tpl}{!p.isMobile && 'Templates'}</button>}
+        {!bottom && <button type="button" onClick={p.onToggleMore} aria-label="More formatting" aria-expanded={p.showMore} title="Font, size, colour, alignment" style={btn(p.showMore, { fontSize: 13, fontWeight: 700 })}>Aa</button>}
+        {!p.isMobile && !bottom && p.onDealDocs && <button type="button" onClick={p.onDealDocs} aria-label="Attach from the deal" title="Attach a document from this deal — nothing to download" style={btn(false, { marginLeft: 'auto', fontSize: 13, fontWeight: 600 })}>{I.folder}Deal docs</button>}
+        {!p.isMobile && !bottom && p.onAttach && <button type="button" onClick={p.onAttach} aria-label="Attach files" title="Attach files from your computer" style={btn(false, { marginLeft: p.onDealDocs ? 0 : 'auto', fontSize: 13, fontWeight: 600 })}>{I.clip}Attach{p.attachCount > 0 && <span style={{ background: '#c9922c', color: '#fff', borderRadius: 9, fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, lineHeight: '18px', textAlign: 'center', padding: '0 5px' }}>{p.attachCount}</span>}</button>}
+      </div>}
 
       {link && (
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, padding: '6px 8px', background: 'var(--k-f9fafb)', borderBottom: '1px solid var(--k-f3f4f6)', fontFamily: "'DM Sans',sans-serif" }}>

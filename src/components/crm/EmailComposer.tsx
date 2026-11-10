@@ -195,6 +195,11 @@ export default function EmailComposer(p: EmailComposerProps) {
   const [showCc, setShowCc] = useState(() => p.cc.trim().length > 0);
   const [showBcc, setShowBcc] = useState(() => (p.bcc ?? '').trim().length > 0);
   const [showMore, setShowMore] = useState(false);
+  // Desktop: the bottom bar hosts the Gmail-style tool icons (EmailToolbar portals into this element).
+  const [slotEl, setSlotEl] = useState<HTMLElement | null>(null);
+  // Desktop: the formatting row is tucked behind "Aa" (like Gmail); remember whether this agent likes it open.
+  useEffect(() => { if (p.isMobile) return; try { if (localStorage.getItem('crm-email-format') === '1') setShowMore(true); } catch { /* private mode */ } }, [p.isMobile]);
+  const toggleMore = () => setShowMore(v => { const n = !v; if (!p.isMobile) { try { localStorage.setItem('crm-email-format', n ? '1' : '0'); } catch { /* ignore */ } } return n; });
   const [showTpl, setShowTpl] = useState(false);
   const [schedOpen, setSchedOpen] = useState(false);
   const [mine, setMine] = useState<Tpl[]>(() => loadMine()); // until the server answers (or if it can't), what this browser has
@@ -572,7 +577,7 @@ export default function EmailComposer(p: EmailComposerProps) {
 
         {/* Toolbar */}
         <EmailToolbar bodyRef={p.bodyRef} isMobile={p.isMobile}
-          showTpl={showTpl} onToggleTpl={() => setShowTpl(v => !v)} showMore={showMore} onToggleMore={() => setShowMore(v => !v)}
+          showTpl={showTpl} onToggleTpl={() => setShowTpl(v => !v)} showMore={showMore} onToggleMore={toggleMore} slot={p.isMobile ? null : slotEl}
           onDealDocs={p.crmFiles ? () => setPickerOpen(true) : undefined} onAttach={() => attachRef.current?.click()} attachCount={attachCount}
           onChange={() => { syncMirror(); scheduleSave(); }} />
         <input ref={attachRef} type="file" multiple style={{ display: 'none' }}
@@ -714,6 +719,58 @@ export default function EmailComposer(p: EmailComposerProps) {
           </>
         ) : (
           <>
+            {!p.isMobile ? (
+              <>
+                <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+                  <button type="button" onClick={trySend} disabled={p.sending}
+                    style={{ minWidth: 92, height: 40, padding: '0 20px 0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: p.onSchedule ? '20px 0 0 20px' : 20, fontSize: 15, fontWeight: 700, cursor: p.sending ? 'default' : 'pointer', opacity: p.sending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+                    {p.sending ? 'Sending…' : (p.sendLabel ?? 'Send')}
+                  </button>
+                  {(p.onSchedule || p.draftKey) && (
+                    <button type="button" onClick={() => setSchedOpen(v => !v)} aria-haspopup="menu" aria-expanded={schedOpen} aria-label="More send options" title="Send later · Save draft"
+                      style={{ width: 34, height: 40, background: '#c9922c', color: '#fff', border: 'none', borderLeft: '1px solid rgba(255,255,255,.4)', borderRadius: '0 20px 20px 0', fontSize: 11, cursor: 'pointer' }}>▾</button>
+                  )}
+                  {schedOpen && (
+                    <>
+                      <div onClick={() => setSchedOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                      <div role="menu" style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 8px)', zIndex: 41, width: 270, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.2)', overflow: 'hidden' }}>
+                        {p.draftKey && (
+                          <button role="menuitem" type="button" onClick={() => { setSchedOpen(false); saveForLater(); }}
+                            style={{ display: 'block', width: '100%', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 14, fontWeight: 600, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>💾 Save draft<span style={{ display: 'block', fontSize: 12.5, fontWeight: 400, color: 'var(--k-9ca3af)' }}>Keep it in Saved drafts to send later</span></button>
+                        )}
+                        {p.onSchedule && (
+                          <>
+                            <div style={{ padding: '8px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: p.draftKey ? '1px solid var(--k-f0f0f0)' : undefined }}>🕐 Send later…</div>
+                            {schedPresets().map(([name, iso, label]) => (
+                              <button key={name} role="menuitem" type="button" onClick={() => void trySchedule(iso, label)}
+                                style={{ display: 'block', width: '100%', padding: '10px 12px', border: 'none', borderTop: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{name}</span>
+                                <span style={{ display: 'block', fontSize: 12.5, color: 'var(--k-9ca3af)' }}>{label}</span>
+                              </button>
+                            ))}
+                            <label style={{ display: 'block', padding: '10px 12px', borderTop: '1px solid var(--k-f0f0f0)', fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)' }}>
+                              Pick a date and time (Central)
+                              <input type="datetime-local" min={`${chicagoToday()}T00:00`} onChange={e => {
+                                const v = e.target.value; if (!v) return;
+                                const [d, t] = v.split('T'); const iso = chicagoLocalToUTC(d, t);
+                                void trySchedule(iso, new Date(iso).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }));
+                              }} style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, height: 34, border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '0 8px', fontSize: 13.5, background: 'var(--k-fff)', color: 'var(--k-111)' }} />
+                            </label>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div ref={setSlotEl} style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }} />
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{draftNote || '⌘↵ to send'}</span>
+                <button type="button" onClick={discard} aria-label="Discard draft" title="Discard draft"
+                  style={{ width: 36, height: 36, flexShrink: 0, background: 'none', color: 'var(--k-6b7280)', border: 'none', borderRadius: 18, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.6 9.2c0 .5.4.8.9.8h5c.5 0 .9-.3.9-.8L12 4M6.8 6.5v5M9.2 6.5v5" /></svg>
+                </button>
+              </>
+            ) : (
+              <>
             {p.isMobile && p.crmFiles && (
               <button type="button" onClick={() => setPickerOpen(true)} aria-label="Attach from the deal" title="Attach a document from this deal"
                 style={{ width: 48, height: 48, flexShrink: 0, background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 10, fontSize: 18, cursor: 'pointer' }}>📁</button>
@@ -768,6 +825,8 @@ export default function EmailComposer(p: EmailComposerProps) {
               Discard
             </button>
             <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{draftNote || (p.isMobile ? '' : '⌘↵ to send')}</span>
+              </>
+            )}
           </>
         )}
       </div>
