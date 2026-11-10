@@ -11,7 +11,7 @@ type Lnk = { kind: 'deal' | 'contact' | 'doc'; id: string; label: string };
 type Msg = { id: string; sender_id: string; body: string; created_at: string; attachments?: Att[]; links?: Lnk[] };
 export type ChatOption = { id: string; label: string };
 const fmtSize = (n: number) => n < 1e6 ? `${Math.max(1, Math.round(n / 1e3))} KB` : `${(n / 1e6).toFixed(1)} MB`;
-const ICON: Record<Lnk['kind'], string> = { deal: '🏷️', contact: '👤', doc: '📄' };
+const ICON: Record<Lnk['kind'], React.ReactNode> = { deal: <Ico n="deals" size={16} />, contact: <Ico n="users" size={16} />, doc: <Ico n="file" size={16} /> };
 const KIND: Record<Lnk['kind'], string> = { deal: 'Deal', contact: 'Contact', doc: 'Document' };
 type RoomInfo = { room: string; other: string | null; last: { sender_id: string; body: string; created_at: string } | null; unread: number };
 export type ChatPerson = { id: string; name: string };
@@ -52,6 +52,7 @@ const CSS = `
 .tc-icon:disabled{opacity:.4;cursor:default}
 .tc-item:hover{background:color-mix(in srgb,var(--c-text,#1a1a1a) 5%,transparent)}
 .tc-card:hover{filter:brightness(.96)}
+.tc-field textarea,.tc-field textarea:focus{outline:none!important;box-shadow:none!important;border:none!important;background:transparent!important;border-radius:0!important}
 .tc-field:focus-within{border-color:${GOLD}!important;box-shadow:0 0 0 3px rgba(201,146,44,.18)}
 @keyframes tc-pulse{0%,100%{opacity:.5}50%{opacity:.9}}
 .tc-skel{animation:tc-pulse 1.2s ease-in-out infinite;background:${SOFT};border-radius:14px}
@@ -154,7 +155,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   const jump = () => { stick.current = true; setAway(0); bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); };
 
   // the composer grows with what you type (up to ~6 lines)
-  useEffect(() => { const el = input.current; if (!el) return; el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 140)}px`; }, [text, room]);
+  useEffect(() => { const el = input.current; if (!el) return; el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 140)}px`; el.style.overflowY = el.scrollHeight > 140 ? 'auto' : 'hidden'; }, [text, room]);
 
   const send = async () => {
     const body = text.trim();
@@ -310,7 +311,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
         {loaded && !msgs.length && !err && <div style={{ textAlign: 'center', margin: 'auto', padding: 20 }}>
           <div style={{ display: 'inline-flex', marginBottom: 10 }}><Avatar name={cur?.title ?? ''} team={cur?.room === 'team'} size={56} /></div>
           <div style={{ fontWeight: 700, fontSize: 16 }}>{cur?.room === 'team' ? 'Start the team conversation' : `Say hi to ${cur?.title.split(' ')[0] ?? 'your teammate'}`}</div>
-          <div style={{ color: MUTED, fontSize: 13.5, marginTop: 4 }}>Share a deal, contact or file with the 🔗 and 📎 buttons below.</div>
+          <div style={{ color: MUTED, fontSize: 13.5, marginTop: 4 }}>Share a deal, contact or file with the link and paperclip buttons below.</div>
         </div>}
         {err && !msgs.length && <div style={{ color: '#b3261e', textAlign: 'center', margin: 'auto', fontSize: 14 }}>{err}</div>}
         {shown.map((m, i) => {
@@ -335,7 +336,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
                     style={{ background: mine ? GOLD : SOFT, color: mine ? '#1a1206' : 'inherit', padding: '8px 12px', borderRadius: 16, borderBottomRightRadius: mine && lastInRun ? 5 : 16, borderBottomLeftRadius: !mine && lastInRun ? 5 : 16, fontSize: 14.5, lineHeight: 1.42, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                     {m.body && renderBody(m.body, names, mine, term)}
                     {(m.links ?? []).map(l => card(l.id, ICON[l.kind], KIND[l.kind], l.label, null, mine, !!m.body, () => onOpenLink?.(l)))}
-                    {(m.attachments ?? []).map(a => card(a.path, a.type.startsWith('image/') ? '🖼️' : '📎', null, a.name, `${fmtSize(a.size)} · open`, mine, !!m.body || !!m.links?.length, () => void openAtt(a)))}
+                    {(m.attachments ?? []).map(a => card(a.path, a.type.startsWith('image/') ? <Ico n="image" size={17} /> : <Ico n="paperclip" size={17} />, null, a.name, `${fmtSize(a.size)} · open`, mine, !!m.body || !!m.links?.length, () => void openAtt(a)))}
                   </div>
                   {(lastInRun || (mine && m.id === lastMine)) && <div style={{ fontSize: 11, color: MUTED, margin: '2px 4px 0', textAlign: mine ? 'right' : 'left' }}>{lastInRun && when(m.created_at)}{mine && m.id === lastMine && otherRead && otherRead >= m.created_at && <span style={{ color: GOLD, fontWeight: 600 }}>{lastInRun ? ' · ' : ''}Seen</span>}</div>}
                 </div>
@@ -353,7 +354,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
       {err && msgs.length > 0 && <div role="alert" style={{ color: '#b3261e', fontSize: 13, padding: '0 16px 6px' }}>{err}</div>}
       {(pendAtt.length > 0 || pendLinks.length > 0 || uploading > 0) && <div style={{ display: 'flex', gap: 6, padding: '0 14px 8px', flexWrap: 'wrap' }}>
         {pendLinks.map(l => chip(l.id, <>{ICON[l.kind]} <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{l.label}</span></>, () => setPendLinks(x => x.filter(y => y.id !== l.id)), 'rgba(201,146,44,.2)'))}
-        {pendAtt.map(a => chip(a.path, <>📎 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{a.name}</span></>, () => setPendAtt(x => x.filter(y => y.path !== a.path)), SOFT))}
+        {pendAtt.map(a => chip(a.path, <><Ico n="paperclip" size={14} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{a.name}</span></>, () => setPendAtt(x => x.filter(y => y.path !== a.path)), SOFT))}
         {uploading > 0 && <span style={{ fontSize: 12.5, color: MUTED, padding: '4px 6px' }}>Uploading…</span>}
       </div>}
       {picker && <div style={{ margin: '0 14px 8px', border: BORDER, borderRadius: 12, background: 'var(--c-surface, #fff)', padding: 8, boxShadow: '0 6px 20px rgba(0,0,0,.12)' }}>
