@@ -20,6 +20,8 @@ import { useInbox } from '@/lib/use-inbox';
 import CardDrafts from './CardDrafts';
 import ThreadAssist from './ThreadAssist';
 import DealEmailBar, { agoLabel, type EmailFilter } from './DealEmailBar';
+import EmailThreadHeader from './EmailThreadHeader';
+import { parseAddressList, emailDisplayName, nameBook, threadPeople, snippetOf, bareEmail, isRealName, personLabel } from '@/lib/email-display';
 import { htmlToText } from '@/lib/html-text';
 import { gmailSignatureBlock } from '@/lib/agent-signature';
 import type { CrmAttachItem } from '@/lib/crm-attachments';
@@ -305,34 +307,12 @@ function titleCase(v: string): string {
   return v.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1));
 }
 
-function emailDisplayName(raw: string): string {
-  const addr = raw.trim().replace(/^<([^<>]*)>$/, '$1'); // a bare "<a@x.com>" is just the address
-  const m = addr.match(/^"?(.+?)"?\s*<[^>]+>/);
-  return m ? m[1].trim() : addr.split('@')[0];
-}
-// "A <a@x.com>, \"B, Co\" <b@x.com>" -> [{ name, email }]. Splits on commas that are not
-// inside quotes or angle brackets, so "Smith, John" stays one person.
-function parseAddressList(raw?: string | null): { name: string; email: string }[] {
-  if (!raw) return [];
-  const parts: string[] = []; let cur = ''; let q = false; let a = 0;
-  for (const ch of raw) {
-    if (ch === '"') q = !q;
-    else if (!q && ch === '<') a++;
-    else if (!q && ch === '>') a = Math.max(0, a - 1);
-    if (ch === ',' && !q && a === 0) { parts.push(cur); cur = ''; } else cur += ch;
-  }
-  parts.push(cur);
-  return parts.map(p => p.trim()).filter(Boolean).map(p => {
-    const m = p.match(/^"?(.*?)"?\s*<([^>]+)>$/);
-    const email = (m ? m[2] : p).trim();
-    const name = (m ? m[1] : '').trim() || email.split('@')[0];
-    return { name, email };
-  });
-}
 // To / Cc line under an email header: a short summary that opens into every address.
-function EmailRecipients({ to, cc, bcc }: { to?: string | null; cc?: string | null; bcc?: string | null }) {
+function EmailRecipients({ to, cc, bcc, resolve }: { to?: string | null; cc?: string | null; bcc?: string | null; resolve?: (email: string) => string }) {
   const [open, setOpen] = useState(false);
-  const tos = parseAddressList(to); const ccs = parseAddressList(cc); const bccs = parseAddressList(bcc);
+  // A header that carries only the address ("staceygc7@gmail.com") shows the name we know for that person instead of the handle.
+  const named = (list: { name: string; email: string }[]) => list.map(r => (!resolve || isRealName(r.name, r.email) ? r : { ...r, name: resolve(r.email) }));
+  const tos = named(parseAddressList(to)); const ccs = named(parseAddressList(cc)); const bccs = named(parseAddressList(bcc));
   const total = tos.length + ccs.length + bccs.length;
   if (total === 0) return null;
   const lead = tos.length ? tos : ccs.length ? ccs : bccs;
@@ -566,7 +546,7 @@ function useMessageHtml(threadId?: string | null, messageId?: string | null): st
 
 // One message inside an expanded thread, like Gmail: the latest is open, older ones fold to a single line you can
 // tap open. Used by both the deal and the contact thread so they can't drift apart.
-function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onReplyAll, onTask, dealId, onNote }: { e: DealEmail; onTask?: (due: string) => void; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void; onReplyAll?: () => void; dealId?: string; onNote?: (msg: string) => void }) {
+function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onReplyAll, onTask, dealId, onNote, resolve }: { resolve?: (email: string) => string; e: DealEmail; onTask?: (due: string) => void; defaultOpen: boolean; striped: boolean; last: boolean; isMobile: boolean; onReply?: () => void; onReplyAll?: () => void; dealId?: string; onNote?: (msg: string) => void }) {
   const [open, setOpen] = useState(defaultOpen);
   const [plain, setPlain] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
@@ -574,14 +554,16 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
   const liveHtml = useMessageHtml(open && !e.body_html ? e.gmail_thread_id : null, e.gmail_message_id);
   const html = e.body_html || liveHtml;
   const bodyText = cleanEmailBody(e.body ?? '');
+  const fromAddr = parseAddressList(e.from_email)[0];
+  const fromName = fromAddr && isRealName(fromAddr.name, fromAddr.email) ? fromAddr.name : resolve ? resolve(fromAddr?.email ?? e.from_email) : emailDisplayName(e.from_email);
   const bg = striped ? 'var(--k-fafafa)' : 'var(--k-fff)';
   const border = last ? 'none' : '1px solid var(--k-f0f0f0)';
   if (!open) {
     return (
       <div role="button" tabIndex={0} onClick={() => setOpen(true)} onKeyDown={ev => { if (ev.key === 'Enter') setOpen(true); }} title="Show this message"
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '12px 14px' : '9px 16px', minHeight: isMobile ? 48 : 40, cursor: 'pointer', background: bg, borderBottom: border }}>
-        <div style={{ width: 24, height: 24, borderRadius: '50%', background: emailAvatarColor(e.from_email), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{emailInitials(e.from_email)}</div>
-        <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0, maxWidth: isMobile ? 110 : 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emailDisplayName(e.from_email)}</span>
+        <div style={{ width: 24, height: 24, borderRadius: '50%', background: emailAvatarColor(e.from_email), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{fromName.split(/\s+/).length >= 2 ? (fromName.split(/\s+/)[0][0] + fromName.split(/\s+/).slice(-1)[0][0]).toUpperCase() : fromName.slice(0, 2).toUpperCase()}</div>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0, maxWidth: isMobile ? 110 : 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fromName}</span>
         <span style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{bodyText.replace(/\s+/g, ' ').slice(0, 120)}</span>
         {e.attachments && e.attachments.length > 0 && <span title={e.attachments.map(a => a.name).join('\n')} aria-label={`${e.attachments.length} attachment${e.attachments.length === 1 ? '' : 's'}`} style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }}>📎</span>}
         <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0, whiteSpace: 'nowrap' }}>{shortEmailDate(e.email_date)}</span>
@@ -592,14 +574,14 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
     <div style={{ padding: '14px 16px', background: bg, borderBottom: border }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
         <div style={{ width: 32, height: 32, borderRadius: '50%', background: emailAvatarColor(e.from_email), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>
-          {emailInitials(e.from_email)}
+          {fromName.split(/\s+/).length >= 2 ? (fromName.split(/\s+/)[0][0] + fromName.split(/\s+/).slice(-1)[0][0]).toUpperCase() : fromName.slice(0, 2).toUpperCase()}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* On a phone: line 1 = name · date · reply buttons, line 2 = the address on its own full-width line, line 3 = the opened chip.
               (The date/reply group can't shrink, so sharing a line with the address used to squeeze it into a one-letter-wide column.) */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: isMobile ? '2px 8px' : 8, flexWrap: 'wrap' }}>
             <div onClick={() => setOpen(false)} title="Fold this message" style={isMobile ? { display: 'contents', cursor: 'pointer' } : { cursor: 'pointer', minWidth: 0 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', ...(isMobile ? { order: 1, flex: '1 1 0', minWidth: 0, overflowWrap: 'anywhere' } : {}) }}>{emailDisplayName(e.from_email)}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', ...(isMobile ? { order: 1, flex: '1 1 0', minWidth: 0, overflowWrap: 'anywhere' } : {}) }}>{fromName}</span>
               <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', ...(isMobile ? { order: 4, flexBasis: '100%', minWidth: 0 } : { marginLeft: 5 }), overflowWrap: 'break-word', wordBreak: 'break-word' }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
             </div>
             <div style={isMobile ? { display: 'contents' } : { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -612,7 +594,7 @@ function ThreadMessage({ e, defaultOpen, striped, last, isMobile, onReply, onRep
                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 40 : 30, height: isMobile ? 40 : 30, borderRadius: 15, cursor: 'pointer', fontSize: 16, color: 'var(--k-6b7280)', ...(isMobile ? { order: 3, flexShrink: 0 } : {}) }}>↩↩</span>}
             </div>
           </div>
-          <EmailRecipients to={e.to_email} cc={e.cc_emails} bcc={e.bcc_emails} />
+          <EmailRecipients to={e.to_email} cc={e.cc_emails} bcc={e.bcc_emails} resolve={resolve} />
         </div>
       </div>
       {html && !plain && (
@@ -1425,6 +1407,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return next;
   });
   const [expandedContactThreads, setExpandedContactThreads] = useState<Set<string>>(new Set());
+  const [cEmailFilter, setCEmailFilter] = useState<EmailFilter>('all');
+  const [cEmailQuery, setCEmailQuery] = useState('');
   const [replyingToThreadKey, setReplyingToThreadKey] = useState<string | null>(null);
   const [composeAttachments, setComposeAttachments] = useState<File[]>([]);
   // Deal documents picked with "📁 Deal docs" — attached by the server at send, so the agent never downloads them.
@@ -4320,6 +4304,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (type === 'contact' && id) {
       const c = clients.find(cl => cl.id === id);
       if (!c) return false;
+      setActiveDeal(null);   // a card restored from the last visit must not stay open behind the one the alert is about
       setPage('contacts'); setActiveClient(c); return true;
     }
     if (type === 'calls') { setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients(); return true; }
@@ -4339,6 +4324,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (type === 'deal' && id) {
       const d = deals.find(x => x.id === id);
       if (!d) return false;
+      setActiveClient(null);
       setPage('deals'); openDeal(d); return true;
     }
     return true;
@@ -4805,6 +4791,28 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Reply / Reply all on one message, deal card. Reply goes to the sender (the contact is always on the To line);
   // Reply all adds everyone else who was on that message. Threads onto that message and quotes it.
   const selfAddrs = () => [session?.user?.email, profile?.email, ...gmailAccounts.map(a => a.email)];
+  const resolverFor = (threadEmails: DealEmail[]) => { const book = nameBook(threadEmails); return (em: string) => personLabel(em, book, nameForEmail); };
+  // The collapsed row of a conversation (deal card and contact card share it): names, not handles; a preview that is the message, not the signature.
+  function threadHeaderProps(threadEmails: DealEmail[], expanded: boolean, onToggle: () => void, pin?: { pinned: boolean; toggle: () => void }) {
+    const latest = newestEmail(threadEmails);
+    const self = new Set(selfAddrs().map(a => (a ?? '').toLowerCase()).filter(Boolean));
+    const who = threadPeople([...sortedEmails(threadEmails)].reverse(), true, self, nameBook(threadEmails), nameForEmail);
+    const first = who.label.split(',')[0].replace(/\s*\+\d+$/, '').trim() || '?';
+    const words = first.split(/\s+/).filter(Boolean);
+    const initials = (words.length >= 2 ? words[0][0] + words[words.length - 1][0] : first.slice(0, 2)).toUpperCase();
+    const sent = threadEmails.filter(e => e.direction === 'sent');
+    const opened = sent.filter(e => e.opened_at);
+    const everyone = new Set(threadEmails.flatMap(m => [...parseAddressList(m.from_email), ...parseAddressList(m.to_email), ...parseAddressList(m.cc_emails)].map(r => r.email.toLowerCase())));
+    return {
+      expanded, onToggle, isMobile,
+      label: who.label, initials, avatarColor: emailAvatarColor(who.primary || bareEmail(latest.from_email)),
+      count: threadEmails.length, people: everyone.size,
+      subject: latest.subject, snippet: snippetOf(cleanEmailBody(latest.body ?? ''), 140), youLast: latest.direction === 'sent',
+      dateLabel: shortEmailDate(latest.email_date), hasAttachments: threadEmails.some(m => (m.attachments?.length ?? 0) > 0),
+      opens: opened.length > 0 ? sent.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0) : sent.some(e => e.tracked) ? 0 : null,
+      pin,
+    };
+  }
   const hasReplyAll = (e: DealEmail, thread: DealEmail[], primary: string | undefined) => { const r = replyAllRecipients(e, thread, primary, selfAddrs()); return !!(r.also || r.cc); };
   // One-click to-do from an inbound email: a follow-up task on the deal (shows on Tasks and the dashboard).
   async function createEmailTask(e: DealEmail, due: string) {
@@ -12256,48 +12264,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       return groups.map(([threadKey, threadEmails]) => {
                         const isExpanded = expandedThreads.has(threadKey);
                         const latest = newestEmail(threadEmails);
-                        const snippet = cleanEmailBody(latest.body).slice(0, 120).replace(/\s+/g, ' ');
-                        // Open status summary for collapsed header
-                        const sentEmails = threadEmails.filter(e => e.direction === 'sent');
-                        const openedEmails = sentEmails.filter(e => e.opened_at);
-                        const hasTracked = sentEmails.some(e => e.tracked);
-                        const senderAddr = latest.direction === 'sent' ? latest.to_email : latest.from_email;
                         return (
                           <div key={threadKey} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
-                            {/* Thread header row */}
-                            <div
-                              onClick={() => setExpandedThreads(prev => {
-                                const next = new Set(prev);
-                                if (next.has(threadKey)) next.delete(threadKey); else next.add(threadKey);
-                                return next;
-                              })}
-                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', background: isExpanded ? 'var(--k-f9fafb)' : 'var(--k-fff)', transition: 'background .12s' }}
-                            >
-                              {/* Avatar */}
-                              <div style={{ width: 34, height: 34, borderRadius: '50%', background: emailAvatarColor(senderAddr), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-                                {emailInitials(senderAddr)}
-                              </div>
-                              {/* Middle: name + subject/snippet */}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emailDisplayName(senderAddr)}</span>
-                                  {threadEmails.length > 1 && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{threadEmails.length}</span>}
-                                  {(() => { const n = new Set(threadEmails.flatMap(m => [...parseAddressList(m.from_email), ...parseAddressList(m.to_email), ...parseAddressList(m.cc_emails)].map(r => r.email.toLowerCase()))).size; return n > 2 ? <span title="People on this thread" style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-eef2ff)', color: 'var(--k-3730a3)' }}>👥 {n}</span> : null; })()}
-                                  {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened{(() => { const n = sentEmails.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0); return n > 1 ? ` ${n}×` : ''; })()}</span>}
-                                  {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
-                                </div>
-                                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latest.subject}</div>
-                                <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{snippet}</div>
-                              </div>
-                              {/* Right: date + chevron */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                <span role="button" tabIndex={0} aria-label={emailPins.has(threadKey) ? 'Unpin this conversation' : 'Pin this conversation to the top'} title={emailPins.has(threadKey) ? 'Unpin' : 'Pin to the top (this browser)'}
-                                  onClick={ev => { ev.stopPropagation(); toggleEmailPin(threadKey); }} onKeyDown={ev => { if (ev.key === 'Enter') { ev.stopPropagation(); toggleEmailPin(threadKey); } }}
-                                  style={{ fontSize: 16, cursor: 'pointer', padding: isMobile ? '8px 6px' : '0 2px', color: emailPins.has(threadKey) ? '#c9922c' : 'var(--k-cbd5e1)' }}>{emailPins.has(threadKey) ? '★' : '☆'}</span>
-                                <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{shortEmailDate(latest.email_date)}</span>
-                                <span style={{ fontSize: 12, color: '#cbd5e1' }}>{isExpanded ? '▾' : '▸'}</span>
-                              </div>
-                            </div>
+                            <EmailThreadHeader {...threadHeaderProps(threadEmails, isExpanded,
+                              () => setExpandedThreads(prev => { const next = new Set(prev); if (next.has(threadKey)) next.delete(threadKey); else next.add(threadKey); return next; }),
+                              { pinned: emailPins.has(threadKey), toggle: () => toggleEmailPin(threadKey) })} />
 
                             {/* Expanded thread emails */}
                             {isExpanded && (
@@ -12318,7 +12289,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   );
                                 })()}
                                 {sortedEmails(threadEmails).map((e, idx, arr) => (
-                                  <ThreadMessage key={e.id} e={e} isMobile={isMobile} dealId={activeDeal?.id} onNote={showToast} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
+                                  <ThreadMessage key={e.id} e={e} isMobile={isMobile} resolve={resolverFor(threadEmails)} dealId={activeDeal?.id} onNote={showToast} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
                                     onTask={e.direction === 'received' && activeDeal ? (due) => createEmailTask(e, due) : undefined}
                                     onReply={gmailConnected && activeDeal?.client_email ? () => startDealReply(e, threadEmails, false) : undefined}
                                     onReplyAll={gmailConnected && activeDeal?.client_email && hasReplyAll(e, threadEmails, activeDeal.client_email) ? () => startDealReply(e, threadEmails, true) : undefined} />
@@ -14225,19 +14196,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         onDiscard={() => { setShowContactCompose(false); setReplyToContactEmail(null); clearContactComposeBody(); resetComposeFiles(); }} />
                     )}
 
-                    {/* Sync bar */}
-                    <div style={{ marginBottom: 12, padding: '10px 12px', background: 'var(--k-f0fdf4)', border: '1px solid var(--k-bbf7d0)', borderRadius: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                        <div>
-                          <div style={{ fontSize: 13, color: 'var(--k-166534)', fontWeight: 600 }}>✉️ Email Thread with {c.email}</div>
-                          <div style={{ fontSize: 11, color: 'var(--k-6b7280)', marginTop: 2 }}>Searches all {gmailAccounts.length > 1 ? `${gmailAccounts.length} connected accounts` : 'connected Gmail accounts'} for replies</div>
-                        </div>
-                        <button onClick={() => syncGmailForContact(c)} disabled={syncing}
-                          style={{ padding: '4px 12px', fontSize: 13, fontWeight: 600, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: syncing ? 0.7 : 1, whiteSpace: 'nowrap' }}>
-                          {syncing ? 'Syncing…' : '↻ Sync'}
-                        </button>
-                      </div>
+                    {/* Sync line (same quiet style as the deal card's) */}
+                    <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--k-6b7280)' }}>
+                      <span>✉️ {syncing ? 'Syncing…' : `Conversations with ${c.email} · searches ${gmailAccounts.length > 1 ? `all ${gmailAccounts.length} connected Gmail accounts` : 'your connected Gmail'}`}</span>
+                      <button onClick={() => syncGmailForContact(c)} disabled={syncing} style={{ background: 'none', border: 'none', padding: 0, color: '#16a34a', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', opacity: syncing ? 0.6 : 1 }}>↻ Sync now</button>
                     </div>
+
+                    {(() => {
+                      const lastE = contactEmails.length ? newestEmail(contactEmails) : null;
+                      return (
+                        <DealEmailBar isMobile={isMobile} noun="contact" total={contactEmails.length} filter={cEmailFilter} setFilter={setCEmailFilter} query={cEmailQuery} setQuery={setCEmailQuery}
+                          pinnedCount={0} counts={{ received: contactEmails.filter(e => e.direction === 'received').length, sent: contactEmails.filter(e => e.direction === 'sent').length }}
+                          last={lastE ? { direction: lastE.direction, when: lastE.email_at || lastE.email_date, tracked: !!lastE.tracked, opened: !!lastE.opened_at } : null} />
+                      );
+                    })()}
 
                     {/* Threaded email list */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 8 }}>
@@ -14245,7 +14217,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ textAlign: 'center', padding: 16, color: 'var(--k-9ca3af)', fontSize: 13 }}>Loading emails…</div>
                       )}
                       {!contactEmailsLoading && contactEmails.length === 0 && (
-                        <div style={{ textAlign: 'center', padding: 16, color: 'var(--k-9ca3af)', fontSize: 13 }}>📭 No emails yet. Hit Sync to pull Gmail history.</div>
+                        <div style={{ textAlign: 'center', padding: 16, color: 'var(--k-9ca3af)', fontSize: 13 }}>📭 No emails with this contact yet. Press “Sync now” to pull your Gmail history.</div>
                       )}
                       {!contactEmailsLoading && (() => {
                         const threadMap = new Map<string, DealEmail[]>();
@@ -14255,57 +14227,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           existing.push(email);
                           threadMap.set(key, existing);
                         }
-                        const groups = Array.from(threadMap.entries()).sort((a, b) => {
+                        const cq = cEmailQuery.trim().toLowerCase();
+                        const groups = Array.from(threadMap.entries()).filter(([, list]) => {
+                          if ((cEmailFilter === 'received' || cEmailFilter === 'sent') && !list.some(m => m.direction === cEmailFilter)) return false;
+                          if (cq && !list.some(m => `${m.subject} ${m.from_email} ${m.to_email} ${m.cc_emails ?? ''} ${m.body ?? ''}`.toLowerCase().includes(cq))) return false;
+                          return true;
+                        }).sort((a, b) => {
                           const na = newestEmail(a[1]); const latestA = na.email_date + emailTs(na);
                           const nb = newestEmail(b[1]); const latestB = nb.email_date + emailTs(nb);
                           return latestB.localeCompare(latestA);
                         });
+                        if (!groups.length && contactEmails.length) return <div style={{ textAlign: 'center', padding: 16, color: 'var(--k-9ca3af)', fontSize: 13 }}>No emails match{cEmailQuery ? ` “${cEmailQuery}”` : ' that filter'}.</div>;
                         return groups.map(([threadKey, threadEmails]) => {
                           const isExpanded = expandedContactThreads.has(threadKey);
                           const latest = newestEmail(threadEmails);
-                          const snippet = cleanEmailBody(latest.body).slice(0, 120).replace(/\s+/g, ' ');
-                          const sentEmails = threadEmails.filter(e => e.direction === 'sent');
-                          const openedEmails = sentEmails.filter(e => e.opened_at);
-                          const hasTracked = sentEmails.some(e => e.tracked);
-                          const senderAddrC = latest.direction === 'sent' ? latest.to_email : latest.from_email;
                           return (
                             <div key={threadKey} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
-                              {/* Thread header */}
-                              <div
-                                onClick={() => setExpandedContactThreads(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(threadKey)) next.delete(threadKey); else next.add(threadKey);
-                                  return next;
-                                })}
-                                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', background: isExpanded ? 'var(--k-f9fafb)' : 'var(--k-fff)', transition: 'background .12s' }}
-                              >
-                                <div style={{ width: 34, height: 34, borderRadius: '50%', background: emailAvatarColor(senderAddrC), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-                                  {emailInitials(senderAddrC)}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emailDisplayName(senderAddrC)}</span>
-                                    {threadEmails.length > 1 && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{threadEmails.length}</span>}
-                                  {(() => { const n = new Set(threadEmails.flatMap(m => [...parseAddressList(m.from_email), ...parseAddressList(m.to_email), ...parseAddressList(m.cc_emails)].map(r => r.email.toLowerCase()))).size; return n > 2 ? <span title="People on this thread" style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-eef2ff)', color: 'var(--k-3730a3)' }}>👥 {n}</span> : null; })()}
-                                    {openedEmails.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-d1fae5)', color: 'var(--k-065f46)' }}>👁 Opened{(() => { const n = sentEmails.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0); return n > 1 ? ` ${n}×` : ''; })()}</span>}
-                                    {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap', background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' }}>Not opened</span>}
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, overflow: 'hidden' }}>
-                                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-374151)', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latest.subject}</span>
-                                    <span style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}> — {snippet}</span>
-                                  </div>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                  <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{shortEmailDate(latest.email_date)}</span>
-                                  <span style={{ fontSize: 12, color: '#cbd5e1' }}>{isExpanded ? '▾' : '▸'}</span>
-                                </div>
-                              </div>
+                              <EmailThreadHeader {...threadHeaderProps(threadEmails, isExpanded,
+                                () => setExpandedContactThreads(prev => { const next = new Set(prev); if (next.has(threadKey)) next.delete(threadKey); else next.add(threadKey); return next; }))} />
 
                               {/* Expanded messages */}
                               {isExpanded && (
                                 <div style={{ borderTop: '1px solid var(--k-f0f0f0)' }}>
                                   {sortedEmails(threadEmails).map((e, idx, arr) => (
-                                    <ThreadMessage key={e.id} e={e} isMobile={isMobile} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
+                                    <ThreadMessage key={e.id} e={e} isMobile={isMobile} resolve={resolverFor(threadEmails)} striped={idx % 2 === 0} last={idx === arr.length - 1} defaultOpen={idx === arr.length - 1 || arr.length <= 2}
                                       onReply={() => startContactReply(e, threadEmails, false, threadKey, c)}
                                     onReplyAll={hasReplyAll(e, threadEmails, c.email) ? () => startContactReply(e, threadEmails, true, threadKey, c) : undefined} />
                                   ))}

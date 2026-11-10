@@ -21,7 +21,9 @@ function agoLabel(iso: string): string {
 }
 export { agoLabel };
 
-export default function DealEmailBar({ last, total, filter, setFilter, query, setQuery, pinnedCount, counts, isMobile }: {
+export default function DealEmailBar({ last, total, filter, setFilter, query, setQuery, pinnedCount, counts, isMobile, noun = 'deal' }: {
+  /** What the emails belong to, for the search box ('deal' | 'contact'). */
+  noun?: string;
   last: { direction: 'sent' | 'received'; when: string; opened?: boolean; tracked?: boolean } | null;
   total: number;
   filter: EmailFilter;
@@ -51,7 +53,7 @@ export default function DealEmailBar({ last, total, filter, setFilter, query, se
       )}
       {total > 3 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search this deal’s emails…" aria-label="Search this deal’s emails" className="crm-input"
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder={`Search this ${noun}’s emails…`} aria-label={`Search this ${noun}’s emails`} className="crm-input"
             style={{ flex: '1 1 180px', minWidth: 0, minHeight: isMobile ? 40 : 30, padding: '0 10px', fontSize: 13 }} />
           {chip('received', 'Received', counts.received)}
           {chip('sent', 'Sent', counts.sent)}
