@@ -24,7 +24,7 @@ import { useEffect, useState } from 'react';
  */
 
 // Routes where analytics/tracking must NOT fire.
-const EXCLUDED_PREFIXES = ['/crm', '/manage'];
+const EXCLUDED_PREFIXES = ['/crm', '/manage', '/sign'];   // /sign/<token>: the URL is a signing credential — no analytics or session replay on it
 
 // Only load analytics on the real marketing host. Previously the tags loaded on
 // any host — including Vercel preview URLs (fair-oaks-*.vercel.app) and localhost

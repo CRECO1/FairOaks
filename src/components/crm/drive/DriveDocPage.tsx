@@ -29,9 +29,21 @@ export default function DriveDocPage({ docId }: { docId: string }) {
     document.addEventListener('visibilitychange', hide); window.addEventListener('pagehide', announceDriveChanged);
     return () => { document.removeEventListener('visibilitychange', hide); window.removeEventListener('pagehide', announceDriveChanged); };
   }, []);
-  useEffect(() => { if (state === 'out' && valid) window.location.replace(`/crm/${bu}?doc=${docId}`); }, [state, valid, bu, docId]);
+  // Not signed in -> through the CRM sign-in and back. Once only: if we were bounced here from the CRM a moment ago (a profile that can't be read looks
+  // like "signed out"), show a message instead of ping-ponging between the two.
+  const [bounced, setBounced] = useState(false);
+  useEffect(() => {
+    if (state !== 'out' || !valid) return;
+    try {
+      const k = `crm:doc-bounce:${docId}`, last = Number(sessionStorage.getItem(k) ?? 0);
+      if (Date.now() - last < 20_000) { setBounced(true); return; }
+      sessionStorage.setItem(k, String(Date.now()));
+    } catch { /* storage blocked: redirect once, can't loop-guard */ }
+    window.location.replace(`/crm/${bu}?doc=${docId}`);
+  }, [state, valid, bu, docId]);
 
   if (!valid) return <StandaloneShell><PageMessage action={{ label: 'Go to My Drive', onClick: () => leaveDrivePage(bu) }}>That is not a document link.</PageMessage></StandaloneShell>;
+  if (bounced) return <StandaloneShell><PageMessage action={{ label: 'Open the CRM', onClick: () => { window.location.href = `/crm/${bu}`; } }}>We couldn’t confirm your sign-in for this page. Open the CRM, make sure you’re signed in, then try the link again.</PageMessage></StandaloneShell>;
   if (state !== 'ready' || !me) return <StandaloneShell><PageMessage>{state === 'out' ? 'Signing you in…' : 'Opening…'}</PageMessage></StandaloneShell>;
 
   const name = `${me.first_name ?? ''} ${me.last_name ?? ''}`.trim();

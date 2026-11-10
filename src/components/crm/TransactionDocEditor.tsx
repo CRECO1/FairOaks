@@ -97,7 +97,7 @@ export interface EditorRecipient { key: string; name: string; email: string; rol
 export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string; size?: number; label?: string };
 
 export default function TransactionDocEditor({
-  form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved, autoSave = false,
+  form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, keysEnabled = true, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved, autoSave = false,
 }: {
   form: { id: string; name: string };
   url: string;
@@ -110,6 +110,8 @@ export default function TransactionDocEditor({
   submissionId?: string;
   fieldPrefill?: Record<string, string>;  // field_key → value, seeded into a blank form (e.g. the agent's own info)
   isMobile?: boolean;
+  /** Keyboard shortcuts for placed fields (Delete / arrows / Esc). The e-sign composer turns them off while a setup or review screen is on top. */
+  keysEnabled?: boolean;
   // The people signing, in order. Given these, the toolbar picks a PERSON instead of
   // a role and every placed field is addressed to them by name.
   recipients?: EditorRecipient[];
@@ -447,15 +449,22 @@ export default function TransactionDocEditor({
     return () => window.removeEventListener('keydown', onKey);
   }, [deletedStack.length, undoDelete]);
   // Placing spots precisely, from the keyboard: Delete removes the selected field, the arrow keys nudge it (Shift = 10x), Esc puts the tool
-  // down and deselects. Never while typing in a field, never on a field a teammate has locked.
+  // down and deselects. Never while typing, never from a focused button, never while a dialog / setup / review screen is on top, never on a
+  // field a teammate has locked — and a typed answer or a ticked box is never removed by a key press (use its ✕).
   useEffect(() => {
+    if (!keysEnabled) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t.tagName))) return;
+      if (t && t.closest && t.closest('[role="dialog"], [role="menu"]')) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'Escape') { if (tool !== 'select' || selected) { setTool('select'); setSelected(null); } return; }
       if (!selected || lockOf(selected)) return;
-      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); delField(selected); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const f = latestFields.current.find(x => x.id === selected);
+        if (f && (f.type === 'text' || f.type === 'check') && String(f.value ?? '').trim()) return;   // it holds an answer
+        e.preventDefault(); delField(selected); return;
+      }
       const step = e.shiftKey ? 0.013 : 0.0013;   // about 10 px / 1 px on a normal-width page
       const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
       const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
@@ -466,7 +475,7 @@ export default function TransactionDocEditor({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, tool, lockOf]);
+  }, [selected, tool, lockOf, keysEnabled]);
 
   // Put back any field from the form's standard layout that is missing from this
   // document (e.g. deleted by accident and saved). Fields still present — matched by
@@ -578,6 +587,7 @@ export default function TransactionDocEditor({
     savingRef.current = true;
     if (!silent) setBusy(true);
     let saved = false;
+    const snapAtStart = JSON.stringify(latestFields.current);   // what this save contains
     try {
       const out = await build();
       if (!out) return false;
@@ -598,6 +608,7 @@ export default function TransactionDocEditor({
       });
       if (res.ok) {
         saved = true;
+        autoRef.current = snapAtStart;   // after ANY successful save (manual, auto, on close) the saved copy is this
         const j = await res.json();
         if (j.submission?.id) { subIdRef.current = j.submission.id; setLiveSubId(j.submission.id); }
         syncedVals.current = valsOf(fields);
@@ -637,7 +648,7 @@ export default function TransactionDocEditor({
   useEffect(() => {
     if (!autoOn || status !== 'ready') return;
     const snap = JSON.stringify(fields);
-    if (!autoRef.current) { autoRef.current = snap; return; }
+    if (!autoRef.current) { if (!fields.length) return; autoRef.current = snap; return; }   // the PDF can be ready before the fields have loaded: not a baseline yet
     if (snap === autoRef.current) return;
     const t = setTimeout(async () => {
       setAutoState('saving');
@@ -656,10 +667,17 @@ export default function TransactionDocEditor({
     window.addEventListener('beforeunload', h);
     return () => window.removeEventListener('beforeunload', h);
   }, [autoOn, status]);
+  const closeFailed = useRef(false);
   const requestClose = useCallback(async () => {
-    if (autoOn && status === 'ready' && autoRef.current && JSON.stringify(latestFields.current) !== autoRef.current) await doSave(true);
+    if (autoOn && status === 'ready' && autoRef.current && !closeFailed.current) {
+      for (let i = 0; i < 12 && savingRef.current; i++) await new Promise(r => setTimeout(r, 400));   // an autosave is in flight: let it land first
+      if (JSON.stringify(latestFields.current) !== autoRef.current) {
+        const ok = await doSave(true);
+        if (!ok) { closeFailed.current = true; onToast?.('Your latest changes could not be saved, so the form stayed open. Press Save to try again — or press ✕ again to close without them.'); return; }
+      }
+    }
     onClose();
-  }, [autoOn, status, doSave, onClose]);
+  }, [autoOn, status, doSave, onClose, onToast]);
 
   // Held in a ref so a caller that re-creates the callback each render can't
   // re-fire this effect and loop.

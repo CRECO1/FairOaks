@@ -50,8 +50,9 @@ function Section({ title, open, onToggle, done, children }: { title: string; ope
   );
 }
 
-let _rk = 0;
-const newKey = () => `r${++_rk}`;
+// Random, not a counter: a saved draft remembers the key each spot was placed for, and a counter restarts at r1 on every page load — so after a reload
+// a spot placed for one person could silently bind to whoever happens to get the same key.
+const newKey = () => `r-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`}`;
 
 export default function EsignComposer({
   initialDoc, initialFile, clients = [], deals, dealId, listingId, agentName, agentEmail, authToken, businessUnit, isAdmin, isMobile,
@@ -200,6 +201,7 @@ export default function EsignComposer({
     <>
         <TransactionDocEditor
           form={{ id: '', name: doc.title || 'Document' }}
+          keysEnabled={step === 'fields' && !review}
           url={doc.url || ''}
           submissionId={doc.id}
           authToken={authToken}
@@ -226,8 +228,11 @@ export default function EsignComposer({
               const only = (role?: string) => { const m = valid.filter(r => r.role === role); return m.length === 1 ? m[0] : null; };
               const fixable = stale.filter(x => only(x.signerRole));
               if (fixable.length) {
-                const names = [...new Set(fixable.map(x => only(x.signerRole)!.name))].join(' and ');
-                if (window.confirm(`${fixable.length} signing spot${fixable.length === 1 ? ' was' : 's were'} placed for a signer who isn’t linked to this request any more (this happens when you reopen a draft).\n\nAttach ${fixable.length === 1 ? 'it' : 'them'} to ${names}?\n\nOK = attach.  Cancel = leave ${fixable.length === 1 ? 'it' : 'them'} out of what is sent.`)) {
+                const roleName = (r?: string) => ROLES.find(x => x[0] === r)?.[1] ?? (r || 'Client');
+                const groups = new Map<string, EditorField[]>();
+                fixable.forEach(x => groups.set(x.signerRole ?? 'client', [...(groups.get(x.signerRole ?? 'client') ?? []), x]));
+                const lines = [...groups.entries()].map(([role, fs]) => `• ${fs.length} spot${fs.length === 1 ? '' : 's'} placed for ${roleName(role)} (page${new Set(fs.map(f => f.page)).size === 1 ? '' : 's'} ${[...new Set(fs.map(f => f.page))].sort((a, b) => a - b).join(', ')}) → ${only(role)!.name || only(role)!.email}`);
+                if (window.confirm(`Some signing spots were placed for a signer who isn’t linked to this request any more (this happens when you reopen a draft):\n\n${lines.join('\n')}\n\nOnly attach them if that is the same person. The next screen shows exactly who signs where.\n\nOK = attach.  Cancel = leave them out of what is sent.`)) {
                   next = f.map(x => fixable.includes(x) ? { ...x, signerKey: only(x.signerRole)!.key } : x);
                 }
               }

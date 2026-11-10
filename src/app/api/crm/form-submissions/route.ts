@@ -236,6 +236,15 @@ export async function POST(req: NextRequest) {
   if (submission_id && !(await assertOwnsResource('crm_form_submissions', submission_id, ctx, { ownerColumns: ['created_by'], requireOwner: true }))) {
     return notFound('Submission not found');
   }
+  // A document that is out for signature (or already signed) is frozen: the signing page reads its placed spots live and the executed PDF is stamped
+  // from them, so a save here (including an autosave from an open Drive tab) would move a signature spot under the signer. A cancelled (voided) or
+  // declined request releases it again — cancel the request first to edit.
+  if (submission_id) {
+    const { data: envs } = await supabase.from('crm_envelopes').select('id,status').eq('submission_id', submission_id).limit(20);
+    if ((envs ?? []).some(e => !['voided', 'declined'].includes(String((e as { status?: string }).status)))) {
+      return NextResponse.json({ error: 'This document is out for signature (or already signed), so it can’t be changed. Cancel the signature request first if you need to edit it.' }, { status: 409 });
+    }
+  }
   // ...and not one filed on a private deal / Restricted property the caller can't see.
   if (submission_id) {
     const { data: cur } = await supabase.from('crm_form_submissions').select('business_unit, deal_id, listing_id').eq('id', submission_id).maybeSingle();
