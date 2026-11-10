@@ -1,7 +1,12 @@
 // Safe HTML sanitizer — isomorphic-dompurify works in both SSR and browser contexts.
 // Usage: sanitizeHtml(untrustedHtmlString)
 
-import DOMPurify from 'isomorphic-dompurify';
+import DOMPurify from 'dompurify';
+import { stripActiveContent } from './strip-active-content';
+
+// Browser-only DOMPurify. The isomorphic build drags in jsdom, which crashes when the page is server-rendered on Vercel (it 500'd /crm/doc/<id>).
+// Every caller is a client component; if one ever runs during SSR we fall back to the dependency-free server stripper instead of loading jsdom.
+const canSanitize = () => typeof window !== 'undefined' && DOMPurify.isSupported;
 
 /**
  * Sanitize an HTML string, removing all script/event-handler XSS vectors.
@@ -23,6 +28,7 @@ function ensureHooks() {
 
 export function sanitizeHtml(dirty: string | null | undefined): string {
   if (!dirty) return '';
+  if (!canSanitize()) return stripActiveContent(dirty);
   ensureHooks();
   return DOMPurify.sanitize(dirty, {
     // Allowlist — explicitly safe tags only. Never include script/style/html/head/body/meta.
@@ -42,6 +48,7 @@ export function sanitizeHtml(dirty: string | null | undefined): string {
  */
 export function sanitizeEmailHtml(dirty: string | null | undefined): string {
   if (!dirty) return '';
+  if (!canSanitize()) return stripActiveContent(dirty);
   ensureHooks();
   return DOMPurify.sanitize(dirty, {
     ADD_TAGS: ['style'],
