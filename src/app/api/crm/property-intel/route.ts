@@ -3,6 +3,7 @@ import { getCrmContext, unauthorized, notFound, assertOwnsResource } from '@/lib
 import { adminClient } from '@/lib/supabase-admin';
 import { normalizeAddress } from '@/lib/broker-ingest/upsert';
 import { parseCountyAppraisal } from '@/lib/county-notes';
+import { lookupBexar } from '@/lib/county-live';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,7 @@ export const dynamic = 'force-dynamic';
  * What the CRM already knows about a deal's property, for the deal card's Property Intel tab — free, no outside call:
  *   • the Property DB record at the same street address (county appraisal: owner, market value, parcel, acres… that the county job filled in)
  *   • our own listing, when the deal is tied to one
+ *   • the county's own public parcel record, looked up live by street address (Bexar County for now)
  * `attomConfigured` says whether the paid ATTOM lookup can work at all (its key is not set today), so the tab only offers it when it can.
  * The deal is checked the same way every deal read is (workspace + the agent must be on it).
  */
@@ -56,5 +58,9 @@ export async function GET(req: NextRequest) {
     listing = (l as Record<string, unknown> | null) ?? null;
   }
 
-  return NextResponse.json({ address: deal.property ?? '', match, otherMatches: others, listing, attomConfigured });
+  // 3) No county appraisal on file for it yet: ask the county's own free public records (Bexar) — owner, parcel, legal. Only for a real street address.
+  const hasCounty = !!(match && (match as { county?: unknown }).county);
+  const live = hasCounty ? null : await lookupBexar(String(deal.property ?? ''));
+
+  return NextResponse.json({ address: deal.property ?? '', match, otherMatches: others, listing, live, attomConfigured });
 }
