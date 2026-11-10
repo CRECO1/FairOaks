@@ -74,6 +74,8 @@ export function threadPeople(
   self: Set<string>,
   book: Map<string, string>,
   nameFor?: (email: string) => string | undefined,
+  /** Teammates (their addresses): they are on the conversation but it is not "with" them, so they come after the outside people. */
+  team: Set<string> = new Set(),
 ): { label: string; primary: string; count: number } {
   const ordered = newestFirst ? emails : [...emails].reverse();
   const seen = new Set<string>(); const others: string[] = [];
@@ -88,6 +90,7 @@ export function threadPeople(
     }
   }
   if (!others.length) return { label: 'You', primary: bareEmail(emails[0]?.from_email ?? ''), count: 0 };
+  others.sort((a, b) => Number(team.has(lc(a))) - Number(team.has(lc(b))));   // stable: outside people first, in the order they last spoke
   const names = others.map(e => personLabel(e, book, nameFor));
   const shown = names.slice(0, 2);
   const extra = names.length - shown.length;

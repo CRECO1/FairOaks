@@ -4796,7 +4796,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   function threadHeaderProps(threadEmails: DealEmail[], expanded: boolean, onToggle: () => void, pin?: { pinned: boolean; toggle: () => void }) {
     const latest = newestEmail(threadEmails);
     const self = new Set(selfAddrs().map(a => (a ?? '').toLowerCase()).filter(Boolean));
-    const who = threadPeople([...sortedEmails(threadEmails)].reverse(), true, self, nameBook(threadEmails), nameForEmail);
+    const team = new Set(profiles.map(pr => (pr.email ?? '').toLowerCase()).filter(Boolean));
+    const who = threadPeople([...sortedEmails(threadEmails)].reverse(), true, self, nameBook(threadEmails), nameForEmail, team);
+    // Who wrote last, when it was our side: "You", or the teammate's first name when it went out from their mailbox.
+    const lastFrom = parseAddressList(latest.from_email)[0];
+    const prefix = !lastFrom ? '' : self.has(lastFrom.email.toLowerCase()) ? 'You' : (latest.direction === 'sent' && team.has(lastFrom.email.toLowerCase())) ? (nameForEmail(lastFrom.email)?.split(' ')[0] ?? emailDisplayName(latest.from_email).split(' ')[0]) : '';
     const first = who.label.split(',')[0].replace(/\s*\+\d+$/, '').trim() || '?';
     const words = first.split(/\s+/).filter(Boolean);
     const initials = (words.length >= 2 ? words[0][0] + words[words.length - 1][0] : first.slice(0, 2)).toUpperCase();
@@ -4807,7 +4811,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       expanded, onToggle, isMobile,
       label: who.label, initials, avatarColor: emailAvatarColor(who.primary || bareEmail(latest.from_email)),
       count: threadEmails.length, people: everyone.size,
-      subject: latest.subject, snippet: snippetOf(cleanEmailBody(latest.body ?? ''), 140), youLast: latest.direction === 'sent',
+      subject: latest.subject, snippet: snippetOf(cleanEmailBody(latest.body ?? ''), 140), prefix,
       dateLabel: shortEmailDate(latest.email_date), hasAttachments: threadEmails.some(m => (m.attachments?.length ?? 0) > 0),
       opens: opened.length > 0 ? sent.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0) : sent.some(e => e.tracked) ? 0 : null,
       pin,

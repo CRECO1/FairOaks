@@ -19,9 +19,10 @@ export interface ThreadHeaderProps {
   /** People on the thread besides us (the badge shows when 3 or more addresses are involved). */
   people: number;
   subject: string;
-  /** The preview, without the signature; the component prefixes "You: " when we wrote last. */
+  /** The preview, without the signature. */
   snippet: string;
-  youLast: boolean;
+  /** Who wrote last when it was one of us ("You", "Brian"); empty when the other side wrote last (the row already names them). */
+  prefix: string;
   dateLabel: string;
   hasAttachments: boolean;
   /** Sent-email tracking: opens so far (0 = tracked and unopened, null = not tracked). */
@@ -55,7 +56,7 @@ export default function EmailThreadHeader(p: ThreadHeaderProps) {
         </div>
         <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>{p.subject || '(no subject)'}</div>
         <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-          {p.youLast && p.snippet && <span style={{ color: 'var(--k-6b7280)', fontWeight: 600 }}>You: </span>}{p.snippet || '—'}
+          {p.prefix && p.snippet && <span style={{ color: 'var(--k-6b7280)', fontWeight: 600 }}>{p.prefix}: </span>}{p.snippet || '—'}
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: p.isMobile ? 2 : 6, flexShrink: 0 }}>
