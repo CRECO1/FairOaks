@@ -5,10 +5,15 @@ import { sanitizeHtml } from '@/lib/sanitize';
 import { renderWorkbookCached, isXlsxName, XR_CSS } from '@/lib/xlsx-render';
 import { renderDocxInto } from '@/lib/docx-render';
 import { fmtDate, fmtSize, likelyVersions, newestOfVersions, sendWarnings, loadBytes, loadThumb, previewKind, type PreviewItem, type Thumb } from '@/lib/attachment-preview';
+import { readPptx, slideHtml } from '@/lib/office-slides';
 import { renderPdfPages, revokePages, targetWidthFor, type RenderedPage } from '@/lib/pdf-render';
 
 // "What am I about to send?" — every attachment on the email as a card with the real first page of the file, so an agent
 // can tell the many versions of a flyer apart at a glance. Click a card for the full document (all pages, ←/→ between files).
+
+const BADGE: Record<string, string> = { DOCX: '#1d4ed8', PPTX: '#c2410c', TXT: '#4b5563', XLSX: '#15803d' };
+// colour of the file-type card shown when a file can't be drawn (old .doc/.ppt, video the browser can't decode, zips…)
+const TYPE_COLOR = (ext: string) => /^docx?$|^rtf$|^pages$/.test(ext) ? '#1d4ed8' : /^pptx?$|^key$/.test(ext) ? '#c2410c' : /^xlsx?$|^csv$|^numbers$/.test(ext) ? '#15803d' : /^(mov|mp4|m4v|webm|avi)$/.test(ext) ? '#7c3aed' : /^(zip|rar|7z)$/.test(ext) ? '#92400e' : '#6b7280';
 
 function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
   const [t, setT] = useState<Thumb | null | 'err' | undefined>(undefined);
@@ -26,7 +31,7 @@ function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
       <div style={{ ...box, background: '#fff', alignItems: 'flex-start', justifyContent: 'flex-start' }} aria-hidden>
         <style>{XR_CSS}</style>
         <div style={{ width: Math.min(t.htmlWidth, 900), transform: `scale(${sc})`, transformOrigin: 'top left', pointerEvents: 'none' }} dangerouslySetInnerHTML={{ __html: t.html }} />
-        <span style={{ position: 'absolute', right: 3, bottom: 3, background: t.label === 'DOCX' ? '#1d4ed8' : '#15803d', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>{t.label ?? 'XLSX'}</span>
+        <span style={{ position: 'absolute', right: 3, bottom: 3, background: BADGE[t.label ?? 'XLSX'] ?? '#15803d', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>{t.label ?? 'XLSX'}</span>
       </div>
     );
   }
@@ -49,11 +54,13 @@ function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
       </div>
     );
   }
+  const ext = (item.name.split('.').pop() ?? 'file').toLowerCase().slice(0, 5);
+  const loading = t === undefined && (kind !== 'other' || /\.(mov|mp4|m4v|webm|doc|txt|md|log)$/i.test(item.name));
+  const c = TYPE_COLOR(ext);
   return (
-    <div style={box} aria-hidden>
-      <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', textAlign: 'center', padding: 4 }}>
-        {t === undefined && (kind !== 'other' || /\.(mov|mp4|m4v|webm)$/i.test(item.name)) ? 'Loading…' : kind === 'other' || kind === 'doc' ? (item.name.split('.').pop() ?? 'file').toUpperCase().slice(0, 5) : 'No preview'}
-      </span>
+    <div style={{ ...box, flexDirection: 'column', gap: 6 }} aria-hidden>
+      <span style={{ background: c, color: '#fff', fontSize: 13, fontWeight: 800, letterSpacing: .5, borderRadius: 7, padding: '8px 11px', opacity: loading ? .35 : 1 }}>{ext.toUpperCase()}</span>
+      <span style={{ fontSize: 10.5, color: 'var(--k-9ca3af)', textAlign: 'center', padding: '0 6px' }}>{loading ? 'Loading…' : 'Preview not available'}</span>
     </div>
   );
 }
@@ -108,13 +115,14 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
   const [zoom, setZoom] = useState(1);
   const docHost = useRef<HTMLDivElement>(null);
   const [docHtml, setDocHtml] = useState('');
+  const [slideList, setSlideList] = useState<string[]>([]);
   const kind = previewKind(item);
 
   useEffect(() => {
     let live = true;
     const ac = new AbortController();
     let got: RenderedPage[] = [], url = '';
-    setPages([]); setImgSrc(''); setMsg(''); setSheets([]); setSheet(0); setZoom(1); setDocHtml(''); setState(kind === 'other' ? 'none' : 'loading');
+    setPages([]); setImgSrc(''); setMsg(''); setSheets([]); setSheet(0); setZoom(1); setDocHtml(''); setSlideList([]); setState(kind === 'other' ? 'none' : 'loading');
     if (kind === 'other') return;
     (async () => {
       try {
@@ -133,6 +141,11 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
           if (!live) return;
           setSheets(wb.SheetNames.map(name => ({ name, html: XLSX.utils.sheet_to_html(wb.Sheets[name], { editable: false, header: '', footer: '' }) })));
           setState('ready'); return;
+        }
+        if (kind === 'slides') {
+          const pk = await readPptx(bytes.slice(0));
+          if (!live) return;
+          setSlideList(pk.slides.map(sl => slideHtml(sl, p.isMobile ? 320 : 720))); setState('ready'); return;
         }
         if (kind === 'doc') {
           // Drawn like Word (page, margins, fonts, tables); plain text-flow version only if that fails.
@@ -201,7 +214,7 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
         <div style={{ flex: 1, overflowY: 'auto', background: 'var(--k-f3f4f6)', padding: p.isMobile ? 10 : 18 }}>
           {state === 'loading' && !pages.length && <div style={{ padding: 40, textAlign: 'center', fontSize: 14, color: 'var(--k-9ca3af)' }}>Opening {item.name}…</div>}
           {state === 'error' && <div style={{ padding: 40, textAlign: 'center', fontSize: 14, color: 'var(--k-991b1b)' }}>Couldn’t show this file{msg ? ` — ${msg}` : ''}. It will still be attached when you send.</div>}
-          {state === 'none' && <div style={{ padding: 40, textAlign: 'center', fontSize: 14, color: 'var(--k-6b7280)' }}>No preview for this kind of file — it will be attached as “{item.name}”.</div>}
+          {state === 'none' && <div style={{ padding: 40, textAlign: 'center', fontSize: 14, color: 'var(--k-6b7280)' }}>This kind of file can’t be shown here{/\.(doc|ppt|xls)$/i.test(item.name) ? ' (older Office format — save it as .docx / .pptx / .xlsx to see it)' : ''}. It will still be attached as “{item.name}”.</div>}
           {sheets.length > 0 && (
             <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 1px 8px rgba(0,0,0,.12)', overflow: 'hidden' }}>
               <style>{`.attsheet table:not(.xr){border-collapse:collapse;width:100%;font-family:-apple-system,'DM Sans',sans-serif}.attsheet table:not(.xr) td,.attsheet table:not(.xr) th{border:1px solid #e5e7eb;padding:5px 9px;font-size:12.5px;color:#1a1a1a;white-space:nowrap;text-align:left}.attsheet table:not(.xr) tr:first-child td,.attsheet table:not(.xr) th{background:#f9fafb;font-weight:700}`}</style>
@@ -217,6 +230,10 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
             <style>{`.attdocx .docx-wrapper{background:transparent!important;padding:0!important}.attdocx .docx-wrapper>section.docx{box-shadow:0 1px 8px rgba(0,0,0,.16)!important;margin:0 auto 14px!important;max-width:100%}`}</style>
             <div ref={docHost} className="attdocx" style={{ display: docHtml ? 'none' : 'block', overflowX: 'auto' }} />
           </>}
+          {slideList.length > 0 && <div style={{ maxWidth: 740, margin: '0 auto' }}>
+            <div style={{ fontSize: 12, color: 'var(--k-6b7280)', textAlign: 'center', marginBottom: 10 }}>Text of each slide — open the file in PowerPoint for the full design.</div>
+            {slideList.map((h, i) => <div key={i} style={{ margin: '0 auto 14px', width: 'fit-content', maxWidth: '100%', boxShadow: '0 1px 8px rgba(0,0,0,.16)', borderRadius: 4, overflow: 'hidden' }}><div dangerouslySetInnerHTML={{ __html: h }} /></div>)}
+          </div>}
           {docHtml && <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 1px 8px rgba(0,0,0,.12)', padding: p.isMobile ? 16 : 36, fontSize: 14, lineHeight: 1.6, color: '#1a1a1a', maxWidth: 820, margin: '0 auto' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(docHtml) }} />}
           {imgSrc && /* eslint-disable-next-line @next/next/no-img-element */ <img src={imgSrc} alt={item.name} style={{ display: 'block', maxWidth: '100%', margin: '0 auto', borderRadius: 4, boxShadow: '0 1px 8px rgba(0,0,0,.16)', background: '#fff' }} />}
           {pages.map((pg, i) => (

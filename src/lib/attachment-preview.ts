@@ -2,6 +2,7 @@
 // attached from the CRM), cached first-page thumbnails, and a guess at "this is another version of that file".
 
 import { renderWorkbook, isXlsxName } from '@/lib/xlsx-render';
+import { readPptx, slideHtml } from '@/lib/office-slides';
 import { renderPdfPages, revokePages, targetWidthFor, type RenderedPage } from '@/lib/pdf-render';
 
 export interface PreviewItem {
@@ -19,10 +20,10 @@ export interface PreviewItem {
 
 const isPdf = (m: string, n: string) => /pdf/i.test(m) || /\.pdf$/i.test(n);
 const isImage = (m: string, n: string) => /^image\/(png|jpe?g|gif|webp)$/i.test(m) || /\.(png|jpe?g|gif|webp)$/i.test(n);
-export type PreviewKind = 'pdf' | 'image' | 'sheet' | 'doc' | 'other';
+export type PreviewKind = 'pdf' | 'image' | 'sheet' | 'doc' | 'slides' | 'other';
 export const previewKind = (i: Pick<PreviewItem, 'mime' | 'name'>): PreviewKind =>
   isPdf(i.mime, i.name) ? 'pdf' : isImage(i.mime, i.name) ? 'image'
-  : /\.(xlsx|xls|csv|ods)$/i.test(i.name) ? 'sheet' : /\.docx$/i.test(i.name) ? 'doc' : 'other';
+  : /\.(xlsx|xls|csv|ods)$/i.test(i.name) ? 'sheet' : /\.docx$/i.test(i.name) ? 'doc' : /\.pptx$/i.test(i.name) ? 'slides' : 'other';
 
 // Bytes cache (last few) so opening the big view doesn't download a flyer a second time.
 const bytesCache = new Map<string, Promise<ArrayBuffer>>();
@@ -70,8 +71,24 @@ export function loadThumb(item: PreviewItem): Promise<Thumb | null> {
   if (hit) return hit;
   const kind = previewKind(item);
   const p = (async () => {
-    if (kind === 'other') return /\.(mov|mp4|m4v|webm)$/i.test(item.name) && item.file ? videoFrame(item.file) : null;
+    if (kind === 'other') {
+      if (/\.(mov|mp4|m4v|webm)$/i.test(item.name)) return item.file ? videoFrame(item.file) : null;
+      if (!item.file && !item.ref) return null;
+      const raw = await loadBytes(item);
+      // a ".doc" that is really a newer Word file (starts "PK") draws like a .docx; a plain text file shows its first lines
+      if (/\.doc$/i.test(item.name) && new Uint8Array(raw, 0, 2).join() === '80,75') return loadThumb({ ...item, key: item.key + ':docx', name: item.name + 'x' });
+      if (/\.(txt|md|log)$/i.test(item.name)) {
+        const txt = new TextDecoder().decode(raw.slice(0, 1500)).split(/\r?\n/).slice(0, 14).map(l => l.slice(0, 60));
+        return { src: '', pages: null, html: slideHtml({ lines: txt }, 300).replace(/font-weight:700/, 'font-weight:400'), htmlWidth: 300, label: 'TXT' };
+      }
+      return null;
+    }
     const bytes = await loadBytes(item);
+    if (kind === 'slides') {
+      const peek = await readPptx(bytes.slice(0));
+      if (peek.thumb) return { src: peek.thumb, pages: peek.slides.length > 1 ? peek.slides.length : null };
+      return { src: '', pages: null, html: slideHtml(peek.slides[0] ?? { lines: [] }, 480), htmlWidth: 480, label: 'PPTX' };
+    }
     if (kind === 'doc') {
       // .docx: draw it offscreen like Word does, keep only page 1 (plus the styles it needs) and shrink it to the card.
       const host = document.createElement('div');
