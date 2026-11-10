@@ -217,8 +217,23 @@ export default function EsignComposer({
           onBack={() => setStep('setup')}
           onFieldsChange={setPlaced}
           onSend={f => {
-            setPlaced(f);
-            const gone = f.filter(x => ['signature', 'initial', 'date'].includes(x.type) && x.signerKey && !signerIndex.has(x.signerKey)).length;
+            // A reopened draft gives its recipients fresh keys, so every field placed for them looks like it belongs to a removed signer.
+            // Never re-point a signature silently — but when a spot's role matches exactly ONE signer on this request, ask once and offer it.
+            const isStale = (x: EditorField) => ['signature', 'initial', 'date', 'text', 'check'].includes(x.type) && !!x.signerKey && !signerIndex.has(x.signerKey);
+            let next = f;
+            const stale = f.filter(isStale);
+            if (stale.length) {
+              const only = (role?: string) => { const m = valid.filter(r => r.role === role); return m.length === 1 ? m[0] : null; };
+              const fixable = stale.filter(x => only(x.signerRole));
+              if (fixable.length) {
+                const names = [...new Set(fixable.map(x => only(x.signerRole)!.name))].join(' and ');
+                if (window.confirm(`${fixable.length} signing spot${fixable.length === 1 ? ' was' : 's were'} placed for a signer who isn’t linked to this request any more (this happens when you reopen a draft).\n\nAttach ${fixable.length === 1 ? 'it' : 'them'} to ${names}?\n\nOK = attach.  Cancel = leave ${fixable.length === 1 ? 'it' : 'them'} out of what is sent.`)) {
+                  next = f.map(x => fixable.includes(x) ? { ...x, signerKey: only(x.signerRole)!.key } : x);
+                }
+              }
+            }
+            setPlaced(next);
+            const gone = next.filter(isStale).length;
             if (gone) showToast?.(`${gone} field${gone === 1 ? '' : 's'} belonged to a removed signer and won't be sent`);
             setReview(true);
           }}
