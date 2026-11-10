@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { fmtSize, likelyVersions, loadBytes, loadThumb, previewKind, type PreviewItem } from '@/lib/attachment-preview';
+import { fmtDate, fmtSize, likelyVersions, newestOfVersions, loadBytes, loadThumb, previewKind, type PreviewItem } from '@/lib/attachment-preview';
 import { renderPdfPages, revokePages, targetWidthFor, type RenderedPage } from '@/lib/pdf-render';
 
 // "What am I about to send?" — every attachment on the email as a card with the real first page of the file, so an agent
@@ -38,6 +38,7 @@ function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
 export function AttachmentCards(p: { items: PreviewItem[]; onRemove: (key: string) => void; isMobile: boolean }) {
   const [open, setOpen] = useState<number | null>(null);
   const dupes = useMemo(() => likelyVersions(p.items), [p.items]);
+  const newest = useMemo(() => newestOfVersions(p.items), [p.items]);
   if (!p.items.length) return null;
   const W = p.isMobile ? 92 : 104, H = Math.round(W * 1.3);
   return (
@@ -52,8 +53,8 @@ export function AttachmentCards(p: { items: PreviewItem[]; onRemove: (key: strin
               style={{ display: 'block', padding: 0, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', minWidth: 0, minHeight: 0, width: '100%' }}>
               <Thumb item={it} w={W} h={H} />
               <span title={it.name} style={{ marginTop: 5, fontSize: 12, fontWeight: 600, color: 'var(--k-111)', lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' } as React.CSSProperties}>{it.name}</span>
-              <span style={{ display: 'block', fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[fmtSize(it.size), it.source].filter(Boolean).join(' · ')}</span>
-              {dupes.has(it.key) && <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10.5, fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: 4, padding: '1px 5px' }}>Similar file attached</span>}
+              <span style={{ display: 'block', fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[fmtDate(it.date), fmtSize(it.size), it.source].filter(Boolean).join(' · ')}</span>
+              {dupes.has(it.key) && <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10.5, fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: 4, padding: '1px 5px' }}>{newest.has(it.key) ? 'Similar file · newest' : 'Similar file attached'}</span>}
             </button>
             <button type="button" onClick={() => p.onRemove(it.key)} aria-label={`Remove ${it.name}`}
               style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, minWidth: 0, minHeight: 0, borderRadius: 11, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 14, lineHeight: 1, cursor: 'pointer', padding: 0, boxShadow: '0 1px 3px rgba(0,0,0,.18)' }}>×</button>
@@ -61,13 +62,13 @@ export function AttachmentCards(p: { items: PreviewItem[]; onRemove: (key: strin
         ))}
       </div>
       {open !== null && p.items[open] && (
-        <AttachmentViewer items={p.items} index={Math.min(open, p.items.length - 1)} setIndex={setOpen} onClose={() => setOpen(null)} isMobile={p.isMobile} dupes={dupes} />
+        <AttachmentViewer items={p.items} index={Math.min(open, p.items.length - 1)} setIndex={setOpen} onClose={() => setOpen(null)} isMobile={p.isMobile} dupes={dupes} newest={newest} />
       )}
     </div>
   );
 }
 
-function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i: number) => void; onClose: () => void; isMobile: boolean; dupes: Set<string> }) {
+function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i: number) => void; onClose: () => void; isMobile: boolean; dupes: Set<string>; newest: Set<string> }) {
   const item = p.items[p.index];
   const [pages, setPages] = useState<RenderedPage[]>([]);
   const [imgSrc, setImgSrc] = useState('');
@@ -122,8 +123,8 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
             <div style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>
-              {[fmtSize(item.size), item.source, pages.length > 1 ? `${pages.length} pages` : ''].filter(Boolean).join(' · ')}
-              {p.dupes.has(item.key) && <span style={{ marginLeft: 8, fontWeight: 700, color: '#92400e' }}>⚠ Similar file also attached</span>}
+              {[fmtDate(item.date) && `Updated ${fmtDate(item.date)}`, fmtSize(item.size), item.source, pages.length > 1 ? `${pages.length} pages` : ''].filter(Boolean).join(' · ')}
+              {p.dupes.has(item.key) && <span style={{ marginLeft: 8, fontWeight: 700, color: '#92400e' }}>⚠ Similar file also attached{p.newest.has(item.key) ? ' (this is the newest)' : ' (a newer one may exist)'}</span>}
             </div>
           </div>
           <button type="button" aria-label="Previous attachment" disabled={p.index === 0} onClick={() => p.setIndex(p.index - 1)} style={navBtn(p.index === 0)}>‹</button>

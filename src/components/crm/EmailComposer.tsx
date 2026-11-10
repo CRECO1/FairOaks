@@ -228,8 +228,8 @@ export default function EmailComposer(p: EmailComposerProps) {
   const attachCount = p.attachments.length + (p.crmFiles?.items.length ?? 0);
   // Everything going out, in one list for the preview cards (computer files first, then CRM documents).
   const previewItems = useMemo<PreviewItem[]>(() => [
-    ...p.attachments.map((f, i) => ({ key: `local:${i}:${f.name}:${f.size}`, name: f.name, size: f.size, mime: f.type, source: 'From your computer', file: f })),
-    ...(p.crmFiles?.items ?? []).map(it => ({ key: `${it.kind}:${it.id}`, name: it.name, size: it.size, mime: it.type, source: it.sub ?? 'From the CRM', ref: { kind: it.kind, id: it.id } })),
+    ...p.attachments.map((f, i) => ({ key: `local:${i}:${f.name}:${f.size}`, name: f.name, size: f.size, mime: f.type, source: 'From your computer', date: f.lastModified, file: f })),
+    ...(p.crmFiles?.items ?? []).map(it => ({ key: `${it.kind}:${it.id}`, name: it.name, size: it.size, mime: it.type, source: it.sub ?? 'From the CRM', date: it.updated, ref: { kind: it.kind, id: it.id } })),
   ], [p.attachments, p.crmFiles?.items]);
   const subjRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);

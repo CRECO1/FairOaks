@@ -28,7 +28,7 @@ const MIME_BY_EXT: Record<string, string> = { pdf: 'application/pdf', doc: 'appl
 export const GMAIL_ATT_ID = /^[0-9a-f]{8,32}:[\d.]{1,20}$/i;
 export const EMAIL_ATT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:\d{1,2}$/i;
 export interface CrmAttachRef { kind: CrmAttachKind; id: string }
-export interface CrmAttachItem extends CrmAttachRef { name: string; size: number | null; type: string; sub?: string }
+export interface CrmAttachItem extends CrmAttachRef { name: string; size: number | null; type: string; sub?: string; updated?: string | null }
 export interface CrmAttachGroup { dealId: string; title: string; items: CrmAttachItem[] }
 
 const DEAL_DOCS = 'deal-docs';
@@ -46,9 +46,9 @@ async function dealItems(dealId: string): Promise<CrmAttachItem[]> {
     db.from('crm_drive_doc_links').select('doc_id, crm_drive_docs(id, title, trashed_at, ystate)').eq('deal_id', dealId).order('created_at', { ascending: false }),
   ]);
   const items: CrmAttachItem[] = [];
-  for (const d of docs.data ?? []) items.push({ kind: 'deal_doc', id: d.id as string, name: d.name as string, size: (d.file_size as number | null) ?? null, type: (d.file_type as string) || 'application/octet-stream', sub: 'Uploaded to the deal' });
-  for (const s of subs.data ?? []) items.push({ kind: 'form', id: s.id as string, name: `${clean(String(s.title ?? ''), 'Form')}.pdf`, size: null, type: 'application/pdf', sub: 'Form on the deal' });
-  for (const e of envs.data ?? []) if (e.executed_clean_path || e.executed_path) items.push({ kind: 'signed', id: e.id as string, name: `${clean(String(e.title ?? ''), 'Document')} (signed).pdf`, size: null, type: 'application/pdf', sub: 'Signed copy' });
+  for (const d of docs.data ?? []) items.push({ kind: 'deal_doc', id: d.id as string, name: d.name as string, size: (d.file_size as number | null) ?? null, type: (d.file_type as string) || 'application/octet-stream', sub: 'Uploaded to the deal', updated: d.created_at as string });
+  for (const s of subs.data ?? []) items.push({ kind: 'form', id: s.id as string, name: `${clean(String(s.title ?? ''), 'Form')}.pdf`, size: null, type: 'application/pdf', sub: 'Form on the deal', updated: s.updated_at as string });
+  for (const e of envs.data ?? []) if (e.executed_clean_path || e.executed_path) items.push({ kind: 'signed', id: e.id as string, name: `${clean(String(e.title ?? ''), 'Document')} (signed).pdf`, size: null, type: 'application/pdf', sub: 'Signed copy', updated: e.completed_at as string });
   // Live My Drive documents linked to the deal: attached as a PDF of their latest saved text.
   for (const l of linked.data ?? []) {
     const raw = l.crm_drive_docs as unknown as { id: string; title: string; trashed_at: string | null; ystate: string | null } | Array<{ id: string; title: string; trashed_at: string | null; ystate: string | null }> | null;
@@ -86,7 +86,7 @@ async function canOpenClient(ctx: CrmContext, clientId: string): Promise<boolean
 
 /** The property flyers this caller may email: the generated/uploaded flyer PDF on each listing they can open (workspace + Restricted rules). */
 async function flyerGroup(ctx: CrmContext, term?: string): Promise<CrmAttachGroup[]> {
-  let q = adminClient().from('crm_listings').select('id, name, address, flyer_path, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').not('flyer_path', 'is', null).order('updated_at', { ascending: false }).limit(60);
+  let q = adminClient().from('crm_listings').select('id, name, address, flyer_path, updated_at, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').not('flyer_path', 'is', null).order('updated_at', { ascending: false }).limit(60);
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   const { data } = await q;
   const t = (term ?? '').toLowerCase();
@@ -95,7 +95,7 @@ async function flyerGroup(ctx: CrmContext, term?: string): Promise<CrmAttachGrou
     if (!listingAccessible(l as Record<string, unknown>, ctx)) continue;
     const label = [l.name, l.address].filter(Boolean).join(' — ');
     if (t && !label.toLowerCase().includes(t)) continue;
-    items.push({ kind: 'listing_flyer', id: l.id as string, name: `${clean(String(l.name ?? l.address ?? 'Property'), 'Property')} — Flyer.pdf`, size: null, type: 'application/pdf', sub: `Property flyer${l.address ? ` · ${l.address}` : ''}` });
+    items.push({ kind: 'listing_flyer', id: l.id as string, name: `${clean(String(l.name ?? l.address ?? 'Property'), 'Property')} — Flyer.pdf`, size: null, type: 'application/pdf', sub: `Property flyer${l.address ? ` · ${l.address}` : ''}`, updated: l.updated_at as string });
   }
   return items.length ? [{ dealId: 'flyers', title: 'Property flyers', items: items.slice(0, 30) }] : [];
 }

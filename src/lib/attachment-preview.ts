@@ -10,6 +10,8 @@ export interface PreviewItem {
   mime: string;
   /** Where it comes from, in the agent's words ("Property flyer · 123 Main", "From your computer"…). */
   source: string;
+  /** When the file was last changed/added (ISO or ms), so look-alike versions can be told apart. */
+  date?: string | number | null;
   file?: File;
   ref?: { kind: string; id: string };
 }
@@ -88,3 +90,21 @@ export function likelyVersions(items: PreviewItem[]): Set<string> {
 }
 
 export const fmtSize = (n: number | null) => n == null ? '' : n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+
+export const fmtDate = (d?: string | number | null) => {
+  if (d == null || d === '') return '';
+  const t = new Date(d); if (isNaN(+t)) return '';
+  return t.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(t.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
+};
+
+/** Among look-alike files, the key of the most recently changed one in each group (null when dates are missing). */
+export function newestOfVersions(items: PreviewItem[]): Set<string> {
+  const groups = new Map<string, PreviewItem[]>();
+  for (const i of items) { const s = versionStem(i.name); if (s.length >= 4) groups.set(s, [...(groups.get(s) ?? []), i]); }
+  const out = new Set<string>();
+  for (const g of groups.values()) {
+    if (g.length < 2 || g.some(i => !i.date || isNaN(+new Date(i.date)))) continue;
+    out.add(g.reduce((a, b) => +new Date(b.date!) > +new Date(a.date!) ? b : a).key);
+  }
+  return out;
+}
