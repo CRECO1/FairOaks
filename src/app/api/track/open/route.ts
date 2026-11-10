@@ -202,7 +202,7 @@ export async function GET(req: NextRequest) {
                 message: `👁 ${who} opened your email: ${String(row.subject ?? '').slice(0, 80)}`,
                 entity_type: row.deal_id ? 'deal' : 'contact', entity_id: (row.deal_id ?? row.client_id) as string,
               }]);
-              await pushEmailOpen(supabase, { recipientId, name: who, subject: String(row.subject ?? ''), tag: `open:${row.id}` });
+              await pushEmailOpen(supabase, { recipientId, name: who, subject: String(row.subject ?? ''), tag: `open:${row.id}`, open: { type: row.deal_id ? 'deal' : 'contact', id: (row.deal_id ?? row.client_id) as string | null } });
             }
           }
         }

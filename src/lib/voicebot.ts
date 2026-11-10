@@ -3,7 +3,7 @@
 // Claude decides what to say back and whether the conversation is done. State
 // lives in crm_call_log + crm_call_turns because every webhook is a fresh function.
 // ─────────────────────────────────────────────────────────────────────────────
-import { sendPushToProfiles, profileIdsForEmails } from '@/lib/push';
+import { sendPushToProfiles, profileIdsForEmails, crmLink } from '@/lib/push';
 import Anthropic from '@anthropic-ai/sdk';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { last10, prettyPhone, toE164 } from '@/lib/phone';
@@ -600,7 +600,7 @@ export async function notifyCallSummary(s: VoicebotSettings, call: {
     await sendPushToProfiles(await profileIdsForEmails(s.notify_emails ?? []), {
       title: `${call.urgency === 'high' ? '🚨 ' : call.hot ? '🔥 ' : '📞 '}${pushWho}${call.callback_number || call.from_number ? ` · ${prettyPhone(call.callback_number || call.from_number || '')}` : ''}`,
       body: call.summary,
-      url: '/crm/commercial#calls',
+      url: call.contact?.id ? crmLink('contacts', { type: 'contact', id: call.contact.id }) : crmLink('calls'),
       tag: `call-${call.id}`,
       category: 'calls',
       businessUnit: s.business_unit,

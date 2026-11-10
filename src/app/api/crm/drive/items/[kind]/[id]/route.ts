@@ -175,7 +175,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
         const entityType = kind === 'doc' ? 'drive_doc' : 'drive_folder';
         const rows = added.map(recipient_id => ({ recipient_id, sender_id: dc.ctx.userId, type: 'share', message, entity_type: entityType, entity_id: id }));
         await dc.admin.from('crm_notifications').insert(rows);
-        await Promise.all(rows.map(r => pushBellNotification(dc.admin, { recipientId: r.recipient_id, type: 'share', message, entityType, tag: `drive-share-${id}` })));
+        await Promise.all(rows.map(r => pushBellNotification(dc.admin, { recipientId: r.recipient_id, type: 'share', message, entityType, entityId: id, tag: `drive-share-${id}` })));
       }
     }
   }

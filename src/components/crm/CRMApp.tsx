@@ -2468,6 +2468,70 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setComposer({ file: new File([bytes as BlobPart], pdfName(j.title || title), { type: 'application/pdf' }), doc: null, dealId: deal });
     } catch { showToast('Couldn’t prepare that document for signing — try again.'); }
   }, [showToast, session?.access_token, authGet]);
+  // ── Phone-alert taps ──────────────────────────────────────────────────────────
+  // An alert links to /crm/commercial?open=<type>:<id>#<page>. The tap reaches the app three ways, because a home-screen app on a phone does
+  // not always honour the URL it was asked to open (it can launch at its start page, or just come to the front): the URL itself (cold start),
+  // a message from the service worker (app already open), and a note the service worker leaves behind that the app reads on launch / return.
+  const openEntityRef = useRef<(type: string | null | undefined, id: string | null | undefined) => boolean>(() => true);
+  const [pendingOpen, setPendingOpen] = useState<{ type: string; id: string; at: number } | null>(null);
+  const handleCrmLink = useCallback((raw: string) => {
+    let u: URL;
+    try { u = new URL(raw, window.location.origin); } catch { return; }
+    if (!u.pathname.startsWith('/crm')) return;
+    const hash = u.hash.slice(1);
+    const pg = PAGE_ALIASES[hash] ?? hash;
+    if ((VALID_PAGES as readonly string[]).includes(pg)) setPage(pg as PageType);
+    const m = /^([a-z_]+):([0-9a-f-]{36})$/i.exec(u.searchParams.get('open') ?? '');
+    if (m) setPendingOpen({ type: m[1], id: m[2], at: Date.now() });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const alertLinkDone = useRef(false);
+  useEffect(() => {
+    if (!session || !profile || alertLinkDone.current) return;
+    alertLinkDone.current = true;
+    if (new URLSearchParams(window.location.search).get('open')) {
+      handleCrmLink(window.location.href);
+      const sp = new URLSearchParams(window.location.search); sp.delete('open');
+      window.history.replaceState({}, '', window.location.pathname + (sp.toString() ? `?${sp}` : '') + window.location.hash);
+    }
+  }, [session, profile, handleCrmLink]);
+  useEffect(() => {
+    if (!session || !profile) return;
+    const takeStash = async () => {
+      try {
+        const cache = await caches.open('crm-pending-open');
+        const hit = await cache.match('/__pending');
+        if (!hit) return;
+        await cache.delete('/__pending');
+        const j = (await hit.json()) as { url?: string; at?: number };
+        if (j.url && Date.now() - Number(j.at ?? 0) < 120_000) handleCrmLink(j.url);
+      } catch { /* no Cache API: the message and the URL paths still work */ }
+    };
+    void takeStash();
+    const vis = () => { if (document.visibilityState === 'visible') void takeStash(); };
+    const onMsg = (e: MessageEvent) => {
+      if (e.data?.type !== 'crm-open' || typeof e.data.url !== 'string') return;
+      handleCrmLink(e.data.url);
+      void caches.open('crm-pending-open').then(c => c.delete('/__pending')).catch(() => undefined);
+    };
+    document.addEventListener('visibilitychange', vis);
+    navigator.serviceWorker?.addEventListener('message', onMsg);
+    return () => { document.removeEventListener('visibilitychange', vis); navigator.serviceWorker?.removeEventListener('message', onMsg); };
+  }, [session, profile, handleCrmLink]);
+  // The thing to open may not be loaded yet (a cold start): retry as the lists arrive, then fall back to fetching just that contact.
+  useEffect(() => {
+    if (!pendingOpen || !session || !profile) return;
+    if (openEntityRef.current(pendingOpen.type, pendingOpen.id)) { setPendingOpen(null); return; }
+    if (Date.now() - pendingOpen.at > 8000) {
+      const { type, id } = pendingOpen;
+      setPendingOpen(null);
+      if (type === 'contact') {
+        void supabase.from('crm_clients').select('*').eq('id', id).maybeSingle().then(({ data }) => { if (data) { setPage('contacts'); setActiveClient(data as Client); } });
+      } else if (type === 'deal') setPage('deals');
+      return;
+    }
+    const t = setTimeout(() => setPendingOpen(p => (p ? { ...p } : p)), 700);
+    return () => clearTimeout(t);
+  }, [pendingOpen, clients, deals, session, profile]); // eslint-disable-line react-hooks/exhaustive-deps
   // "Send for signature" pressed in a document's own tab (/crm/doc/<id>) lands here: /crm/<bu>?signdoc=<id>&title=… starts the E-Sign flow with its PDF.
   useEffect(() => {
     if (!session || !profile) return;
@@ -4251,6 +4315,36 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .catch(() => { /* the section just doesn't show */ });
   }, [activeClient?.id, session?.access_token]);
 
+  // Opens the specific thing a bell row or a phone alert points at. Returns false when the thing is not loaded yet (the caller waits and retries).
+  function openEntity(type: string | null | undefined, id: string | null | undefined): boolean {
+    if (type === 'contact' && id) {
+      const c = clients.find(cl => cl.id === id);
+      if (!c) return false;
+      setPage('contacts'); setActiveClient(c); return true;
+    }
+    if (type === 'calls') { setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients(); return true; }
+    if (type === 'task') { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); return true; }
+    if (type === 'listing' && id) {
+      // A note tag on a property (Internal Notes / Rent Roll): open that property's card.
+      rememberView(`${businessUnit}:listing`, id);
+      setPage('properties'); setPropertiesTab('listings'); setPropLinkNonce(x => x + 1); return true;
+    }
+    if (type === 'drive_doc' && id) {
+      // @mention in a My Drive document: open it (the Drive reopens whatever was last open on mount).
+      rememberView(`${businessUnit}:drive-doc`, id);
+      setPage('transaction-docs'); return true;
+    }
+    if (type === 'drive_folder') { setPage('transaction-docs'); return true; }   // something (a folder or file) was shared with you in My Drive
+    if (type === 'suite') { setPage('properties'); setPropertiesTab('floorplan'); return true; }
+    if (type === 'deal' && id) {
+      const d = deals.find(x => x.id === id);
+      if (!d) return false;
+      setPage('deals'); openDeal(d); return true;
+    }
+    return true;
+  }
+  openEntityRef.current = openEntity;
+
   async function markMentionRead(id: string) {
     await supabase.from('crm_notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
     setMentions(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
@@ -5865,31 +5959,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {mentions.slice(0, showAllMentions ? 30 : 5).map(n => (
                               <button key={n.id} onClick={() => {
                                 markMentionRead(n.id);
-                                if (n.entity_type === 'contact' && n.entity_id) {
-                                  const c = clients.find(cl => cl.id === n.entity_id);
-                                  if (c) { setPage('contacts'); setActiveClient(c); }
-                                } else if (n.entity_type === 'calls') {
-                                  setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients();
-                                } else if (n.entity_type === 'task') {
-                                  setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks();
-                                } else if (n.entity_type === 'listing' && n.entity_id) {
-                  // A note tag on a property (Internal Notes / Rent Roll): open that property's card.
-                  rememberView(`${businessUnit}:listing`, n.entity_id);
-                  setPage('properties'); setPropertiesTab('listings'); setPropLinkNonce(x => x + 1);
-                } else if (n.entity_type === 'drive_doc' && n.entity_id) {
-                  // @mention in a My Drive document: open it (the Drive reopens whatever was last open on mount).
-                  rememberView(`${businessUnit}:drive-doc`, n.entity_id);
-                  setPage('transaction-docs');
-                } else if (n.entity_type === 'drive_folder') {
-                  // Something (a folder or file) was shared with you in My Drive.
-                  setPage('transaction-docs');
-                } else if (n.entity_type === 'suite') {
-                  setPage('properties'); setPropertiesTab('floorplan');
-                } else if (n.entity_type === 'deal' && n.entity_id) {
-                                  // A deal mention used to just mark itself read and go nowhere.
-                                  const d = deals.find(x => x.id === n.entity_id);
-                                  if (d) { setPage('deals'); openDeal(d); }
-                                }
+                                openEntity(n.entity_type, n.entity_id);   // the same opener a phone-alert tap uses
                                 setShowNotifications(false);
                               }}
                                 style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>

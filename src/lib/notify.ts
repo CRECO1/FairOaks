@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { sendPushToProfiles } from '@/lib/push';
+import { sendPushToProfiles, crmLink } from '@/lib/push';
 
 /**
  * In-app notification (the bell) for someone who has just been handed work.
@@ -23,7 +23,7 @@ export async function notifyAssignment(
       entity_type: opts.entityType,
       entity_id: opts.entityId ?? null,
     });
-    await pushBellNotification(db, { recipientId: opts.recipientId, type: 'assignment', message: opts.message, entityType: opts.entityType });
+    await pushBellNotification(db, { recipientId: opts.recipientId, type: 'assignment', message: opts.message, entityType: opts.entityType, entityId: opts.entityId });
   } catch (e) {
     console.error('[notify] assignment notification failed (assignment itself is unaffected):', e);
   }
@@ -38,15 +38,16 @@ const PAGE_FOR_ENTITY: Record<string, string> = { calls: 'tasks', task: 'tasks',
  */
 export async function pushBellNotification(
   db: SupabaseClient,
-  n: { recipientId: string; type: string; message: string; entityType?: string | null; tag?: string },
+  n: { recipientId: string; type: string; message: string; entityType?: string | null; entityId?: string | null; tag?: string },
 ): Promise<void> {
   try {
     const { data: who } = await db.from('crm_profiles').select('business_unit').eq('id', n.recipientId).maybeSingle();
     const page = PAGE_FOR_ENTITY[n.entityType ?? ''] ?? 'dashboard';
+    const open = n.entityType && n.entityId ? { type: n.entityType, id: n.entityId } : undefined;
     await sendPushToProfiles([n.recipientId], {
       title: n.type === 'assignment' ? 'Assigned to you' : n.type === 'share' ? 'Shared with you' : 'You were tagged',
       body: n.message,
-      url: `/crm/commercial#${page}`,
+      url: crmLink(page, open),
       tag: n.tag,
       category: 'mentions',
       businessUnit: who?.business_unit ?? null,
@@ -71,7 +72,7 @@ export async function senderName(db: SupabaseClient, userId: string): Promise<st
  */
 export async function pushEmailReply(
   db: SupabaseClient,
-  n: { recipientIds: string[]; name: string; subject: string; tag: string },
+  n: { recipientIds: string[]; name: string; subject: string; tag: string; open?: { type: 'deal' | 'contact'; id?: string | null } },
 ): Promise<void> {
   try {
     for (const id of n.recipientIds) {
@@ -79,7 +80,7 @@ export async function pushEmailReply(
       await sendPushToProfiles([id], {
         title: `${n.name} replied`,
         body: n.subject.slice(0, 120),
-        url: '/crm/commercial#emails',
+        url: crmLink(n.open?.type === 'deal' ? 'deals' : 'contacts', n.open),
         tag: n.tag,
         category: 'replies',
         businessUnit: who?.business_unit ?? null,
@@ -96,14 +97,14 @@ export async function pushEmailReply(
  */
 export async function pushEmailOpen(
   db: SupabaseClient,
-  n: { recipientId: string; name: string; subject: string; tag: string },
+  n: { recipientId: string; name: string; subject: string; tag: string; open?: { type: 'deal' | 'contact'; id?: string | null } },
 ): Promise<void> {
   try {
     const { data: who } = await db.from('crm_profiles').select('business_unit').eq('id', n.recipientId).maybeSingle();
     await sendPushToProfiles([n.recipientId], {
       title: `${n.name} opened your email`,
       body: n.subject.slice(0, 120),
-      url: '/crm/commercial#emails',
+      url: crmLink(n.open?.type === 'deal' ? 'deals' : 'contacts', n.open),
       tag: n.tag,
       category: 'opens',
       businessUnit: who?.business_unit ?? null,

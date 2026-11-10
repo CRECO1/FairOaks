@@ -71,7 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ doc
   if (targets.size) {
     const rows = [...targets].map(([recipient_id, message]) => ({ recipient_id, sender_id: dc.ctx.userId, type: 'mention', message, entity_type: 'drive_doc', entity_id: docId }));
     await dc.admin.from('crm_notifications').insert(rows);
-    await Promise.all(rows.map(r => pushBellNotification(dc.admin, { recipientId: r.recipient_id, type: 'mention', message: r.message, entityType: 'drive_doc', tag: `drive-comment-${docId}` })));
+    await Promise.all(rows.map(r => pushBellNotification(dc.admin, { recipientId: r.recipient_id, type: 'mention', message: r.message, entityType: 'drive_doc', entityId: docId, tag: `drive-comment-${docId}` })));
   }
   await logDocEvent(dc.admin, { docId, bu: dc.bu, actor: dc.ctx.userId, kind: 'commented', detail: { reply: !!parent, snippet } });
   return NextResponse.json({ comment: data as DriveComment });

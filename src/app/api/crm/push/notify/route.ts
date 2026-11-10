@@ -24,14 +24,14 @@ export async function POST(req: NextRequest) {
   const db = adminClient();
   const since = new Date(Date.now() - 30_000).toISOString();
   const { data: rows } = await db.from('crm_notifications')
-    .select('id, recipient_id, type, message, entity_type')
+    .select('id, recipient_id, type, message, entity_type, entity_id')
     .in('recipient_id', recipients).eq('sender_id', ctx.userId).eq('type', 'mention').gte('created_at', since)
     .order('created_at', { ascending: false }).limit(25);
 
   let pushed = 0;
   for (const r of rows ?? []) {
     if (!r.recipient_id || r.recipient_id === ctx.userId) continue;
-    await pushBellNotification(db, { recipientId: r.recipient_id, type: r.type, message: r.message, entityType: r.entity_type, tag: `crm-n-${r.id}` });
+    await pushBellNotification(db, { recipientId: r.recipient_id, type: r.type, message: r.message, entityType: r.entity_type, entityId: r.entity_id, tag: `crm-n-${r.id}` });
     pushed++;
   }
   return NextResponse.json({ ok: true, pushed });

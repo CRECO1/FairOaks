@@ -26,6 +26,6 @@ export async function POST(req: NextRequest) {
   const entity_type = dealId ? 'deal' : 'contact', entity_id = dealId ?? contactId;
   const { error } = await db.from('crm_notifications').insert({ recipient_id: recipientId, sender_id: ctx.userId, type: 'mention', message, entity_type, entity_id });
   if (error) { console.error('[email-share]', error.message); return NextResponse.json({ error: 'Could not notify them — try again.' }, { status: 500 }); }
-  await pushBellNotification(db, { recipientId, type: 'mention', message, entityType: entity_type, tag: `share-${entity_id}` });
+  await pushBellNotification(db, { recipientId, type: 'mention', message, entityType: entity_type, entityId: entity_id, tag: `share-${entity_id}` });
   return NextResponse.json({ ok: true });
 }

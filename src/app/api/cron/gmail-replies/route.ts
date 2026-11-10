@@ -341,7 +341,7 @@ export async function GET(req: NextRequest) {
         {
           const autoish = /auto-(replied|generated)/i.test(hdr(msg, 'Auto-Submitted')) || /bulk|auto_reply|junk|list/i.test(hdr(msg, 'Precedence'));
           const fresh = Date.now() - (Number(msg.internalDate) || 0) < 3 * 3_600_000;
-          if (hdr(msg, 'In-Reply-To') && !autoish && fresh) await pushEmailReply(db, { recipientIds: [...recipients], name, subject, tag: `reply-${contact.id}` });
+          if (hdr(msg, 'In-Reply-To') && !autoish && fresh) await pushEmailReply(db, { recipientIds: [...recipients], name, subject, tag: `reply-${contact.id}`, open: { type: 'contact', id: contact.id as string } });
         }
 
         // They answered: settle the "remind me if no reply" tasks created before this message.

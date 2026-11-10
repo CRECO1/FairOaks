@@ -20,7 +20,7 @@
  *    never throws, so a task problem can never cost a lead or return an error
  *    to someone filling in a form.
  */
-import { sendPushToProfiles } from '@/lib/push';
+import { sendPushToProfiles, crmLink } from '@/lib/push';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -146,7 +146,7 @@ export async function createLeadFollowUpTask(db: SupabaseClient<any, any, any>, 
       await sendPushToProfiles([owner.id], {
         title: `New lead: ${who}`,
         body: [input.phone || input.email, `${channel} · ${site}`, input.detail ? input.detail.replace(/\s+/g, ' ').slice(0, 100) : ''].filter(Boolean).join(' — '),
-        url: '/crm/commercial#tasks',
+        url: crmLink('contacts', { type: 'contact', id: input.clientId }),
         tag: `lead-${input.clientId}`,
         category: 'leads',
         businessUnit: input.businessUnit || 'commercial',

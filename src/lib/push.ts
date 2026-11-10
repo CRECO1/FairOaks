@@ -45,6 +45,16 @@ function setup() {
   configured = true;
 }
 
+/**
+ * Where tapping an alert goes. `page` is a CRM page (#tasks, #contacts…); `open` is the SPECIFIC thing the alert is about
+ * (a contact, a deal, a document…), which the CRM opens on arrival — a bare page link used to drop people on a list (or, for
+ * an unknown type, the dashboard) and leave them to hunt for what buzzed them.
+ */
+export function crmLink(page: string, open?: { type: string; id?: string | null }): string {
+  const q = open?.id && /^[0-9a-f-]{36}$/i.test(open.id) ? `?open=${encodeURIComponent(open.type)}:${open.id}` : '';
+  return `/crm/commercial${q}#${page}`;
+}
+
 /** Only ever send people somewhere inside the CRM. */
 const safeUrl = (u?: string) => (u && u.startsWith('/crm') ? u.slice(0, 300) : '/crm');
 

@@ -21,7 +21,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { sendMonitored } from '@/lib/integration-alert';
-import { sendPushToProfiles } from '@/lib/push';
+import { sendPushToProfiles, crmLink } from '@/lib/push';
 import { prettyPhone } from '@/lib/phone';
 import { isBusinessOpen } from '@/lib/talkroute';
 import { canSeeVisitorActivity } from '@/lib/visitor-privacy';
@@ -129,7 +129,7 @@ export async function alertKnownContact(
       await sendPushToProfiles(recips.map(r => r.id), {
         title: `${name} ${strong ? headline.charAt(0).toLowerCase() + headline.slice(1) : headline}`,
         body: `${lines.join(' · ')} — ${siteShort(opts.site)}`,
-        url: '/crm/commercial#contacts', tag: `visitor-${k.id}`, category: 'visitors', businessUnit: k.business_unit as string,
+        url: crmLink('contacts', { type: 'contact', id: k.id as string }), tag: `visitor-${k.id}`, category: 'visitors', businessUnit: k.business_unit as string,
       });
     }
     const subject = `${opts.testTo ? '[TEST] ' : ''}🔔 ${name} ${strong ? headline.charAt(0).toLowerCase() + headline.slice(1) : headline} — ${siteShort(opts.site)}`;
