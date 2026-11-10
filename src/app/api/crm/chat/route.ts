@@ -6,6 +6,7 @@ import { dmOther, MAX_BODY } from '@/lib/team-chat';
 import { roomAllowed, cleanAttachments, resolveLinks } from '@/lib/team-chat-server';
 
 export const dynamic = 'force-dynamic';
+const PAGE = 100;
 
 // TeamChat. Reads and writes go through here (the tables have no browser access). A room is either 'team' (everyone in the
 // caller's workspace) or a direct message that only its two people can open.
@@ -18,17 +19,22 @@ export async function GET(req: NextRequest) {
   const room = req.nextUrl.searchParams.get('room') ?? '';
   const after = req.nextUrl.searchParams.get('after');
   if (!(await roomAllowed(ctx, room)).ok) return NextResponse.json({ error: 'No such conversation' }, { status: 404 });
+  const before = req.nextUrl.searchParams.get('before');
   let q = db.from('crm_chat_messages').select('id, sender_id, body, created_at, attachments, links').eq('business_unit', ctx.businessUnit).eq('room', room);
-  q = after && !Number.isNaN(Date.parse(after)) ? q.gt('created_at', after).order('created_at', { ascending: true }).limit(200) : q.order('created_at', { ascending: false }).limit(100);
+  q = after && !Number.isNaN(Date.parse(after)) ? q.gt('created_at', after).order('created_at', { ascending: true }).limit(200)
+    : before && !Number.isNaN(Date.parse(before)) ? q.lt('created_at', before).order('created_at', { ascending: false }).limit(PAGE)
+    : q.order('created_at', { ascending: false }).limit(PAGE);
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: 'Could not load messages' }, { status: 500 });
   const messages = after ? (data ?? []) : (data ?? []).reverse();
+  // "Load earlier messages": older history only, so it must not touch read state
+  if (before && !after) return NextResponse.json({ messages, more: (data ?? []).length === PAGE });
   const { data: prior } = after ? { data: null } : await db.from('crm_chat_reads').select('last_read_at').eq('user_id', ctx.userId).eq('room', room).maybeSingle();
   await db.from('crm_chat_reads').upsert({ user_id: ctx.userId, room, last_read_at: new Date().toISOString() });
   // In a direct message, when the other person last opened it (drives the "Seen" marker under your last message).
   const other = dmOther(room, ctx.userId);
   const { data: theirs } = other ? await db.from('crm_chat_reads').select('last_read_at').eq('user_id', other).eq('room', room).maybeSingle() : { data: null };
-  return NextResponse.json({ messages, otherRead: (theirs?.last_read_at as string | undefined) ?? null, ...(after ? {} : { lastRead: (prior?.last_read_at as string | undefined) ?? null }) });
+  return NextResponse.json({ messages, ...(after ? {} : { more: (data ?? []).length === PAGE }), otherRead: (theirs?.last_read_at as string | undefined) ?? null, ...(after ? {} : { lastRead: (prior?.last_read_at as string | undefined) ?? null }) });
 }
 
 // POST { room, body }  → send. A DM alerts the other person's phone; in the team room only people who are @named get one.

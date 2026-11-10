@@ -43,6 +43,7 @@ const MUTED = 'var(--c-muted, #6b7280)';
 const SOFT = 'color-mix(in srgb, var(--c-text, #1a1a1a) 8%, var(--c-surface, #fff))';   // other people's bubbles: visible on light AND dark
 const hue = (n: string) => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const fullTime = (iso: string) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const EMOJI = ['👍','👎','🙏','🙌','👏','💪','🔥','🎉','✅','❌','⚠️','❓','❗','😀','😂','😊','😉','😍','🤔','😅','😬','😢','😎','🤝','👀','📞','📅','📍','🏢','💰'];
 const CSS = `
 .tc-row .tc-act{opacity:0;transition:opacity .12s}
 .tc-row:hover .tc-act,.tc-row.tc-sel .tc-act,.tc-act:focus-visible{opacity:1}
@@ -102,6 +103,10 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   const [mi, setMi] = useState(0);                          // highlighted @mention suggestion
   const [away, setAway] = useState(0);                      // new messages that arrived while scrolled up
   const [drag, setDrag] = useState(false);
+  const [more, setMore] = useState(false);                // older history exists beyond what is loaded
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [emoji, setEmoji] = useState(false);
+  const prepend = useRef<number | null>(null);            // scrollHeight before older messages were added, to keep the reader's place
   const input = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -133,7 +138,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
 
   // open a conversation: load its history, then poll for anything newer
   useEffect(() => {
-    setMsgs([]); lastAt.current = null; seen.current = 0; stick.current = true; setAway(0); setSel(null); setErr(''); setLastRead(null); setLoaded(false); setOtherRead(null); setFind(null); setPendAtt([]); { let d = ''; try { d = room ? localStorage.getItem(draftKey(room)) ?? '' : ''; } catch { /* none */ } setText(d); } setPendLinks([]); setPicker(null); if (room && !isMobile) setTimeout(() => input.current?.focus(), 50);
+    setMsgs([]); setMore(false); setEmoji(false); lastAt.current = null; seen.current = 0; stick.current = true; setAway(0); setSel(null); setErr(''); setLastRead(null); setLoaded(false); setOtherRead(null); setFind(null); setPendAtt([]); { let d = ''; try { d = room ? localStorage.getItem(draftKey(room)) ?? '' : ''; } catch { /* none */ } setText(d); } setPendLinks([]); setPicker(null); if (room && !isMobile) setTimeout(() => input.current?.focus(), 50);
     if (!room) return;
     let alive = true;
     let tick = 0;
@@ -144,12 +149,12 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
         const r = await fetch(`/api/crm/chat?${q}`, { headers: auth(), cache: 'no-store' });
         if (!alive || roomRef.current !== room) return;
         if (!r.ok) { if (first) setErr('Could not open this conversation'); return; }
-        const { messages, lastRead: lr, otherRead: or } = await r.json() as { messages: Msg[]; lastRead?: string | null; otherRead?: string | null };
+        const { messages, lastRead: lr, otherRead: or, more: mo } = await r.json() as { messages: Msg[]; lastRead?: string | null; otherRead?: string | null; more?: boolean };
         setOtherRead(or ?? null);
-        if (first) { setLastRead(lr ?? null); setLoaded(true); }
+        if (first) { setLastRead(lr ?? null); setLoaded(true); setMore(!!mo); }
         if (!messages.length) return;
         lastAt.current = messages[messages.length - 1].created_at;
-        if (full) { setMsgs(messages); void loadRooms(); return; }
+        if (full) { const from = messages[0].created_at; setMsgs(prev => [...prev.filter(m => m.created_at < from), ...messages]); void loadRooms(); return; }
         setMsgs(prev => { const have = new Set(prev.map(m => m.id)); const add = messages.filter(m => !have.has(m.id)); return add.length ? [...prev, ...add] : prev; });
         void loadRooms();
       } catch { /* try again on the next tick */ }
@@ -167,6 +172,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
 
   // keep the newest message in view, but never yank a reader who scrolled up to older ones
   useEffect(() => {
+    if (prepend.current !== null) { const el = scroller.current; if (el) el.scrollTop += el.scrollHeight - prepend.current; prepend.current = null; seen.current = msgs.length; return; }
     const last = msgs[msgs.length - 1];
     const grew = msgs.length > seen.current;
     if (!grew) { seen.current = msgs.length; return; }
@@ -178,6 +184,17 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
     else setAway(n => n + 1);
   }, [msgs, meId]);
   const onScroll = () => { const el = scroller.current; if (!el) return; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; if (stick.current) setAway(0); };
+  const loadOlder = async () => {
+    if (!room || loadingMore || !msgs.length) return;
+    setLoadingMore(true);
+    try {
+      const r = await fetch(`/api/crm/chat?${new URLSearchParams({ room, before: msgs[0].created_at })}`, { headers: auth(), cache: 'no-store' });
+      if (!r.ok || roomRef.current !== room) throw new Error('x');
+      const j = await r.json() as { messages: Msg[]; more?: boolean };
+      setMore(!!j.more);
+      if (j.messages.length) { prepend.current = scroller.current?.scrollHeight ?? 0; setMsgs(prev => { const have = new Set(prev.map(m => m.id)); return [...j.messages.filter(m => !have.has(m.id)), ...prev]; }); }
+    } catch { setErr('Could not load earlier messages'); } finally { setLoadingMore(false); }
+  };
   const jump = () => { stick.current = true; setAway(0); bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); };
 
   // the composer grows with what you type (up to ~6 lines)
@@ -254,6 +271,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   const atWord = /(?:^|\s)@([A-Za-z]*)$/.exec(text);
   const suggest = atWord ? others.filter(p => p.name.split(' ')[0].toLowerCase().startsWith(atWord[1].toLowerCase())).slice(0, 5) : [];
   const pickMention = (p: ChatPerson) => { setText(t => t.replace(/@[A-Za-z]*$/, `@${p.name.split(' ')[0]} `)); setMi(0); input.current?.focus(); };
+  const myFirst = (people.find(p => p.id === meId)?.name ?? '').split(' ')[0].replace(/[^A-Za-z]/g, '');
   const names = others.map(p => p.name.split(' ')[0]);
   const items = [{ room: 'team', title: 'Team', sub: 'Everyone' }, ...others.map(p => ({ room: dmRoom(meId, p.id), title: p.name, sub: '' }))]
     .map(i => ({ ...i, info: rooms[i.room] }))
@@ -335,6 +353,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
         {term && <span style={{ fontSize: 12.5, color: MUTED, whiteSpace: 'nowrap' }}>{shown.length} {shown.length === 1 ? 'match' : 'matches'}</span>}
       </div>}
       <div ref={scroller} onScroll={onScroll} role="log" aria-live="polite" aria-label="Messages" style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {more && !term && <button onClick={() => void loadOlder()} disabled={loadingMore} className="tc-btn" style={{ alignSelf: 'center', fontSize: 12.5, fontWeight: 600, color: MUTED, background: SOFT, borderRadius: 14, padding: '5px 14px', marginBottom: 6 }}>{loadingMore ? 'Loading…' : 'Load earlier messages'}</button>}
         {term && !shown.length && <div style={{ color: MUTED, textAlign: 'center', marginTop: 40, fontSize: 14 }}>Nothing matches “{find}”.</div>}
         {!loaded && !err && <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }} aria-label="Loading">{[55, 38, 62, 30].map((w, k) => <div key={k} className="tc-skel" style={{ height: 38, width: `${w}%`, alignSelf: k % 2 ? 'flex-end' : 'flex-start' }} />)}</div>}
         {loaded && !msgs.length && !err && <div style={{ textAlign: 'center', margin: 'auto', padding: 20 }}>
@@ -352,6 +371,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
           const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
           const firstNew = !!lastRead && !mine && m.created_at > lastRead && !shown.slice(0, i).some(x => x.sender_id !== meId && x.created_at > lastRead);
           const head = !mine && (!tight || firstNew);
+          const toMe = !mine && !!myFirst && new RegExp(`@${myFirst}\\b`, 'i').test(m.body);
           return (
             <React.Fragment key={m.id}>
               {newDay && <div style={{ textAlign: 'center', margin: '12px 0 6px' }}><span style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, background: SOFT, padding: '3px 11px', borderRadius: 12 }}>{dayLabel(m.created_at)}</span></div>}
@@ -362,8 +382,9 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
                 {mine && <button className="tc-btn tc-act tc-icon" onClick={() => void remove(m.id)} aria-label="Delete this message" title="Delete" style={{ width: 28, height: 28 }}><Ico n="trash" size={15} /></button>}
                 <div style={{ maxWidth: isMobile ? '82%' : '70%', minWidth: 0 }}>
                   {head && <div style={{ fontSize: 12, fontWeight: 600, color: MUTED, margin: '0 4px 2px' }}>{nameOf(m.sender_id)}</div>}
+                  {toMe && <div style={{ fontSize: 11, fontWeight: 700, color: GOLD, margin: '0 4px 2px' }}>Mentioned you</div>}
                   <div title={fullTime(m.created_at)} onClick={() => { if (isMobile) setSel(s => s === m.id ? null : m.id); }}
-                    style={{ background: mine ? GOLD : SOFT, color: mine ? '#1a1206' : 'inherit', padding: '8px 12px', borderRadius: 16, borderBottomRightRadius: mine && lastInRun ? 5 : 16, borderBottomLeftRadius: !mine && lastInRun ? 5 : 16, fontSize: 14.5, lineHeight: 1.42, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                    style={{ background: mine ? GOLD : SOFT, color: mine ? '#1a1206' : 'inherit', padding: '8px 12px', borderRadius: 16, borderBottomRightRadius: mine && lastInRun ? 5 : 16, borderBottomLeftRadius: !mine && lastInRun ? 5 : 16, fontSize: 14.5, lineHeight: 1.42, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', boxShadow: toMe ? `0 0 0 2px ${GOLD}` : undefined }}>
                     {m.body && renderBody(m.body, names, mine, term)}
                     {(m.links ?? []).map(l => card(l.id, ICON[l.kind], KIND[l.kind], l.label, null, mine, !!m.body, () => onOpenLink?.(l)))}
                     {(m.attachments ?? []).map((a, k) => a.type.startsWith('image/') && a.type !== 'image/svg+xml' && room
@@ -404,7 +425,13 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
         <div className="tc-field" style={{ display: 'flex', alignItems: 'flex-end', gap: 2, padding: '4px 5px 4px 4px', borderRadius: 14, border: BORDER, background: 'var(--c-surface-2, #fafafa)', transition: 'border-color .12s, box-shadow .12s' }}>
           <button className="tc-icon" onClick={() => fileInput.current?.click()} disabled={pendAtt.length >= 5} title="Attach a file" aria-label="Attach a file"><Ico n="paperclip" size={19} /></button>
           <button className="tc-icon" onClick={() => { if (picker) setPicker(null); else void openPicker('deal'); }} title="Link a deal, contact or document" aria-label="Link a deal, contact or document" style={picker ? { background: 'rgba(201,146,44,.22)', color: GOLD } : undefined}><Ico n="link" size={19} /></button>
-          <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setMi(0); saveDraft(room, e.target.value); }} rows={1} maxLength={4000} aria-label="Write a message"
+          <span style={{ position: 'relative', display: 'inline-flex' }}>
+            <button className="tc-icon" onClick={() => setEmoji(v => !v)} title="Emoji" aria-label="Insert an emoji" aria-expanded={emoji} style={emoji ? { background: 'rgba(201,146,44,.22)', color: GOLD } : undefined}><Ico n="smile" size={19} /></button>
+            {emoji && <div role="menu" aria-label="Emoji" onKeyDown={e => { if (e.key === 'Escape') { setEmoji(false); input.current?.focus(); } }} style={{ position: 'absolute', left: 0, bottom: 42, zIndex: 20, width: 252, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2, padding: 6, border: BORDER, borderRadius: 12, background: 'var(--c-surface, #fff)', boxShadow: '0 6px 20px rgba(0,0,0,.18)' }}>
+              {EMOJI.map(em => <button key={em} role="menuitem" className="tc-btn tc-item" onClick={() => { const el = input.current, at = el?.selectionStart ?? text.length, to = el?.selectionEnd ?? at, nt = (text.slice(0, at) + em + text.slice(to)).slice(0, 4000); setText(nt); saveDraft(room, nt); setEmoji(false); setTimeout(() => { el?.focus(); el?.setSelectionRange(at + em.length, at + em.length); }, 0); }} style={{ fontSize: 20, lineHeight: 1, padding: 6, borderRadius: 8 }}>{em}</button>)}
+            </div>}
+          </span>
+          <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setMi(0); saveDraft(room, e.target.value); }} rows={1} maxLength={4000} aria-label="Write a message" onFocus={() => setEmoji(false)}
             placeholder={cur?.room === 'team' ? 'Message the team — @name pings a phone' : `Message ${cur?.title.split(' ')[0] ?? ''}`}
             onPaste={e => { const fs = Array.from(e.clipboardData.files); if (fs.length) { e.preventDefault(); void uploadFiles(fs); } }}
             onKeyDown={e => {

@@ -8,7 +8,7 @@ import React from 'react';
 export type IcoName =
   | 'home' | 'check' | 'deals' | 'users' | 'briefcase' | 'calendar' | 'megaphone' | 'receipt' | 'building'
   | 'file' | 'pen' | 'phone' | 'eye' | 'tree' | 'chart' | 'search' | 'bell' | 'mail' | 'sun' | 'moon' | 'sparkle' | 'image' | 'trash'
-  | 'paperclip' | 'link' | 'send' | 'back' | 'close' | 'arrowdown' | 'copy';
+  | 'paperclip' | 'link' | 'send' | 'back' | 'close' | 'arrowdown' | 'copy' | 'smile';
 
 const PATHS: Record<IcoName, React.ReactNode> = {
   home: <><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></>,
@@ -40,6 +40,7 @@ const PATHS: Record<IcoName, React.ReactNode> = {
   close: <><path d="M6 6l12 12M18 6L6 18" /></>,
   arrowdown: <><path d="M12 5v14M6 13l6 6 6-6" /></>,
   copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" /></>,
+  smile: <><circle cx="12" cy="12" r="9" /><path d="M8 14c1 1.6 2.4 2.4 4 2.4s3-.8 4-2.4M9 9.5h.01M15 9.5h.01" /></>,
   sparkle: <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></>,
 };
 
