@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { DriveDoc } from '@/lib/drive-types';
 import { ShareDialog } from './DocsDrive';
@@ -19,6 +19,7 @@ export default function DriveDocPage({ docId }: { docId: string }) {
   const [msg, toast] = useToast();
   const isMobile = useIsMobile();
   const [share, setShare] = useState<DriveDoc | null>(null);
+  const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const valid = /^[0-9a-f-]{36}$/i.test(docId);
 
   useEffect(() => { document.title = 'My Drive'; }, []);
@@ -50,7 +51,7 @@ export default function DriveDocPage({ docId }: { docId: string }) {
         onClose={() => leaveDrivePage(bu)}
         onToast={toast}
         onLoaded={doc => { document.title = `${doc.title || 'Untitled'} — My Drive`; }}
-        onTitle={(_id, title) => { document.title = `${title || 'Untitled'} — My Drive`; }}
+        onTitle={(_id, title) => { document.title = `${title || 'Untitled'} — My Drive`; if (titleTimer.current) clearTimeout(titleTimer.current); titleTimer.current = setTimeout(announceDriveChanged, 1200); }}
         onShare={doc => { if (isAdmin || doc.created_by === me.id) setShare(doc); else toast('Only the owner or an admin can change who this is shared with'); }}
         onSign={doc => { const u = `/crm/${bu}?signdoc=${doc.id}&title=${encodeURIComponent(doc.title || '')}`; if (!window.open(u, '_blank')) window.location.href = u; }} />
       {share && <ShareDialog kind="doc" item={share} people={people.filter(p => p.id !== me.id)} can isMobile={isMobile} who={who} onClose={() => setShare(null)} onSave={(v, s) => void saveShare(share, v, s)} />}

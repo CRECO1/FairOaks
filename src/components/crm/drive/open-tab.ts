@@ -40,12 +40,22 @@ const CHANNEL = 'crm-drive';
 export function announceDriveChanged() {
   try { const c = new BroadcastChannel(CHANNEL); c.postMessage('changed'); c.close(); } catch { /* no BroadcastChannel: lists refresh on their own next time */ }
 }
+/** Runs `cb` when another tab announced a change, and when this tab is brought back to the front (at most every 10 s). Returns the cleanup. */
 export function onDriveChanged(cb: () => void): () => void {
-  try { const c = new BroadcastChannel(CHANNEL); c.onmessage = () => cb(); return () => c.close(); } catch { return () => {}; }
+  let last = 0;
+  const run = () => { const now = Date.now(); if (now - last < 10_000) return; last = now; cb(); };
+  const visible = () => { if (document.visibilityState === 'visible') run(); };
+  document.addEventListener('visibilitychange', visible); window.addEventListener('focus', run);
+  let ch: BroadcastChannel | null = null;
+  try { ch = new BroadcastChannel(CHANNEL); ch.onmessage = () => { last = Date.now(); cb(); }; } catch { /* no BroadcastChannel: the focus refresh still works */ }
+  return () => { document.removeEventListener('visibilitychange', visible); window.removeEventListener('focus', run); ch?.close(); };
 }
 
 /** Leaves a standalone page: closes the tab when this script opened it, otherwise goes back to the Drive in the CRM. */
 export function leaveDrivePage(bu: 'commercial' | 'residential') {
-  window.close();
-  setTimeout(() => { window.location.href = `/crm/${bu}#transaction-docs`; }, 250);   // still here = the tab could not close itself
+  announceDriveChanged();   // the CRM tab's list picks up the new title / edited time (a moment to send it before the tab goes)
+  setTimeout(() => {
+    window.close();
+    setTimeout(() => { window.location.href = `/crm/${bu}#transaction-docs`; }, 250);   // still here = the tab could not close itself
+  }, 150);
 }
