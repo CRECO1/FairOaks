@@ -7,7 +7,8 @@ import React from 'react';
  */
 export type IcoName =
   | 'home' | 'check' | 'deals' | 'users' | 'briefcase' | 'calendar' | 'megaphone' | 'receipt' | 'building'
-  | 'file' | 'pen' | 'phone' | 'eye' | 'tree' | 'chart' | 'search' | 'bell' | 'mail' | 'sun' | 'moon' | 'sparkle' | 'image' | 'trash';
+  | 'file' | 'pen' | 'phone' | 'eye' | 'tree' | 'chart' | 'search' | 'bell' | 'mail' | 'sun' | 'moon' | 'sparkle' | 'image' | 'trash'
+  | 'paperclip' | 'link' | 'send' | 'back' | 'close' | 'arrowdown';
 
 const PATHS: Record<IcoName, React.ReactNode> = {
   home: <><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></>,
@@ -32,6 +33,12 @@ const PATHS: Record<IcoName, React.ReactNode> = {
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
   moon: <><path d="M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5z" /></>,
   image: <><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="9" cy="10" r="1.8" /><path d="M4 18l5-5 4 4 3-3 4 4" /></>,
+  paperclip: <><path d="M20 11.5l-8 8a5 5 0 01-7-7l8.5-8.5a3.3 3.3 0 014.7 4.7L9.5 17.2a1.7 1.7 0 01-2.4-2.4L15 7" /></>,
+  link: <><path d="M10 14a4.5 4.5 0 006.4 0l3-3a4.5 4.5 0 00-6.4-6.4l-1 1" /><path d="M14 10a4.5 4.5 0 00-6.4 0l-3 3a4.5 4.5 0 006.4 6.4l1-1" /></>,
+  send: <><path d="M21 3L10 14" /><path d="M21 3l-7 18-4-7-7-4z" /></>,
+  back: <><path d="M15 5l-7 7 7 7" /></>,
+  close: <><path d="M6 6l12 12M18 6L6 18" /></>,
+  arrowdown: <><path d="M12 5v14M6 13l6 6 6-6" /></>,
   sparkle: <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></>,
 };
 
