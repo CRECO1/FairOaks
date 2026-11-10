@@ -166,7 +166,7 @@ export default function EmailToolbar(p: {
     <>
       {bottomActions}
       {(!bottom || p.showMore) && <div role="toolbar" aria-label="Formatting"
-        style={{ display: 'flex', alignItems: 'center', flexWrap: p.isMobile ? 'nowrap' : 'wrap', overflowX: p.isMobile ? 'auto' : 'visible', gap: 2, padding: '4px 8px', borderBottom: '1px solid var(--k-f3f4f6)', WebkitOverflowScrolling: 'touch' }}>
+        style={{ display: 'flex', alignItems: 'center', flexWrap: p.isMobile ? 'nowrap' : 'wrap', overflowX: p.isMobile ? 'auto' : 'visible', ...(p.isMobile ? { scrollbarWidth: 'none' as const, WebkitOverflowScrolling: 'touch' as const } : {}), gap: 2, padding: '4px 8px', borderBottom: '1px solid var(--k-f3f4f6)', WebkitOverflowScrolling: 'touch' }}>
         {fmt('Bold', `Bold (${mod}B)`, on.bold, () => run('bold'), 'B', { fontWeight: 800 })}
         {fmt('Italic', `Italic (${mod}I)`, on.italic, () => run('italic'), 'I', { fontStyle: 'italic', fontFamily: 'Georgia,serif' })}
         {fmt('Underline', `Underline (${mod}U)`, on.underline, () => run('underline'), 'U', { textDecoration: 'underline' })}

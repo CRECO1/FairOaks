@@ -61,6 +61,7 @@ function AddressField({ value, onChange, placeholder, autoFocus, leading, sugges
   const [sel, setSel] = useState(0);
   const [focused, setFocused] = useState(false);
   const emitted = useRef(value);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // A reply-all, a restored draft, or a clear changes the string from outside — re-read it.
   useEffect(() => {
@@ -88,7 +89,8 @@ function AddressField({ value, onChange, placeholder, autoFocus, leading, sugges
   const narrow = typeof window !== 'undefined' && window.innerWidth < 768; // phones: the field is squeezed beside Cc/Bcc, so stack name over address
 
   return (
-    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, padding: '6px 0' }}>
+    <div onClick={e => { if (e.target === e.currentTarget) inputRef.current?.focus(); }}
+      style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, padding: '6px 0' }}>
       {leading}
       {chips.map((a, i) => (
         <span key={a + i} style={CHIP} title={a}>
@@ -98,8 +100,9 @@ function AddressField({ value, onChange, placeholder, autoFocus, leading, sugges
         </span>
       ))}
       <input
+        ref={inputRef}
         value={draft} autoFocus={autoFocus} inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} aria-label={label}
-        placeholder={chips.length || leading ? '' : placeholder}
+        placeholder={chips.length || leading ? (narrow ? 'Add another…' : '') : placeholder}
         onFocus={() => setFocused(true)}
         onChange={e => {
           const v = e.target.value;
@@ -119,7 +122,7 @@ function AddressField({ value, onChange, placeholder, autoFocus, leading, sugges
           else if (e.key === 'Backspace' && !draft && chips.length) { const next = chips.slice(0, -1); setChips(next); emit(next, ''); }
         }}
         onBlur={() => { setFocused(false); commit(); }}
-        style={{ flex: '1 1 140px', minWidth: 120, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, color: bad ? 'var(--k-dc2626)' : 'var(--k-111)', fontFamily: "'DM Sans',sans-serif", padding: '6px 2px' }}
+        style={{ flex: narrow && (chips.length || leading) ? '1 1 90px' : '1 1 140px', minWidth: narrow && (chips.length || leading) ? 70 : 120, border: 'none', outline: 'none', background: 'transparent', fontSize: narrow && (chips.length || leading) ? 13.5 : 14, color: bad ? 'var(--k-dc2626)' : 'var(--k-111)', fontFamily: "'DM Sans',sans-serif", padding: narrow && (chips.length || leading) ? '2px 2px' : '6px 2px' }}
       />
       {sugg.length > 0 && (
         <div role="listbox" style={{ flexBasis: '100%', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, background: 'var(--k-fff)', boxShadow: '0 6px 20px rgba(0,0,0,.10)', overflow: 'hidden', marginBottom: 4 }}>
@@ -339,10 +342,13 @@ export default function EmailComposer(p: EmailComposerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A half-typed address ("mike@") sits in the recipient string until it is finished; catch it here, before a Gmail error does.
+  const badRecipient = () => [...splitAddrs(p.moreTo), ...splitAddrs(p.cc), ...splitAddrs(p.bcc ?? '')].find(a => !ADDR_VALID.test(a));
   const trySend = async () => {
     if (p.sending || count !== null) return;
     const text = (p.bodyRef.current?.innerText ?? '').trim();
     if (!hasTo && !p.moreTo.trim()) { p.notify?.('Add at least one recipient'); return; }
+    { const bad = badRecipient(); if (bad) { p.notify?.(`“${bad}” isn’t a complete email address — fix or remove it`); return; } }
     if (!p.subjectReadOnly && !p.subject.trim()) { p.notify?.('Add a subject first'); subjRef.current?.focus(); return; }
     if (!text && attachCount === 0) { p.notify?.('Write a message first'); p.bodyRef.current?.focus(); return; }
     if (/\battach(ed|ment|ments|ing)?\b/i.test(text) && attachCount === 0
@@ -359,6 +365,7 @@ export default function EmailComposer(p: EmailComposerProps) {
     if (!p.onSchedule || p.sending || count !== null) return;
     const text = (p.bodyRef.current?.innerText ?? '').trim();
     if (!hasTo && !p.moreTo.trim()) { p.notify?.('Add at least one recipient'); return; }
+    { const bad = badRecipient(); if (bad) { p.notify?.(`“${bad}” isn’t a complete email address — fix or remove it`); return; } }
     if (!p.subjectReadOnly && !p.subject.trim()) { p.notify?.('Add a subject first'); subjRef.current?.focus(); return; }
     if (!text) { p.notify?.('Write a message first'); p.bodyRef.current?.focus(); return; }
     saveNow();
@@ -693,7 +700,7 @@ export default function EmailComposer(p: EmailComposerProps) {
         {p.signature && (
           <div style={{ padding: '0 14px 8px' }}>
             <div style={{ borderTop: '1px dashed var(--k-e5e7eb)', paddingTop: 6, display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif" }}>
-              <span>✍ Your Gmail signature is added automatically when you send</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{p.isMobile ? '✍ Gmail signature added on send' : '✍ Your Gmail signature is added automatically when you send'}</span>
               <button type="button" onClick={() => setSigOpen(o => !o)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 11.5, fontWeight: 600, padding: 0, minWidth: 0, minHeight: 0, fontFamily: "'DM Sans',sans-serif", textDecoration: 'underline' }}>{sigOpen ? 'Hide signature' : 'Preview signature'}</button>
             </div>
@@ -718,6 +725,7 @@ export default function EmailComposer(p: EmailComposerProps) {
             style={{ height: p.isMobile ? 40 : 30, border: '1px solid var(--k-d1d5db)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px', fontFamily: "'DM Sans',sans-serif" }}>
             {FOLLOW_UP_CHOICES.map(c => <option key={c.days} value={c.days}>{c.label}</option>)}
           </select>
+          {p.isMobile && draftNote && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{draftNote}</span>}
         </div>
       )}
       <div style={{ position: dock ? 'relative' : 'sticky', bottom: dock ? 0 : 'var(--kb, 0px)', display: 'flex', alignItems: 'center', gap: 10, ...(p.isMobile ? { flexWrap: 'wrap' as const, rowGap: 8 } : {}), padding: p.isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '10px 12px', background: 'var(--k-fff)', borderTop: '1px solid var(--k-e5e7eb)' }}>
@@ -731,16 +739,23 @@ export default function EmailComposer(p: EmailComposerProps) {
           </>
         ) : (
           <>
-            {!p.isMobile ? (
-              <>
-                <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+            <>
+                {p.isMobile && p.crmFiles && (
+                  <button type="button" onClick={() => setPickerOpen(true)} aria-label="Attach from the deal" title="Attach a document from this deal"
+                    style={{ width: 48, height: 48, flexShrink: 0, background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 12, fontSize: 18, cursor: 'pointer' }}>📁</button>
+                )}
+                {p.isMobile && (
+                  <button type="button" onClick={() => attachRef.current?.click()} aria-label="Attach files" title="Attach files"
+                    style={{ width: 48, height: 48, flexShrink: 0, background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 12, fontSize: 18, cursor: 'pointer' }}>📎</button>
+                )}
+                <div style={{ position: 'relative', display: 'inline-flex', flexShrink: p.isMobile ? 1 : 0, flex: p.isMobile ? '1 1 auto' : undefined, minWidth: 0 }}>
                   <button type="button" onClick={trySend} disabled={p.sending} title="Send (⌘/Ctrl+Enter)"
-                    style={{ minWidth: 92, height: 40, padding: '0 20px 0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: p.onSchedule ? '20px 0 0 20px' : 20, fontSize: 15, fontWeight: 700, cursor: p.sending ? 'default' : 'pointer', opacity: p.sending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+                    style={{ minWidth: p.isMobile ? 0 : 92, flex: p.isMobile ? 1 : undefined, height: p.isMobile ? 48 : 40, padding: '0 20px 0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: p.onSchedule ? (p.isMobile ? '24px 0 0 24px' : '20px 0 0 20px') : (p.isMobile ? 24 : 20), fontSize: 15, fontWeight: 700, cursor: p.sending ? 'default' : 'pointer', opacity: p.sending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif" }}>
                     {p.sending ? 'Sending…' : (p.sendLabel ?? 'Send')}
                   </button>
                   {(p.onSchedule || p.draftKey) && (
                     <button type="button" onClick={() => setSchedOpen(v => !v)} aria-haspopup="menu" aria-expanded={schedOpen} aria-label="More send options" title="Send later · Save draft (⌘/Ctrl+Shift+L)"
-                      style={{ width: 34, height: 40, background: '#c9922c', color: '#fff', border: 'none', borderLeft: '1px solid rgba(255,255,255,.4)', borderRadius: '0 20px 20px 0', fontSize: 11, cursor: 'pointer' }}>▾</button>
+                      style={{ width: p.isMobile ? 44 : 34, height: p.isMobile ? 48 : 40, background: '#c9922c', color: '#fff', border: 'none', borderLeft: '1px solid rgba(255,255,255,.4)', borderRadius: p.isMobile ? '0 24px 24px 0' : '0 20px 20px 0', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>▾</button>
                   )}
                   {schedOpen && (
                     <>
@@ -782,71 +797,13 @@ export default function EmailComposer(p: EmailComposerProps) {
                     </>
                   )}
                 </div>
-                <div ref={setSlotEl} style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }} />
-                <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{draftNote || '⌘↵ to send'}</span>
+                {!p.isMobile && <div ref={setSlotEl} style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }} />}
+                {!p.isMobile && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{draftNote || '⌘↵ to send'}</span>}
                 <button type="button" onClick={discard} aria-label="Discard draft" title="Discard draft"
-                  style={{ width: 36, height: 36, flexShrink: 0, background: 'none', color: 'var(--k-6b7280)', border: 'none', borderRadius: 18, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                  style={{ width: p.isMobile ? 48 : 36, height: p.isMobile ? 48 : 36, flexShrink: 0, background: 'none', color: 'var(--k-6b7280)', border: 'none', borderRadius: 24, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                   <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.6 9.2c0 .5.4.8.9.8h5c.5 0 .9-.3.9-.8L12 4M6.8 6.5v5M9.2 6.5v5" /></svg>
                 </button>
-              </>
-            ) : (
-              <>
-            {p.isMobile && p.crmFiles && (
-              <button type="button" onClick={() => setPickerOpen(true)} aria-label="Attach from the deal" title="Attach a document from this deal"
-                style={{ width: 48, height: 48, flexShrink: 0, background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 10, fontSize: 18, cursor: 'pointer' }}>📁</button>
-            )}
-            {p.isMobile && (
-              <button type="button" onClick={() => attachRef.current?.click()} aria-label="Attach files" title="Attach files"
-                style={{ width: 48, height: 48, flexShrink: 0, background: 'var(--k-f3f4f6)', border: 'none', borderRadius: 10, fontSize: 18, cursor: 'pointer' }}>📎</button>
-            )}
-            <button type="button" onClick={trySend} disabled={p.sending}
-              style={{ flex: p.isMobile ? '1 1 140px' : undefined, minWidth: 120, height: p.isMobile ? 48 : 40, padding: '0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: p.sending ? 'default' : 'pointer', opacity: p.sending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif" }}>
-              {p.sending ? 'Sending…' : (p.sendLabel ?? 'Send')}
-            </button>
-            {p.onSchedule && (
-              <div style={{ position: 'relative' }}>
-                <button type="button" onClick={() => setSchedOpen(v => !v)} aria-haspopup="menu" aria-expanded={schedOpen} title="Pick a time and it sends by itself"
-                  style={{ height: p.isMobile ? 48 : 40, padding: '0 14px', background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
-                  🕐{p.isMobile ? '' : ' Send later'}
-                </button>
-                {schedOpen && (
-                  <>
-                    <div onClick={() => setSchedOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                    <div role="menu" style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 8px)', zIndex: 41, width: 270, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.2)', overflow: 'hidden' }}>
-                      <div style={{ padding: '8px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)' }}>Send this email…</div>
-                      {schedPresets().map(([name, iso, label]) => (
-                        <button key={name} role="menuitem" type="button" onClick={() => void trySchedule(iso, label)}
-                          style={{ display: 'block', width: '100%', padding: '10px 12px', border: 'none', borderTop: '1px solid var(--k-f0f0f0)', background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                          <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{name}</span>
-                          <span style={{ display: 'block', fontSize: 12.5, color: 'var(--k-9ca3af)' }}>{label}</span>
-                        </button>
-                      ))}
-                      <label style={{ display: 'block', padding: '10px 12px', borderTop: '1px solid var(--k-f0f0f0)', fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)' }}>
-                        Pick a date and time (Central)
-                        <input type="datetime-local" min={`${chicagoToday()}T00:00`} onChange={e => {
-                          const v = e.target.value; if (!v) return;
-                          const [d, t] = v.split('T'); const iso = chicagoLocalToUTC(d, t);
-                          void trySchedule(iso, new Date(iso).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }));
-                        }} style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, height: 34, border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '0 8px', fontSize: 13.5, background: 'var(--k-fff)', color: 'var(--k-111)' }} />
-                      </label>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-            {p.draftKey && (
-              <button type="button" onClick={saveForLater} title="Keep it in Saved drafts to send later"
-                style={{ height: p.isMobile ? 48 : 40, padding: '0 14px', background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
-                {p.isMobile ? 'Save' : 'Save draft'}
-              </button>
-            )}
-            <button type="button" onClick={discard} aria-label="Discard draft" title="Discard draft"
-              style={{ height: p.isMobile ? 48 : 40, padding: '0 14px', background: 'none', color: 'var(--k-6b7280)', border: 'none', borderRadius: 10, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-              Discard
-            </button>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{draftNote || (p.isMobile ? '' : '⌘↵ to send')}</span>
-              </>
-            )}
+            </>
           </>
         )}
       </div>
