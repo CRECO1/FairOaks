@@ -44,6 +44,7 @@ interface Field {
   signerName?: string;      // email is how a spot finds its signer again — never the role, which several people can share
   fieldKey?: string;        // fields sharing a key fill together (type once, fill everywhere)
   label?: string;           // human label, shown as the blank's placeholder
+  color?: 'red' | 'black';  // strike lines: red (default) or plain black
   defaultValue?: string;    // template's starting text, kept so re-saving the layout preserves it
 }
 // Only the PDF's own point dimensions are kept — the rendered pixel size is now
@@ -444,7 +445,7 @@ export default function TransactionDocEditor({
       if (rz) {
         // Dragging only changes the box's WIDTH. The text size is locked to the form's one size.
         const dfw = (clientX - rz.sx) / rz.pw;
-        setFields(fs => fs.map(f => f.id === rz.id ? { ...f, fw: Math.max(0.03, Math.min(0.97, rz.ofw + dfw)), size: FORM_FONT_SIZE } : f));
+        setFields(fs => fs.map(f => f.id === rz.id ? { ...f, fw: Math.max(0.03, Math.min(0.97, rz.ofw + dfw)), size: isRedline(f.type) ? f.size : FORM_FONT_SIZE } : f));
         return;
       }
       const d = drag.current; if (!d) return;
@@ -576,8 +577,7 @@ export default function TransactionDocEditor({
         const x0 = f.fx * width, w0 = f.fw * width, yb = height - f.fy * height;
         if (f.type === 'strike') {
           const h = sz * 1.1;
-          pg.drawRectangle({ x: x0, y: yb, width: w0, height: h, color: red, opacity: 0.12 });
-          pg.drawLine({ start: { x: x0, y: yb + h * 0.45 }, end: { x: x0 + w0, y: yb + h * 0.45 }, thickness: 1.2, color: red });
+          pg.drawLine({ start: { x: x0, y: yb + h * 0.45 }, end: { x: x0 + w0, y: yb + h * 0.45 }, thickness: 1.2, color: f.color === 'black' ? rgb(0.05, 0.05, 0.05) : red });
         } else if (f.type === 'insert') {
           const val = winAnsi(f.value || '').trim();
           if (!val) continue;
@@ -1030,7 +1030,7 @@ export default function TransactionDocEditor({
             tile('check', '☑', 'Checkbox'),
           ])}
           {railGroup('Redline', [
-            tile('strike', 'S̶', 'Strike text'),
+            tile('strike', '―', 'Line (strike)'),
             tile('insert', '＋', 'Insert text'),
             tile('note', '💬', 'Margin note'),
           ])}
@@ -1108,9 +1108,9 @@ export default function TransactionDocEditor({
                     title={isStrike ? 'Strikethrough — drag over the text to delete' : isNote ? 'Margin note' : 'Inserted text'}
                     style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`, boxSizing: 'border-box',
                       ...(isNote ? { background: 'rgba(255,245,157,.95)', border: '1px solid #c99a1a', borderRadius: 3, padding: 2, boxShadow: '0 1px 3px rgba(0,0,0,.25)' }
-                        : { height: `max(11px, ${cqw(em * 1.1)})`, transform: 'translateY(-100%)', background: isStrike ? 'rgba(217,38,38,.12)' : 'rgba(217,38,38,.06)' }),
+                        : { height: `max(11px, ${cqw(em * 1.1)})`, transform: 'translateY(-100%)', background: isStrike ? (isSel ? 'rgba(0,0,0,.05)' : 'transparent') : 'rgba(217,38,38,.06)' }),
                       outline: isSel ? `1.5px solid ${RED}` : 'none', touchAction: isSel ? 'none' : undefined, cursor: 'move' }}>
-                    {isStrike && <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', borderTop: `1.5px solid ${RED}`, pointerEvents: 'none' }} />}
+                    {isStrike && <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', borderTop: `2px solid ${f.color === 'black' ? '#111' : RED}`, pointerEvents: 'none' }} />}
                     {f.type === 'insert' && (
                       <input value={f.value} onChange={e => updateVal(f.id, e.target.value)} placeholder="Inserted text"
                         onFocus={() => setSelected(f.id)} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
@@ -1129,9 +1129,14 @@ export default function TransactionDocEditor({
                           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 13 : 9, lineHeight: 1, userSelect: 'none', zIndex: 2 }}>✥</div>
                     )}
                     {(isSel || hovered === f.id || isMobile) && (
-                      <div onMouseDown={e => onResizeStart(e, f)} onTouchStart={e => onTouchResizeStart(e, f)} title="Drag right to widen, down for bigger text" aria-label="Resize mark"
+                      <div onMouseDown={e => onResizeStart(e, f)} onTouchStart={e => onTouchResizeStart(e, f)} title={isStrike ? 'Drag to lengthen or shorten the line' : 'Drag right to widen, down for bigger text'} aria-label="Resize mark"
                         style={{ position: 'absolute', bottom: -hsz / 2 - 2, right: -hsz / 2 - 2, width: hsz, height: hsz, borderRadius: '50%', background: '#2563eb', color: '#fff', cursor: 'nwse-resize', touchAction: 'none',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 13 : 10, lineHeight: 1, userSelect: 'none', zIndex: 2 }}>⤡</div>
+                    )}
+                    {isSel && isStrike && (
+                      <button onClick={e => { e.stopPropagation(); setFields(fs => fs.map(x => x.id === f.id ? { ...x, color: x.color === 'black' ? 'red' : 'black' } : x)); }}
+                        onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} aria-label="Toggle line colour" title={f.color === 'black' ? 'Black line — click for red' : 'Red line — click for black'}
+                        style={{ position: 'absolute', top: -hsz / 2 - 2, right: hsz / 2 + 4, width: hsz, height: hsz, borderRadius: '50%', border: '2px solid #fff', boxShadow: '0 0 0 1px #9ca3af', background: f.color === 'black' ? '#111' : RED, cursor: 'pointer', padding: 0, zIndex: 2 }} />
                     )}
                     {isSel && (
                       <button onClick={e => { e.stopPropagation(); delField(f.id); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} aria-label="Delete mark"
