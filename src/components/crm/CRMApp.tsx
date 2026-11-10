@@ -22,6 +22,7 @@ import ThreadAssist from './ThreadAssist';
 import DealEmailBar, { agoLabel, type EmailFilter } from './DealEmailBar';
 import EmailThreadHeader from './EmailThreadHeader';
 import CallSplit from './CallSplit';
+import PropertyIntelCard, { type IntelData } from './PropertyIntelCard';
 import { friendlyTitle } from '@/lib/esign-title';
 import { parseAddressList, emailDisplayName, nameBook, threadPeople, snippetOf, bareEmail, isRealName, personLabel } from '@/lib/email-display';
 import { htmlToText } from '@/lib/html-text';
@@ -1149,6 +1150,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [commissionView, setCommissionView] = useState<'list' | '1099'>('list');
   const [commission1099Year, setCommission1099Year] = useState<string>(String(new Date().getFullYear() - 1));
   const [propIntel, setPropIntel] = useState<{ detail: any; comps: any[]; error?: string } | null>(null);
+  // Property Intel tab: what the CRM already knows (county appraisal in the Property DB + our listing) — free, loads when the tab opens.
+  const [intelLocal, setIntelLocal] = useState<{ dealId: string; data: IntelData | null; loading: boolean; failed: boolean } | null>(null);
   const [propIntelLoading, setPropIntelLoading] = useState(false);
   const emailEditorRef = useRef<HTMLDivElement>(null);
   const recentActivityRef = useRef<Map<string, number>>(new Map()); // logActivity double-submit guard
@@ -2458,6 +2461,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setComposer({ file: new File([bytes as BlobPart], pdfName(j.title || title), { type: 'application/pdf' }), doc: null, dealId: deal });
     } catch { showToast('Couldn’t prepare that document for signing — try again.'); }
   }, [showToast, session?.access_token, authGet]);
+  useEffect(() => {
+    // The paid lookup's last result belongs to the deal it was run for — never carry it to another deal.
+    setPropIntel(null);
+  }, [activeDeal?.id]);
+  useEffect(() => {
+    if (dealTab !== 'intel' || !activeDeal?.id || !session) return;
+    const id = activeDeal.id;
+    if (intelLocal?.dealId === id && (intelLocal.data || intelLocal.loading)) return;
+    setIntelLocal({ dealId: id, data: null, loading: true, failed: false });
+    authGet(`/api/crm/property-intel?deal_id=${id}`)
+      .then(async r => { if (!r.ok) throw new Error(String(r.status)); return (await r.json()) as IntelData; })
+      .then(data => setIntelLocal(cur => (cur?.dealId === id ? { dealId: id, data, loading: false, failed: false } : cur)))
+      .catch(() => setIntelLocal(cur => (cur?.dealId === id ? { dealId: id, data: null, loading: false, failed: true } : cur)));
+  }, [dealTab, activeDeal?.id, session, authGet]); // eslint-disable-line react-hooks/exhaustive-deps
   // ── Phone-alert taps ──────────────────────────────────────────────────────────
   // An alert links to /crm/commercial?open=<type>:<id>#<page>. The tap reaches the app three ways, because a home-screen app on a phone does
   // not always honour the URL it was asked to open (it can launch at its start page, or just come to the front): the URL itself (cold start),
@@ -12666,6 +12683,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* ── Property Intel tab ── */}
               {dealTab === 'intel' && (
                 <div>
+                  <div style={{ marginBottom: 18 }}>
+                    <PropertyIntelCard data={intelLocal?.dealId === activeDeal.id ? intelLocal.data : null} loading={intelLocal?.dealId !== activeDeal.id || !!intelLocal?.loading} failed={intelLocal?.dealId === activeDeal.id && !!intelLocal.failed}
+                      onOpenOwner={id => { setActiveDeal(null); openEntity('contact', id) || setPendingOpen({ type: 'contact', id, at: Date.now() }); }} />
+                  </div>
+                  {/* The paid ATTOM lookup — offered only when its key is configured (it is not today, and a dead box with a developer error helps nobody) */}
+                  {intelLocal?.dealId === activeDeal.id && intelLocal.data?.attomConfigured && (
+                  <>
                   {/* Address input + lookup button */}
                   <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                     <input
@@ -12783,6 +12807,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-374151)', marginBottom: 4 }}>Property Intelligence</div>
                       <div style={{ fontSize: 13 }}>Enter an address above to pull property details, assessed value, tax data, and nearby sale comps from ATTOM.</div>
                     </div>
+                  )}
+                  </>
                   )}
                 </div>
               )}
