@@ -32,6 +32,10 @@ export default function ComposeDock(props: {
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [full, setFull] = useState(false);
+  // Remember the window size (full screen vs docked) across reloads; a fresh compose always opens un-minimized.
+  const [fullPref, setFullPref] = useState(false);
+  useEffect(() => { try { setFullPref(localStorage.getItem('crm-dock-full') === '1'); } catch { /* private mode */ } }, []);
+  const rememberFull = (v: boolean) => { try { localStorage.setItem('crm-dock-full', v ? '1' : '0'); } catch { /* ignore */ } };
   const [instance, setInstance] = useState(0);
   // The window has two views, like Gmail's: the message you're writing, and your saved drafts.
   const [view, setView] = useState<'compose' | 'drafts'>('compose');
@@ -60,7 +64,7 @@ export default function ComposeDock(props: {
     lastNonce.current = request.nonce;
     setTo(request.to ?? ''); setCc(request.cc ?? ''); setBcc(request.bcc ?? '');
     setSubject(request.subject ?? '');
-    setAttachments([]); setCrmFiles(request.crmFiles ?? []); setMinimized(false); setFull(false);
+    setAttachments([]); setCrmFiles(request.crmFiles ?? []); setMinimized(false); setFull(!isMobile && fullPref);
     setView(request.view ?? 'compose');
     setInstance(i => i + 1);
     setOpen(true);
@@ -217,6 +221,9 @@ export default function ComposeDock(props: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: isMobile ? '4px 6px 4px 14px' : '0 6px 0 14px', height: isMobile ? 52 : 44, flexShrink: 0, background: '#111', color: '#fff', cursor: !isMobile && minimized ? 'pointer' : 'default' }}
         onClick={() => { if (!isMobile && minimized) setMinimized(false); }}>
         <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{view === 'drafts' ? 'Drafts' : (subject.trim() || 'New message')}</span>
+        {minimized && (attachments.length + crmFiles.length) > 0 && (
+          <span title={`${attachments.length + crmFiles.length} attached, not sent yet`} style={{ background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '0 7px', borderRadius: 9, lineHeight: '16px', flexShrink: 0 }}>📎 {attachments.length + crmFiles.length}</span>
+        )}
         {(draftCount > 0 || view === 'drafts') && (
           <button type="button" onClick={e => { e.stopPropagation(); setView(v => (v === 'drafts' ? 'compose' : 'drafts')); setMinimized(false); }}
             aria-label={view === 'drafts' ? 'Back to your message' : `Drafts (${draftCount})`} title={view === 'drafts' ? 'Back to your message' : 'Your saved drafts'}
@@ -225,7 +232,7 @@ export default function ComposeDock(props: {
           </button>
         )}
         <button type="button" onClick={e => { e.stopPropagation(); setMinimized(m => !m); }} aria-label={minimized ? 'Restore' : 'Minimize'} title={minimized ? 'Restore' : 'Minimize'} style={barBtn}>{minimized ? '▢' : '—'}</button>
-        {!isMobile && <button type="button" onClick={e => { e.stopPropagation(); setFull(f => !f); setMinimized(false); }} aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen' : 'Full screen'} style={barBtn}>{full ? '⤡' : '⤢'}</button>}
+        {!isMobile && <button type="button" onClick={e => { e.stopPropagation(); setFull(f => { rememberFull(!f); return !f; }); setMinimized(false); }} aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen' : 'Full screen'} style={barBtn}>{full ? '⤡' : '⤢'}</button>}
         <button type="button" onClick={e => { e.stopPropagation(); setOpen(false); }} aria-label="Close (keeps your draft)" title="Close — your draft is kept" style={{ ...barBtn, fontSize: 18 }}>✕</button>
       </div>
       {view === 'drafts' && !minimized && (

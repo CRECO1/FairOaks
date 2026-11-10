@@ -479,7 +479,17 @@ export default function EmailComposer(p: EmailComposerProps) {
 
   return (
     <div
-      onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); trySend(); } }}
+      onKeyDown={e => {
+        const mod = e.metaKey || e.ctrlKey;
+        if (e.key === 'Enter' && mod) { e.preventDefault(); trySend(); return; }
+        // Desktop shortcuts, live only while this composer has focus: ⌘/Ctrl+Shift+A attach · F formatting row · L send-later menu.
+        if (mod && e.shiftKey && !p.isMobile) {
+          const k = e.key.toLowerCase();
+          if (k === 'a') { e.preventDefault(); attachRef.current?.click(); }
+          else if (k === 'f') { e.preventDefault(); toggleMore(); }
+          else if (k === 'l' && (p.onSchedule || p.draftKey)) { e.preventDefault(); setSchedOpen(v => !v); }
+        }
+      }}
       onDragEnter={e => { if (e.dataTransfer?.types?.includes('Files')) { dragDepth.current++; setDragging(true); } }}
       onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (dragDepth.current === 0) setDragging(false); }}
       onDragOver={e => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); }}
@@ -681,9 +691,9 @@ export default function EmailComposer(p: EmailComposerProps) {
         {p.signature && (
           <div style={{ padding: '0 14px 8px' }}>
             <div style={{ borderTop: '1px dashed var(--k-e5e7eb)', paddingTop: 6, display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif" }}>
-              <span>✍ Your Gmail signature is added when you send</span>
+              <span>✍ Your Gmail signature is added automatically when you send</span>
               <button type="button" onClick={() => setSigOpen(o => !o)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 11.5, fontWeight: 600, padding: 0, minWidth: 0, minHeight: 0, fontFamily: "'DM Sans',sans-serif" }}>{sigOpen ? 'Hide' : 'Show'}</button>
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 11.5, fontWeight: 600, padding: 0, minWidth: 0, minHeight: 0, fontFamily: "'DM Sans',sans-serif", textDecoration: 'underline' }}>{sigOpen ? 'Hide signature' : 'Preview signature'}</button>
             </div>
             {sigOpen && (
               <>
@@ -722,18 +732,26 @@ export default function EmailComposer(p: EmailComposerProps) {
             {!p.isMobile ? (
               <>
                 <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
-                  <button type="button" onClick={trySend} disabled={p.sending}
+                  <button type="button" onClick={trySend} disabled={p.sending} title="Send (⌘/Ctrl+Enter)"
                     style={{ minWidth: 92, height: 40, padding: '0 20px 0 22px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: p.onSchedule ? '20px 0 0 20px' : 20, fontSize: 15, fontWeight: 700, cursor: p.sending ? 'default' : 'pointer', opacity: p.sending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif" }}>
                     {p.sending ? 'Sending…' : (p.sendLabel ?? 'Send')}
                   </button>
                   {(p.onSchedule || p.draftKey) && (
-                    <button type="button" onClick={() => setSchedOpen(v => !v)} aria-haspopup="menu" aria-expanded={schedOpen} aria-label="More send options" title="Send later · Save draft"
+                    <button type="button" onClick={() => setSchedOpen(v => !v)} aria-haspopup="menu" aria-expanded={schedOpen} aria-label="More send options" title="Send later · Save draft (⌘/Ctrl+Shift+L)"
                       style={{ width: 34, height: 40, background: '#c9922c', color: '#fff', border: 'none', borderLeft: '1px solid rgba(255,255,255,.4)', borderRadius: '0 20px 20px 0', fontSize: 11, cursor: 'pointer' }}>▾</button>
                   )}
                   {schedOpen && (
                     <>
                       <div onClick={() => setSchedOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
                       <div role="menu" style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 8px)', zIndex: 41, width: 270, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.2)', overflow: 'hidden' }}>
+                        {p.onSchedule && (
+                          <div style={{ display: 'flex', gap: 6, padding: '10px 10px 8px', flexWrap: 'wrap', borderBottom: '1px solid var(--k-f0f0f0)' }}>
+                            {schedPresets().map(([name, iso, label]) => (
+                              <button key={`chip-${name}`} type="button" title={`${name} — ${label}`} onClick={() => void trySchedule(iso, label)}
+                                style={{ padding: '5px 10px', border: '1px solid var(--k-d1d5db)', borderRadius: 14, background: 'var(--k-f9fafb)', color: 'var(--k-374151)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', minHeight: 0, minWidth: 0 }}>{name.replace('Tomorrow ', 'Tmrw ').replace(' morning', ' 8am').replace(' afternoon', ' 1pm')}</button>
+                            ))}
+                          </div>
+                        )}
                         {p.draftKey && (
                           <button role="menuitem" type="button" onClick={() => { setSchedOpen(false); saveForLater(); }}
                             style={{ display: 'block', width: '100%', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 14, fontWeight: 600, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>💾 Save draft<span style={{ display: 'block', fontSize: 12.5, fontWeight: 400, color: 'var(--k-9ca3af)' }}>Keep it in Saved drafts to send later</span></button>
