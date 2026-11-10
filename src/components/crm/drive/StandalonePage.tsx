@@ -9,7 +9,7 @@ export function StandaloneShell({ children }: { children: ReactNode }) {
   useEffect(() => { let t: 'light' | 'dark' = 'light'; try { if (localStorage.getItem('crm:theme') === 'dark') t = 'dark'; } catch { /* private mode */ } setTheme(t); }, []);
   return (
     <div className="crm-app-shell" data-crm-theme={theme ?? 'light'} style={{ fontFamily: "'DM Sans',sans-serif", minHeight: '100dvh', background: 'var(--c-canvas)', visibility: theme ? 'visible' : 'hidden' }}>
-      <style>{CRM_TOKENS_CSS}</style>
+      <style>{CRM_TOKENS_CSS}{`@keyframes crmSpin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.crm-spin{animation:none!important}}`}</style>
       {children}
     </div>
   );
@@ -31,6 +31,7 @@ export function useIsMobile(): boolean {
 export function PageMessage({ children, action }: { children: ReactNode; action?: { label: string; onClick: () => void } }) {
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, color: 'var(--c-muted)', fontSize: 14, textAlign: 'center', padding: 24 }}>
+      {!action && <span className="crm-spin" aria-hidden style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--c-line-2, #d1d5db)', borderTopColor: '#c9922c', animation: 'crmSpin .8s linear infinite' }} />}
       <div>{children}</div>
       {action && <button type="button" onClick={action.onClick} style={{ padding: '9px 18px', background: '#111', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>{action.label}</button>}
     </div>

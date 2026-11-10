@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { DriveDoc } from '@/lib/drive-types';
 import { ShareDialog } from './DocsDrive';
-import { leaveDrivePage } from './open-tab';
+import { leaveDrivePage, announceDriveChanged } from './open-tab';
 import { useCrmSession } from './useCrmSession';
 import { StandaloneShell, PageMessage, Toast, useToast, useIsMobile } from './StandalonePage';
 
@@ -22,6 +22,12 @@ export default function DriveDocPage({ docId }: { docId: string }) {
   const valid = /^[0-9a-f-]{36}$/i.test(docId);
 
   useEffect(() => { document.title = 'My Drive'; }, []);
+  // Tell the other CRM tabs when this one is left or closed (their lists refresh with the new "edited" time).
+  useEffect(() => {
+    const hide = () => { if (document.visibilityState === 'hidden') announceDriveChanged(); };
+    document.addEventListener('visibilitychange', hide); window.addEventListener('pagehide', announceDriveChanged);
+    return () => { document.removeEventListener('visibilitychange', hide); window.removeEventListener('pagehide', announceDriveChanged); };
+  }, []);
   useEffect(() => { if (state === 'out' && valid) window.location.replace(`/crm/${bu}?doc=${docId}`); }, [state, valid, bu, docId]);
 
   if (!valid) return <StandaloneShell><PageMessage action={{ label: 'Go to My Drive', onClick: () => leaveDrivePage(bu) }}>That is not a document link.</PageMessage></StandaloneShell>;
@@ -34,7 +40,7 @@ export default function DriveDocPage({ docId }: { docId: string }) {
       const r = await fetch(`/api/crm/drive/items/doc/${doc.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ share: { visibility, shared_with } }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error((j as { error?: string }).error || 'Could not change sharing');
-      toast('Sharing updated'); setShare(null);
+      toast('Sharing updated'); setShare(null); announceDriveChanged();
     } catch (e) { toast((e as Error).message); }
   };
 

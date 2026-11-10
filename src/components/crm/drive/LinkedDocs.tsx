@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import DI from './DriveIcons';
 import type { DrivePerson } from './DocsDrive';
 import { OPEN_LIVE_DOC, LIVE_DOCS_CHANGED } from './card-edit';
-import { openDriveTab, driveDocPath } from './open-tab';
+import { openDriveTab, driveDocPath, onDriveChanged } from './open-tab';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
 
@@ -36,7 +36,7 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
   const [items, setItems] = useState<Linked[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   // A document opens in its own browser tab (on a phone, or when the browser blocks the tab, in place).
-  const openDoc = (id: string) => { if (!openDriveTab(driveDocPath(id))) setOpenId(id); };
+  const openDoc = (id: string) => { if (!openDriveTab(driveDocPath(id), onToast)) setOpenId(id); };
   const [busy, setBusy] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [tpls, setTpls] = useState<Tpl[] | null>(null);
@@ -61,6 +61,9 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
     window.addEventListener(LIVE_DOCS_CHANGED, changed);
     return () => { window.removeEventListener(OPEN_LIVE_DOC, h); window.removeEventListener(LIVE_DOCS_CHANGED, changed); };
   }, [load]);
+
+  // The document was edited in its own tab: refresh the list (its "updated" time, title).
+  useEffect(() => onDriveChanged(() => { void load(); }), [load]);
 
   const who = (id: string | null) => (id === currentUser.id ? 'you' : [profiles.find(p => p.id === id)?.first_name, profiles.find(p => p.id === id)?.last_name].filter(Boolean).join(' ') || 'a teammate');
 

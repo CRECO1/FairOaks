@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DI, { toneFor, type DIName } from './DriveIcons';
 import dynamic from 'next/dynamic';
-import { openDriveTab, driveDocPath, driveFormPath } from './open-tab';
+import { openDriveTab, driveDocPath, driveFormPath, onDriveChanged } from './open-tab';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import { useBackToClose } from '@/lib/use-back-to-close';
 import DocPreviewModal from '../DocPreviewModal';
@@ -199,13 +199,15 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const go = (id: string | null) => { setQ(''); setView('folder'); setFolderId(id); setDlg(null); };
   const refresh = () => { void load(); void loadTree(); };
   // Documents and sheets open in their own browser tab (like Google Drive); on a phone, or when the browser blocks the new tab, they open in place.
-  const openDoc = (id: string) => { if (!openDriveTab(driveDocPath(id, businessUnit))) setOpenDocId(id); };
+  const openDoc = (id: string) => { if (!openDriveTab(driveDocPath(id, businessUnit), onToast)) setOpenDocId(id); };
   // The CRM-wide search (⌘K) picked a document: open it.
   useEffect(() => {
     const h = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) openDoc(id); };
     window.addEventListener('crm:open-drive-doc', h);
     return () => window.removeEventListener('crm:open-drive-doc', h);
   }, []);
+  // A document or form was changed in its own tab (renamed, saved, shared): reload what is on screen.
+  useEffect(() => onDriveChanged(() => { void load(); void loadTree(); }), [load, loadTree]);
   // The Copilot filed something into My Drive: reload what is on screen.
   useEffect(() => { const f = () => { void load(); void loadTree(); }; window.addEventListener('crm:drive-updated', f); return () => window.removeEventListener('crm:drive-updated', f); }, [load, loadTree]);
 
@@ -403,7 +405,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     if (!f.form_id) { onToast('This form has no blank to open'); return; }
     try {
       const j = await api<{ url: string }>(`/api/crm/forms/${f.form_id}/url`);
-      if (f.submission_id && openDriveTab(driveFormPath(f.submission_id, f.form_id, f.form_name || f.title, businessUnit))) return;
+      if (f.submission_id && openDriveTab(driveFormPath(f.submission_id, f.form_id, f.form_name || f.title, businessUnit), onToast)) return;
       setFormEditor({ form: { id: f.form_id, name: f.form_name || f.title }, url: j.url, submissionId: f.submission_id });
     } catch (e) { onToast((e as Error).message || 'Could not open the form'); }
   };

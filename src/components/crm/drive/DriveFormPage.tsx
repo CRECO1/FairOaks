@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { leaveDrivePage } from './open-tab';
+import { leaveDrivePage, announceDriveChanged } from './open-tab';
 import { useCrmSession } from './useCrmSession';
 import { StandaloneShell, PageMessage, Toast, useToast, useIsMobile } from './StandalonePage';
 
@@ -21,6 +21,11 @@ export default function DriveFormPage({ submissionId }: { submissionId: string }
   const valid = /^[0-9a-f-]{36}$/i.test(submissionId) && /^[0-9a-f-]{36}$/i.test(formId);
 
   useEffect(() => { document.title = `${formName} — My Drive`; }, [formName]);
+  useEffect(() => {
+    const hide = () => { if (document.visibilityState === 'hidden') announceDriveChanged(); };
+    document.addEventListener('visibilitychange', hide); window.addEventListener('pagehide', announceDriveChanged);
+    return () => { document.removeEventListener('visibilitychange', hide); window.removeEventListener('pagehide', announceDriveChanged); };
+  }, []);
   useEffect(() => { if (state === 'out') window.location.replace(`/crm/${bu}#transaction-docs`); }, [state, bu]);
   useEffect(() => {
     if (state !== 'ready' || !valid || url) return;
@@ -39,7 +44,7 @@ export default function DriveFormPage({ submissionId }: { submissionId: string }
   return (
     <StandaloneShell>
       <TransactionDocEditor autoSave form={{ id: formId, name: formName }} url={url} authToken={token} isAdmin={isAdmin} businessUnit={bu} submissionId={submissionId} isMobile={isMobile}
-        onToast={toast} onClose={() => leaveDrivePage(bu)} onSaved={() => {}} />
+        onToast={toast} onClose={() => leaveDrivePage(bu)} onSaved={announceDriveChanged} />
       <Toast msg={msg} />
     </StandaloneShell>
   );

@@ -15,13 +15,33 @@ export const driveFormPath = (submissionId: string, formId: string, name: string
   `/crm/form/${submissionId}?form=${encodeURIComponent(formId)}&name=${encodeURIComponent(name)}&bu=${unit(bu)}`;
 
 /**
- * Opens a path in a new tab. Returns false when it could not (phones keep everything in the app, or the browser blocked the new tab), so the
- * caller falls back to opening it in place.
+ * Opens a path in its own tab, and a second press on the same document brings that tab back instead of opening a copy (the tab is named after the
+ * document). Returns false when it could not (phones keep everything in the app, or the browser blocked the new tab), so the caller falls back to
+ * opening it in place; `onBlocked` gets a one-line explanation when it was the browser's pop-up blocker.
  */
-export function openDriveTab(path: string): boolean {
+export function openDriveTab(path: string, onBlocked?: (msg: string) => void): boolean {
   if (typeof window === 'undefined') return false;
   try { if (window.matchMedia('(max-width: 767px)').matches) return false; } catch { /* no matchMedia: treat as desktop */ }
-  try { const w = window.open(path, '_blank'); return !!w; } catch { return false; }
+  try {
+    const base = path.split('?')[0];
+    const w = window.open('', `crm-drive-${base.replace(/[^a-z0-9]/gi, '-')}`);   // finds the tab if it is already open; otherwise a new, blank one
+    if (!w) throw new Error('blocked');
+    let here = ''; try { here = w.location.pathname; } catch { /* another site: reload it below */ }
+    if (here !== base) w.location.href = path; else w.focus();
+    return true;
+  } catch {
+    onBlocked?.('Your browser blocked the new tab, so it opened here. Allow pop-ups for this site to open documents in their own tab.');
+    return false;
+  }
+}
+
+/** Tabs tell each other that something in My Drive changed (a rename, a save, sharing), so lists in other tabs refresh. */
+const CHANNEL = 'crm-drive';
+export function announceDriveChanged() {
+  try { const c = new BroadcastChannel(CHANNEL); c.postMessage('changed'); c.close(); } catch { /* no BroadcastChannel: lists refresh on their own next time */ }
+}
+export function onDriveChanged(cb: () => void): () => void {
+  try { const c = new BroadcastChannel(CHANNEL); c.onmessage = () => cb(); return () => c.close(); } catch { return () => {}; }
 }
 
 /** Leaves a standalone page: closes the tab when this script opened it, otherwise goes back to the Drive in the CRM. */
