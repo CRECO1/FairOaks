@@ -41,16 +41,52 @@ export function loadBytes(item: PreviewItem): Promise<ArrayBuffer> {
   return p;
 }
 
+// A still from the start of a video the agent picked from their computer (null when the browser can't decode it, e.g. HEVC in Chrome).
+function videoFrame(file: File): Promise<Thumb | null> {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file), v = document.createElement('video');
+    const done = (t: Thumb | null) => { clearTimeout(timer); v.removeAttribute('src'); v.load(); URL.revokeObjectURL(url); resolve(t); };
+    const timer = setTimeout(() => done(null), 5000);
+    v.muted = true; v.preload = 'metadata'; v.playsInline = true;
+    v.onerror = () => done(null);
+    v.onloadeddata = () => { v.currentTime = Math.min(0.1, (v.duration || 1) / 2); };
+    v.onseeked = () => {
+      try {
+        const w = 260, h = Math.max(1, Math.round(w * (v.videoHeight || 9) / (v.videoWidth || 16)));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d')!.drawImage(v, 0, 0, w, h);
+        done({ src: c.toDataURL('image/jpeg', 0.7), pages: null });
+      } catch { done(null); }
+    };
+    v.src = url;
+  });
+}
+
 // First-page thumbnails, cached by key (a CRM flyer's key never changes for the life of the composer).
 const thumbCache = new Map<string, Promise<Thumb | null>>();
-export type Thumb = { src: string; pages: number | null; grid?: string[][]; html?: string; htmlWidth?: number };
+export type Thumb = { src: string; pages: number | null; grid?: string[][]; html?: string; htmlWidth?: number; label?: string };
 export function loadThumb(item: PreviewItem): Promise<Thumb | null> {
   const hit = thumbCache.get(item.key);
   if (hit) return hit;
   const kind = previewKind(item);
   const p = (async () => {
-    if (kind === 'other' || kind === 'doc') return null;
+    if (kind === 'other') return /\.(mov|mp4|m4v|webm)$/i.test(item.name) && item.file ? videoFrame(item.file) : null;
     const bytes = await loadBytes(item);
+    if (kind === 'doc') {
+      // .docx: draw it offscreen like Word does, keep only page 1 (plus the styles it needs) and shrink it to the card.
+      const host = document.createElement('div');
+      host.style.cssText = 'position:fixed;left:-20000px;top:0;width:900px;visibility:hidden;pointer-events:none';
+      document.body.appendChild(host);
+      try {
+        const { renderDocxInto } = await import('@/lib/docx-render');
+        await renderDocxInto(bytes.slice(0), host);
+        const page = host.querySelector<HTMLElement>('section.docx');
+        if (!page) return null;
+        const styles = Array.from(host.querySelectorAll('style')).map(n => n.outerHTML).join('');
+        const first = page.cloneNode(true) as HTMLElement; first.style.marginBottom = '0'; first.style.boxShadow = 'none';
+        return { src: '', pages: host.querySelectorAll('section.docx').length, html: `${styles}<div class="docx-wrapper" style="background:#fff;padding:0">${first.outerHTML}</div>`, htmlWidth: Math.round(page.getBoundingClientRect().width) || 816, label: 'DOCX' };
+      } finally { host.remove(); }
+    }
     if (kind === 'sheet') {
       // .xlsx: the first rows of the first sheet drawn with the file's real formatting, shrunk to the card.
       if (isXlsxName(item.name)) {

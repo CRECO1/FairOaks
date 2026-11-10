@@ -26,7 +26,7 @@ function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
       <div style={{ ...box, background: '#fff', alignItems: 'flex-start', justifyContent: 'flex-start' }} aria-hidden>
         <style>{XR_CSS}</style>
         <div style={{ width: Math.min(t.htmlWidth, 900), transform: `scale(${sc})`, transformOrigin: 'top left', pointerEvents: 'none' }} dangerouslySetInnerHTML={{ __html: t.html }} />
-        <span style={{ position: 'absolute', right: 3, bottom: 3, background: '#15803d', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>XLSX</span>
+        <span style={{ position: 'absolute', right: 3, bottom: 3, background: t.label === 'DOCX' ? '#1d4ed8' : '#15803d', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>{t.label ?? 'XLSX'}</span>
       </div>
     );
   }
@@ -52,7 +52,7 @@ function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
   return (
     <div style={box} aria-hidden>
       <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', textAlign: 'center', padding: 4 }}>
-        {t === undefined && kind !== 'other' && kind !== 'doc' ? 'Loading…' : kind === 'other' || kind === 'doc' ? (item.name.split('.').pop() ?? 'file').toUpperCase().slice(0, 5) : 'No preview'}
+        {t === undefined && (kind !== 'other' || kind === 'doc' || /\.(mov|mp4|m4v|webm)$/i.test(item.name)) ? 'Loading…' : kind === 'other' || kind === 'doc' ? (item.name.split('.').pop() ?? 'file').toUpperCase().slice(0, 5) : 'No preview'}
       </span>
     </div>
   );
