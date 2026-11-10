@@ -58,7 +58,13 @@ function diffOverlay(oldVals: unknown, newVals: unknown) {
     if (newMap.has(id)) continue;
     if ((f.value ?? '').trim()) cleared.add(overlayLabel(f));   // the whole field was removed
   }
-  return { filled: [...filled], cleared: [...cleared], edited: [...edited] };
+  // Redline marks (strike / insert / note) are proposed edits, not typed values — log
+  // only how many were added or removed so the trail shows the markup moved.
+  const marks = (arr: OverlayField[]) => new Set(arr.filter(f => f.id && ['strike', 'insert', 'note'].includes(f.type ?? '')).map(f => f.id as string));
+  const mOld = marks(list(oldVals)), mNew = marks(list(newVals));
+  const marksAdded = [...mNew].filter(id => !mOld.has(id)).length;
+  const marksRemoved = [...mOld].filter(id => !mNew.has(id)).length;
+  return { filled: [...filled], cleared: [...cleared], edited: [...edited], marksAdded, marksRemoved };
 }
 
 // Keep summaries readable when someone fills a 40-blank contract in one pass.
@@ -72,6 +78,8 @@ function summarizeOverlay(d: ReturnType<typeof diffOverlay>): string {
   if (d.edited.length) parts.push(`Edited ${nameList(d.edited)}`);
   if (d.filled.length) parts.push(`Filled ${nameList(d.filled)}`);
   if (d.cleared.length) parts.push(`Cleared ${nameList(d.cleared)}`);
+  if (d.marksAdded) parts.push(`Added ${d.marksAdded} redline mark${d.marksAdded === 1 ? '' : 's'}`);
+  if (d.marksRemoved) parts.push(`Removed ${d.marksRemoved} redline mark${d.marksRemoved === 1 ? '' : 's'}`);
   return parts.join(' · ');
 }
 

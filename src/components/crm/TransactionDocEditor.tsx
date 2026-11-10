@@ -37,7 +37,7 @@ interface Field {
   fw: number;               // width fraction
   value: string;
   size: number;             // font size in PDF points
-  type: 'text' | 'check' | 'signature' | 'initial' | 'date';
+  type: 'text' | 'check' | 'signature' | 'initial' | 'date' | 'strike' | 'insert' | 'note';
   signerRole?: string;      // signature/initial/date placeholders belong to a party
   signerKey?: string;       // …and, when the signers are known by name, to that PERSON
   signerEmail?: string;     // that person's email (lowercase) and name, saved WITH the spot: a reopened draft gets fresh keys, and the
@@ -51,6 +51,25 @@ interface Field {
 interface PageDim { num: number; pw: number; ph: number; }
 
 const RENDER_W = 850;
+// Redline marks: an agent's proposed edits drawn ON the document — strike this text,
+// insert that text, leave a margin note. They are never signer fields (no signerRole), so
+// the e-sign routes (which whitelist signature/initial/date/text/check) ignore them.
+const REDLINE_TYPES = ['strike', 'insert', 'note'];
+const isRedline = (t: string) => REDLINE_TYPES.includes(t);
+const RED = '#d92626';
+// Greedy word-wrap for the PDF (pdf-lib has no layout engine).
+function wrapPlain(font: { widthOfTextAtSize: (t: string, s: number) => number }, text: string, size: number, maxW: number): string[] {
+  const out: string[] = [];
+  for (const para of text.split('\n')) {
+    let line = '';
+    for (const w of para.split(/\s+/).filter(Boolean)) {
+      const next = line ? `${line} ${w}` : w;
+      if (line && font.widthOfTextAtSize(next, size) > maxW) { out.push(line); line = w; } else line = next;
+    }
+    out.push(line);
+  }
+  return out;
+}
 const THUMB_W = 150;          // page-navigator thumbnails render at their own small scale
 let _idc = 0;
 // While a form is shared live, two people can add a blank in the same instant — a random suffix keeps their ids apart.
@@ -134,7 +153,7 @@ export default function TransactionDocEditor({
   const [pages, setPages] = useState<PageDim[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [tool, setTool] = useState<'text' | 'check' | 'signature' | 'initial' | 'date' | 'select'>('select');
+  const [tool, setTool] = useState<'text' | 'check' | 'signature' | 'initial' | 'date' | 'strike' | 'insert' | 'note' | 'select'>('select');
   const [sigRole, setSigRole] = useState<string>('client');
   // Which recipient the next field belongs to (composer mode).
   const [sigKey, setSigKey] = useState<string>(recipients?.[0]?.key ?? '');
@@ -360,7 +379,15 @@ export default function TransactionDocEditor({
     const fy = (e.clientY - rect.top) / rect.height;
     const id = nextId();
     const isSig = tool === 'signature' || tool === 'initial' || tool === 'date';
-    const fw = tool === 'check' ? 0.03 : tool === 'initial' ? 0.07 : tool === 'date' ? 0.12 : tool === 'signature' ? 0.22 : 0.28;
+    const fw = tool === 'check' ? 0.03 : tool === 'initial' ? 0.07 : tool === 'date' ? 0.12 : tool === 'signature' ? 0.22 : tool === 'note' ? 0.24 : tool === 'strike' ? 0.3 : 0.28;
+    if (isRedline(tool)) {
+      // A redline mark belongs to nobody — it is the agent's own proposed edit.
+      setFields(f => [...f, { id, page: pd.num, fx, fy, fw, value: '', size: tool === 'note' ? 9 : 11, type: tool as Field['type'],
+        label: tool === 'insert' ? 'Inserted text' : tool === 'note' ? 'Comment' : undefined }]);
+      setSelected(id);
+      setTool('select');
+      return;
+    }
     // Assign to the active recipient when composing an envelope (recipients present):
     // that's how a text / checkbox input reaches a specific signer, exactly like a
     // signature does. In the type-once library editor (no recipients) it stays a blank
@@ -530,7 +557,7 @@ export default function TransactionDocEditor({
   }, [form.id, fields, onToast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Generate filled PDF ─────────────────────────────────────────────────────
-  const build = useCallback(async (): Promise<Uint8Array | null> => {
+  const build = useCallback(async (withMarks = true): Promise<Uint8Array | null> => {
     if (!bytesRef.current) return null;
     // Texas REALTORS PDFs ship with permission encryption; pdf-lib refuses to
     // load them for editing unless we explicitly ignore it.
@@ -542,6 +569,33 @@ export default function TransactionDocEditor({
       const pg = pgs[f.page - 1]; if (!pg) continue;
       if (f.type === 'signature' || f.type === 'initial' || f.type === 'date') continue; // signer placeholders — stamped at signing time
       const { width, height } = pg.getSize();
+      if (isRedline(f.type)) {
+        if (!withMarks) continue;
+        const red = rgb(0.85, 0.15, 0.15);
+        const sz = f.size * 0.85;
+        const x0 = f.fx * width, w0 = f.fw * width, yb = height - f.fy * height;
+        if (f.type === 'strike') {
+          const h = sz * 1.1;
+          pg.drawRectangle({ x: x0, y: yb, width: w0, height: h, color: red, opacity: 0.12 });
+          pg.drawLine({ start: { x: x0, y: yb + h * 0.45 }, end: { x: x0 + w0, y: yb + h * 0.45 }, thickness: 1.2, color: red });
+        } else if (f.type === 'insert') {
+          const val = winAnsi(f.value || '').trim();
+          if (!val) continue;
+          wrapPlain(font, val, sz, Math.max(24, w0 - 4)).forEach((ln, i) => {
+            const ly = yb + 2 - i * sz * 1.15;
+            pg.drawText(ln, { x: x0 + 2, y: ly, size: sz, font, color: red });
+            pg.drawLine({ start: { x: x0 + 2, y: ly - 1.5 }, end: { x: x0 + 2 + font.widthOfTextAtSize(ln, sz), y: ly - 1.5 }, thickness: 0.8, color: red });
+          });
+        } else {
+          const val = winAnsi(f.value || '').trim();
+          if (!val) continue;
+          const pad = 3, lines = wrapPlain(font, val, sz, Math.max(24, w0 - pad * 2));
+          const h = lines.length * sz * 1.2 + pad * 2;
+          pg.drawRectangle({ x: x0, y: yb - h, width: w0, height: h, color: rgb(1, 0.96, 0.62), borderColor: rgb(0.8, 0.62, 0.1), borderWidth: 0.8 });
+          lines.forEach((ln, i) => pg.drawText(ln, { x: x0 + pad, y: yb - pad - sz * (i + 1) * 1.2 + sz * 0.25, size: sz, font, color: rgb(0.2, 0.15, 0.02) }));
+        }
+        continue;
+      }
       const x = f.fx * width + 2;
       // Baseline sits just above the blank line (detected fy = the underline),
       // matching where the on-screen field renders.
@@ -612,7 +666,9 @@ export default function TransactionDocEditor({
     let saved = false;
     const snapAtStart = JSON.stringify(latestFields.current);   // what this save contains
     try {
-      const out = await build();
+      // For signature, the saved PDF is the CLEAN document; redline marks stay in the saved
+      // field data (so they reopen) and in ⬇ downloads, but never reach a signer's copy.
+      const out = await build(!onSend);
       if (!out) return false;
       // base64-encode the PDF in chunks (avoids call-stack limits on big files)
       let bin = '';
@@ -659,7 +715,7 @@ export default function TransactionDocEditor({
     }
     finally { if (!silent) setBusy(false); savingRef.current = false; }
     return saved;
-  }, [build, fields, dealSel, dealId, listingId, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
+  }, [build, onSend, fields, dealSel, dealId, listingId, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
   const saveToDeal = useCallback(() => doSave(false), [doSave]);
 
   // Auto-save (My Drive): a few seconds after the last change, save quietly in the background. The first loaded state is the
@@ -713,6 +769,8 @@ export default function TransactionDocEditor({
 
   const sendNow = useCallback(async () => {
     const sig = fields.filter(f => ['signature', 'initial', 'date'].includes(f.type));
+    const marks = fields.filter(f => isRedline(f.type)).length;
+    if (marks && !window.confirm(`This document has ${marks} redline mark${marks === 1 ? '' : 's'}. Signers receive the clean document without them — use ⬇ Download to share the marked-up copy. Continue?`)) return;
     if (!sig.length && !window.confirm('No signature fields are placed. Signers will sign on an added Signatures page instead. Continue?')) return;
     await saveToDeal();
     // The label travels with the field so the signer is told what the blank is for.
@@ -927,10 +985,13 @@ export default function TransactionDocEditor({
             {mobileTile('date', '📅', 'Date')}
             {mobileTile('text', 'T', 'Text')}
             {mobileTile('check', '☑', 'Check')}
+            {mobileTile('strike', 'S̶', 'Strike')}
+            {mobileTile('insert', '＋', 'Insert')}
+            {mobileTile('note', '💬', 'Note')}
           </div>
           <div style={{ fontSize: 11.5, lineHeight: 1.35, color: tool !== 'select' ? '#a06a12' : '#9ca3af', fontWeight: tool !== 'select' ? 700 : 400 }}>
             {tool !== 'select'
-              ? `Tap the document to drop a ${tool === 'signature' ? 'signature' : tool === 'initial' ? 'initials' : tool === 'date' ? 'date' : tool === 'check' ? 'checkbox' : 'text'} field — tap 🔍 100% for a precise spot.`
+              ? `Tap the document to drop a ${tool === 'signature' ? 'signature' : tool === 'initial' ? 'initials' : tool === 'date' ? 'date' : tool === 'check' ? 'checkbox' : tool === 'strike' ? 'strikethrough' : tool === 'insert' ? 'redline insertion' : tool === 'note' ? 'margin note' : 'text'} — tap 🔍 100% for a precise spot.`
               : `${fields.length} field${fields.length === 1 ? '' : 's'} placed · pick a tool above, or tap a field to move / resize it.`}
           </div>
         </div>
@@ -968,6 +1029,11 @@ export default function TransactionDocEditor({
             tile('text', 'T', 'Text'),
             tile('check', '☑', 'Checkbox'),
           ])}
+          {railGroup('Redline', [
+            tile('strike', 'S̶', 'Strike text'),
+            tile('insert', '＋', 'Insert text'),
+            tile('note', '💬', 'Margin note'),
+          ])}
           {railGroup('Edit', [
             tile('select', '↖︎', 'Select / move'),
             ...(deletedStack.length ? [
@@ -990,6 +1056,7 @@ export default function TransactionDocEditor({
           <div style={{ marginTop: 16, fontSize: 11.5, color: '#9ca3af', lineHeight: 1.5 }}>
             {fields.length} field{fields.length === 1 ? '' : 's'} placed.<br />
             {tool !== 'select' ? 'Click the page to drop one.' : 'Drag by the handle, ✕ to delete.'}
+            {fields.some(f => isRedline(f.type)) && <div style={{ marginTop: 8, color: RED }}>Redline marks print on the saved &amp; downloaded PDF. Signers always get the clean copy.</div>}
           </div>
         </div>
       )}
@@ -1030,6 +1097,49 @@ export default function TransactionDocEditor({
               // and keep it one tight line tall so adjacent blanks don't merge into a block.
               // The 11px floor keeps the box tappable once the page scales down.
               const em = FORM_FONT_SIZE * 0.85;
+              if (isRedline(f.type)) {
+                const isNote = f.type === 'note', isStrike = f.type === 'strike';
+                const hsz = isMobile ? 26 : 17;
+                const rows = isNote ? Math.max(2, (f.value || '').split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / Math.max(8, Math.floor(f.fw * pd.pw / (em * 0.5))))), 0)) : 1;
+                return (
+                  <div key={f.id}
+                    onMouseDown={e => onDragStart(e, f)} onTouchStart={e => onTouchDragStart(e, f)}
+                    onMouseEnter={() => setHovered(f.id)} onMouseLeave={() => setHovered(h => (h === f.id ? null : h))}
+                    title={isStrike ? 'Strikethrough — drag over the text to delete' : isNote ? 'Margin note' : 'Inserted text'}
+                    style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`, boxSizing: 'border-box',
+                      ...(isNote ? { background: 'rgba(255,245,157,.95)', border: '1px solid #c99a1a', borderRadius: 3, padding: 2, boxShadow: '0 1px 3px rgba(0,0,0,.25)' }
+                        : { height: `max(11px, ${cqw(em * 1.1)})`, transform: 'translateY(-100%)', background: isStrike ? 'rgba(217,38,38,.12)' : 'rgba(217,38,38,.06)' }),
+                      outline: isSel ? `1.5px solid ${RED}` : 'none', touchAction: isSel ? 'none' : undefined, cursor: 'move' }}>
+                    {isStrike && <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', borderTop: `1.5px solid ${RED}`, pointerEvents: 'none' }} />}
+                    {f.type === 'insert' && (
+                      <input value={f.value} onChange={e => updateVal(f.id, e.target.value)} placeholder="Inserted text"
+                        onFocus={() => setSelected(f.id)} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+                        style={{ width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent', padding: '0 2px', margin: 0, boxSizing: 'border-box',
+                          color: RED, textDecoration: 'underline', fontSize: cqw(em), fontFamily: 'Helvetica, Arial, sans-serif' }} />
+                    )}
+                    {isNote && (
+                      <textarea value={f.value} onChange={e => updateVal(f.id, e.target.value)} placeholder="Comment…" rows={rows}
+                        onFocus={() => setSelected(f.id)} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+                        style={{ display: 'block', width: '100%', resize: 'none', border: 'none', outline: 'none', background: 'transparent', padding: 0, margin: 0, boxSizing: 'border-box',
+                          color: '#3a2a00', fontSize: cqw(em), lineHeight: 1.2, fontFamily: 'Helvetica, Arial, sans-serif' }} />
+                    )}
+                    {(isSel || hovered === f.id || isMobile) && (
+                      <div onMouseDown={e => onDragStart(e, f)} onTouchStart={e => onTouchDragStart(e, f, true)} title="Drag to move" aria-label="Move mark"
+                        style={{ position: 'absolute', top: -hsz / 2 - 2, left: -hsz / 2 - 2, width: hsz, height: hsz, borderRadius: '50%', background: RED, color: '#fff', cursor: 'move', touchAction: 'none',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 13 : 9, lineHeight: 1, userSelect: 'none', zIndex: 2 }}>✥</div>
+                    )}
+                    {(isSel || hovered === f.id || isMobile) && (
+                      <div onMouseDown={e => onResizeStart(e, f)} onTouchStart={e => onTouchResizeStart(e, f)} title="Drag right to widen, down for bigger text" aria-label="Resize mark"
+                        style={{ position: 'absolute', bottom: -hsz / 2 - 2, right: -hsz / 2 - 2, width: hsz, height: hsz, borderRadius: '50%', background: '#2563eb', color: '#fff', cursor: 'nwse-resize', touchAction: 'none',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 13 : 10, lineHeight: 1, userSelect: 'none', zIndex: 2 }}>⤡</div>
+                    )}
+                    {isSel && (
+                      <button onClick={e => { e.stopPropagation(); delField(f.id); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} aria-label="Delete mark"
+                        style={{ position: 'absolute', top: -hsz / 2 - 2, right: -hsz / 2 - 2, width: hsz, height: hsz, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: isMobile ? 13 : 10, cursor: 'pointer', lineHeight: `${hsz}px`, padding: 0, zIndex: 2 }}>✕</button>
+                    )}
+                  </div>
+                );
+              }
               if (isSig) {
                 const role = f.signerRole || 'client';
                 const rec = f.signerKey ? recByKey.get(f.signerKey) : undefined;
