@@ -11819,7 +11819,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ padding: isMobile ? (dealCompact ? '10px 14px' : '14px 14px 12px 18px') : '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flexWrap: isMobile ? 'wrap' : 'nowrap', borderRadius: '12px 12px 0 0' }}>
               {isMobile ? (
-                <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: dealCompact ? 19 : 22, fontWeight: 600, flex: 1, minWidth: 0, order: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeDeal.client}</h3>
+                <div style={{ flex: 1, minWidth: 0, order: 0 }}>
+                  <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: dealCompact ? 19 : 22, fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeDeal.client}</h3>
+                  {!dealCompact && <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', marginTop: 4, padding: '1px 8px', borderRadius: 4, fontSize: 11.5, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>}
+                </div>
               ) : (
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeDeal.client}</h3>
@@ -11863,7 +11866,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button type="button" aria-label={`Text ${activeDeal.client}`} title="Text from the office line" onClick={() => { setDealTextPhone(''); setDealTextOpen(o => !o); }}
                   style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', order: isMobile ? 3 : undefined, alignItems: 'center', gap: 6, height: isMobile ? 40 : 34, padding: '0 14px', background: dealTextOpen ? '#fff' : 'transparent', color: dealTextOpen ? '#111' : '#fff', border: '1px solid rgba(255,255,255,.55)', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>💬 Text</button>
               )}
-              <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: isMobile && dealCompact ? 'none' : 'inline-block', ...(isMobile ? { order: 3 } : {}), padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>
+              {!isMobile && <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>}
               <button className="crm-icon-btn" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, ...(isMobile ? { order: 1, minWidth: 44, minHeight: 44 } : {}) }}>✕</button>
             </div>
             <div style={{ padding: isMobile ? '16px 18px' : '20px 26px', overflowY: 'auto', flex: 1 }}
