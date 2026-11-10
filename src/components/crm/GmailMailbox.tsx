@@ -6,6 +6,7 @@ import GmailFiles from './GmailFiles';
 import { confirmDialog } from '@/lib/confirm-dialog';
 import { parseIcs, describeWhen } from '@/lib/ics';
 import { MessageFrame } from './MessageFrame';
+import DocPreviewModal from './DocPreviewModal';
 import { createClient } from '@/lib/supabase/client';
 
 const supabase = createClient();
@@ -61,6 +62,8 @@ const sortMsgs = (l: LiveMessage[]) => [...l].sort((a, b) => a.date - b.date);
 const initialFolds = (l: LiveMessage[]) => new Set(l.filter((m, i) => i < l.length - 1 && !m.unread).map(m => m.id));
 const ORDER_KEY = 'crm-gmail-thread-order';
 const isInvite = (a: { name: string; mime: string }) => /\.ics$/i.test(a.name) || /^(text\/calendar|application\/ics)/i.test(a.mime);
+// Spreadsheets / Word files open in the in-app viewer (parsed in the browser from our own endpoint); download stays one click away.
+const viewable = (a: { name: string; mime: string }) => /\.(xlsx|xls|xlsm|csv|ods|docx)$/i.test(a.name) || /spreadsheetml|wordprocessingml|ms-excel/i.test(a.mime);
 const previewable = (mime: string) => /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(mime);
 
 // In-session caches (gone on a full reload, which is fine): the list paints instantly from the last visit while a quiet
@@ -1110,6 +1113,7 @@ function ThreadReader(p: {
   const flip = () => setNewestFirst(v => { const n = !v; try { localStorage.setItem(ORDER_KEY, n ? 'newest' : 'oldest'); } catch { /* ignore */ } return n; });
   const [details, setDetails] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [filed, setFiled] = useState<Set<string>>(() => new Set());
   const [savedAtt, setSavedAtt] = useState<Set<string>>(() => new Set());
@@ -1158,6 +1162,10 @@ function ThreadReader(p: {
   const openAtt = async (m: LiveMessage, a: { part: string; name: string; mime: string }, asDownload = false) => {
     // A PDF or picture opens straight from the server in the browser's own viewer: no popup-then-blob dance, which phones
     // (and the home-screen app) block. Downloads still go through a blob so the file keeps its name.
+    if (!asDownload && viewable(a)) {
+      setViewing({ url: `/api/gmail/mailbox-attachment?messageId=${m.id}&part=${encodeURIComponent(a.part)}${p.account ? `&account=${encodeURIComponent(p.account)}` : ''}`, name: a.name, type: a.mime });
+      return;
+    }
     if (!asDownload && previewable(a.mime)) {
       const href = `/api/gmail/mailbox-attachment?messageId=${m.id}&part=${encodeURIComponent(a.part)}&inline=1${p.account ? `&account=${encodeURIComponent(p.account)}` : ''}`;
       window.open(href, '_blank', 'noopener');
@@ -1372,6 +1380,7 @@ function ThreadReader(p: {
 
   return (
     <div>
+      {viewing && <DocPreviewModal file={viewing} onClose={() => setViewing(null)} />}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         {!p.embedded && <button type="button" onClick={p.onBack} title="Back to the list (Esc)" style={btn}>← Back</button>}
         {p.isMobile && changeGroup}
@@ -1626,7 +1635,7 @@ function ThreadReader(p: {
                       const key = `${m.id}:${a.part}`;
                       return (
                         <div key={a.part} style={{ display: 'inline-flex', alignItems: 'stretch', maxWidth: '100%', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-f9fafb)', overflow: 'hidden' }}>
-                          <button type="button" onClick={() => void openAtt(m, a)} disabled={busy === key} title={previewable(a.mime) ? `Open ${a.name}` : `Download ${a.name}`}
+                          <button type="button" onClick={() => void openAtt(m, a)} disabled={busy === key} title={previewable(a.mime) || viewable(a) ? `Open ${a.name}` : `Download ${a.name}`}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: p.isMobile ? 44 : 34, padding: '0 11px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", minWidth: 0 }}>
                             <span aria-hidden>{busy === key ? '⏳' : isInvite(a) ? '📅' : /pdf/i.test(a.mime) ? '📕' : /^image\//i.test(a.mime) ? '🖼️' : /sheet|excel|csv/i.test(a.mime) ? '📊' : /word|document/i.test(a.mime) ? '📃' : '📎'}</span>
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, fontWeight: 600 }}>{a.name}</span>
@@ -1640,7 +1649,7 @@ function ThreadReader(p: {
                             <button type="button" disabled={busy === key || savedAtt.has(key)} onClick={() => void saveToDeal(m, a, target)} aria-label={`Save ${a.name} to ${target.label}’s Docs`} title={`Save to ${target.label}’s Docs`}
                               style={{ minWidth: p.isMobile ? 44 : 34, padding: '0 9px', border: 'none', borderLeft: '1px solid var(--k-e5e7eb)', background: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: savedAtt.has(key) ? 'var(--k-065f46)' : 'var(--k-a06a12)', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>{savedAtt.has(key) ? '✓ Saved' : '📁 Docs'}</button>
                           )}
-                          {previewable(a.mime) && (
+                          {(previewable(a.mime) || viewable(a)) && (
                             <button type="button" onClick={() => void openAtt(m, a, true)} aria-label={`Download ${a.name}`} title="Download"
                               style={{ width: p.isMobile ? 44 : 34, border: 'none', borderLeft: '1px solid var(--k-e5e7eb)', background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--k-6b7280)' }}>⬇</button>
                           )}
