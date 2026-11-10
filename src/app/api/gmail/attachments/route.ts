@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
       const { data: file } = await adminClient().storage.from(EMAIL_ATTACH_BUCKET).download(item.path);
       if (!file) return NextResponse.json({ error: 'That file could not be read' }, { status: 502 });
       const bytes = Buffer.from(await file.arrayBuffer());
-      return fileResponse(bytes, item.name || 'attachment', item.mime, req.nextUrl.searchParams.get('inline') === '1');
+      return fileResponse(bytes, item.name || 'attachment', item.mime, (req.nextUrl.searchParams.get('inline') === '1' && !req.nextUrl.searchParams.get('download')));
     }
     if (partId !== null) return notFound('Attachment not found');
   }
@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
     const data = (await a.json()).data as string;
     const bytes = Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
     // octet-stream + nosniff unless it is an explicit inline view of a PDF/picture: never let a hostile attachment render as a page on our origin.
-    return fileResponse(bytes, part.filename ?? 'attachment', part.mimeType, req.nextUrl.searchParams.get('inline') === '1');
+    return fileResponse(bytes, part.filename ?? 'attachment', part.mimeType, (req.nextUrl.searchParams.get('inline') === '1' && !req.nextUrl.searchParams.get('download')));
   }
   // The message isn't in any mailbox this person has connected (it was filed from a teammate's inbox).
   return NextResponse.json({ attachments: [], unavailable: true });

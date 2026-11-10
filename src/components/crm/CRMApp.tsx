@@ -457,7 +457,7 @@ function MessageAttachments({ emailId, isMobile, none, dealId, onNote }: { email
   const [list, setList] = useState<MailAttachment[] | null>(() => attachmentCache.get(emailId) ?? null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState('');
-  const [viewing, setViewing] = useState<{ url: string; name: string; type?: string | null } | null>(null);
+  const [viewing, setViewing] = useState<{ files: { url: string; name: string; type?: string | null }[]; start: number } | null>(null);
   useEffect(() => {
     if (none) { setList([]); return; } // checked when the email was logged: it has no attachments
     if (attachmentCache.has(emailId)) { setList(attachmentCache.get(emailId)!); return; }
@@ -497,7 +497,11 @@ function MessageAttachments({ emailId, isMobile, none, dealId, onNote }: { email
   // Spreadsheets and Word files open in the in-app viewer (drawn with their real formatting, parsed in the browser).
   const viewable = (a: MailAttachment) => /\.(xlsx|xls|xlsm|csv|ods|docx)$/i.test(a.name) || /spreadsheetml|wordprocessingml|ms-excel/i.test(a.mime);
   const download = async (a: MailAttachment, preview = false) => {
-    if (preview && viewable(a)) { setViewing({ url: `/api/gmail/attachments?emailId=${emailId}&part=${encodeURIComponent(a.part)}`, name: a.name, type: a.mime }); return; }
+    if (preview && (viewable(a) || previewable(a))) {
+      const shown = list.filter(x => viewable(x) || previewable(x));
+      setViewing({ files: shown.map(x => ({ url: `/api/gmail/attachments?emailId=${emailId}&part=${encodeURIComponent(x.part)}${previewable(x) ? '&inline=1' : ''}`, name: x.name, type: x.mime })), start: Math.max(0, shown.findIndex(x => x.part === a.part)) });
+      return;
+    }
     // A PDF or picture opens straight from the server in the browser's own viewer — no popup-then-blob dance, which phones
     // (and the home-screen app) block. Downloads still go through a blob so the file keeps its name.
     if (preview && previewable(a)) { window.open(`/api/gmail/attachments?emailId=${emailId}&part=${encodeURIComponent(a.part)}&inline=1`, '_blank', 'noopener'); return; }
@@ -511,7 +515,7 @@ function MessageAttachments({ emailId, isMobile, none, dealId, onNote }: { email
   };
   return (
     <div style={{ paddingLeft: 42, marginTop: 10 }}>
-      {viewing && <DocPreviewModal file={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <DocPreviewModal file={viewing.files[viewing.start]} files={viewing.files} start={viewing.start} onClose={() => setViewing(null)} />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {list.map(a => (
           <Fragment key={a.part}>

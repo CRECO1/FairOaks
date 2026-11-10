@@ -1113,7 +1113,7 @@ function ThreadReader(p: {
   const flip = () => setNewestFirst(v => { const n = !v; try { localStorage.setItem(ORDER_KEY, n ? 'newest' : 'oldest'); } catch { /* ignore */ } return n; });
   const [details, setDetails] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState<string | null>(null);
-  const [viewing, setViewing] = useState<{ url: string; name: string; type?: string | null } | null>(null);
+  const [viewing, setViewing] = useState<{ files: { url: string; name: string; type?: string | null }[]; start: number } | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [filed, setFiled] = useState<Set<string>>(() => new Set());
   const [savedAtt, setSavedAtt] = useState<Set<string>>(() => new Set());
@@ -1162,13 +1162,12 @@ function ThreadReader(p: {
   const openAtt = async (m: LiveMessage, a: { part: string; name: string; mime: string }, asDownload = false) => {
     // A PDF or picture opens straight from the server in the browser's own viewer: no popup-then-blob dance, which phones
     // (and the home-screen app) block. Downloads still go through a blob so the file keeps its name.
-    if (!asDownload && viewable(a)) {
-      setViewing({ url: `/api/gmail/mailbox-attachment?messageId=${m.id}&part=${encodeURIComponent(a.part)}${p.account ? `&account=${encodeURIComponent(p.account)}` : ''}`, name: a.name, type: a.mime });
-      return;
-    }
-    if (!asDownload && previewable(a.mime)) {
-      const href = `/api/gmail/mailbox-attachment?messageId=${m.id}&part=${encodeURIComponent(a.part)}&inline=1${p.account ? `&account=${encodeURIComponent(p.account)}` : ''}`;
-      window.open(href, '_blank', 'noopener');
+    if (!asDownload && (viewable(a) || previewable(a.mime))) {
+      // Everything the viewer can show opens in it, and ←/→ steps through the message's other viewable files.
+      const acct = p.account ? `&account=${encodeURIComponent(p.account)}` : '';
+      const shown = m.attachments.filter(x => viewable(x) || previewable(x.mime));
+      const files = shown.map(x => ({ url: `/api/gmail/mailbox-attachment?messageId=${m.id}&part=${encodeURIComponent(x.part)}${previewable(x.mime) ? '&inline=1' : ''}${acct}`, name: x.name, type: x.mime }));
+      setViewing({ files, start: Math.max(0, shown.findIndex(x => x.part === a.part)) });
       return;
     }
     setBusy(`${m.id}:${a.part}`); setErr('');
@@ -1380,7 +1379,7 @@ function ThreadReader(p: {
 
   return (
     <div>
-      {viewing && <DocPreviewModal file={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <DocPreviewModal file={viewing.files[viewing.start]} files={viewing.files} start={viewing.start} onClose={() => setViewing(null)} />}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         {!p.embedded && <button type="button" onClick={p.onBack} title="Back to the list (Esc)" style={btn}>← Back</button>}
         {p.isMobile && changeGroup}

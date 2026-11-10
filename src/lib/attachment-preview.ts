@@ -127,3 +127,21 @@ export function newestOfVersions(items: PreviewItem[]): Set<string> {
   }
   return out;
 }
+
+export interface SendWarning { key: string; level: 'draft' | 'info'; text: string }
+const BIG_FILE = 10 * 1048576;
+/** Things worth a second look before an email goes out: draft-looking names, signed + unsigned copies together, very large files. */
+export function sendWarnings(items: PreviewItem[]): SendWarning[] {
+  const out: SendWarning[] = [];
+  const draftish = /\b(draft|unsigned|do[ -]?not[ -]?(send|use)|placeholder|sample|template|untitled|copy of|redline|internal)\b/i;
+  for (const i of items) {
+    const stem = i.name.replace(/\.[a-z0-9]{2,5}$/i, '');
+    const m = draftish.exec(stem);
+    if (m) out.push({ key: i.key, level: 'draft', text: `“${i.name}” looks like a ${/unsigned/i.test(m[0]) ? 'unsigned copy' : /internal/i.test(m[0]) ? 'internal file' : 'working copy'} (“${m[0].toLowerCase()}” in the name)` });
+    if (i.size != null && i.size > BIG_FILE) out.push({ key: i.key, level: 'info', text: `“${i.name}” is ${fmtSize(i.size)} — large files can bounce or land in spam` });
+  }
+  const hasSigned = items.find(i => /(^|[^a-z])signed/i.test(i.name) && !/unsigned/i.test(i.name));
+  const hasUnsigned = items.find(i => /unsigned/i.test(i.name));
+  if (hasSigned && hasUnsigned) out.push({ key: hasUnsigned.key, level: 'draft', text: 'Both a signed and an unsigned copy are attached — make sure that is intended' });
+  return out;
+}

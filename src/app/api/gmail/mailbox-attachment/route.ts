@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   const name = file.name.replace(/[\r\n"]/g, '_');
   // ?inline=1 lets a PDF or picture open straight in the browser's own viewer (phones can't rely on a popup + blob: address).
   // Only these four safe kinds, never HTML or anything else; `sandbox` keeps even a mislabelled file from running as our page.
-  if (sp.get('inline') === '1' && /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(file.mime)) {
+  if (sp.get('inline') === '1' && !sp.get('download') && /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i.test(file.mime)) {
     return new NextResponse(file.bytes, {
       headers: {
         'Content-Type': file.mime.toLowerCase(),

@@ -2,8 +2,9 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { sanitizeHtml } from '@/lib/sanitize';
-import { renderWorkbook, isXlsxName, XR_CSS } from '@/lib/xlsx-render';
-import { fmtDate, fmtSize, likelyVersions, newestOfVersions, loadBytes, loadThumb, previewKind, type PreviewItem, type Thumb } from '@/lib/attachment-preview';
+import { renderWorkbookCached, isXlsxName, XR_CSS } from '@/lib/xlsx-render';
+import { renderDocxInto } from '@/lib/docx-render';
+import { fmtDate, fmtSize, likelyVersions, newestOfVersions, sendWarnings, loadBytes, loadThumb, previewKind, type PreviewItem, type Thumb } from '@/lib/attachment-preview';
 import { renderPdfPages, revokePages, targetWidthFor, type RenderedPage } from '@/lib/pdf-render';
 
 // "What am I about to send?" — every attachment on the email as a card with the real first page of the file, so an agent
@@ -61,6 +62,7 @@ export function AttachmentCards(p: { items: PreviewItem[]; onRemove: (key: strin
   const [open, setOpen] = useState<number | null>(null);
   const dupes = useMemo(() => likelyVersions(p.items), [p.items]);
   const newest = useMemo(() => newestOfVersions(p.items), [p.items]);
+  const warns = useMemo(() => sendWarnings(p.items), [p.items]);
   if (!p.items.length) return null;
   const W = p.isMobile ? 92 : 104, H = Math.round(W * 1.3);
   return (
@@ -68,6 +70,11 @@ export function AttachmentCards(p: { items: PreviewItem[]; onRemove: (key: strin
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: 'var(--k-6b7280)', letterSpacing: .3, margin: '2px 0 6px', fontFamily: "'DM Sans',sans-serif" }}>
         <span>📎 {p.items.length} attached — tap one to check it</span>
       </div>
+      {warns.length > 0 && (
+        <div role="status" style={{ margin: '0 0 8px', padding: '7px 10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12.5, color: '#92400e', fontFamily: "'DM Sans',sans-serif", lineHeight: 1.45 }}>
+          {warns.map((w, i) => <div key={i}>⚠ {w.text}</div>)}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch' }}>
         {p.items.map((it, idx) => (
           <div key={it.key} style={{ width: W, flexShrink: 0, position: 'relative', fontFamily: "'DM Sans',sans-serif" }}>
@@ -98,6 +105,8 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
   const [msg, setMsg] = useState('');
   const [sheets, setSheets] = useState<{ name: string; html: string; rich?: boolean }[]>([]);
   const [sheet, setSheet] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const docHost = useRef<HTMLDivElement>(null);
   const [docHtml, setDocHtml] = useState('');
   const kind = previewKind(item);
 
@@ -105,7 +114,7 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
     let live = true;
     const ac = new AbortController();
     let got: RenderedPage[] = [], url = '';
-    setPages([]); setImgSrc(''); setMsg(''); setSheets([]); setSheet(0); setDocHtml(''); setState(kind === 'other' ? 'none' : 'loading');
+    setPages([]); setImgSrc(''); setMsg(''); setSheets([]); setSheet(0); setZoom(1); setDocHtml(''); setState(kind === 'other' ? 'none' : 'loading');
     if (kind === 'other') return;
     (async () => {
       try {
@@ -114,7 +123,7 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
         if (kind === 'sheet') {
           if (isXlsxName(item.name)) {
             try {
-              const rich = await renderWorkbook(bytes.slice(0));
+              const rich = await renderWorkbookCached(item.key, bytes.slice(0));
               if (!live) return;
               setSheets(rich.map(r => ({ name: r.name, html: r.html, rich: true }))); setState('ready'); return;
             } catch (e) { console.warn('[AttachmentPreview] rich render failed, using plain', e); }
@@ -126,6 +135,13 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
           setState('ready'); return;
         }
         if (kind === 'doc') {
+          // Drawn like Word (page, margins, fonts, tables); plain text-flow version only if that fails.
+          try {
+            if (!docHost.current) throw new Error('no host');
+            await renderDocxInto(bytes.slice(0), docHost.current);
+            if (!live) return;
+            setState('ready'); return;
+          } catch (e) { console.warn('[AttachmentPreview] faithful docx failed, using plain', e); }
           const mammoth = await import('mammoth');
           const out = await mammoth.convertToHtml({ arrayBuffer: bytes.slice(0) });
           if (!live) return;
@@ -172,6 +188,11 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
               {p.dupes.has(item.key) && <span style={{ marginLeft: 8, fontWeight: 700, color: '#92400e' }}>⚠ Similar file also attached{p.newest.has(item.key) ? ' (this is the newest)' : ' (a newer one may exist)'}</span>}
             </div>
           </div>
+          {kind === 'sheet' && sheets.length > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+            <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => setZoom(z => Math.max(0.4, +(z - 0.15).toFixed(2)))} style={{ ...navBtn(false), minWidth: 30, padding: '0 8px' }}>−</button>
+            <button type="button" title="Reset zoom" onClick={() => setZoom(1)} style={{ ...navBtn(false), minWidth: 50, padding: '0 6px', fontSize: 12 }}>{Math.round(zoom * 100)}%</button>
+            <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => setZoom(z => Math.min(2, +(z + 0.15).toFixed(2)))} style={{ ...navBtn(false), minWidth: 30, padding: '0 8px' }}>+</button>
+          </span>}
           <button type="button" aria-label="Previous attachment" disabled={p.index === 0} onClick={() => p.setIndex(p.index - 1)} style={navBtn(p.index === 0)}>‹</button>
           <span style={{ fontSize: 12, color: 'var(--k-6b7280)', minWidth: 34, textAlign: 'center' }}>{p.index + 1} / {p.items.length}</span>
           <button type="button" aria-label="Next attachment" disabled={p.index >= p.items.length - 1} onClick={() => p.setIndex(p.index + 1)} style={navBtn(p.index >= p.items.length - 1)}>›</button>
@@ -189,9 +210,13 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
               </div>}
               {/* Sanitized like the deal-doc viewer: a crafted workbook can carry javascript: links or raw markup. */}
               {sheets[sheet]?.rich && <style>{XR_CSS}</style>}
-              <div className="attsheet" style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: sheets[sheet]?.rich ? sheets[sheet].html : sanitizeHtml(sheets[sheet]?.html || '') }} />
+              <div className="attsheet" style={{ overflow: 'auto', touchAction: 'pan-x pan-y pinch-zoom' }}><div style={{ zoom }} dangerouslySetInnerHTML={{ __html: sheets[sheet]?.rich ? sheets[sheet].html : sanitizeHtml(sheets[sheet]?.html || '') }} /></div>
             </div>
           )}
+          {kind === 'doc' && <>
+            <style>{`.attdocx .docx-wrapper{background:transparent!important;padding:0!important}.attdocx .docx-wrapper>section.docx{box-shadow:0 1px 8px rgba(0,0,0,.16)!important;margin:0 auto 14px!important;max-width:100%}`}</style>
+            <div ref={docHost} className="attdocx" style={{ display: docHtml ? 'none' : 'block', overflowX: 'auto' }} />
+          </>}
           {docHtml && <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 1px 8px rgba(0,0,0,.12)', padding: p.isMobile ? 16 : 36, fontSize: 14, lineHeight: 1.6, color: '#1a1a1a', maxWidth: 820, margin: '0 auto' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(docHtml) }} />}
           {imgSrc && /* eslint-disable-next-line @next/next/no-img-element */ <img src={imgSrc} alt={item.name} style={{ display: 'block', maxWidth: '100%', margin: '0 auto', borderRadius: 4, boxShadow: '0 1px 8px rgba(0,0,0,.16)', background: '#fff' }} />}
           {pages.map((pg, i) => (

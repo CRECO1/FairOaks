@@ -37,6 +37,19 @@ export const colPx = (w?: number | null) => Math.round((w && w > 0 ? w : 8.43) *
 export const isXlsxName = (n: string) => /\.(xlsx|xlsm)$/i.test(n);
 
 /** Render every visible sheet. `maxRows` trims very long sheets (the viewer says so); `maxCols` guards pathological ranges. */
+const renderCache = new Map<string, Promise<RenderedSheet[]>>();
+/** Same as renderWorkbook, but remembers the last few results by `key` so reopening a big sheet is instant. */
+export function renderWorkbookCached(key: string, bytes: ArrayBuffer, opts: { maxRows?: number; maxCols?: number; onlyFirst?: boolean } = {}): Promise<RenderedSheet[]> {
+  const k = `${key}|${opts.maxRows ?? ''}|${opts.onlyFirst ? 1 : 0}`;
+  const hit = renderCache.get(k);
+  if (hit) return hit;
+  const p = renderWorkbook(bytes, opts);
+  renderCache.set(k, p);
+  p.catch(() => renderCache.delete(k));
+  while (renderCache.size > 6) renderCache.delete(renderCache.keys().next().value as string);
+  return p;
+}
+
 export async function renderWorkbook(bytes: ArrayBuffer, opts: { maxRows?: number; maxCols?: number; onlyFirst?: boolean } = {}): Promise<RenderedSheet[]> {
   const maxRows = opts.maxRows ?? 1500, maxCols = opts.maxCols ?? 60;
   const mod = await import('exceljs');
@@ -57,6 +70,8 @@ function renderSheet(ws: import('exceljs').Worksheet, maxRows: number, maxCols: 
   const rowsN = Math.min(totalRows, maxRows);
   const colsN = Math.min(Math.max(ws.columnCount, 1), maxCols);
   const grid = ws.views?.[0] && (ws.views[0] as { showGridLines?: boolean }).showGridLines === false ? false : true;
+  const view = ws.views?.[0] as { state?: string; ySplit?: number } | undefined;
+  const frozen = view?.state === 'frozen' && view.ySplit && view.ySplit > 0 && view.ySplit <= 10 ? view.ySplit : 0;
 
   // Merges: master cell gets colspan/rowspan, covered cells are skipped.
   const master = new Map<string, { rs: number; cs: number }>();
@@ -74,13 +89,21 @@ function renderSheet(ws: import('exceljs').Worksheet, maxRows: number, maxCols: 
   for (let c = 1; c <= colsN; c++) widths.push(hiddenCol(c) ? 0 : colPx(ws.getColumn(c).width));
   const width = widths.reduce((a, b) => a + b, 0);
   const defH = ws.properties?.defaultRowHeight ? Math.round((ws.properties.defaultRowHeight as number) * 4 / 3) : 20;
+  const heights: number[] = [];
+  for (let r = 1; r <= rowsN; r++) { const row = ws.getRow(r); heights.push(row.hidden ? 0 : (row.height ? Math.round(row.height * 4 / 3) : defH)); }
 
-  let html = `<table class="xr" style="border-collapse:collapse;table-layout:fixed;width:${width}px;border-spacing:0"><colgroup>${widths.map(w => `<col style="width:${w}px">`).join('')}</colgroup><tbody>`;
+  // One CSS class per distinct cell style (a real sheet has a dozen styles and thousands of cells).
+  const classes = new Map<string, string>();
+  const cls = (st: string) => { let c = classes.get(st); if (!c) { c = `x${classes.size}`; classes.set(st, c); } return c; };
+
+  let body = '';
+  let stickyTop = 0;
   for (let r = 1; r <= rowsN; r++) {
     const row = ws.getRow(r);
     if (row.hidden) continue;
-    const h = row.height ? Math.round(row.height * 4 / 3) : defH;
-    html += `<tr style="height:${h}px">`;
+    const h = heights[r - 1];
+    body += `<tr style="height:${h}px">`;
+    const isFrozen = frozen > 0 && r <= frozen;
     for (let c = 1; c <= colsN; c++) {
       if (hiddenCol(c) || covered.has(`${r},${c}`)) continue;
       const cell = row.getCell(c);
@@ -97,8 +120,9 @@ function renderSheet(ws: import('exceljs').Worksheet, maxRows: number, maxCols: 
         const fc = css(f.color as XColor); if (fc) st.push(`color:${fc}`);
       }
       const fill = cell.fill as { type?: string; pattern?: string; fgColor?: XColor; bgColor?: XColor } | undefined;
+      let hasBg = false;
       if (fill?.type === 'pattern' && fill.pattern && fill.pattern !== 'none') {
-        const bg = css(fill.pattern === 'solid' ? fill.fgColor : (fill.fgColor ?? fill.bgColor)); if (bg) st.push(`background:${bg}`);
+        const bg = css(fill.pattern === 'solid' ? fill.fgColor : (fill.fgColor ?? fill.bgColor)); if (bg) { st.push(`background:${bg}`); hasBg = true; }
       }
       const b = cell.border;
       const edge = (name: string, e?: { style?: string; color?: XColor }) => {
@@ -115,15 +139,39 @@ function renderSheet(ws: import('exceljs').Worksheet, maxRows: number, maxCols: 
       if (al?.indent) st.push(`padding-left:${3 + al.indent * 9}px`);
       let text = '';
       try { text = cell.text ?? ''; } catch { text = ''; }
-      html += `<td${mg && mg.rs > 1 ? ` rowspan="${mg.rs}"` : ''}${mg && mg.cs > 1 ? ` colspan="${mg.cs}"` : ''} style="${st.join(';')}"><div style="overflow:hidden;text-overflow:clip">${esc(String(text)) || '&nbsp;'}</div></td>`;
+      // Frozen header rows stay put while the sheet scrolls (needs a background so cells underneath don't show through).
+      const sticky = isFrozen ? ` style="position:sticky;top:${stickyTop}px;z-index:2${hasBg ? '' : ';background:#fff'}"` : '';
+      body += `<td class="${cls(st.join(';'))}"${mg && mg.rs > 1 ? ` rowspan="${mg.rs}"` : ''}${mg && mg.cs > 1 ? ` colspan="${mg.cs}"` : ''}${sticky}><div>${esc(String(text)) || '&nbsp;'}</div></td>`;
     }
-    html += '</tr>';
+    body += '</tr>';
+    if (isFrozen) stickyTop += h;
   }
-  html += '</tbody></table>';
+
+  // Pictures placed on the sheet (logos, photos) — positioned from their anchor cell. Charts are not drawn.
+  let pics = '';
+  try {
+    const colLeft = (c0: number) => { const i = Math.floor(c0); let x = 0; for (let k = 0; k < i && k < widths.length; k++) x += widths[k]; return x + (c0 - i) * (widths[i] ?? 64); };
+    const rowTop = (r0: number) => { const i = Math.floor(r0); let y = 0; for (let k = 0; k < i && k < heights.length; k++) y += heights[k]; return y + (r0 - i) * (heights[i] ?? defH); };
+    const media = (ws.workbook.model as unknown as { media?: { type?: string; extension?: string; buffer?: Uint8Array }[] }).media ?? [];
+    for (const im of ws.getImages()) {
+      const m = media[Number(im.imageId)];
+      if (!m?.buffer || m.type !== 'image' || !/^(png|jpe?g|gif)$/i.test(m.extension ?? '')) continue;
+      const rg = im.range as unknown as { tl: { nativeCol: number; nativeColOff?: number; col: number; row: number }; br?: { col: number; row: number }; ext?: { width: number; height: number } };
+      const x = colLeft(rg.tl.col), y = rowTop(rg.tl.row);
+      const w = rg.ext ? rg.ext.width : rg.br ? colLeft(rg.br.col) - x : 0, hgt = rg.ext ? rg.ext.height : rg.br ? rowTop(rg.br.row) - y : 0;
+      if (!(w > 4 && hgt > 4) || y > heights.reduce((a, b) => a + b, 0)) continue;
+      let bin = ''; const u8 = m.buffer; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+      const mime = /^jpe?g$/i.test(m.extension!) ? 'jpeg' : m.extension!.toLowerCase();
+      pics += `<img alt="" style="position:absolute;left:${Math.round(x)}px;top:${Math.round(y)}px;width:${Math.round(w)}px;height:${Math.round(hgt)}px;pointer-events:none" src="data:image/${mime};base64,${btoa(bin)}">`;
+    }
+  } catch { /* pictures are a nicety — never block the sheet */ }
+
+  const rules = [...classes].map(([st, c]) => `.xr .${c}{${st}}`).join('');
+  const html = `<div class="xrw" style="position:relative;width:${width}px"><style>${rules}</style><table class="xr" style="border-collapse:collapse;table-layout:fixed;width:${width}px;border-spacing:0"><colgroup>${widths.map(w => `<col style="width:${w}px">`).join('')}</colgroup><tbody>${body}</tbody></table>${pics}</div>`;
   return { name: ws.name, html, width, truncated: totalRows > rowsN };
 }
 
 function colNum(s: string): number { let n = 0; for (const ch of s) n = n * 26 + ch.charCodeAt(0) - 64; return n; }
 
 /** Shared CSS for the rendered table (cells keep their own formatting; this only sets the base). */
-export const XR_CSS = `.xr td{padding:1px 3px;font-family:Calibri,Arial,sans-serif;font-size:14.6px;color:#000;overflow:hidden}.xr{background:#fff}`;
+export const XR_CSS = `.xr td{padding:1px 3px;font-family:Calibri,Arial,sans-serif;font-size:14.6px;color:#000;overflow:hidden}.xr td>div{overflow:hidden;text-overflow:clip}.xr{background:#fff}`;

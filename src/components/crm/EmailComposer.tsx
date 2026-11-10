@@ -3,7 +3,7 @@
 import CrmAttachPicker from './CrmAttachPicker';
 import { AttachmentCards } from './AttachmentPreview';
 import EmailToolbar from './EmailToolbar';
-import type { PreviewItem } from '@/lib/attachment-preview';
+import { sendWarnings, type PreviewItem } from '@/lib/attachment-preview';
 import type { CrmAttachItem } from '@/lib/crm-attachments';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { sanitizeHtml } from '@/lib/sanitize';
@@ -347,6 +347,8 @@ export default function EmailComposer(p: EmailComposerProps) {
     if (!text && attachCount === 0) { p.notify?.('Write a message first'); p.bodyRef.current?.focus(); return; }
     if (/\battach(ed|ment|ments|ing)?\b/i.test(text) && attachCount === 0
       && !(await confirmDialog('You mentioned an attachment, but nothing is attached. Send anyway?', { confirmLabel: 'Send anyway' }))) return;
+    const drafty = sendWarnings(previewItems).filter(w => w.level === 'draft');
+    if (drafty.length && !(await confirmDialog(`Before you send:\n\n${drafty.map(w => `• ${w.text}`).join('\n')}\n\nSend anyway?`, { confirmLabel: 'Send anyway' }))) return;
     saveNow();
     setCount(UNDO_SECONDS);
   };
