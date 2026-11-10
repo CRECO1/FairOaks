@@ -16,3 +16,8 @@ const INPUT_TYPES = new Set(['text', 'check']);
 export function isBrokerFilled(f: { type?: unknown; signerRole?: unknown; signerIndex?: unknown; signerKey?: unknown }): boolean {
   return INPUT_TYPES.has(String(f.type)) && !f.signerIndex && !f.signerRole && !f.signerKey;
 }
+
+/** Placed spots that carry a person's email AND a position, but the signer at that position is somebody else. `emailsInOrder` = the request's signers' emails, lowercase, by signing position (1-based in the spots). */
+export function spotsOutOfLine<T extends { signerEmail?: unknown; signerIndex?: unknown }>(spots: T[], emailsInOrder: string[]): T[] {
+  return spots.filter(f => f && f.signerEmail && f.signerIndex && emailsInOrder[Number(f.signerIndex) - 1] !== String(f.signerEmail).trim().toLowerCase());
+}

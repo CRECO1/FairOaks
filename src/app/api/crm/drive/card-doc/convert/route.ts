@@ -6,7 +6,7 @@ import { jsonToDriveState } from '@/lib/drive-markdown';
 import { logDocEvent, mirrorDocToFeeds } from '@/lib/drive-events';
 import { DOC_COLS } from '@/lib/drive-types';
 import { parseCsv, sheetStateFromTabs } from '@/lib/drive-sheet';
-import { xlsxToTabs, xlsToTabs, withHeaderRow, capGrid } from '@/lib/xlsx-import';
+import { xlsxToTabs, xlsToTabs, withHeaderRow, capGrid, assertSafeZip } from '@/lib/xlsx-import';
 import { userRateLimit } from '@/lib/user-ratelimit';
 
 // "Edit as a live document" for a Word (.docx) / text (.txt) file — or an Excel (.xlsx / .xls) / CSV file, which becomes a live SHEET (columns can be
@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
       else if (isXls) state = sheetStateFromTabs(withHeaderRow(await xlsToTabs(buf)));   // old binary Excel: values only (no colours / borders)
       else state = sheetStateFromTabs(withHeaderRow(await xlsxToTabs(buf)));             // keeps how it looks: fills, fonts, borders, widths, merges
     } else {
+      if (isDocx) await assertSafeZip(buf);   // a .docx is a zip: refuse one that would unpack to something enormous
       const json = isDocx ? (await docxToDocJson(buf)).json : textToDocJson(buf.toString('utf8'));
       state = jsonToDriveState(json, { letterhead: true });
     }

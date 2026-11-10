@@ -66,7 +66,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       // Team notes typed in a live-feed sheet also land on the contact's card (best effort, after the response — never delays or fails the save).
       if (seen.kind === 'sheet' && merged.state !== cur.ystate) {
         const bu = dc.bu, ctx = dc.ctx, admin = dc.admin, title = String(seen.title ?? 'Sheet'), before = cur.ystate as string | null;
-        after(() => mirrorSheetNotes(admin, { title, bu, before, after: merged.state, actorId: ctx.userId, ctx }).then(() => undefined));
+        after(() => mirrorSheetNotes(admin, { docId: id, title, bu, before, after: merged.state, actorId: ctx.userId, ctx }).then(() => undefined));
       }
       // The activity log: only a real change counts (a no-op save, e.g. a reconnect, isn't an edit).
       if (merged.state !== cur.ystate) await logDocEdit(dc.admin, { docId: id, bu: dc.bu, actor: dc.ctx.userId, charsBefore: ((cur.content_text as string | null) ?? '').length, charsAfter: merged.text.length, wordsAfter: merged.text.split(/\s+/).filter(Boolean).length });

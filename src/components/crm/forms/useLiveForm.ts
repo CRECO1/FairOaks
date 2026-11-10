@@ -23,12 +23,12 @@ import { acquireDoc, releaseDoc, type CollabHandle } from '@/lib/collab/doc-regi
 
 export interface LiveField {
   id: string; page: number; fx: number; fy: number; fw: number; value: string; size: number; type: string;
-  signerRole?: string; signerKey?: string; fieldKey?: string; label?: string; defaultValue?: string;
+  signerRole?: string; signerKey?: string; signerEmail?: string; signerName?: string; fieldKey?: string; label?: string; defaultValue?: string;
 }
 export interface LivePeer { clientId: number; name: string; color: string; sel: string | null; selAt: number }
 export type LiveStatus = 'off' | 'connecting' | 'live' | 'denied' | 'offline';
 
-const PROPS = ['page', 'fx', 'fy', 'fw', 'value', 'size', 'type', 'signerRole', 'signerKey', 'signerIndex', 'fieldKey', 'label', 'defaultValue'] as const;   // signerIndex too: dropping it falls back to matching a spot to a signer by ROLE
+const PROPS = ['page', 'fx', 'fy', 'fw', 'value', 'size', 'type', 'signerRole', 'signerKey', 'signerEmail', 'signerName', 'signerIndex', 'fieldKey', 'label', 'defaultValue'] as const;   // signerIndex too: dropping it falls back to matching a spot to a signer by ROLE
 const COLORS = ['#2563eb', '#16a34a', '#db2777', '#7c3aed', '#0891b2', '#ea580c', '#4f46e5', '#c9922c'];
 const LOCAL = 'live-form-local';
 const LOCK_MS = 30_000;  // a selected blank stays reserved for its person for this long after their last move / keystroke
@@ -47,6 +47,7 @@ function project<T extends LiveField>(map: Y.Map<unknown>): T[] {
       id, page: (g('page') as number) ?? 1, fx: (g('fx') as number) ?? 0, fy: (g('fy') as number) ?? 0, fw: (g('fw') as number) ?? 0.1,
       value: (g('value') as string) ?? '', size: (g('size') as number) ?? 11, type: (g('type') as string) ?? 'text',
       signerRole: g('signerRole') as string | undefined, signerKey: g('signerKey') as string | undefined,
+      signerEmail: g('signerEmail') as string | undefined, signerName: g('signerName') as string | undefined,
       fieldKey: g('fieldKey') as string | undefined, label: g('label') as string | undefined, defaultValue: g('defaultValue') as string | undefined,
     } as T);
   }

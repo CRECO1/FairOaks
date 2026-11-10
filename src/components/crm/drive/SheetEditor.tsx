@@ -149,6 +149,8 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
     flushRef.current = async () => {
       await flush();
       for (let i = 0; i < 30 && (saving || pending.length); i++) { await new Promise(r => setTimeout(r, 150)); if (!saving && pending.length) await flush(); }
+      // Never carry on with a copy that is behind what is on screen (a PDF, a signature request or a version made from stale text is worse than a short wait).
+      if (saving || pending.length) throw new Error('Your latest edits are still saving — give it a moment and try again.');
     };
     const onUpdate = (u: Uint8Array, origin: unknown) => {
       if (origin === 'seed') return;
@@ -254,7 +256,7 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} onHistory={() => setHistory(true)} peers={peers} isMobile={isMobile} docId={doc.id} authToken={authToken} title={title} onToast={onToast} cellComments={cellComments} onCommentAt={commentAt} commentsOpen={panel === 'comments'} jump={jump} onShiftComments={shiftComments} onSwapComments={swapComments} />
+        {handle ? <Grid handle={handle} me={me} userId={user.id} isAdmin={isAdmin} onHistory={() => setHistory(true)} peers={peers} isMobile={isMobile} docId={doc.id} isPrivate={doc.visibility === 'private'} authToken={authToken} title={title} onToast={onToast} cellComments={cellComments} onCommentAt={commentAt} commentsOpen={panel === 'comments'} jump={jump} onShiftComments={shiftComments} onSwapComments={swapComments} />
           : <div style={{ padding: 28, color: 'var(--k-9ca3af)' }}>Connecting…</div>}
         {panel === 'comments' && handle && (
           <CellCommentsPanel docId={doc.id} authToken={authToken} me={user} people={people} isMobile={isMobile} isAdmin={isAdmin} onToast={onToast} onClose={() => setPanel(null)}
@@ -314,7 +316,7 @@ const moveKeys = (m: Y.Map<unknown>, axis: 'row' | 'col', at: number, delta: 1 |
   for (const [, to, v] of moves) if (to) m.set(to, v);
 };
 
-function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, title, onToast, onHistory, cellComments, onCommentAt, commentsOpen, jump, onShiftComments, onSwapComments }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; onHistory: () => void; peers: Peer[]; isMobile: boolean; docId: string; authToken?: string; title: string; onToast: (m: string) => void; cellComments: Map<string, number>; onCommentAt: (t: { tabId: string; r: number; c: number }, follow?: boolean) => void; commentsOpen: boolean; jump: { tabId: string; r: number; c: number; n: number } | null; onShiftComments: (tabId: string, axis: 'row' | 'col', at: number, delta: 1 | -1) => void; onSwapComments: (tabId: string, axis: 'row' | 'col', a: number, b: number) => void }) {
+function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, isPrivate, authToken, title, onToast, onHistory, cellComments, onCommentAt, commentsOpen, jump, onShiftComments, onSwapComments }: { handle: CollabHandle; me: Peer; userId: string; isAdmin: boolean; onHistory: () => void; peers: Peer[]; isMobile: boolean; docId: string; isPrivate?: boolean; authToken?: string; title: string; onToast: (m: string) => void; cellComments: Map<string, number>; onCommentAt: (t: { tabId: string; r: number; c: number }, follow?: boolean) => void; commentsOpen: boolean; jump: { tabId: string; r: number; c: number; n: number } | null; onShiftComments: (tabId: string, axis: 'row' | 'col', at: number, delta: 1 | -1) => void; onSwapComments: (tabId: string, axis: 'row' | 'col', a: number, b: number) => void }) {
   const ydoc = handle.ydoc;
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -336,6 +338,10 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const [tabMenu, setTabMenu] = useState<{ id: string; left: number; bottom: number } | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; text: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Team-notes columns on a live CRM tab are also saved on each contact's card. Say so once per sheet (the person can dismiss it for good).
+  const noteKey = `crm:sheet-notes-hint:${docId}`;
+  const [noteHintOff, setNoteHintOff] = useState(true);   // starts hidden so a server render / blocked storage shows nothing
+  useEffect(() => { try { setNoteHintOff(localStorage.getItem(noteKey) === '1'); } catch { setNoteHintOff(false); } }, [noteKey]);
   const [filtersOn, setFiltersOn] = useState(false);
   const [filters, setFilters] = useState<Record<number, string[]>>({});     // column -> hidden values (this person only)
   const [filterMenu, setFilterMenu] = useState<{ c: number; q: string } | null>(null);
@@ -1519,6 +1525,12 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         <TBtn title="Pivot table from the selected cells" onClick={() => setPivotDlg({})}><Ico n="table" /></TBtn>
         <TBtn title="Find and replace (Ctrl+F)" on={!!find} onClick={() => setFind(f => (f ? null : { q: '', rep: '', idx: 0, replace: false }))}><Ico n="search" /></TBtn>
       </OverflowRow>
+      {hasFeed && feedCols > 0 && !noteHintOff && tab && String(tCells(tab.map).get(cellKey(0, feedCols)) ?? '').trim() !== '' && (
+        <div role="note" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px', fontSize: 12, color: 'var(--k-6b7280, #6b7280)', background: 'var(--k-fffbeb, #fffbeb)', borderBottom: '1px solid var(--k-e5e7eb)' }}>
+          <span style={{ flex: 1, minWidth: 0 }}>Notes you type in the team columns are also saved on each contact’s card — {isPrivate ? 'where the whole team can read them, even though this sheet is private.' : 'where the whole team can read them.'}</span>
+          <button type="button" aria-label="Dismiss" title="Don’t show again for this sheet" onClick={() => { setNoteHintOff(true); try { localStorage.setItem(noteKey, '1'); } catch { /* fine */ } }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, color: 'inherit', padding: '0 4px', minHeight: 24 }}>✕</button>
+        </div>
+      )}
       {/* formula bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderBottom: '1px solid var(--k-e5e7eb)' }}>
         <input aria-label="Name box — type a cell or range, like D12 or A1:C10, and press Enter to go there" title="Type a cell or range (D12, A1:C10) and press Enter to go there"

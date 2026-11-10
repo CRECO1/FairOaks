@@ -6,7 +6,7 @@ import { jsonToDriveState } from '@/lib/drive-markdown';
 import { logDocEvent } from '@/lib/drive-events';
 import { DOC_COLS } from '@/lib/drive-types';
 import { parseCsv, sheetStateFromTabs } from '@/lib/drive-sheet';
-import { xlsxToTabs, xlsToTabs, withHeaderRow, capGrid } from '@/lib/xlsx-import';
+import { xlsxToTabs, xlsToTabs, withHeaderRow, capGrid, assertSafeZip } from '@/lib/xlsx-import';
 import { userRateLimit } from '@/lib/user-ratelimit';
 
 // "Edit as a live document": turns an uploaded Word (.docx) or plain-text (.txt) file into a NEW live My Drive document (same folder, same sharing), so it
@@ -50,6 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       else if (isXls) state = sheetStateFromTabs(withHeaderRow(await xlsToTabs(buf)));   // old binary Excel: values only
       else state = sheetStateFromTabs(withHeaderRow(await xlsxToTabs(buf)));
     } else {
+      if (isDocx) await assertSafeZip(buf);   // a .docx is a zip: refuse one that would unpack to something enormous
       const json = isDocx ? (await docxToDocJson(buf)).json : textToDocJson(buf.toString('utf8'));
       state = jsonToDriveState(json, { letterhead: true });   // CRECO letterhead on (the switch is in the editor)
     }

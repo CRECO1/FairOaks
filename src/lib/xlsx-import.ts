@@ -23,7 +23,18 @@ export const dateText = (d: Date, nf?: string) => {
   return `${m}/${day}/${y}`;
 };
 
+/** .xlsx and .docx are zip files, and a zip can be a few KB that unpacks to gigabytes. Read only the file list (no unpacking) and refuse one that would. */
+export async function assertSafeZip(buf: Buffer, opts: { maxEntries?: number; maxBytes?: number } = {}): Promise<void> {
+  const maxEntries = opts.maxEntries ?? 3000, maxBytes = opts.maxBytes ?? 150 * 1024 * 1024;
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(buf);
+  let n = 0, total = 0;
+  zip.forEach((_path, f) => { n++; total += Number((f as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0); });
+  if (n > maxEntries || total > maxBytes) throw new Error(`zip too large to open safely (${n} parts, ${Math.round(total / 1048576)} MB unpacked)`);
+}
+
 export async function xlsxToTabs(buf: Buffer): Promise<ImportTab[]> {
+  await assertSafeZip(buf);   // before exceljs unpacks anything
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf as unknown as ArrayBuffer);

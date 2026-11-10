@@ -162,9 +162,14 @@ export default function EsignComposer({
     try {
       // Persist the placements with each field pointing at its signer's position,
       // minus any whose signer is gone.
+      // Each spot is stamped with the email + name of the person it is for, so the server can refuse a request whose spots no longer line up with its signers.
+      const byKey = new Map(valid.map(r => [r.key, r]));
       const values = placed
         .filter(f => !f.signerKey || signerIndex.has(f.signerKey))
-        .map(f => ({ ...f, signerIndex: f.signerKey ? signerIndex.get(f.signerKey)! : null }));
+        .map(f => {
+          const r = f.signerKey ? byKey.get(f.signerKey) : undefined;
+          return { ...f, signerIndex: f.signerKey ? signerIndex.get(f.signerKey)! : null, ...(r ? { signerEmail: r.email.trim().toLowerCase(), signerName: r.name.trim() } : {}) };
+        });
       const up = await fetch(`/api/crm/form-submissions/${doc.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) },
         body: JSON.stringify({ values, logSummary: `Assigned ${values.length} field(s) to ${valid.length} signer(s) before sending` }),
@@ -219,21 +224,27 @@ export default function EsignComposer({
           onBack={() => setStep('setup')}
           onFieldsChange={setPlaced}
           onSend={f => {
-            // A reopened draft gives its recipients fresh keys, so every field placed for them looks like it belongs to a removed signer.
-            // Never re-point a signature silently — but when a spot's role matches exactly ONE signer on this request, ask once and offer it.
-            const isStale = (x: EditorField) => ['signature', 'initial', 'date', 'text', 'check'].includes(x.type) && !!x.signerKey && !signerIndex.has(x.signerKey);
-            let next = f;
-            const stale = f.filter(isStale);
+            // A reopened draft gives its recipients fresh keys. A spot finds its signer again by the EMAIL saved with it (when exactly one signer on this
+            // request has that email). Never by role: two people can share a role, and moving a signature to the wrong one is the worst failure this screen has.
+            // Only spots saved before emails were remembered fall back to role, and only after asking.
+            const isSigning = (x: EditorField) => ['signature', 'initial', 'date', 'text', 'check'].includes(x.type);
+            const isStale = (x: EditorField) => isSigning(x) && !!x.signerKey && !signerIndex.has(x.signerKey);
+            let next = f.map(x => {
+              if (!isStale(x) || !x.signerEmail) return x;
+              const same = valid.filter(r => r.email.trim().toLowerCase() === x.signerEmail);
+              return same.length === 1 ? { ...x, signerKey: same[0].key, signerRole: same[0].role, signerName: same[0].name.trim() } : x;
+            });
+            const stale = next.filter(isStale);
             if (stale.length) {
               const only = (role?: string) => { const m = valid.filter(r => r.role === role); return m.length === 1 ? m[0] : null; };
-              const fixable = stale.filter(x => only(x.signerRole));
+              const fixable = stale.filter(x => !x.signerEmail && only(x.signerRole));
               if (fixable.length) {
                 const roleName = (r?: string) => ROLES.find(x => x[0] === r)?.[1] ?? (r || 'Client');
                 const groups = new Map<string, EditorField[]>();
                 fixable.forEach(x => groups.set(x.signerRole ?? 'client', [...(groups.get(x.signerRole ?? 'client') ?? []), x]));
                 const lines = [...groups.entries()].map(([role, fs]) => `• ${fs.length} spot${fs.length === 1 ? '' : 's'} placed for ${roleName(role)} (page${new Set(fs.map(f => f.page)).size === 1 ? '' : 's'} ${[...new Set(fs.map(f => f.page))].sort((a, b) => a - b).join(', ')}) → ${only(role)!.name || only(role)!.email}`);
-                if (window.confirm(`Some signing spots were placed for a signer who isn’t linked to this request any more (this happens when you reopen a draft):\n\n${lines.join('\n')}\n\nOnly attach them if that is the same person. The next screen shows exactly who signs where.\n\nOK = attach.  Cancel = leave them out of what is sent.`)) {
-                  next = f.map(x => fixable.includes(x) ? { ...x, signerKey: only(x.signerRole)!.key } : x);
+                if (window.confirm(`Some signing spots were placed before this document remembered who they were for, and they aren’t linked to this request:\n\n${lines.join('\n')}\n\nOnly attach them if that is the same person. The next screen shows exactly who signs where.\n\nOK = attach.  Cancel = leave them out of what is sent.`)) {
+                  next = next.map(x => fixable.includes(x) ? { ...x, signerKey: only(x.signerRole)!.key, signerName: only(x.signerRole)!.name.trim() } : x);
                 }
               }
             }

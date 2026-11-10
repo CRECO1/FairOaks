@@ -5,7 +5,7 @@ import type { DriveDoc } from '@/lib/drive-types';
 import { ShareDialog } from './DocsDrive';
 import { leaveDrivePage, announceDriveChanged } from './open-tab';
 import { useCrmSession } from './useCrmSession';
-import { StandaloneShell, PageMessage, Toast, useToast, useIsMobile } from './StandalonePage';
+import { StandaloneShell, PageMessage, Toast, useToast, useIsMobile, SignedOutBanner } from './StandalonePage';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
 
@@ -15,7 +15,7 @@ const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
  */
 export default function DriveDocPage({ docId }: { docId: string }) {
   const bu: 'commercial' | 'residential' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bu') === 'residential' ? 'residential' : 'commercial';
-  const { state, token, me, people, isAdmin } = useCrmSession(bu);
+  const { state, token, me, people, isAdmin, signedOut } = useCrmSession(bu);
   const [msg, toast] = useToast();
   const isMobile = useIsMobile();
   const [share, setShare] = useState<DriveDoc | null>(null);
@@ -59,6 +59,7 @@ export default function DriveDocPage({ docId }: { docId: string }) {
 
   return (
     <StandaloneShell>
+      <SignedOutBanner show={signedOut} bu={bu} />
       <LiveDocEditor docId={docId} authToken={token} user={{ id: me.id, name }} isMobile={isMobile} people={people} isAdmin={isAdmin}
         onClose={() => leaveDrivePage(bu)}
         onToast={toast}

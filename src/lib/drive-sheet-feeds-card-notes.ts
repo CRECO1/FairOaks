@@ -50,7 +50,7 @@ export async function buildRobertCardNotes(dc: DriveContext): Promise<FeedData> 
 
 // ── Robert's full activity log: every move he makes, one row per action, newest first ──
 // Calls (crm_call_log), outreach emails we send from his mailbox on his behalf (a listing flyer attached — NOT his everyday mail) and everything logged on a contact card (crm_client_activities, with or
-// without a note). Contacts are read as the viewer; "Team note ·" sheet-mirror entries are skipped.
+// without a note). Contacts are read as the viewer; "Team note ·" sheet-mirror entries are skipped. Calls with no contact show only that they happened.
 type CallRow = { contact_id: string | null; started_at: string; direction: string | null; outcome: string | null; result: string | null; duration_sec: number | null; notes: string | null; to_number: string | null };
 type ActRow = { client_id: string; type: string; note: string | null; created_at: string };
 
@@ -73,7 +73,13 @@ export async function buildRobertActivity(dc: DriveContext): Promise<FeedData> {
   }
   type R = { at: string; kind: string; id: string | null; what: string; phone: string };
   const all: R[] = [
-    ...calls.map(c => ({ at: c.started_at, kind: `${c.direction === 'inbound' ? 'Inbound' : 'Outbound'} call`, id: c.contact_id, what: [c.outcome || c.result, c.duration_sec != null ? `${c.duration_sec}s` : '', (c.notes ?? '').replace(/\s+/g, ' ').trim()].filter(Boolean).join(' — '), phone: phone(c.to_number) })),
+    // A call that isn't tied to a contact has nobody the viewer's access can be checked against, and this sheet is shared with whoever can open it.
+    // So it shows only that the call happened (when, outcome, length) — never the number dialled or the notes typed about a stranger.
+    // Log the call on a contact card and it appears here in full.
+    ...calls.map(c => (c.contact_id
+      ? { at: c.started_at, kind: `${c.direction === 'inbound' ? 'Inbound' : 'Outbound'} call`, id: c.contact_id, what: [c.outcome || c.result, c.duration_sec != null ? `${c.duration_sec}s` : '', (c.notes ?? '').replace(/\s+/g, ' ').trim()].filter(Boolean).join(' — '), phone: phone(c.to_number) }
+      : { at: c.started_at, kind: `${c.direction === 'inbound' ? 'Inbound' : 'Outbound'} call`, id: null as string | null, what: ['No contact on file — details hidden', c.outcome || c.result, c.duration_sec != null ? `${c.duration_sec}s` : ''].filter(Boolean).join(' — '), phone: '' }),
+    ),
     ...acts.filter(a => !/^Team note · /.test(a.note ?? '')).map(a => ({ at: a.created_at, kind: TYPE_LABEL[a.type] ? `Card: ${TYPE_LABEL[a.type]}` : 'Card note', id: a.client_id, what: (a.note ?? '').replace(/\s+/g, ' ').trim(), phone: '' })),
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 4000);
   // The row key must not depend on where the row happens to sit in the list (a new call would shift every key and wipe the team's columns on the next refresh):

@@ -39,6 +39,8 @@ interface Field {
   type: 'text' | 'check' | 'signature' | 'initial' | 'date';
   signerRole?: string;      // signature/initial/date placeholders belong to a party
   signerKey?: string;       // …and, when the signers are known by name, to that PERSON
+  signerEmail?: string;     // that person's email (lowercase) and name, saved WITH the spot: a reopened draft gets fresh keys, and the
+  signerName?: string;      // email is how a spot finds its signer again — never the role, which several people can share
   fieldKey?: string;        // fields sharing a key fill together (type once, fill everywhere)
   label?: string;           // human label, shown as the blank's placeholder
   defaultValue?: string;    // template's starting text, kept so re-saving the layout preserves it
@@ -94,7 +96,7 @@ interface DealLite { id: string; client?: string; property?: string; type?: stri
 // recipients (the E-Sign composer does), fields are placed against a person rather
 // than an abstract role — so two clients on one document can't collide.
 export interface EditorRecipient { key: string; name: string; email: string; role: string; color: string }
-export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string; size?: number; label?: string };
+export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string; signerEmail?: string; signerName?: string; size?: number; label?: string };
 
 export default function TransactionDocEditor({
   form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, keysEnabled = true, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved, autoSave = false,
@@ -141,6 +143,30 @@ export default function TransactionDocEditor({
   }, [recipients, sigKey]);
   const recByKey = React.useMemo(() => new Map((recipients ?? []).map(r => [r.key, r])), [recipients]);
   const activeRec = recByKey.get(sigKey) ?? recipients?.[0];
+  // A placed spot remembers WHO it is for (email + name), not just a key. Keys are made fresh every time the composer opens, so:
+  //  • a spot whose key is still current just keeps its stamp in step with the recipient (a fixed typo in the email follows the spot);
+  //  • a spot whose key is gone (a reopened draft) finds its signer again by EMAIL, but only when exactly one recipient has that email.
+  // A role is never used for this: two clients can share a role, and silently handing a signature to the wrong person is the worst failure here.
+  useEffect(() => {
+    if (!recipients?.length) return;
+    setFields(fs => {
+      let changed = false;
+      const next = fs.map(f => {
+        if (!['signature', 'initial', 'date', 'text', 'check'].includes(f.type) || !f.signerKey) return f;
+        let rec = recByKey.get(f.signerKey);
+        if (!rec && f.signerEmail) {
+          const same = recipients.filter(r => r.email.trim().toLowerCase() === f.signerEmail);
+          if (same.length === 1) rec = same[0];
+        }
+        if (!rec) return f;
+        const email = rec.email.trim().toLowerCase(), name = rec.name.trim();
+        if (f.signerKey === rec.key && f.signerEmail === email && f.signerName === name) return f;
+        changed = true;
+        return { ...f, signerKey: rec.key, signerRole: rec.role, signerEmail: email, signerName: name };
+      });
+      return changed ? next : fs;
+    });
+  }, [recipients, recByKey, fields]);
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   // Page navigator: which page is currently in view, and the scroller to jump in.
@@ -346,7 +372,8 @@ export default function TransactionDocEditor({
     setFields(f => [...f, { id, page: pd.num, fx, fy, fw, value: tool === 'check' && !activeRec ? '✔' : '', size: 11, type: tool,
       label: tool === 'text' ? 'Text' : undefined,
       signerRole: activeRec?.role ?? (isSig ? sigRole : undefined),
-      signerKey: activeRec ? activeRec.key : undefined }]);
+      signerKey: activeRec ? activeRec.key : undefined,
+      signerEmail: activeRec ? activeRec.email.trim().toLowerCase() : undefined, signerName: activeRec ? activeRec.name.trim() : undefined }]);
     setSelected(id);
     setTool('select');
   }, [tool, sigRole, activeRec]);
@@ -582,6 +609,7 @@ export default function TransactionDocEditor({
 
   // One save at a time. `silent` = an automatic save: no toast, no busy state, no history refresh.
   const savingRef = useRef(false);
+  const [cantSave, setCantSave] = useState(false);   // the server said this person may read the document but not change it: stop trying (autosave would fail every few seconds)
   const doSave = useCallback(async (silent: boolean): Promise<boolean> => {
     if (savingRef.current) return false;
     savingRef.current = true;
@@ -627,6 +655,7 @@ export default function TransactionDocEditor({
         let detail = '';
         try { detail = (await res.json())?.error || ''; } catch { /* non-JSON */ }
         console.error('[saveToDeal] server', res.status, detail);
+        if (res.status === 403) setCantSave(true);
         onToast?.(detail ? `Could not save — ${detail}` : `Could not save (${res.status})`);
       }
     } catch (e) {
@@ -646,7 +675,7 @@ export default function TransactionDocEditor({
   latestFields.current = fields;
   const [autoState, setAutoState] = useState<'' | 'saving' | 'saved' | 'error'>('');
   useEffect(() => {
-    if (!autoOn || status !== 'ready') return;
+    if (!autoOn || status !== 'ready' || cantSave) return;
     const snap = JSON.stringify(fields);
     if (!autoRef.current) { if (!fields.length) return; autoRef.current = snap; return; }   // the PDF can be ready before the fields have loaded: not a baseline yet
     if (snap === autoRef.current) return;
@@ -657,7 +686,7 @@ export default function TransactionDocEditor({
       if (ok) { autoRef.current = snap; setAutoState('saved'); } else setAutoState('error');
     }, 6000);
     return () => clearTimeout(t);
-  }, [fields, autoOn, status, doSave]);
+  }, [fields, autoOn, status, doSave, cantSave]);
   // Closing the tab (or reloading) with a change that hasn't been saved yet: the browser asks first.
   useEffect(() => {
     if (!autoOn) return;
@@ -669,7 +698,7 @@ export default function TransactionDocEditor({
   }, [autoOn, status]);
   const closeFailed = useRef(false);
   const requestClose = useCallback(async () => {
-    if (autoOn && status === 'ready' && autoRef.current && !closeFailed.current) {
+    if (autoOn && status === 'ready' && autoRef.current && !closeFailed.current && !cantSave) {
       for (let i = 0; i < 12 && savingRef.current; i++) await new Promise(r => setTimeout(r, 400));   // an autosave is in flight: let it land first
       if (JSON.stringify(latestFields.current) !== autoRef.current) {
         const ok = await doSave(true);
@@ -677,14 +706,14 @@ export default function TransactionDocEditor({
       }
     }
     onClose();
-  }, [autoOn, status, doSave, onClose, onToast]);
+  }, [autoOn, status, doSave, onClose, onToast, cantSave]);
 
   // Held in a ref so a caller that re-creates the callback each render can't
   // re-fire this effect and loop.
   const reportRef = useRef(onFieldsChange);
   reportRef.current = onFieldsChange;
   useEffect(() => {
-    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: FORM_FONT_SIZE, label: f.label })));
+    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, signerEmail: f.signerEmail, signerName: f.signerName, size: FORM_FONT_SIZE, label: f.label })));
   }, [fields]);
 
   const sendNow = useCallback(async () => {
@@ -692,7 +721,7 @@ export default function TransactionDocEditor({
     if (!sig.length && !window.confirm('No signature fields are placed. Signers will sign on an added Signatures page instead. Continue?')) return;
     await saveToDeal();
     // The label travels with the field so the signer is told what the blank is for.
-    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: FORM_FONT_SIZE, label: f.label })));
+    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, signerEmail: f.signerEmail, signerName: f.signerName, size: FORM_FONT_SIZE, label: f.label })));
   }, [fields, saveToDeal, onSend]);
 
   // Jump the document pane to a page, and keep the navigator's highlight in step
@@ -857,7 +886,7 @@ export default function TransactionDocEditor({
               {deals.map(d => <option key={d.id} value={d.id}>{[d.client, d.property].filter(Boolean).join(' · ') || 'Deal'}</option>)}
             </select>
           )}
-          {autoOn && autoState && <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', color: autoState === 'error' ? '#b91c1c' : '#6b7280' }}>{autoState === 'saving' ? 'Saving…' : autoState === 'saved' ? '✓ Saved automatically' : 'Autosave failed — press Save'}</span>}
+          {autoOn && (autoState || cantSave) && <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', color: autoState === 'error' || cantSave ? '#b91c1c' : '#6b7280' }}>{cantSave ? 'View only — only its creator or an admin can save changes' : autoState === 'saving' ? 'Saving…' : autoState === 'saved' ? '✓ Saved automatically' : 'Autosave failed — press Save'}</span>}
           {!onSend && <button onClick={saveToDeal} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#166534', border: '1px solid #bbf7d0' }}>{busy ? '…' : (dealSel ? '💾 Save to deal' : listingId ? '💾 Save to property' : '💾 Save')}</button>}
           {!onSend && <button onClick={async () => { if (await saveToDeal() && subIdRef.current) setEmailDocId(subIdRef.current); }} disabled={busy} title="Save, then email the PDF as an attachment" style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>✉ Email</button>}
           <button onClick={download} disabled={busy} style={{ ...actionBtn, background: onSend ? '#fff' : '#c9922c', color: onSend ? '#6b7280' : '#fff', border: onSend ? '1px solid #e5e7eb' : 'none' }}>{busy ? 'Working…' : '⬇ Download'}</button>
@@ -1071,6 +1100,7 @@ export default function TransactionDocEditor({
                     onChange={v => updateVal(f.id, v)}
                     placeholder={f.label || ''}
                     onFocus={() => setSelected(f.id)}
+                    locked={!!lock}
                     stopDrag
                     style={{ width: '100%', minHeight: `max(9px, ${cqw(em * 1.05)})`, fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
                       textAlign: 'left', padding: '0 2px', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}

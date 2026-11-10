@@ -48,3 +48,14 @@ export function Toast({ msg }: { msg: string }) {
   if (!msg) return null;
   return <div role="status" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 3000, background: '#111', color: '#fff', border: '1px solid #c9922c', borderRadius: 10, padding: '10px 16px', fontSize: 13.5, fontWeight: 600, maxWidth: '86vw' }}>{msg}</div>;
 }
+
+/** Shown across the top when the person signed out while this page was open (in another tab, or the session ran out): saves from here would fail, and they should know why. */
+export function SignedOutBanner({ show, bu }: { show: boolean; bu: 'commercial' | 'residential' }) {
+  if (!show) return null;
+  return (
+    <div role="alert" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 3100, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 'calc(8px + env(safe-area-inset-top)) 16px 8px', background: '#fffbeb', color: '#92400e', borderBottom: '1px solid #fde68a', fontSize: 13.5, fontWeight: 600, textAlign: 'center' }}>
+      <span>You were signed out, so changes made here are not being saved. Sign in again (this page picks up where it was).</span>
+      <a href={`/crm/${bu}`} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 14px', background: '#111', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>Sign in</a>
+    </div>
+  );
+}

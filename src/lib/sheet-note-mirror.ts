@@ -21,7 +21,7 @@ const likeEscape = (s: string) => s.replace(/[\\%_]/g, m => `\\${m}`);
 
 export async function mirrorSheetNotes(
   admin: SupabaseClient,
-  a: { title: string; bu: string; before: string | null | undefined; after: string; actorId: string; ctx: CrmContext },
+  a: { docId: string; title: string; bu: string; before: string | null | undefined; after: string; actorId: string; ctx: CrmContext },
 ): Promise<{ created: number; updated: number; removed: number }> {
   const res = { created: 0, updated: 0, removed: 0 };
   try {
@@ -39,18 +39,26 @@ export async function mirrorSheetNotes(
       if (!clientId) continue;
       if (!(await assertOwnsResource('crm_clients', clientId, a.ctx))) continue;   // same rule as opening the card
 
-      const { data: have } = await admin.from('crm_client_activities').select('id, note')
-        .eq('client_id', clientId).eq('type', 'note').like('note', `${likeEscape(lead)}%`).order('created_at', { ascending: false }).limit(1);
-      const mine = have?.[0] as { id: string; note: string } | undefined;
+      // The card note belonging to THIS sheet: found by the sheet's id. Notes written before ids existed carry only the title text,
+      // so (when there is no note for this id yet) one that starts with this sheet's lead and has no id is adopted — and tagged with the id from then on.
+      const { data: byId } = await admin.from('crm_client_activities').select('id, note')
+        .eq('client_id', clientId).eq('type', 'note').eq('sheet_doc_id', a.docId).limit(1);
+      let mine = byId?.[0] as { id: string; note: string } | undefined;
+      if (!mine) {
+        const { data: legacy } = await admin.from('crm_client_activities').select('id, note')
+          .eq('client_id', clientId).eq('type', 'note').is('sheet_doc_id', null).like('note', `${likeEscape(lead)}%`).order('created_at', { ascending: false }).limit(1);
+        mine = legacy?.[0] as { id: string; note: string } | undefined;
+      }
       if (!text) {
         if (mine) { await admin.from('crm_client_activities').delete().eq('id', mine.id); res.removed++; }
         continue;
       }
       const note = `${lead}${text}`;
       if (mine) {
-        if (mine.note !== note) { await admin.from('crm_client_activities').update({ note }).eq('id', mine.id); res.updated++; }
+        await admin.from('crm_client_activities').update({ ...(mine.note !== note ? { note } : {}), sheet_doc_id: a.docId }).eq('id', mine.id);
+        if (mine.note !== note) res.updated++;
       } else {
-        const { error } = await admin.from('crm_client_activities').insert({ client_id: clientId, agent_id: a.actorId, type: 'note', note });
+        const { error } = await admin.from('crm_client_activities').insert({ client_id: clientId, agent_id: a.actorId, type: 'note', note, sheet_doc_id: a.docId });
         if (error) console.error('[sheet-note-mirror] insert failed:', error.message); else res.created++;
       }
     }

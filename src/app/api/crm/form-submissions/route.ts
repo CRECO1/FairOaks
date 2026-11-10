@@ -234,6 +234,10 @@ export async function POST(req: NextRequest) {
   // An update may only target a submission in the caller's workspace — and, since it overwrites the document, a
   // non-admin may only overwrite one they created (reading and copying a colleague's stays open).
   if (submission_id && !(await assertOwnsResource('crm_form_submissions', submission_id, ctx, { ownerColumns: ['created_by'], requireOwner: true }))) {
+    // Someone who can open it but didn't create it gets a real answer, not a "not found" that reads like the document vanished.
+    if (await assertOwnsResource('crm_form_submissions', submission_id, ctx)) {
+      return NextResponse.json({ error: 'Only the person who made this document (or an admin) can change it. You can read it, but your edits were not saved.' }, { status: 403 });
+    }
     return notFound('Submission not found');
   }
   // A document that is out for signature (or already signed) is frozen: the signing page reads its placed spots live and the executed PDF is stamped

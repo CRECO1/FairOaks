@@ -201,6 +201,8 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
     flushRef.current = async () => {
       await flush();
       for (let i = 0; i < 30 && (saving || pending.length); i++) { await new Promise(r => setTimeout(r, 150)); if (!saving && pending.length) await flush(); }
+      // Never carry on with a copy that is behind what is on screen (a PDF, a signature request or a version made from stale text is worse than a short wait).
+      if (saving || pending.length) throw new Error('Your latest edits are still saving — give it a moment and try again.');
     };
     const onUpdate = (u: Uint8Array, origin: unknown) => {
       if (origin === 'seed') return;

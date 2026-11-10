@@ -25,7 +25,7 @@ export function parseRich(s: string): Run[] {
   let i = 0;
   const str = s ?? '';
   while (i < str.length) {
-    if (str[i] === '\\' && i + 1 < str.length) { buf += str[i + 1]; i += 2; }
+    if (str[i] === '\\' && (str[i + 1] === '*' || str[i + 1] === '\\')) { buf += str[i + 1]; i += 2; }   // only \* and \\ are escapes; any other backslash is just a backslash
     else if (str.startsWith('***', i)) { flush(); b = !b; it = !it; i += 3; }
     else if (str.startsWith('**', i)) { flush(); b = !b; i += 2; }
     else if (str[i] === '*') { flush(); it = !it; i += 1; }
@@ -40,7 +40,8 @@ export function parseRich(s: string): Run[] {
 /** True when the string carries any (unescaped) markup — lets callers keep the plain
  *  fast path for the overwhelmingly common unformatted value. */
 export function hasMarkup(s: string): boolean {
-  return /(^|[^\\])\*/.test(s ?? '') || /(^|[^\\])\{c:#[0-9a-fA-F]{6}\}/.test(s ?? '');
+  // An escape sequence (\* or \\) counts too: a value like "5\*3" is still markup that must be unescaped before it is drawn, or the backslash prints.
+  return /(^|[^\\])\*/.test(s ?? '') || /(^|[^\\])\{c:#[0-9a-fA-F]{6}\}/.test(s ?? '') || /\\[*\\]/.test(s ?? '');
 }
 
 /** Width a string actually occupies when drawn. pdf-lib's widthOfTextAtSize subtracts

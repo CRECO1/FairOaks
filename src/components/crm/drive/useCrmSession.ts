@@ -14,6 +14,7 @@ export function useCrmSession(bu: 'commercial' | 'residential') {
   const [token, setToken] = useState<string | undefined>();
   const [me, setMe] = useState<CrmProfile | null>(null);
   const [people, setPeople] = useState<DrivePerson[]>([]);
+  const [signedOut, setSignedOut] = useState(false);   // the person signed out (in another tab, or the session ran out) while this page was open
 
   useEffect(() => {
     const supabase = createClient();
@@ -32,9 +33,9 @@ export function useCrmSession(bu: 'commercial' | 'residential') {
       setMe(mine as CrmProfile); setPeople((all ?? []) as DrivePerson[]); setState('ready');
     }).catch(() => { if (alive) setState('out'); });
     // keep the token fresh (an hour-long session refreshes itself while the tab stays open)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => { if (s) setToken(s.access_token); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((e, s) => { if (s) { setToken(s.access_token); setSignedOut(false); } else if (e === 'SIGNED_OUT') setSignedOut(true); });
     return () => { alive = false; subscription.unsubscribe(); };
   }, [bu]);
 
-  return { state, token, me, people, isAdmin: me?.role === 'admin' || me?.role === 'super_admin' };
+  return { state, token, me, people, signedOut, isAdmin: me?.role === 'admin' || me?.role === 'super_admin' };
 }

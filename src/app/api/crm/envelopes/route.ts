@@ -3,6 +3,7 @@ import { userRateLimit } from '@/lib/user-ratelimit';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, isSuperAdminRole, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { canAccessLinked } from '@/lib/crm-linked-access';
+import { spotsOutOfLine } from '@/lib/esign-fields';
 import { adminClient } from '@/lib/supabase-admin';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail, resendConfig, finalizeEnvelope, SIGN_BUCKET, type FinalizeSigner } from '@/lib/esign';
@@ -177,7 +178,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = adminClient();
   if (!(await assertOwnsResource('crm_form_submissions', submission_id, ctx))) return notFound('Document not found');
-  const { data: sub } = await supabase.from('crm_form_submissions').select('id, form_id, filled_path, business_unit, title, deal_id, listing_id').eq('id', submission_id).single();
+  const { data: sub } = await supabase.from('crm_form_submissions').select('id, form_id, filled_path, business_unit, title, deal_id, listing_id, values').eq('id', submission_id).single();
   if (!sub || !(await canAccessLinked(ctx, sub))) return notFound('Document not found');
   if (!sub.filled_path) return NextResponse.json({ error: 'This document has no saved PDF yet — open it, fill it, and Save to the deal first.' }, { status: 400 });
   // Defense-in-depth: a body-supplied deal/listing link must be one the caller can
@@ -206,6 +207,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         error: 'This document is already out for signature to one or more of these people — it was NOT sent again. Use Nudge to remind them, or cancel the existing request first if you need to re-send.',
         envelope_id: dupe.id, already_active: true,
+      }, { status: 409 });
+    }
+  }
+
+  // Every signing spot saved with a person's email must still line up with the signer at that position in this request. The composer stamps both,
+  // so a mismatch means the spots and the signers drifted apart (a stale tab, an edited draft) — refuse rather than put a signature line in front of the wrong person.
+  {
+    const order = clean
+      .map((s: { email: string; signing_order?: number }, i: number) => ({ email: String(s.email).trim().toLowerCase(), order: s.signing_order ?? (i + 1), i }))
+      .sort((a: { order: number; i: number }, z: { order: number; i: number }) => a.order - z.order || a.i - z.i)
+      .map((x: { email: string }) => x.email);
+    const spots = (Array.isArray(sub.values) ? sub.values : []) as Array<{ signerEmail?: string; signerIndex?: number | null; type?: string; page?: number }>;
+    const off = spotsOutOfLine(spots, order);
+    if (off.length) {
+      const who = [...new Set(off.map(f => String(f.signerEmail)))].join(', ');
+      return NextResponse.json({
+        error: `${off.length} signing spot${off.length === 1 ? ' was' : 's were'} placed for ${who}, but ${off.length === 1 ? 'that person is' : 'they are'} not at that position in this request any more, so nothing was sent. Reopen Add Fields, check who each spot is for, and send again.`,
       }, { status: 409 });
     }
   }
