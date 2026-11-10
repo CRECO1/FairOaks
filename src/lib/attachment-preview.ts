@@ -18,7 +18,10 @@ export interface PreviewItem {
 
 const isPdf = (m: string, n: string) => /pdf/i.test(m) || /\.pdf$/i.test(n);
 const isImage = (m: string, n: string) => /^image\/(png|jpe?g|gif|webp)$/i.test(m) || /\.(png|jpe?g|gif|webp)$/i.test(n);
-export const previewKind = (i: Pick<PreviewItem, 'mime' | 'name'>): 'pdf' | 'image' | 'other' => isPdf(i.mime, i.name) ? 'pdf' : isImage(i.mime, i.name) ? 'image' : 'other';
+export type PreviewKind = 'pdf' | 'image' | 'sheet' | 'doc' | 'other';
+export const previewKind = (i: Pick<PreviewItem, 'mime' | 'name'>): PreviewKind =>
+  isPdf(i.mime, i.name) ? 'pdf' : isImage(i.mime, i.name) ? 'image'
+  : /\.(xlsx|xls|csv|ods)$/i.test(i.name) ? 'sheet' : /\.docx$/i.test(i.name) ? 'doc' : 'other';
 
 // Bytes cache (last few) so opening the big view doesn't download a flyer a second time.
 const bytesCache = new Map<string, Promise<ArrayBuffer>>();
@@ -38,14 +41,22 @@ export function loadBytes(item: PreviewItem): Promise<ArrayBuffer> {
 }
 
 // First-page thumbnails, cached by key (a CRM flyer's key never changes for the life of the composer).
-const thumbCache = new Map<string, Promise<{ src: string; pages: number | null } | null>>();
-export function loadThumb(item: PreviewItem): Promise<{ src: string; pages: number | null } | null> {
+const thumbCache = new Map<string, Promise<Thumb | null>>();
+export type Thumb = { src: string; pages: number | null; grid?: string[][] };
+export function loadThumb(item: PreviewItem): Promise<Thumb | null> {
   const hit = thumbCache.get(item.key);
   if (hit) return hit;
   const kind = previewKind(item);
   const p = (async () => {
-    if (kind === 'other') return null;
+    if (kind === 'other' || kind === 'doc') return null;
     const bytes = await loadBytes(item);
+    if (kind === 'sheet') {
+      // A peek at the top-left of the first sheet, drawn as a mini table.
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(bytes.slice(0), { type: 'array', sheetRows: 8 });
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false }) as unknown[][];
+      return { src: '', pages: null, grid: rows.slice(0, 7).map(r => Array.from({ length: 4 }, (_, c) => String(r[c] ?? '').slice(0, 14))) };
+    }
     if (kind === 'image') return { src: URL.createObjectURL(new Blob([bytes], { type: item.mime || 'image/png' })), pages: 1 };
     let first: RenderedPage | null = null, total: number | null = null;
     const ac = new AbortController();

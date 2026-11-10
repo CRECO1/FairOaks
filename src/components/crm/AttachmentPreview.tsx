@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { fmtDate, fmtSize, likelyVersions, newestOfVersions, loadBytes, loadThumb, previewKind, type PreviewItem } from '@/lib/attachment-preview';
+import { sanitizeHtml } from '@/lib/sanitize';
+import { fmtDate, fmtSize, likelyVersions, newestOfVersions, loadBytes, loadThumb, previewKind, type PreviewItem, type Thumb } from '@/lib/attachment-preview';
 import { renderPdfPages, revokePages, targetWidthFor, type RenderedPage } from '@/lib/pdf-render';
 
 // "What am I about to send?" — every attachment on the email as a card with the real first page of the file, so an agent
 // can tell the many versions of a flyer apart at a glance. Click a card for the full document (all pages, ←/→ between files).
 
 function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
-  const [t, setT] = useState<{ src: string; pages: number | null } | null | 'err' | undefined>(undefined);
+  const [t, setT] = useState<Thumb | null | 'err' | undefined>(undefined);
   useEffect(() => {
     let live = true;
     setT(undefined);
@@ -17,6 +18,16 @@ function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
   }, [item.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const kind = previewKind(item);
   const box: React.CSSProperties = { width: w, height: h, borderRadius: 6, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' };
+  if (t && t !== 'err' && t.grid) {
+    return (
+      <div style={{ ...box, background: '#fff', alignItems: 'flex-start', justifyContent: 'flex-start' }} aria-hidden>
+        <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', fontSize: 7.5, color: '#374151' }}>
+          <tbody>{t.grid.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} style={{ border: '1px solid #e5e7eb', padding: '2px 3px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: i === 0 ? '#ecfdf5' : undefined, fontWeight: i === 0 ? 700 : 400 }}>{c}</td>)}</tr>)}</tbody>
+        </table>
+        <span style={{ position: 'absolute', right: 3, bottom: 3, background: '#15803d', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>XLSX</span>
+      </div>
+    );
+  }
   if (t && t !== 'err') {
     return (
       <div style={{ ...box, background: '#fff', alignItems: 'flex-start' }}>
@@ -29,7 +40,7 @@ function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
   return (
     <div style={box} aria-hidden>
       <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', textAlign: 'center', padding: 4 }}>
-        {t === undefined && kind !== 'other' ? 'Loading…' : kind === 'other' ? (item.name.split('.').pop() ?? 'file').toUpperCase().slice(0, 5) : 'No preview'}
+        {t === undefined && kind !== 'other' && kind !== 'doc' ? 'Loading…' : kind === 'other' || kind === 'doc' ? (item.name.split('.').pop() ?? 'file').toUpperCase().slice(0, 5) : 'No preview'}
       </span>
     </div>
   );
@@ -74,18 +85,34 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
   const [imgSrc, setImgSrc] = useState('');
   const [state, setState] = useState<'loading' | 'ready' | 'none' | 'error'>('loading');
   const [msg, setMsg] = useState('');
+  const [sheets, setSheets] = useState<{ name: string; html: string }[]>([]);
+  const [sheet, setSheet] = useState(0);
+  const [docHtml, setDocHtml] = useState('');
   const kind = previewKind(item);
 
   useEffect(() => {
     let live = true;
     const ac = new AbortController();
     let got: RenderedPage[] = [], url = '';
-    setPages([]); setImgSrc(''); setMsg(''); setState(kind === 'other' ? 'none' : 'loading');
+    setPages([]); setImgSrc(''); setMsg(''); setSheets([]); setSheet(0); setDocHtml(''); setState(kind === 'other' ? 'none' : 'loading');
     if (kind === 'other') return;
     (async () => {
       try {
         const bytes = await loadBytes(item);
         if (!live) return;
+        if (kind === 'sheet') {
+          const XLSX = await import('xlsx');
+          const wb = XLSX.read(bytes.slice(0), { type: 'array' });
+          if (!live) return;
+          setSheets(wb.SheetNames.map(name => ({ name, html: XLSX.utils.sheet_to_html(wb.Sheets[name], { editable: false, header: '', footer: '' }) })));
+          setState('ready'); return;
+        }
+        if (kind === 'doc') {
+          const mammoth = await import('mammoth');
+          const out = await mammoth.convertToHtml({ arrayBuffer: bytes.slice(0) });
+          if (!live) return;
+          setDocHtml(out.value); setState('ready'); return;
+        }
         if (kind === 'image') { url = URL.createObjectURL(new Blob([bytes], { type: item.mime || 'image/png' })); setImgSrc(url); setState('ready'); return; }
         await renderPdfPages(bytes.slice(0), {
           targetWidth: targetWidthFor(p.isMobile ? 420 : 820), quality: 0.9, signal: ac.signal,
@@ -136,6 +163,17 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
           {state === 'loading' && !pages.length && <div style={{ padding: 40, textAlign: 'center', fontSize: 14, color: 'var(--k-9ca3af)' }}>Opening {item.name}…</div>}
           {state === 'error' && <div style={{ padding: 40, textAlign: 'center', fontSize: 14, color: 'var(--k-991b1b)' }}>Couldn’t show this file{msg ? ` — ${msg}` : ''}. It will still be attached when you send.</div>}
           {state === 'none' && <div style={{ padding: 40, textAlign: 'center', fontSize: 14, color: 'var(--k-6b7280)' }}>No preview for this kind of file — it will be attached as “{item.name}”.</div>}
+          {sheets.length > 0 && (
+            <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 1px 8px rgba(0,0,0,.12)', overflow: 'hidden' }}>
+              <style>{`.attsheet table{border-collapse:collapse;width:100%;font-family:-apple-system,'DM Sans',sans-serif}.attsheet td,.attsheet th{border:1px solid #e5e7eb;padding:5px 9px;font-size:12.5px;color:#1a1a1a;white-space:nowrap;text-align:left}.attsheet tr:first-child td,.attsheet th{background:#f9fafb;font-weight:700}`}</style>
+              {sheets.length > 1 && <div style={{ display: 'flex', gap: 4, padding: '8px 8px 0', flexWrap: 'wrap', borderBottom: '1px solid #eef0f2', background: '#fbfbfc' }}>
+                {sheets.map((sh, i) => <button key={sh.name} type="button" onClick={() => setSheet(i)} style={{ fontSize: 12, fontWeight: 700, padding: '5px 11px', border: 'none', borderBottom: sheet === i ? '2px solid #c9922c' : '2px solid transparent', background: 'none', color: sheet === i ? '#a06a12' : '#6b7280', cursor: 'pointer' }}>{sh.name}</button>)}
+              </div>}
+              {/* Sanitized like the deal-doc viewer: a crafted workbook can carry javascript: links or raw markup. */}
+              <div className="attsheet" style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(sheets[sheet]?.html || '') }} />
+            </div>
+          )}
+          {docHtml && <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 1px 8px rgba(0,0,0,.12)', padding: p.isMobile ? 16 : 36, fontSize: 14, lineHeight: 1.6, color: '#1a1a1a', maxWidth: 820, margin: '0 auto' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(docHtml) }} />}
           {imgSrc && /* eslint-disable-next-line @next/next/no-img-element */ <img src={imgSrc} alt={item.name} style={{ display: 'block', maxWidth: '100%', margin: '0 auto', borderRadius: 4, boxShadow: '0 1px 8px rgba(0,0,0,.16)', background: '#fff' }} />}
           {pages.map((pg, i) => (
             // eslint-disable-next-line @next/next/no-img-element

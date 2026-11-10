@@ -8,6 +8,7 @@ import { CRM_ATTACH_KINDS, resolveCrmAttachments, type CrmAttachKind } from '@/l
 // preview anything they couldn't attach. Only PDFs and pictures are shown; the response is sandboxed and never HTML.
 
 const SHOWABLE = /^(application\/pdf|image\/(png|jpe?g|gif|webp))$/i;
+const PARSED_EXT = new Set(['xlsx', 'xls', 'csv', 'ods', 'docx']);
 const MIME_BY_EXT: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 
 export async function GET(req: NextRequest) {
@@ -23,7 +24,9 @@ export async function GET(req: NextRequest) {
   if (!file) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const ext = (file.name.split('.').pop() ?? '').toLowerCase();
-  const mime = SHOWABLE.test(file.mimeType) ? file.mimeType.toLowerCase() : (MIME_BY_EXT[ext] ?? '');
+  // PDFs and pictures are shown as themselves; spreadsheets/Word files are sent as opaque bytes that the composer parses
+  // in the browser (never rendered by the browser from this response).
+  const mime = SHOWABLE.test(file.mimeType) ? file.mimeType.toLowerCase() : (MIME_BY_EXT[ext] ?? (PARSED_EXT.has(ext) ? 'application/octet-stream' : ''));
   if (!mime) return NextResponse.json({ error: 'No preview for this file type', name: file.name }, { status: 415 });
 
   const bytes = Buffer.from(file.data, 'base64');
