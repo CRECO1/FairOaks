@@ -4811,7 +4811,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       expanded, onToggle, isMobile,
       label: who.label, initials, avatarColor: emailAvatarColor(who.primary || bareEmail(latest.from_email)),
       count: threadEmails.length, people: everyone.size,
-      subject: latest.subject, snippet: snippetOf(cleanEmailBody(latest.body ?? ''), 140), prefix,
+      subject: latest.subject, snippet: snippetOf(cleanEmailBody(latest.body ?? ''), 140) || (latest.attachments?.length ? `Attachment: ${latest.attachments[0].name}` : ''), prefix,
       dateLabel: shortEmailDate(latest.email_date), hasAttachments: threadEmails.some(m => (m.attachments?.length ?? 0) > 0),
       opens: opened.length > 0 ? sent.reduce((t, x) => t + (x.open_count ?? (x.opened_at ? 1 : 0)), 0) : sent.some(e => e.tracked) ? 0 : null,
       pin,
