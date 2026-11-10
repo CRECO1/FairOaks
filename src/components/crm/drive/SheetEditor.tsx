@@ -1531,7 +1531,8 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
               e.preventDefault();
               const rg = parseRange(nameBox ?? '');
               if (!rg) { onToast('Type a cell like D12, or a range like A1:C10'); return; }
-              const r1 = Math.min(rg.r1, MAX_ROWS - 1), c1 = Math.min(rg.c1, MAX_COLS - 1), r2 = Math.min(rg.r2, MAX_ROWS - 1), c2 = Math.min(rg.c2, MAX_COLS - 1);
+              if (rg.r2 >= rows || rg.c2 >= ncols) { onToast(`That is outside this sheet — it goes to ${colName(ncols - 1)}${rows}`); return; }
+              const { r1, c1, r2, c2 } = rg;
               moveTo(r1, c1);                                   // scrolls the first cell into view
               const next = { r: r1, c: c1, r2, c2 }; selRef.current = next; setSel(next);
               setNameBox(null); wrap.current?.focus();
