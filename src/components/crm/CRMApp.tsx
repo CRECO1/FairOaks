@@ -1251,6 +1251,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callScriptEdit, setCallScriptEdit] = useState(false);
   const [callMyDay, setCallMyDay] = useState<{ calls: number; talked: number; voicemail: number; none: number; leads: number } | null>(null);
   const [callGoal, setCallGoal] = useState<number>(() => { try { return Number(localStorage.getItem('crm:callGoal')) || 25; } catch { return 25; } });
+  const [phoneMenu, setPhoneMenu] = useState(false);                                                     // contact card → the Call button's list of numbers
+  const [contactTextPhone, setContactTextPhone] = useState('');                                          // …and which of them the text box is writing to ('' = the default)
   const [contactTextFor, setContactTextFor] = useState<string | null>(null);                        // contact card → office-line text box (contact id)
   const [dealTextOpen, setDealTextOpen] = useState(false);                                           // deal card → office-line text box
   const [callTextOpen, setCallTextOpen] = useState(false);                                          // Text → templates   // phone: campaign stats fold away by default
@@ -13470,8 +13472,43 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 return (
                 <>
                   <div style={{ display: 'flex', gap: 8, padding: isMobile ? '10px 14px' : '10px 28px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-f0f0f0)' }}>
-                    <a href={ph ? `tel:${ph}` : undefined} aria-label={ph ? `Call ${phoneDisp(ph)}` : 'No phone on file'} style={{ ...base, ...(ph ? { background: '#c9922c', borderColor: '#c9922c', color: '#fff' } : off) }}>📞 Call</a>
-                    <button type="button" onClick={() => setContactTextFor(contactTextFor === c.id ? null : c.id)} aria-label="Text from the office line" title="Text from the office line"
+                    {(() => {
+                      const biz = (c.phone || '').trim(), cell = (c.cell_phone || '').trim();
+                      const numbers = [{ key: 'cell', label: 'Cell', num: cell }, { key: 'biz', label: 'Business line', num: biz }];
+                      const row = (n: { key: string; label: string; num: string }) => (
+                        <div key={n.key} role="menuitem" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderTop: n.key === 'biz' ? '1px solid var(--k-f0f0f0)' : undefined, opacity: n.num ? 1 : 0.5 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase', color: 'var(--k-9ca3af)' }}>{n.label}{n.num && n.num === ph ? <span style={{ marginLeft: 6, color: '#c9922c' }}>· default</span> : null}</div>
+                            <div style={{ fontSize: 15, fontWeight: 600, color: n.num ? 'var(--k-111)' : 'var(--k-9ca3af)', marginTop: 1 }}>{n.num ? phoneDisp(n.num) : 'Not on file'}</div>
+                          </div>
+                          {n.num && (
+                            <>
+                              <a href={`tel:${n.num}`} onClick={() => setPhoneMenu(false)} aria-label={`Call ${n.label} ${phoneDisp(n.num)}`}
+                                style={{ width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, borderRadius: 18, background: '#c9922c', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', fontSize: 16 }}>📞</a>
+                              <button type="button" onClick={() => { setContactTextPhone(n.num); setContactTextFor(c.id); setPhoneMenu(false); }} aria-label={`Text ${n.label} ${phoneDisp(n.num)}`} title="Text from the office line"
+                                style={{ width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, borderRadius: 18, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', cursor: 'pointer', fontSize: 15, padding: 0 }}>💬</button>
+                            </>
+                          )}
+                        </div>
+                      );
+                      return (
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', position: 'relative' }}>
+                          <a href={ph ? `tel:${ph}` : undefined} aria-label={ph ? `Call ${phoneDisp(ph)}` : 'No phone on file'}
+                            style={{ ...base, flex: 1, ...(ph ? { background: '#c9922c', borderColor: '#c9922c', color: '#fff', borderRadius: '10px 0 0 10px' } : off) }}>📞 Call</a>
+                          <button type="button" onClick={() => setPhoneMenu(v => !v)} aria-haspopup="menu" aria-expanded={phoneMenu} aria-label="Choose which number to call or text" title="Cell and business line"
+                            style={{ width: isMobile ? 44 : 34, flexShrink: 0, minHeight: isMobile ? 48 : 38, border: '1px solid #c9922c', borderLeft: '1px solid rgba(255,255,255,.45)', borderRadius: '0 10px 10px 0', background: '#c9922c', color: '#fff', fontSize: 11, cursor: 'pointer', ...(ph ? {} : { opacity: 0.38, pointerEvents: 'none' as const }) }}>▾</button>
+                          {phoneMenu && (
+                            <>
+                              <div onClick={() => setPhoneMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                              <div role="menu" style={{ position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 41, width: isMobile ? 'min(300px, calc(100vw - 28px))' : 290, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.2)', overflow: 'hidden' }}>
+                                {numbers.map(row)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    <button type="button" onClick={() => { setContactTextPhone(''); setContactTextFor(contactTextFor === c.id ? null : c.id); }} aria-label="Text from the office line" title="Text from the office line"
                       style={{ ...base, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", ...(contactTextFor === c.id ? { background: '#111', borderColor: '#111', color: '#fff' } : {}), ...(ph ? {} : off) }}>💬 Text</button>
                     <a href={c.email ? `mailto:${c.email}` : undefined} aria-label={c.email ? `Email ${c.email}` : 'No email on file'} style={{ ...base, ...(c.email ? {} : off) }}
                       onClick={e => {
@@ -13489,14 +13526,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   {contactTextFor === c.id && ph && (
                     <div style={{ padding: isMobile ? '10px 14px 0' : '12px 28px 0', background: 'var(--k-fff)' }}>
-                      <QuickText authToken={session?.access_token} businessUnit={businessUnit} contactId={c.id} phone={ph} name={`${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()}
+                      <QuickText authToken={session?.access_token} businessUnit={businessUnit} contactId={c.id} phone={contactTextPhone || ph} name={`${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()}
                         templates={[
                           { label: 'Checking in', body: `${c.first_name ? `Hi ${c.first_name}, ` : 'Hi, '}${profile?.first_name || ''} with ${businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group'} — just checking in. Let me know if you have any questions.` },
                           { label: 'Tried to reach you', body: `${c.first_name ? `Hi ${c.first_name}, ` : 'Hi, '}${profile?.first_name || ''} with ${businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group'} — I just tried to reach you. What's a good time to talk?` },
                         ]}
                         showToast={showToast}
                         onSent={text => logActivity(c.id, 'note', `💬 Texted from the office line: ${text.slice(0, 300)}`)} />
-                      {isMobile && <a href={`sms:${ph}`} style={{ display: 'inline-block', fontSize: 12.5, color: 'var(--k-6b7280)', margin: '-4px 0 10px' }}>Text from my own phone instead</a>}
+                      {isMobile && <a href={`sms:${contactTextPhone || ph}`} style={{ display: 'inline-block', fontSize: 12.5, color: 'var(--k-6b7280)', margin: '-4px 0 10px' }}>Text from my own phone instead</a>}
                     </div>
                   )}
                 </>

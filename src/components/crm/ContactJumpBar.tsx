@@ -72,10 +72,11 @@ export default function ContactJumpBar() {
   };
 
   if (found.length < 2) return <div ref={bar} style={{ display: 'none' }} />;
-  const chip = (on: boolean): React.CSSProperties => ({ flexShrink: 0, height: 36, padding: '0 14px', borderRadius: 999, border: `1px solid ${on ? 'var(--chip-on-line, #111)' : 'var(--k-e5e7eb)'}`, background: on ? 'var(--chip-on-bg, #111)' : 'var(--k-fff)', color: on ? 'var(--chip-on-fg, #fff)' : 'var(--k-374151)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' });
+  const wide = typeof window !== 'undefined' && window.innerWidth >= 768;   // on a computer the chips are smaller so all of them fit on the card
+  const chip = (on: boolean): React.CSSProperties => ({ flexShrink: 0, height: wide ? 30 : 36, padding: wide ? '0 11px' : '0 14px', borderRadius: 999, border: `1px solid ${on ? 'var(--chip-on-line, #111)' : 'var(--k-e5e7eb)'}`, background: on ? 'var(--chip-on-bg, #111)' : 'var(--k-fff)', color: on ? 'var(--chip-on-fg, #fff)' : 'var(--k-374151)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' });
   return (
     <div ref={bar} role="navigation" aria-label="Jump to a section of this card"
-      style={{ flexShrink: 0, position: 'sticky', top: -20, zIndex: 3, margin: '-20px -18px 0', padding: '10px 18px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-f0f0f0)', display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+      style={{ flexShrink: 0, position: 'sticky', top: -20, zIndex: 3, margin: '-20px -18px 0', padding: '10px 18px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-f0f0f0)', display: 'flex', gap: wide ? 6 : 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
       {['Info', ...found.map(f => f.label)].map(l => <button key={l} type="button" onClick={() => go(l)} style={chip(active === l)}>{l}</button>)}
     </div>
   );
