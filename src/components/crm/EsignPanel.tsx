@@ -9,11 +9,12 @@ import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPrevie
 import { defaultEsignMessage } from '@/lib/esign-message';
 import EsignSavedMessages from '@/components/crm/EsignSavedMessages';
 import Skeleton from '@/components/crm/Skeleton';
+import { friendlyTitle } from '@/lib/esign-title';
 
 export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
 export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; imported?: boolean; crm_forms?: { name?: string; form_code?: string } | null }
 interface Signer { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean }
-export interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; executed_clean_url?: string | null; title?: string; created_at?: string; archived_at?: string | null; crm_envelope_signers?: Signer[] }
+export interface Envelope { id: string; submission_id?: string | null; status: string; completed_at?: string | null; executed_url?: string | null; executed_clean_url?: string | null; title?: string; created_at?: string; archived_at?: string | null; crm_envelope_signers?: Signer[] }
 interface Draft { role: string; name: string; email: string }
 
 const GOLD = '#c9922c';
@@ -417,6 +418,23 @@ interface Props {
   onPreview?: (file: { url: string; name: string }) => void;
 }
 
+
+// ── the list: one row per document ──────────────────────────────────────────────
+const shortDate = (iso?: string | null) => { const d = iso ? new Date(iso) : null; return d && !isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }) : ''; };
+const agoText = (iso?: string | null) => { const a = ago(iso); return !a ? '' : a === 'today' ? 'today' : `${a} ago`; };
+const STATE_COLOR = { draft: '#9ca3af', sent: '#1d4ed8', completed: '#15803d', declined: '#b91c1c' } as const;
+function DocIcon({ state }: { state: keyof typeof STATE_COLOR }) {
+  const c = STATE_COLOR[state];
+  return (
+    <span aria-hidden style={{ width: 34, height: 34, borderRadius: 9, background: `${c}14`, color: c, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 1.8h5.2L12.2 5v8.2c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1V2.8c0-.6.4-1 1-1Z" /><path d="M9 1.8V5h3.2" />
+        {state === 'completed' ? <path d="M5.6 9.6l1.6 1.6 3-3.2" /> : state === 'sent' ? <path d="M5.4 9.2h4.8M8 7.2l2.2 2L8 11.2" /> : state === 'declined' ? <path d="M6 8l4 4M10 8l-4 4" /> : <path d="M5.4 8.4h4.8M5.4 10.8h3" />}
+      </svg>
+    </span>
+  );
+}
+
 export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloadSignal, clients = [], dealClient, agentName, agentEmail, authToken, isSuperAdmin, showToast, onPreview }: Props) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [envByDoc, setEnvByDoc] = useState<Record<string, Envelope>>({});
@@ -458,13 +476,22 @@ export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloa
 
   return (
     <div className="es-touch" style={{ fontFamily: "'DM Sans',sans-serif" }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--k-1a1a1a)', marginBottom: 10 }}>✍️ E-Sign</div>
-      {onAddDocument && (
-        <button onClick={onAddDocument} title="Upload a PDF — a signed addendum, an outside contract, anything — and send it for signature on this deal"
-          style={{ width: '100%', marginBottom: 12, padding: '11px 0', borderRadius: 9, border: `1.5px dashed ${GOLD}`, background: 'var(--k-fffdf6)', color: 'var(--k-a06a12)', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
-          ＋ Add a document to sign — upload a PDF
-        </button>
-      )}
+      {/* One line that says where the deal's paperwork stands, and the add button beside it */}
+      {(() => {
+        const n = (k: string) => ordered.filter(d => statusOf(d) === k).length;
+        const parts = [n('sent') ? `${n('sent')} out for signature` : '', n('declined') ? `${n('declined')} declined` : '', n('draft') ? `${n('draft')} draft${n('draft') === 1 ? '' : 's'}` : '', n('completed') ? `${n('completed')} signed` : ''].filter(Boolean);
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, color: 'var(--k-6b7280)', minWidth: 0 }}>
+              {loading ? 'Loading…' : ordered.length === 0 ? 'No documents yet' : <><strong style={{ color: 'var(--k-1a1a1a)' }}>{ordered.length} document{ordered.length === 1 ? '' : 's'}</strong>{parts.length ? ` · ${parts.join(' · ')}` : ''}</>}
+            </div>
+            {onAddDocument && (
+              <button onClick={onAddDocument} title="Upload a PDF — a signed addendum, an outside contract, anything — and send it for signature on this deal"
+                style={{ minHeight: 36, padding: '0 14px', borderRadius: 9, border: `1.5px solid ${GOLD}`, background: 'var(--k-fffdf6)', color: 'var(--k-a06a12)', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ Add a document</button>
+            )}
+          </div>
+        );
+      })()}
       {loading ? <Skeleton rows={4} />
         : ordered.length === 0 ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>No documents on this deal yet.{onAddDocument ? ' Upload a PDF above, or fill' : ' Fill'} a form on the deal and it shows here, ready to send for signature.</div>
         : (
@@ -475,18 +502,26 @@ export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloa
                 // Wraps on a phone: the title keeps a readable width and the buttons drop to
                 // their own line, instead of squeezing the title to "…" and running off the card.
                 <div key={doc.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, rowGap: 8, border: '1px solid #eef0f2', borderRadius: 10, padding: '10px 12px', background: 'var(--k-fff)' }}>
-                  <span style={{ fontSize: 18 }}>📄</span>
-                  <div style={{ flex: '1 1 160px', minWidth: 160 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.title || doc.crm_forms?.name || 'Document'}</div>
-                    <div style={{ fontSize: 11.5, marginTop: 1 }}>
-                      {st === 'sent' ? <span style={{ color: 'var(--k-1d4ed8)', fontWeight: 700 }}>📤 Out for signature · {signedCount(env)}/{(env?.crm_envelope_signers || []).length}</span>
-                        : st === 'completed' ? <span style={{ color: 'var(--k-15803d)', fontWeight: 700 }}>✓ Signed</span>
-                        : <span style={{ color: 'var(--k-9ca3af)' }}>Draft</span>}
+                  <DocIcon state={st} />
+                  <div style={{ flex: '1 1 180px', minWidth: 160 }}>
+                    <div title={doc.title || doc.crm_forms?.name || ''} style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{friendlyTitle(doc.title || doc.crm_forms?.name)}</div>
+                    <div style={{ fontSize: 12, marginTop: 2 }}>
+                      {(() => {
+                        const sg = [...(env?.crm_envelope_signers || [])].sort((a, b) => a.signing_order - b.signing_order);
+                        if (st === 'sent') {
+                          const next = sg.find(x => x.status !== 'signed' && !x.signed_at);
+                          const firstSent = sg.map(x => x.sent_at).filter(Boolean).sort()[0] ?? env?.created_at;
+                          return <span style={{ color: 'var(--k-1d4ed8)', fontWeight: 600 }}>Out for signature · {signedCount(env)} of {sg.length} signed{next ? ` · waiting on ${next.name.split(' ')[0]}` : ''}<span style={{ color: 'var(--k-9ca3af)', fontWeight: 400 }}>{firstSent ? ` · sent ${agoText(firstSent)}` : ''}</span></span>;
+                        }
+                        if (st === 'completed') return <span style={{ color: 'var(--k-15803d)', fontWeight: 600 }}>Signed{env?.completed_at ? ` ${shortDate(env.completed_at)}` : ''}<span style={{ color: 'var(--k-9ca3af)', fontWeight: 400 }}>{sg.length ? ` · ${sg.length} signer${sg.length === 1 ? '' : 's'}` : ''}</span></span>;
+                        if (st === 'declined') { const who = sg.find(x => x.declined_at); return <span title={who?.decline_reason || undefined} style={{ color: 'var(--k-b91c1c)', fontWeight: 600 }}>Declined{who ? ` by ${who.name}` : ''}<span style={{ color: 'var(--k-9ca3af)', fontWeight: 400 }}>{who?.declined_at ? ` · ${agoText(who.declined_at)}` : ''}</span></span>; }
+                        return <span style={{ color: 'var(--k-9ca3af)' }}>Draft{doc.updated_at ? ` · edited ${agoText(doc.updated_at)}` : ''}</span>;
+                      })()}
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginLeft: 'auto' }}>
                   {doc.url && (onPreview
-                    ? <button onClick={() => onPreview({ url: doc.url!, name: `${doc.title || doc.crm_forms?.name || 'Document'}.pdf` })} title="Preview this document" style={{ ...mini, color: 'var(--k-6b7280)' }}>Preview</button>
+                    ? <button onClick={() => onPreview({ url: doc.url!, name: `${doc.title || doc.crm_forms?.name || 'Document'}.pdf` })} title={st === 'completed' ? 'The original, before anyone signed' : 'Preview this document'} style={{ ...mini, color: 'var(--k-6b7280)' }}>{st === 'completed' ? 'Original' : 'Preview'}</button>
                     : <a href={doc.url} target="_blank" rel="noreferrer" style={{ ...mini, textDecoration: 'none', color: 'var(--k-6b7280)', display: 'inline-flex', alignItems: 'center' }}>PDF ↗</a>)}
                   {st === 'sent' ? <button onClick={() => setView({ t: 'manage', doc })} style={{ ...mini, color: 'var(--k-a06a12)', borderColor: 'var(--k-f0e2c4)' }}>Manage</button>
                     : st === 'completed' ? (env?.executed_url ? (
@@ -498,15 +533,15 @@ export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloa
                           )}
                           {env.executed_clean_url && (
                             <a href={env.executed_clean_url} target="_blank" rel="noreferrer" title="The signed document only — no Certificate of Completion"
-                              style={{ ...mini, textDecoration: 'none', color: 'var(--k-15803d)', borderColor: 'var(--k-bbf7d0)', background: 'var(--k-f0fdf4)' }}>Signed doc ↗</a>
+                              style={{ ...mini, textDecoration: 'none', color: 'var(--k-15803d)', borderColor: 'var(--k-bbf7d0)', background: 'var(--k-f0fdf4)' }}>Open ↗</a>
                           )}
                           <a href={env.executed_url} target="_blank" rel="noreferrer" title="The signed document plus the Certificate of Completion"
                             style={{ ...mini, textDecoration: 'none', color: 'var(--k-15803d)', borderColor: 'var(--k-bbf7d0)', background: 'var(--k-f0fdf4)' }}>
-                            {env.executed_clean_url ? '+ Certificate ↗' : 'Signed ↗'}
+                            {env.executed_clean_url ? 'With certificate ↗' : 'Signed ↗'}
                           </a>
                         </span>
                       ) : <span style={{ ...mini, color: 'var(--k-9ca3af)', cursor: 'default' }}>Signed</span>)
-                    : <button onClick={() => setView({ t: 'send', doc })} disabled={!doc.url} title={doc.url ? 'Send for signature' : 'Fill and save the form first'} style={{ ...mini, background: GOLD, color: '#fff', border: 'none', cursor: doc.url ? 'pointer' : 'default', opacity: doc.url ? 1 : 0.5 }}>📤 Send</button>}
+                    : <button onClick={() => setView({ t: 'send', doc })} disabled={!doc.url} title={doc.url ? 'Send for signature' : 'Fill and save the form first'} style={{ ...mini, background: GOLD, color: '#fff', border: 'none', cursor: doc.url ? 'pointer' : 'default', opacity: doc.url ? 1 : 0.5 }}>{st === 'declined' ? 'Send again' : 'Send'}</button>}
                   </div>
                 </div>
               );
