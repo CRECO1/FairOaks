@@ -16,7 +16,7 @@ export const FORM_INK_HEX = '#0d1a8c';
 export const FORM_INK_RGB: [number, number, number] = [0.05, 0.1, 0.55];
 // A medium weight, between Helvetica regular and bold (the standard PDF fonts have no in-between): the glyphs get a hairline outline in the same ink,
 // this fraction of the font size wide. The editor draws the same thing with -webkit-text-stroke so screen and PDF match. Real **bold** still reads as bold.
-export const FORM_INK_WEIGHT = 0.025;
+export const FORM_INK_WEIGHT = 0.012;
 
 /** Draw one run of text; with `weight` it is outlined in its own colour for the medium weight above. */
 export function drawInkText(page: PDFPage, text: string, o: { x: number; y: number; size: number; font: PDFFont; color: Color; weight?: number }) {
