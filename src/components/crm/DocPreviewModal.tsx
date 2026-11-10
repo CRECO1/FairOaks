@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import PdfViewer from './PdfViewer';
 import { sanitizeHtml } from '@/lib/sanitize';
+import { renderWorkbook, isXlsxName, XR_CSS } from '@/lib/xlsx-render';
 
 // In-app document preview: renders a PDF (to <canvas> via PdfViewer), an image, or a
 // spreadsheet (parsed client-side with SheetJS) inline so the user can VIEW + PRINT
@@ -12,8 +13,8 @@ import { sanitizeHtml } from '@/lib/sanitize';
 // Download stays an explicit choice via Supabase's `?download=` disposition param.
 
 // Spreadsheets (.xlsx/.xls/.csv/.ods) → HTML tables via SheetJS, one tab per sheet.
-function SpreadsheetView({ url, onReady }: { url: string; onReady: () => void }) {
-  const [sheets, setSheets] = useState<{ name: string; html: string }[]>([]);
+function SpreadsheetView({ url, name, onReady }: { url: string; name: string; onReady: () => void }) {
+  const [sheets, setSheets] = useState<{ name: string; html: string; rich?: boolean; note?: string }[]>([]);
   const [active, setActive] = useState(0);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   useEffect(() => {
@@ -21,13 +22,21 @@ function SpreadsheetView({ url, onReady }: { url: string; onReady: () => void })
     (async () => {
       try {
         setStatus('loading');
-        const XLSX = await import('xlsx');
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`fetch ${resp.status}`);
         const data = await resp.arrayBuffer();
         if (cancelled) return;
-        const wb = XLSX.read(data, { type: 'array' });
-        const out = wb.SheetNames.map(name => ({ name, html: XLSX.utils.sheet_to_html(wb.Sheets[name], { editable: false, header: '', footer: '' }) }));
+        let out: { name: string; html: string; rich?: boolean; note?: string }[] | null = null;
+        // .xlsx: drawn with its real formatting (colors, fonts, borders, widths, merges). Anything else / any failure: plain tables.
+        if (isXlsxName(name)) {
+          try { out = (await renderWorkbook(data)).map(r => ({ name: r.name, html: r.html, rich: true, note: r.truncated ? 'Showing the first rows — download the file for the rest.' : undefined })); }
+          catch (e) { console.warn('[SpreadsheetView] rich render failed, using plain', e); }
+        }
+        if (!out) {
+          const XLSX = await import('xlsx');
+          const wb = XLSX.read(data, { type: 'array' });
+          out = wb.SheetNames.map(n => ({ name: n, html: XLSX.utils.sheet_to_html(wb.Sheets[n], { editable: false, header: '', footer: '' }) }));
+        }
         if (cancelled) return;
         setSheets(out.length ? out : [{ name: 'Sheet1', html: '<p>Empty sheet.</p>' }]);
         setStatus('ready');
@@ -37,16 +46,16 @@ function SpreadsheetView({ url, onReady }: { url: string; onReady: () => void })
       }
     })();
     return () => { cancelled = true; };
-  }, [url, onReady]);
+  }, [url, name, onReady]);
 
   if (status === 'loading') return <div style={{ padding: 50, textAlign: 'center', color: '#9ca3af' }}>Opening spreadsheet…</div>;
   if (status === 'error') return <div style={{ padding: 50, textAlign: 'center', color: '#ef4444' }}>Couldn’t open this spreadsheet. Try ↓ Download instead.</div>;
   return (
-    <div className="ssheet" style={{ background: '#fff', borderRadius: 6, boxShadow: '0 1px 8px rgba(0,0,0,.12)', overflow: 'hidden', maxWidth: 1100, margin: '0 auto' }}>
-      <style>{`.ssheet table{border-collapse:collapse;width:100%;font-family:-apple-system,'DM Sans',sans-serif}
-        .ssheet td,.ssheet th{border:1px solid #e5e7eb;padding:5px 9px;font-size:12.5px;color:#1a1a1a;white-space:nowrap;text-align:left}
-        .ssheet tr:first-child td,.ssheet th{background:#f9fafb;font-weight:700}
-        .ssheet td:empty::after{content:"\\00a0"}`}</style>
+    <div className="ssheet" style={{ background: '#fff', borderRadius: 6, boxShadow: '0 1px 8px rgba(0,0,0,.12)', overflow: 'hidden', maxWidth: 1400, margin: '0 auto' }}>
+      <style>{`.ssheet table:not(.xr){border-collapse:collapse;width:100%;font-family:-apple-system,'DM Sans',sans-serif}
+        .ssheet table:not(.xr) td,.ssheet table:not(.xr) th{border:1px solid #e5e7eb;padding:5px 9px;font-size:12.5px;color:#1a1a1a;white-space:nowrap;text-align:left}
+        .ssheet table:not(.xr) tr:first-child td,.ssheet table:not(.xr) th{background:#f9fafb;font-weight:700}
+        .ssheet table:not(.xr) td:empty::after{content:"\\00a0"}`}</style>
       {sheets.length > 1 && (
         <div className="docprev-noprint" style={{ display: 'flex', gap: 4, padding: '8px 8px 0', flexWrap: 'wrap', borderBottom: '1px solid #eef0f2', background: '#fbfbfc' }}>
           {sheets.map((s, i) => (
@@ -61,7 +70,16 @@ function SpreadsheetView({ url, onReady }: { url: string; onReady: () => void })
           -controlled input, so this is stored XSS in the CRM origin unless it
           is cleaned. DOMPurify keeps every table/row/cell, so the sheet still
           renders exactly as before. */}
-      <div style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(sheets[active]?.html || '') }} />
+      {sheets[active]?.rich ? (
+        <>
+          <style>{XR_CSS}</style>
+          {/* Built by xlsx-render.ts: all text escaped, all styles whitelisted, no links — safe without the sanitizer (which would strip the formatting). */}
+          <div style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: sheets[active].html }} />
+          {sheets[active].note && <div className="docprev-noprint" style={{ padding: '8px 12px', fontSize: 12, color: '#6b7280', borderTop: '1px solid #eef0f2' }}>{sheets[active].note}</div>}
+        </>
+      ) : (
+        <div style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(sheets[active]?.html || '') }} />
+      )}
     </div>
   );
 }
@@ -160,7 +178,7 @@ export default function DocPreviewModal({ file, onClose }: {
           ) : isImg ? (
             <img src={file.url} alt={file.name} style={{ display: 'block', maxWidth: '100%', margin: '0 auto', background: '#fff', boxShadow: '0 1px 8px rgba(0,0,0,.16)', borderRadius: 4 }} />
           ) : isSheet ? (
-            <SpreadsheetView url={file.url} onReady={() => setReady(true)} />
+            <SpreadsheetView url={file.url} name={file.name} onReady={() => setReady(true)} />
           ) : isDocx ? (
             <DocxView url={file.url} onReady={() => setReady(true)} />
           ) : (

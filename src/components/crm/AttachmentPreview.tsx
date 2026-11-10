@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { sanitizeHtml } from '@/lib/sanitize';
+import { renderWorkbook, isXlsxName, XR_CSS } from '@/lib/xlsx-render';
 import { fmtDate, fmtSize, likelyVersions, newestOfVersions, loadBytes, loadThumb, previewKind, type PreviewItem, type Thumb } from '@/lib/attachment-preview';
 import { renderPdfPages, revokePages, targetWidthFor, type RenderedPage } from '@/lib/pdf-render';
 
@@ -18,6 +19,16 @@ function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
   }, [item.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const kind = previewKind(item);
   const box: React.CSSProperties = { width: w, height: h, borderRadius: 6, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' };
+  if (t && t !== 'err' && t.html && t.htmlWidth) {
+    const sc = w / Math.min(t.htmlWidth, 900);
+    return (
+      <div style={{ ...box, background: '#fff', alignItems: 'flex-start', justifyContent: 'flex-start' }} aria-hidden>
+        <style>{XR_CSS}</style>
+        <div style={{ width: Math.min(t.htmlWidth, 900), transform: `scale(${sc})`, transformOrigin: 'top left', pointerEvents: 'none' }} dangerouslySetInnerHTML={{ __html: t.html }} />
+        <span style={{ position: 'absolute', right: 3, bottom: 3, background: '#15803d', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>XLSX</span>
+      </div>
+    );
+  }
   if (t && t !== 'err' && t.grid) {
     return (
       <div style={{ ...box, background: '#fff', alignItems: 'flex-start', justifyContent: 'flex-start' }} aria-hidden>
@@ -53,7 +64,7 @@ export function AttachmentCards(p: { items: PreviewItem[]; onRemove: (key: strin
   if (!p.items.length) return null;
   const W = p.isMobile ? 92 : 104, H = Math.round(W * 1.3);
   return (
-    <div style={{ padding: '0 12px 10px' }}>
+    <div style={{ padding: '0 12px 10px', flexShrink: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: 'var(--k-6b7280)', letterSpacing: .3, margin: '2px 0 6px', fontFamily: "'DM Sans',sans-serif" }}>
         <span>📎 {p.items.length} attached — tap one to check it</span>
       </div>
@@ -85,7 +96,7 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
   const [imgSrc, setImgSrc] = useState('');
   const [state, setState] = useState<'loading' | 'ready' | 'none' | 'error'>('loading');
   const [msg, setMsg] = useState('');
-  const [sheets, setSheets] = useState<{ name: string; html: string }[]>([]);
+  const [sheets, setSheets] = useState<{ name: string; html: string; rich?: boolean }[]>([]);
   const [sheet, setSheet] = useState(0);
   const [docHtml, setDocHtml] = useState('');
   const kind = previewKind(item);
@@ -101,6 +112,13 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
         const bytes = await loadBytes(item);
         if (!live) return;
         if (kind === 'sheet') {
+          if (isXlsxName(item.name)) {
+            try {
+              const rich = await renderWorkbook(bytes.slice(0));
+              if (!live) return;
+              setSheets(rich.map(r => ({ name: r.name, html: r.html, rich: true }))); setState('ready'); return;
+            } catch (e) { console.warn('[AttachmentPreview] rich render failed, using plain', e); }
+          }
           const XLSX = await import('xlsx');
           const wb = XLSX.read(bytes.slice(0), { type: 'array' });
           if (!live) return;
@@ -165,12 +183,13 @@ function AttachmentViewer(p: { items: PreviewItem[]; index: number; setIndex: (i
           {state === 'none' && <div style={{ padding: 40, textAlign: 'center', fontSize: 14, color: 'var(--k-6b7280)' }}>No preview for this kind of file — it will be attached as “{item.name}”.</div>}
           {sheets.length > 0 && (
             <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 1px 8px rgba(0,0,0,.12)', overflow: 'hidden' }}>
-              <style>{`.attsheet table{border-collapse:collapse;width:100%;font-family:-apple-system,'DM Sans',sans-serif}.attsheet td,.attsheet th{border:1px solid #e5e7eb;padding:5px 9px;font-size:12.5px;color:#1a1a1a;white-space:nowrap;text-align:left}.attsheet tr:first-child td,.attsheet th{background:#f9fafb;font-weight:700}`}</style>
+              <style>{`.attsheet table:not(.xr){border-collapse:collapse;width:100%;font-family:-apple-system,'DM Sans',sans-serif}.attsheet table:not(.xr) td,.attsheet table:not(.xr) th{border:1px solid #e5e7eb;padding:5px 9px;font-size:12.5px;color:#1a1a1a;white-space:nowrap;text-align:left}.attsheet table:not(.xr) tr:first-child td,.attsheet table:not(.xr) th{background:#f9fafb;font-weight:700}`}</style>
               {sheets.length > 1 && <div style={{ display: 'flex', gap: 4, padding: '8px 8px 0', flexWrap: 'wrap', borderBottom: '1px solid #eef0f2', background: '#fbfbfc' }}>
                 {sheets.map((sh, i) => <button key={sh.name} type="button" onClick={() => setSheet(i)} style={{ fontSize: 12, fontWeight: 700, padding: '5px 11px', border: 'none', borderBottom: sheet === i ? '2px solid #c9922c' : '2px solid transparent', background: 'none', color: sheet === i ? '#a06a12' : '#6b7280', cursor: 'pointer' }}>{sh.name}</button>)}
               </div>}
               {/* Sanitized like the deal-doc viewer: a crafted workbook can carry javascript: links or raw markup. */}
-              <div className="attsheet" style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(sheets[sheet]?.html || '') }} />
+              {sheets[sheet]?.rich && <style>{XR_CSS}</style>}
+              <div className="attsheet" style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: sheets[sheet]?.rich ? sheets[sheet].html : sanitizeHtml(sheets[sheet]?.html || '') }} />
             </div>
           )}
           {docHtml && <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 1px 8px rgba(0,0,0,.12)', padding: p.isMobile ? 16 : 36, fontSize: 14, lineHeight: 1.6, color: '#1a1a1a', maxWidth: 820, margin: '0 auto' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(docHtml) }} />}

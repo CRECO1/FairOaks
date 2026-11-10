@@ -495,7 +495,7 @@ export default function EmailComposer(p: EmailComposerProps) {
       )}
 
       {/* Everything except the send bar freezes while the undo countdown runs */}
-      <div {...(busy ? ({ inert: '' } as Record<string, string>) : {})} style={dock ? { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, opacity: busy ? 0.55 : 1 } : { opacity: busy ? 0.55 : 1 }}>
+      <div {...(busy ? ({ inert: '' } as Record<string, string>) : {})} style={dock ? { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowY: 'auto', opacity: busy ? 0.55 : 1 } : { opacity: busy ? 0.55 : 1 }}>
         {p.replyingTo && (
           <div style={{ padding: '7px 14px', background: 'var(--k-eff6ff)', borderBottom: '1px solid var(--k-bfdbfe)', fontSize: 12, color: 'var(--k-1d4ed8)' }}>
             ↩ Replying to “{p.replyingTo}” — stays in the same Gmail thread

@@ -1,6 +1,7 @@
 // Helpers for the composer's attachment preview: one shape for "a file about to be sent" (from the agent's computer OR
 // attached from the CRM), cached first-page thumbnails, and a guess at "this is another version of that file".
 
+import { renderWorkbook, isXlsxName } from '@/lib/xlsx-render';
 import { renderPdfPages, revokePages, targetWidthFor, type RenderedPage } from '@/lib/pdf-render';
 
 export interface PreviewItem {
@@ -42,7 +43,7 @@ export function loadBytes(item: PreviewItem): Promise<ArrayBuffer> {
 
 // First-page thumbnails, cached by key (a CRM flyer's key never changes for the life of the composer).
 const thumbCache = new Map<string, Promise<Thumb | null>>();
-export type Thumb = { src: string; pages: number | null; grid?: string[][] };
+export type Thumb = { src: string; pages: number | null; grid?: string[][]; html?: string; htmlWidth?: number };
 export function loadThumb(item: PreviewItem): Promise<Thumb | null> {
   const hit = thumbCache.get(item.key);
   if (hit) return hit;
@@ -51,6 +52,13 @@ export function loadThumb(item: PreviewItem): Promise<Thumb | null> {
     if (kind === 'other' || kind === 'doc') return null;
     const bytes = await loadBytes(item);
     if (kind === 'sheet') {
+      // .xlsx: the first rows of the first sheet drawn with the file's real formatting, shrunk to the card.
+      if (isXlsxName(item.name)) {
+        try {
+          const [sh] = await renderWorkbook(bytes.slice(0), { maxRows: 30, onlyFirst: true });
+          if (sh) return { src: '', pages: null, html: sh.html, htmlWidth: sh.width };
+        } catch { /* fall through to the plain peek */ }
+      }
       // A peek at the top-left of the first sheet, drawn as a mini table.
       const XLSX = await import('xlsx');
       const wb = XLSX.read(bytes.slice(0), { type: 'array', sheetRows: 8 });
