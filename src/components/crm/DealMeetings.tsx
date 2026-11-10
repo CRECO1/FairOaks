@@ -177,10 +177,10 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
       {!readOnly && (
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)' }}>📝 Internal Notes</div>
-            <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>Tag the contacts involved so the team can see who&rsquo;s in this deal. Tagging never notifies anyone unless you tick the calendar-invite box.</div>
+            <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>Tag the contacts involved so the team can see who&rsquo;s in this deal. Tagging never notifies anyone unless you tick the calendar-invite box.</div>
           </div>
           {editing === null && (
             <button onClick={startNew} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: GOLD, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}>＋ Add note</button>

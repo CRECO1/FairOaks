@@ -21,6 +21,7 @@ import CardDrafts from './CardDrafts';
 import ThreadAssist from './ThreadAssist';
 import DealEmailBar, { agoLabel, type EmailFilter } from './DealEmailBar';
 import EmailThreadHeader from './EmailThreadHeader';
+import CallSplit from './CallSplit';
 import { parseAddressList, emailDisplayName, nameBook, threadPeople, snippetOf, bareEmail, isRealName, personLabel } from '@/lib/email-display';
 import { htmlToText } from '@/lib/html-text';
 import { gmailSignatureBlock } from '@/lib/agent-signature';
@@ -1251,7 +1252,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callScriptEdit, setCallScriptEdit] = useState(false);
   const [callMyDay, setCallMyDay] = useState<{ calls: number; talked: number; voicemail: number; none: number; leads: number } | null>(null);
   const [callGoal, setCallGoal] = useState<number>(() => { try { return Number(localStorage.getItem('crm:callGoal')) || 25; } catch { return 25; } });
-  const [phoneMenu, setPhoneMenu] = useState(false);                                                     // contact card → the Call button's list of numbers
+  const [dealTextPhone, setDealTextPhone] = useState('');                                             // deal card → which number its text box writes to ('' = the default)
   const [contactTextPhone, setContactTextPhone] = useState('');                                          // …and which of them the text box is writing to ('' = the default)
   const [contactTextFor, setContactTextFor] = useState<string | null>(null);                        // contact card → office-line text box (contact id)
   const [dealTextOpen, setDealTextOpen] = useState(false);                                           // deal card → office-line text box
@@ -11817,8 +11818,36 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div className="overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ padding: isMobile ? (dealCompact ? '10px 14px' : '14px 14px 12px 18px') : '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flexWrap: isMobile ? 'wrap' : 'nowrap', borderRadius: '12px 12px 0 0' }}>
-              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile && dealCompact ? 19 : 22, fontWeight: 600, flex: 1, minWidth: 0, ...(isMobile ? { order: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>{activeDeal.client}</h3>
+              {isMobile ? (
+                <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: dealCompact ? 19 : 22, fontWeight: 600, flex: 1, minWidth: 0, order: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeDeal.client}</h3>
+              ) : (
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeDeal.client}</h3>
+                  {/* The deal at a glance, so the card says what it is before you scroll */}
+                  <div style={{ marginTop: 3, fontSize: 12, color: 'rgba(255,255,255,.55)', display: 'flex', flexWrap: 'wrap', gap: '2px 14px' }}>
+                    {activeDeal.property && <span style={{ color: 'rgba(255,255,255,.8)' }}>{activeDeal.property}</span>}
+                    {Number(activeDeal.value) > 0 && <span><span style={{ color: 'rgba(255,255,255,.85)', fontWeight: 600 }}>${Math.round(Number(activeDeal.value)).toLocaleString('en-US')}</span> {isLease(activeDeal.type) ? 'lease value' : 'deal value'}</span>}
+                    {(() => { const o = profiles.find(pr => pr.id === activeDeal.agent_id); return o ? <span>Owner <span style={{ color: 'rgba(255,255,255,.85)', fontWeight: 600 }}>{o.first_name} {o.last_name}</span></span> : null; })()}
+                    {activeDeal.last_touch && <span>Last touch <span style={{ color: 'rgba(255,255,255,.85)', fontWeight: 600 }}>{(() => { const d = Math.floor((Date.now() - new Date(activeDeal.last_touch).getTime()) / 86400000); return d <= 0 ? 'today' : `${d}d ago`; })()}</span></span>}
+                  </div>
+                </div>
+              )}
               {isMobile && !dealCompact && <div aria-hidden style={{ order: 2, flexBasis: '100%', height: 0 }} />}
+              {(() => {
+                const dc = clients.find(x => x.id === activeDeal.client_id);
+                const nums = [{ label: 'Cell', num: dc?.cell_phone || '' }, { label: 'Business line', num: dc?.phone || '' }];
+                const dp = (activeDeal.client_phone || '').trim();
+                if (dp && !nums.some(n => n.num.replace(/\D/g, '').slice(-10) === dp.replace(/\D/g, '').slice(-10))) nums.push({ label: 'On the deal', num: dp });
+                if (!nums.some(n => n.num.trim())) return null;
+                return (
+                  <span style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', order: isMobile ? 3 : undefined, flexShrink: 0 }}>
+                    <CallSplit variant="pill" isMobile={isMobile} numbers={nums}
+                      mainStyle={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: isMobile ? 40 : 34, padding: '0 12px 0 14px', background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,.55)', fontSize: 13, fontWeight: 700, textDecoration: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
+                      caretStyle={{ height: isMobile ? 40 : 34 }}
+                      onText={num => { setDealTextPhone(num); setDealTextOpen(true); }} />
+                  </span>
+                );
+              })()}
               {gmailConnected && (
                 <button type="button" aria-label={`Email ${activeDeal.client}`} title={activeDeal.client_email ? `Email ${activeDeal.client_email}` : 'Write an email for this deal'}
                   onClick={() => {
@@ -11830,8 +11859,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   }}
                   style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', order: isMobile ? 3 : undefined, alignItems: 'center', gap: 6, height: isMobile ? 40 : 34, padding: '0 14px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✉ Email</button>
               )}
-              {(activeDeal.client_phone || clients.find(x => x.id === activeDeal.client_id)?.phone) && (
-                <button type="button" aria-label={`Text ${activeDeal.client}`} title="Text from the office line" onClick={() => setDealTextOpen(o => !o)}
+              {(activeDeal.client_phone || clients.find(x => x.id === activeDeal.client_id)?.phone || clients.find(x => x.id === activeDeal.client_id)?.cell_phone) && (
+                <button type="button" aria-label={`Text ${activeDeal.client}`} title="Text from the office line" onClick={() => { setDealTextPhone(''); setDealTextOpen(o => !o); }}
                   style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', order: isMobile ? 3 : undefined, alignItems: 'center', gap: 6, height: isMobile ? 40 : 34, padding: '0 14px', background: dealTextOpen ? '#fff' : 'transparent', color: dealTextOpen ? '#111' : '#fff', border: '1px solid rgba(255,255,255,.55)', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>💬 Text</button>
               )}
               <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: isMobile && dealCompact ? 'none' : 'inline-block', ...(isMobile ? { order: 3 } : {}), padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>
@@ -11850,7 +11879,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const org = businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group';
                 const hi = first ? `Hi ${first}, ` : 'Hi, ';
                 return (
-                  <QuickText authToken={session?.access_token} businessUnit={businessUnit} contactId={activeDeal.client_id ?? null} phone={activeDeal.client_phone || dc?.phone || dc?.cell_phone || null} name={activeDeal.client}
+                  <QuickText authToken={session?.access_token} businessUnit={businessUnit} contactId={activeDeal.client_id ?? null} phone={dealTextPhone || activeDeal.client_phone || dc?.cell_phone || dc?.phone || null} name={activeDeal.client}
                     templates={[
                       { label: 'Checking in', body: `${hi}${me} with ${org} — just checking in${activeDeal.property ? ` on ${activeDeal.property}` : ''}. Let me know if you have any questions.` },
                       { label: 'Tried to reach you', body: `${hi}${me} with ${org} — I just tried to reach you. What's a good time to talk?` },
@@ -11871,8 +11900,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div className="crm-tabs-scroll" style={{ display: 'flex', borderBottom: '2px solid var(--k-f0ebe0)', marginBottom: 18, ...(isMobile ? { position: 'sticky', top: -16, zIndex: 3, background: 'var(--k-fff)' } : {}) }}>
                 {(['overview', 'client', 'emails', 'docs', 'esign', 'intel', 'commission'] as const).map(t => (
                   <button key={t} onClick={() => { setDealTab(t); if (t === 'docs' && activeDeal) loadDealDocs(activeDeal.id); }}
-                    style={{ padding: isMobile ? '11px 14px' : '8px 18px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? 'var(--k-111)' : 'var(--k-6b7280)', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
-                    {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length + dealForms.filter(f => f.url).length > 0 ? ` (${dealDocs.length + dealForms.filter(f => f.url).length})` : ''}` : t === 'esign' ? '✍️ E-Sign' : t === 'intel' ? '🏢 Property Intel' : t === 'commission' ? `💰 Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
+                    style={{ padding: isMobile ? '11px 14px' : '8px 14px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? 'var(--k-111)' : 'var(--k-6b7280)', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
+                    {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length + dealForms.filter(f => f.url).length > 0 ? ` (${dealDocs.length + dealForms.filter(f => f.url).length})` : ''}` : t === 'esign' ? 'E-Sign' : t === 'intel' ? 'Property Intel' : t === 'commission' ? `Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
                 ))}
               </div>
@@ -11882,7 +11911,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div>
                   <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Property</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.property} onBlur={e => updateDeal(activeDeal.id, { property: e.target.value })} /></div>
-                    <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Gross Lease Value ($)</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.value} onBlur={e => updateDeal(activeDeal.id, { value: +e.target.value })} /></div>
+                    <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>{isLease(activeDeal.type) ? 'Gross Lease Value ($)' : 'Deal Value ($)'}</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.value} onBlur={e => updateDeal(activeDeal.id, { value: +e.target.value })} />{Number(activeDeal.value) >= 1000 && <div style={{ marginTop: 3, fontSize: 12, color: 'var(--k-9ca3af)' }}>${Math.round(Number(activeDeal.value)).toLocaleString('en-US')}</div>}</div>
                     {/* Deal tags. Same free-text vocabulary as contacts — the datalist
                         offers every tag already in use across both, and entries snap to
                         the existing casing, so segmenting stays consistent. */}
@@ -12093,8 +12122,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     )}
                   </div>
 
-                  <div style={{ marginTop: 16, fontSize: 13, color: 'var(--k-6b7280)' }}>Created: {activeDeal.created_at?.slice(0, 10)} · Last Touch: {activeDeal.last_touch?.slice(0, 10)}</div>
-                  {isAdmin && <div style={{ marginTop: 12 }}><button onClick={() => deleteDeal(activeDeal.id)} style={{ background: 'var(--k-fee2e2)', color: 'var(--k-991b1b)', border: '1px solid var(--k-fca5a5)', borderRadius: 6, padding: '5px 12px', fontSize: 13, cursor: 'pointer' }}>Delete Deal</button></div>}
+                  <div style={{ marginTop: 16, fontSize: 12.5, color: 'var(--k-9ca3af)' }}>{(() => { const f = (iso?: string | null) => { const d = iso ? new Date(`${iso.slice(0, 10)}T12:00:00`) : null; return d && !isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'; }; return `Created ${f(activeDeal.created_at)} · last touch ${f(activeDeal.last_touch)}`; })()}</div>
+                  {isAdmin && <div style={{ marginTop: 22, paddingTop: 14, borderTop: '1px solid var(--k-f0f0f0)', textAlign: 'right' }}><button onClick={() => deleteDeal(activeDeal.id)} style={{ background: 'none', color: 'var(--k-991b1b)', border: '1px solid var(--k-fca5a5)', borderRadius: 6, padding: '5px 12px', fontSize: 12.5, cursor: 'pointer', minHeight: isMobile ? 40 : undefined }}>Delete deal</button></div>}
                 </div>
               )}
 
@@ -13472,42 +13501,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 return (
                 <>
                   <div style={{ display: 'flex', gap: 8, padding: isMobile ? '10px 14px' : '10px 28px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-f0f0f0)' }}>
-                    {(() => {
-                      const biz = (c.phone || '').trim(), cell = (c.cell_phone || '').trim();
-                      const numbers = [{ key: 'cell', label: 'Cell', num: cell }, { key: 'biz', label: 'Business line', num: biz }];
-                      const row = (n: { key: string; label: string; num: string }) => (
-                        <div key={n.key} role="menuitem" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderTop: n.key === 'biz' ? '1px solid var(--k-f0f0f0)' : undefined, opacity: n.num ? 1 : 0.5 }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase', color: 'var(--k-9ca3af)' }}>{n.label}{n.num && n.num === ph ? <span style={{ marginLeft: 6, color: '#c9922c' }}>· default</span> : null}</div>
-                            <div style={{ fontSize: 15, fontWeight: 600, color: n.num ? 'var(--k-111)' : 'var(--k-9ca3af)', marginTop: 1 }}>{n.num ? phoneDisp(n.num) : 'Not on file'}</div>
-                          </div>
-                          {n.num && (
-                            <>
-                              <a href={`tel:${n.num}`} onClick={() => setPhoneMenu(false)} aria-label={`Call ${n.label} ${phoneDisp(n.num)}`}
-                                style={{ width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, borderRadius: 18, background: '#c9922c', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', fontSize: 16 }}>📞</a>
-                              <button type="button" onClick={() => { setContactTextPhone(n.num); setContactTextFor(c.id); setPhoneMenu(false); }} aria-label={`Text ${n.label} ${phoneDisp(n.num)}`} title="Text from the office line"
-                                style={{ width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, borderRadius: 18, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', cursor: 'pointer', fontSize: 15, padding: 0 }}>💬</button>
-                            </>
-                          )}
-                        </div>
-                      );
-                      return (
-                        <div style={{ flex: 1, minWidth: 0, display: 'flex', position: 'relative' }}>
-                          <a href={ph ? `tel:${ph}` : undefined} aria-label={ph ? `Call ${phoneDisp(ph)}` : 'No phone on file'}
-                            style={{ ...base, flex: 1, ...(ph ? { background: '#c9922c', borderColor: '#c9922c', color: '#fff', borderRadius: '10px 0 0 10px' } : off) }}>📞 Call</a>
-                          <button type="button" onClick={() => setPhoneMenu(v => !v)} aria-haspopup="menu" aria-expanded={phoneMenu} aria-label="Choose which number to call or text" title="Cell and business line"
-                            style={{ width: isMobile ? 44 : 34, flexShrink: 0, minHeight: isMobile ? 48 : 38, border: '1px solid #c9922c', borderLeft: '1px solid rgba(255,255,255,.45)', borderRadius: '0 10px 10px 0', background: '#c9922c', color: '#fff', fontSize: 11, cursor: 'pointer', ...(ph ? {} : { opacity: 0.38, pointerEvents: 'none' as const }) }}>▾</button>
-                          {phoneMenu && (
-                            <>
-                              <div onClick={() => setPhoneMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                              <div role="menu" style={{ position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 41, width: isMobile ? 'min(300px, calc(100vw - 28px))' : 290, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.2)', overflow: 'hidden' }}>
-                                {numbers.map(row)}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    <CallSplit variant="tile" isMobile={isMobile} numbers={[{ label: 'Cell', num: c.cell_phone || '' }, { label: 'Business line', num: c.phone || '' }]}
+                      mainStyle={{ ...base, background: '#c9922c', borderColor: '#c9922c', color: '#fff' }}
+                      caretStyle={{ minHeight: isMobile ? 48 : 38 }}
+                      onText={num => { setContactTextPhone(num); setContactTextFor(c.id); }} />
                     <button type="button" onClick={() => { setContactTextPhone(''); setContactTextFor(contactTextFor === c.id ? null : c.id); }} aria-label="Text from the office line" title="Text from the office line"
                       style={{ ...base, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", ...(contactTextFor === c.id ? { background: '#111', borderColor: '#111', color: '#fff' } : {}), ...(ph ? {} : off) }}>💬 Text</button>
                     <a href={c.email ? `mailto:${c.email}` : undefined} aria-label={c.email ? `Email ${c.email}` : 'No email on file'} style={{ ...base, ...(c.email ? {} : off) }}
