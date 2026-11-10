@@ -27,7 +27,9 @@ const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
 export interface UploadedDealDoc { id: string; name: string }
 
 // Also serves a contact's Files (pass `clientId`): same flow, /api/crm/client-docs.
-export default function DealDocUpload({ dealId, clientId, authToken, showToast, onUploaded }: {
+export default function DealDocUpload({ dealId, clientId, authToken, showToast, onUploaded, compact = false }: {
+  /** Once the list below already has files: a one-line drop zone instead of the tall one. */
+  compact?: boolean;
   dealId?: string;
   clientId?: string;
   authToken?: string;
@@ -108,7 +110,7 @@ export default function DealDocUpload({ dealId, clientId, authToken, showToast, 
       onDragOver={e => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
       onDrop={e => { e.preventDefault(); setDragging(false); uploadAll(e.dataTransfer.files); }}
-      style={{ display: 'block', position: 'relative', border: `2px dashed ${dragging ? '#c9922c' : '#d1d5db'}`, borderRadius: 10, padding: '26px 20px', minHeight: 44,
+      style={{ display: 'block', position: 'relative', border: `2px dashed ${dragging ? '#c9922c' : '#d1d5db'}`, borderRadius: 10, padding: compact ? '10px 16px' : '26px 20px', minHeight: 44,
         textAlign: 'center', cursor: status ? 'default' : 'pointer', background: dragging ? '#fef9f0' : '#f9fafb', marginBottom: 16, transition: 'all .15s' }}>
       <input ref={inputRef} type="file" multiple accept={DEAL_DOC_ACCEPT} disabled={!!status}
         aria-label={`Upload files to this ${noun}`}
@@ -121,11 +123,21 @@ export default function DealDocUpload({ dealId, clientId, authToken, showToast, 
         </div>
       ) : (
         <>
-          <div aria-hidden style={{ fontSize: 28, marginBottom: 8 }}>📎</div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
-            {touch ? 'Tap to add a file or photo' : 'Drop files here or click to browse'}
-          </div>
-          <div style={{ fontSize: 12, color: '#9ca3af' }}>PDF, Word, Excel, CSV, JPG, PNG · Max 25 MB each</div>
+          {compact ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span aria-hidden style={{ fontSize: 16 }}>📎</span>
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: '#374151' }}>{touch ? 'Tap to add another file or photo' : 'Drop files here or click to add more'}</span>
+              <span style={{ fontSize: 12, color: '#9ca3af' }}>PDF, Word, Excel, CSV, JPG, PNG · 25 MB each</span>
+            </div>
+          ) : (
+            <>
+              <div aria-hidden style={{ fontSize: 28, marginBottom: 8 }}>📎</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+                {touch ? 'Tap to add a file or photo' : 'Drop files here or click to browse'}
+              </div>
+              <div style={{ fontSize: 12, color: '#9ca3af' }}>PDF, Word, Excel, CSV, JPG, PNG · Max 25 MB each</div>
+            </>
+          )}
         </>
       )}
     </label>

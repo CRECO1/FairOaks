@@ -22,6 +22,7 @@ import ThreadAssist from './ThreadAssist';
 import DealEmailBar, { agoLabel, type EmailFilter } from './DealEmailBar';
 import EmailThreadHeader from './EmailThreadHeader';
 import CallSplit from './CallSplit';
+import { friendlyTitle } from '@/lib/esign-title';
 import { parseAddressList, emailDisplayName, nameBook, threadPeople, snippetOf, bareEmail, isRealName, personLabel } from '@/lib/email-display';
 import { htmlToText } from '@/lib/html-text';
 import { gmailSignatureBlock } from '@/lib/agent-signature';
@@ -757,6 +758,8 @@ function fmtVal(deal: Deal) {
 }
 const LEASE_TYPES = ['Tenant Lease', 'Landlord Listing'];
 const isLease = (t?: string) => LEASE_TYPES.includes(t ?? '');
+// A form's code is worth showing when it is a real form number (TXR-2001, LOI-LEASE); the bare numbers some rows carry ("722", "12610") mean nothing to a person.
+const formCodeLabel = (c?: string | null) => (c && /[A-Za-z]/.test(c) ? c : '');
 // Shown next to the figure so nobody reads a lease total as a sale price.
 const valNote = (t?: string) => isLease(t) ? 'gross lease value — total over the term' : 'deal value';
 
@@ -12374,14 +12377,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Docs tab */}
               {dealTab === 'docs' && (
                 <div>
-                  {/* Promote this deal's property into a shareable Property Workspace folder */}
-                  <button onClick={() => promoteDealToWorkspace(activeDeal)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '10px 14px', marginBottom: 18, borderRadius: 10, border: '1px dashed #c9922c', background: 'var(--k-fdf6e9)', color: 'var(--k-a06a12)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                    📁 Add this property to Property Workspaces
-                  </button>
                   {/* CRM Forms (Transaction Docs) tied to this deal */}
                   <div style={{ marginBottom: 22 }}>
-                    <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 }}>CRM Forms</div>
+                    <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 }}>CRM Forms{dealForms.length > 0 ? ` · ${dealForms.length}` : ''}</div>
                     {/* One dropdown to add a form. Lists every form in the library, plus
                         any blanks already sitting on this deal waiting to be filled. */}
                     {(() => {
@@ -12412,7 +12410,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <optgroup label={`Waiting to be filled · ${waiting.length}`}>
                                 {waiting.map(f => (
                                   <option key={f.id} value={`sub:${f.id}`}>
-                                    {f.title || f.crm_forms?.name || 'Form'}{f.crm_forms?.form_code ? ` · ${f.crm_forms.form_code}` : ''}
+                                    {friendlyTitle(f.title || f.crm_forms?.name || 'Form')}{formCodeLabel(f.crm_forms?.form_code) ? ` · ${formCodeLabel(f.crm_forms?.form_code)}` : ''}
                                   </option>
                                 ))}
                               </optgroup>
@@ -12420,7 +12418,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {library.length > 0 && (
                               <optgroup label="All forms">
                                 {library.map(f => (
-                                  <option key={f.id} value={`lib:${f.id}`}>{f.name}{f.form_code ? ` · ${f.form_code}` : ''}</option>
+                                  <option key={f.id} value={`lib:${f.id}`}>{f.name}{formCodeLabel(f.form_code) ? ` · ${formCodeLabel(f.form_code)}` : ''}</option>
                                 ))}
                               </optgroup>
                             )}
@@ -12470,15 +12468,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               ) : (
                                 <>
                                   <span onDoubleClick={() => { setRenameDraft(f.title || f.crm_forms?.name || ''); setRenamingDoc(f.id); }}
-                                    title="Double-click to rename"
-                                    style={{ fontSize: 14, fontWeight: 600, color: w ? 'var(--k-6b7280)' : 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}>{f.title || f.crm_forms?.name || 'Form'}</span>
+                                    title={`${f.title || f.crm_forms?.name || ''} — double-click to rename`}
+                                    style={{ fontSize: 14, fontWeight: 600, color: w ? 'var(--k-6b7280)' : 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}>{friendlyTitle(f.title || f.crm_forms?.name || 'Form')}</span>
                                   <button onClick={() => { setRenameDraft(f.title || f.crm_forms?.name || ''); setRenamingDoc(f.id); }}
                                     title="Rename this document"
                                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d6c08a', fontSize: 12, padding: '0 2px', flexShrink: 0, lineHeight: 1 }}>✎</button>
                                 </>
                               )}
                             </div>
-                            <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{w ? 'Not started — waiting to be filled' : (f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : '')}{(() => {
+                            <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 1 }}>{formCodeLabel(f.crm_forms?.form_code) ? `${formCodeLabel(f.crm_forms?.form_code)} · ` : ''}{w ? 'Not started — waiting to be filled' : (f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : '')}{(() => {
                               // Several saved docs with the same title: number them (oldest first) and show the time, so
                               // two "Letter of Intent to Purchase" rows can be told apart at a glance.
                               const key = (x: typeof f) => (x.title || x.crm_forms?.name || '').trim().toLowerCase();
@@ -12516,9 +12514,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     })()}
                   </div>
                   <LinkedDocs dealId={activeDeal.id} authToken={session?.access_token} currentUser={{ id: profile.id, name: `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() }} profiles={profiles} isAdmin={isAdmin} isMobile={isMobile} onToast={showToast} onSignDoc={signLiveDoc} />
-                  <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 10 }}>Uploaded Files</div>
+                  <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 10 }}>Uploaded Files{dealDocs.length > 0 ? ` · ${dealDocs.length}` : ''}</div>
                   {/* Straight to storage — see DealDocUpload for why the file never goes through the API */}
-                  <DealDocUpload dealId={activeDeal.id} authToken={session?.access_token} showToast={showToast} onUploaded={() => loadDealDocs(activeDeal.id)} />
+                  <DealDocUpload compact={dealDocs.length > 0} dealId={activeDeal.id} authToken={session?.access_token} showToast={showToast} onUploaded={() => loadDealDocs(activeDeal.id)} />
 
                   {/* Doc list */}
                   {docsError ? (
@@ -12606,7 +12604,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 if (!url) { win?.close(); showToast('Could not open document.'); return; }
                                 if (win) win.location.href = url; else window.location.href = url;
                               }}
-                                style={{ padding: '5px 12px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
+                                style={{ padding: '5px 12px', background: 'var(--k-fff)', color: 'var(--k-374151)', border: '1px solid var(--k-d1d5db)', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
                                 ↓ Open
                               </button>
                             )}
@@ -12636,6 +12634,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       );
                     })()
                   )}
+                  {/* Promote this deal's property into a shareable Property Workspace folder (an occasional action, so it sits at the end) */}
+                  <div style={{ marginTop: 22, paddingTop: 14, borderTop: '1px solid var(--k-f0f0f0)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ flex: 1, minWidth: 180, fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Want a shared folder for this property’s documents, photos and contacts?</span>
+                    <button onClick={() => promoteDealToWorkspace(activeDeal)}
+                      style={{ minHeight: isMobile ? 40 : 32, padding: '0 14px', borderRadius: 8, border: '1px solid #c9922c', background: 'var(--k-fff)', color: 'var(--k-a06a12)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>📁 Add to Property Workspaces</button>
+                  </div>
                 </div>
               )}
 
