@@ -1,8 +1,10 @@
 'use client';
 
 import CrmAttachPicker from './CrmAttachPicker';
+import { AttachmentCards } from './AttachmentPreview';
+import type { PreviewItem } from '@/lib/attachment-preview';
 import type { CrmAttachItem } from '@/lib/crm-attachments';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { confirmDialog } from '@/lib/confirm-dialog';
 import { getDraft, saveDraft, deleteDraft, type DraftContext } from '@/lib/email-drafts';
@@ -224,6 +226,11 @@ export default function EmailComposer(p: EmailComposerProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sigOpen, setSigOpen] = useState(false);
   const attachCount = p.attachments.length + (p.crmFiles?.items.length ?? 0);
+  // Everything going out, in one list for the preview cards (computer files first, then CRM documents).
+  const previewItems = useMemo<PreviewItem[]>(() => [
+    ...p.attachments.map((f, i) => ({ key: `local:${i}:${f.name}:${f.size}`, name: f.name, size: f.size, mime: f.type, source: 'From your computer', file: f })),
+    ...(p.crmFiles?.items ?? []).map(it => ({ key: `${it.kind}:${it.id}`, name: it.name, size: it.size, mime: it.type, source: it.sub ?? 'From the CRM', ref: { kind: it.kind, id: it.id } })),
+  ], [p.attachments, p.crmFiles?.items]);
   const subjRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
   const [dragging, setDragging] = useState(false);
@@ -670,32 +677,11 @@ export default function EmailComposer(p: EmailComposerProps) {
             : { minHeight: p.isMobile ? 200 : 190, maxHeight: p.isMobile ? '45vh' : 360, overflowY: 'auto', padding: '12px 14px', fontSize: 15, fontFamily: 'Arial, sans-serif', lineHeight: 1.6, outline: 'none', color: 'var(--k-111)' }}
         />
 
-        {p.attachments.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 12px 10px' }}>
-            {p.attachments.map((file, i) => (
-              <span key={i} style={CHIP}>
-                <span>📎</span>
-                <span style={{ maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
-                <span style={{ color: 'var(--k-9ca3af)', fontSize: 11 }}>{file.size > 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1024))} KB`}</span>
-                <button type="button" onClick={() => p.setAttachments(prev => prev.filter((_, idx) => idx !== i))} aria-label={`Remove ${file.name}`}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 15, lineHeight: 1, padding: '0 4px', minWidth: 0, minHeight: 0 }}>×</button>
-              </span>
-            ))}
-          </div>
-        )}
-
-        {p.crmFiles && p.crmFiles.items.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 12px 10px' }}>
-            {p.crmFiles.items.map(it => (
-              <span key={`${it.kind}:${it.id}`} style={CHIP} title="Attached from the deal when you send">
-                <span>📁</span>
-                <span style={{ maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</span>
-                <button type="button" onClick={() => p.crmFiles!.setItems(prev => prev.filter(x => !(x.kind === it.kind && x.id === it.id)))} aria-label={`Remove ${it.name}`}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 15, lineHeight: 1, padding: '0 4px', minWidth: 0, minHeight: 0 }}>×</button>
-              </span>
-            ))}
-          </div>
-        )}
+        <AttachmentCards isMobile={p.isMobile} items={previewItems}
+          onRemove={key => {
+            if (key.startsWith('local:')) p.setAttachments(prev => prev.filter((f, i) => `local:${i}:${f.name}:${f.size}` !== key));
+            else p.crmFiles?.setItems(prev => prev.filter(x => `${x.kind}:${x.id}` !== key));
+          }} />
         {pickerOpen && p.crmFiles && (
           <CrmAttachPicker ctx={p.crmFiles.ctx} chosen={p.crmFiles.items} isMobile={p.isMobile} onClose={() => setPickerOpen(false)}
             onAdd={items => p.crmFiles!.setItems(prev => [...prev, ...items.filter(n => !prev.some(x => x.kind === n.kind && x.id === n.id))])} />
