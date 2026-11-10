@@ -13374,6 +13374,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {c.type === 'Buyer' ? '🏡' : c.type === 'Seller' ? '🪧' : c.type === 'Tenant' ? '🔑' : c.type === 'Landlord/Investor' ? '🏢' : c.type === 'Agent' ? '🤝' : '🏛'} {c.type}
                   </span>}
                   {isDnc(c) && <span title="Marked do-not-call — skipped by the call queue" style={{ display: 'inline-block', marginLeft: 8, padding: '2px 10px', borderRadius: 4, fontSize: 12, fontWeight: 800, background: 'var(--k-fee2e2)', color: 'var(--k-991b1b)' }}>🚫 Do not call</span>}
+                  {!(isMobile && cardCompact) && (
+                    <div style={{ marginTop: 8, fontSize: 12, color: 'rgba(255,255,255,.55)', display: 'flex', flexWrap: 'wrap', gap: '2px 14px' }}>
+                      <span>Owner <span style={{ color: 'rgba(255,255,255,.85)', fontWeight: 600 }}>{ownerName}</span></span>
+                      {c.last_touched_at
+                        ? <span>Last touch <span style={{ fontWeight: 600, color: (() => { const d = Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000); return d >= 90 ? '#fca5a5' : d >= 30 ? '#fdba74' : '#86efac'; })() }}>{Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000) === 0 ? 'today' : `${Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000)}d ago`}</span></span>
+                        : <span style={{ color: '#fcd34d', fontWeight: 600 }}>Never contacted</span>}
+                      {c.lead_source && <span>via {c.lead_source}</span>}
+                    </div>
+                  )}
                 </div>
                 <button className="crm-icon-btn" onClick={() => setActiveClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
@@ -13500,7 +13509,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const el = e.currentTarget, long = el.scrollHeight - el.clientHeight > 300;
                   setCardCompact(prev => (!long ? false : prev ? el.scrollTop > 4 : el.scrollTop > 60));
                 }) : undefined}>
-                {isMobile && <ContactJumpBar />}
+                <ContactJumpBar />
                 {/* Contact Info */}
                 <div>
                   <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 10 }}>
@@ -13641,7 +13650,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {/* Email Campaigns — which marketing campaigns this contact is enrolled in,
                     so you can tell at a glance whether they're on our email marketing. The
                     activity timeline above shows the individual sends. */}
-                <PhoneFold label="Email Campaigns" hint={clientEnrollments.length ? `${clientEnrollments.filter(e => e.active !== false).length} active` : 'none'} isMobile={isMobile}>
+                <PhoneFold label="Email Campaigns" hint={clientEnrollments.length ? `${clientEnrollments.filter(e => e.active !== false).length} active` : (clientCampaignSends.length ? `${clientCampaignSends.length} past` : 'none')} isMobile={isMobile} foldOnDesktop={clientEnrollments.filter(e => e.active !== false).length === 0}>
                 <div style={{ marginBottom: 22 }}>
                   <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 8 }}>
                     Email Campaigns{clientEnrollments.length ? ` (${clientEnrollments.filter(e => e.active !== false).length} active)` : ''}
@@ -13940,8 +13949,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <button onClick={() => { loadClientActivities(c.id); loadClientCampaignSends(c.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--k-9ca3af)', fontSize: 12, padding: '2px 6px', borderRadius: 4 }} title="Refresh">⟳ Refresh</button>
                   </div>
 
-                  {/* Log new activity — on phones a one-line button until tapped (or until a draft is typed) */}
-                  {isMobile && !logOpen && !newActivity.note ? (
+                  {/* Log new activity — a one-line button until tapped (or until a draft is typed), on every screen */}
+                  {!logOpen && !newActivity.note ? (
                     <button type="button" onClick={() => setLogOpen(true)}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 48, padding: '0 14px', marginBottom: 12, border: '1px dashed var(--k-d1d5db)', borderRadius: 10, background: 'var(--k-f9fafb)', color: 'var(--k-374151)', fontSize: 14, fontWeight: 600, textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                       <span style={{ flex: 1 }}>+ Log a touch <span style={{ fontWeight: 500, fontSize: 13, color: 'var(--k-9ca3af)', marginLeft: 6 }}>call · email · meeting · note</span></span>
@@ -14055,8 +14064,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* Deal notes this contact is tagged in — answers "which deals is this client part of?" */}
                   <div style={{ marginTop: 10, marginBottom: 16 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 2 }}>📝 Tagged in these deals</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginBottom: 8 }}>Internal notes from deals where this contact was tagged.</div>
+                    <div title="Internal notes from deals where this contact was tagged" style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 6 }}>📝 Tagged in these deals</div>
                     <DealMeetings clientId={c.id} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} />
                     <ContactComms clientId={c.id} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} onOpenLog={() => { setActiveClient(null); setPage('calls'); }} />
                   </div>
@@ -14332,13 +14340,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {profiles.filter(p => !p.business_unit || p.business_unit === c.business_unit).map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
                       </select>
                     </label>
-                  ) : (
+                  ) : isMobile ? (
                     <span>👤 Owner: {ownerName}</span>
-                  )}
-                  {c.lead_source && (
+                  ) : null}
+                  {isMobile && c.lead_source && (
                     <span>📌 <span style={{ background: 'var(--k-eff6ff)', color: 'var(--k-1d4ed8)', padding: '1px 7px', borderRadius: 8, fontWeight: 600, fontSize: 11 }}>{c.lead_source}</span></span>
                   )}
-                  {c.last_touched_at ? (
+                  {/* Owner / last touch / source sit in the header on a computer; on a phone the header folds away on scroll, so they stay here too. */}
+                  {!isMobile ? null : c.last_touched_at ? (
                     <span>🤝 Last touch: <strong style={{ color: (() => { const d = Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000); return d >= 90 ? 'var(--k-dc2626)' : d >= 30 ? 'var(--k-c2410c)' : 'var(--k-16a34a)'; })() }}>{Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000)}d ago</strong></span>
                   ) : (
                     <span style={{ color: '#f59e0b', fontWeight: 600 }}>🤝 Never contacted</span>
