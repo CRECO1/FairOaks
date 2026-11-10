@@ -9,6 +9,7 @@ import { newTrackingId, withOpenPixel, unsubscribeUrlFor } from '@/lib/email-tra
 import { emailLeadOwner, type OwnerProfile } from '@/lib/email-lead-owner';
 import { extractEmailText } from '@/lib/gmail-body';
 import { formatLeadEmail } from '@/lib/lead-email-text';
+import { matchListing, gmailListingTerms, isAutomated, displayName, freshText, looksLikePitch, hasInquiryIntent, type ListingLite } from '@/lib/direct-inquiry';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -606,6 +607,106 @@ function getHeader(msg: any, name: string): string {
   )?.value ?? '';
 }
 
+// ── Direct inquiries ─────────────────────────────────────────────────────────
+// A PERSON emailing one of our inboxes about one of our listings ("your listing for 2250 Chipley Circle caught my attention") is not on a
+// platform feed, so the loop above never saw it. This pass finds them: a first-touch email in the Primary inbox, from outside, that
+// Gmail authenticated, that is not bulk/automated/a pitch, and that NAMES an active commercial listing. Only people we don't already
+// have as a contact become a Prospect (someone we know is handled by the deal-email sync). The contact is created with lead_source
+// "Email — Direct inquiry", which the new-lead hold keeps private to the broker until he assigns it. No welcome series is sent: this is
+// a personal note, not a form submission.
+const DIRECT_MAX_PER_RUN = 10;
+const OUR_NUMBERS = new Set(['2108173443', '2103558683']);
+async function importDirectInquiries(
+  supabase: ReturnType<typeof db>,
+  connections: any[],
+  profiles: OwnerProfile[],
+  processedIds: Set<string>,
+): Promise<number> {
+  const { data: ls } = await supabase.from('crm_listings').select('id,name,address').eq('business_unit', 'commercial').eq('status', 'active');
+  const listings = (ls ?? []) as ListingLite[];
+  const terms = gmailListingTerms(listings);
+  if (!terms.length) return 0;
+  const skipDomains = [...INTERNAL_DOMAINS, 'highgroundautomation.com'];
+  const query = `in:inbox newer_than:3d -from:(${skipDomains.join(' OR ')}) (${terms.join(' OR ')})`;
+  let made = 0;
+  for (const conn of connections) {
+    if (made >= DIRECT_MAX_PER_RUN) break;
+    const token = await getValidToken(conn);
+    if (!token) continue;
+    const ids = (await gmailSearch(token, query)).slice(0, 25);
+    for (const messageId of ids) {
+      if (made >= DIRECT_MAX_PER_RUN) break;
+      if (processedIds.has(messageId)) continue;
+      const msg = await gmailGetMessage(token, messageId);
+      if (!msg) continue;
+      const labels: string[] = msg.labelIds ?? [];
+      if (['SENT', 'DRAFT', 'SPAM', 'TRASH', 'CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS'].some(l => labels.includes(l))) continue;   // Gmail itself filed it as bulk
+      const headers = msg.payload?.headers ?? [];
+      const from = getHeader(msg, 'from'), subject = getHeader(msg, 'subject');
+      const addr = senderAddress(from);
+      if (!addr) continue;
+      const domain = addr.slice(addr.lastIndexOf('@') + 1);
+      if (skipDomains.some(d => domain === d || domain.endsWith('.' + d)) || detectSource(from)) continue;
+      if (senderAuthenticated(msg, addr) !== true) continue;                       // Gmail must have verified the sender
+      if (isAutomated(headers, addr)) continue;                                    // bulk / auto-reply / system mail
+      if (/^\s*(re|fwd?|aw)\s*:/i.test(subject) || NON_LEAD_PATTERNS.some(re => re.test(subject))) continue;
+      const text = extractEmailText(msg.payload).replace(/\r\n?/g, '\n').trim();
+      const fresh = freshText(text);
+      if (!fresh || looksLikePitch(`${subject} ${fresh}`) || !hasInquiryIntent(`${subject} ${fresh}`)) continue;   // a vendor pitch, or not asking about the space
+      const listing = matchListing(`${subject}\n${fresh.slice(0, 6000)}`, listings);
+      if (!listing) continue;                                                      // doesn't name one of our listings
+      if (await findClientByEmail(supabase, addr, 'commercial')) continue;         // someone we already know: not a new prospect
+
+      const { ownerId: agentId, backupIds } = emailLeadOwner(profiles, conn.user_id);
+      const fullName = displayName(from) || addr.split('@')[0].replace(/[._\-\d]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+      const parts = fullName.split(' ');
+      const phoneRaw = (/((?:\+1\s?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4})/.exec(fresh)?.[1] ?? '').trim();
+      const phone = OUR_NUMBERS.has(phoneRaw.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '')) ? '' : phoneRaw;
+      const propertyName = listing.address || listing.name || subject;
+      const message = fresh.replace(/\s+/g, ' ').slice(0, 500);
+
+      const { data: newClient, error: insertErr } = await supabase.from('crm_clients').insert([{
+        agent_id: agentId, assigned_agent_ids: backupIds,
+        first_name: parts[0] ?? '', last_name: parts.slice(1).join(' '), business_name: '',
+        email: addr, phone, type: 'Tenant',
+        lead_source: 'Email — Direct inquiry', prospect_status: 'new',
+        notes: [`Property: ${propertyName}`, `Message: ${message}`].join('\n'),
+        business_unit: 'commercial', tags: ['auto-imported', 'direct-inquiry'],
+      }]).select('id').single();
+      const clientId = newClient?.id as string | undefined;
+      if (insertErr || !clientId) { console.error('[email-leads] direct inquiry: contact insert failed', { messageId, subject, error: insertErr }); continue; }
+
+      const nowIso = new Date().toISOString();
+      const { data: deal } = await supabase.from('crm_deals').insert([{
+        client_id: clientId, client: fullName, client_email: addr, client_phone: phone,
+        type: 'Tenant Lease', property: propertyName, listing_id: listing.id, value: 0,
+        notes: [`Message: ${message}`, 'Source: Direct email'].join('\n'),
+        agent_id: agentId, assigned_agent_ids: [agentId, ...backupIds],
+        stage: 'Prospect', last_touch: nowIso, business_unit: 'commercial',
+      }]).select('id').single();
+      const dealId = deal?.id as string | undefined;
+      if (dealId) {
+        try {
+          const ms = Number(msg.internalDate) || Date.now();
+          await supabase.from('crm_deal_emails').insert([{
+            gmail_message_id: messageId, deal_id: dealId, client_id: clientId, direction: 'received',
+            from_email: from, to_email: getHeader(msg, 'to'), subject, body: text.slice(0, 4000),
+            email_date: new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }), email_at: new Date(ms).toISOString(),
+            gmail_thread_id: msg.threadId ?? null, rfc_message_id: getHeader(msg, 'message-id') || null, attachments: [],
+          }]);
+        } catch (e) { console.error('[email-leads] direct inquiry: could not log the email on the deal', e); }
+      }
+      await supabase.from('email_lead_imports').insert([{
+        gmail_message_id: messageId, gmail_connection_id: conn.id, source: 'Direct email', business_unit: 'commercial', client_id: clientId,
+        raw_subject: subject, parsed_name: fullName, parsed_email: addr, parsed_phone: phone, parsed_property: propertyName, parsed_message: message,
+      }]);
+      processedIds.add(messageId);
+      made++;
+    }
+  }
+  return made;
+}
+
 // ── Main sync logic ──────────────────────────────────────────────────────────
 export async function POST(req: import('next/server').NextRequest) {
   // Require internal key (same secret used by cron→MLS sync)
@@ -882,6 +983,10 @@ export async function POST(req: import('next/server').NextRequest) {
         runFailures = 0;   // consecutive streak broken
       }
     }
+
+    // Direct inquiries (people writing to us about a listing) — best effort; never fails the platform-feed import above.
+    try { totalImported += await importDirectInquiries(supabase, connections, (profiles ?? []) as OwnerProfile[], processedIds); }
+    catch (e) { console.error('[email-leads] direct inquiry pass failed', e); }
 
     if (totalFailed > 0) {
       console.error(`[email-leads/sync] ${totalFailed} message(s) failed to import (longest consecutive run: ${maxConsecutiveFailures})`, failureSamples);
