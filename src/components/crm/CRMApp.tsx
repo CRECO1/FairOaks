@@ -759,7 +759,7 @@ function fmtVal(deal: Deal) {
 const LEASE_TYPES = ['Tenant Lease', 'Landlord Listing'];
 const isLease = (t?: string) => LEASE_TYPES.includes(t ?? '');
 // A form's code is worth showing when it is a real form number (TXR-2001, LOI-LEASE); the bare numbers some rows carry ("722", "12610") mean nothing to a person.
-const formCodeLabel = (c?: string | null) => (c && /[A-Za-z]/.test(c) ? c : '');
+const formCodeLabel = (c?: string | null) => (c && /[A-Za-z]/.test(c) ? c.replace(/\s*\(\d+\)\s*$/, '') : '');   // "TXR-2001 (722)" → "TXR-2001"
 // Shown next to the figure so nobody reads a lease total as a sale price.
 const valNote = (t?: string) => isLease(t) ? 'gross lease value — total over the term' : 'deal value';
 
