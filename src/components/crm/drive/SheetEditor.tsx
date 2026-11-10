@@ -331,6 +331,8 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
   const [scroll, setScroll] = useState({ top: 0, left: 0 });
   const [box, setBox] = useState({ w: 800, h: 500 });
   const [bar, setBar] = useState<string | null>(null);       // formula bar text while it is focused
+  const barSkipBlur = useRef(false);                           // Enter / Esc already settled the bar; the blur they cause must not commit it again
+  const [nameBox, setNameBox] = useState<string | null>(null); // the cell-name box text while it is being typed in
   const [tabMenu, setTabMenu] = useState<{ id: string; left: number; bottom: number } | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; text: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -1519,14 +1521,30 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
       </OverflowRow>
       {/* formula bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderBottom: '1px solid var(--k-e5e7eb)' }}>
-        <div style={{ minWidth: 64, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: 'var(--k-6b7280)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '4px 6px', whiteSpace: 'nowrap' }}>{rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })}</div>
+        <input aria-label="Name box — type a cell or range, like D12 or A1:C10, and press Enter to go there" title="Type a cell or range (D12, A1:C10) and press Enter to go there"
+          value={nameBox ?? rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })} spellCheck={false} autoComplete="off"
+          onFocus={e => { setNameBox(rangeLabel({ r1: R.r1, c1: R.c1, r2: R.r2, c2: R.c2 })); e.currentTarget.select(); }}
+          onChange={e => setNameBox(e.target.value)}
+          onBlur={() => setNameBox(null)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              const rg = parseRange(nameBox ?? '');
+              if (!rg) { onToast('Type a cell like D12, or a range like A1:C10'); return; }
+              const r1 = Math.min(rg.r1, MAX_ROWS - 1), c1 = Math.min(rg.c1, MAX_COLS - 1), r2 = Math.min(rg.r2, MAX_ROWS - 1), c2 = Math.min(rg.c2, MAX_COLS - 1);
+              moveTo(r1, c1);                                   // scrolls the first cell into view
+              const next = { r: r1, c: c1, r2, c2 }; selRef.current = next; setSel(next);
+              setNameBox(null); wrap.current?.focus();
+            } else if (e.key === 'Escape') { setNameBox(null); wrap.current?.focus(); }
+          }}
+          style={{ width: 76, minWidth: 64, boxSizing: 'border-box', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: 'var(--k-374151)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '4px 6px', background: 'var(--k-fff)', fontFamily: "'DM Sans',sans-serif" }} />
         <span style={{ color: 'var(--k-9ca3af)', fontStyle: 'italic', fontSize: 13 }}>fx</span>
         <input ref={barRef} value={activeRaw} aria-label="Cell contents"
-          onFocus={() => setBar(raw(sel.r, sel.c))}
+          onFocus={() => { barSkipBlur.current = false; setBar(raw(sel.r, sel.c)); }}
           onChange={e => { refSpan.current = null; setAcOff(false); setAcIdx(-1); setCaret(e.target.selectionStart ?? e.target.value.length); if (edit) setEdit({ ...edit, text: e.target.value }); else setBar(e.target.value); }}
           onKeyUp={e => setCaret(e.currentTarget.selectionStart ?? 0)} onClick={e => setCaret(e.currentTarget.selectionStart ?? 0)}
-          onKeyDown={e => { if (sugKey(e)) return; if (e.key === 'Enter') { e.preventDefault(); const t = edit ? edit.text : bar ?? ''; if (edit) setEdit(null); setBar(null); setCell(sel.r, sel.c, t); wrap.current?.focus(); } else if (e.key === 'Escape') { setBar(null); setEdit(null); wrap.current?.focus(); } }}
-          onBlur={() => { if (bar !== null && bar !== raw(sel.r, sel.c)) setCell(sel.r, sel.c, bar); setBar(null); }}
+          onKeyDown={e => { if (sugKey(e)) return; if (e.key === 'Enter') { e.preventDefault(); const t = edit ? edit.text : bar ?? ''; if (edit) setEdit(null); setBar(null); setCell(sel.r, sel.c, t); barSkipBlur.current = true; wrap.current?.focus(); } else if (e.key === 'Escape') { barSkipBlur.current = true; setBar(null); setEdit(null); wrap.current?.focus(); } }}
+          onBlur={() => { if (barSkipBlur.current) { barSkipBlur.current = false; setBar(null); return; } if (bar !== null && bar !== raw(sel.r, sel.c)) setCell(sel.r, sel.c, bar); setBar(null); }}
           style={{ flex: 1, minWidth: 0, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-1a1a1a)' }} />
       </div>
       {anchorEl && (sugs.length > 0 || hintDoc) && (() => {
