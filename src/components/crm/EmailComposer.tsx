@@ -2,6 +2,7 @@
 
 import CrmAttachPicker from './CrmAttachPicker';
 import { AttachmentCards } from './AttachmentPreview';
+import EmailToolbar from './EmailToolbar';
 import type { PreviewItem } from '@/lib/attachment-preview';
 import type { CrmAttachItem } from '@/lib/crm-attachments';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -428,10 +429,6 @@ export default function EmailComposer(p: EmailComposerProps) {
     if (!r || !r.ok) { setMine(prev => prev.map(m => (m.id === t.id ? { ...m, shared: !on } : m))); p.notify?.('Could not change sharing — try again'); }
     else p.notify?.(on ? `“${t.name}” is now shared with your team` : `“${t.name}” is private again`);
   };
-  const addLink = () => {
-    const url = window.prompt('Link address', 'https://');
-    if (url && url !== 'https://') cmd('createLink', url);
-  };
 
   // The server can only take a request of about 4.5 MB, and files travel inside it as base64 (a third bigger), so about 3.2 MB of
   // files in total. Phone photos are bigger than that, so pictures are shrunk to a normal size first; anything else that would
@@ -574,24 +571,12 @@ export default function EmailComposer(p: EmailComposerProps) {
         )}
 
         {/* Toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, padding: '4px 8px', borderBottom: '1px solid var(--k-f3f4f6)' }}>
-          <button type="button" onMouseDown={e => { e.preventDefault(); cmd('bold'); }} aria-label="Bold" title="Bold" style={tb({ fontWeight: 800 })}>B</button>
-          <button type="button" onMouseDown={e => { e.preventDefault(); cmd('italic'); }} aria-label="Italic" title="Italic" style={tb({ fontStyle: 'italic', fontFamily: 'Georgia,serif' })}>I</button>
-          <button type="button" onMouseDown={e => { e.preventDefault(); cmd('underline'); }} aria-label="Underline" title="Underline" style={tb({ textDecoration: 'underline' })}>U</button>
-          {sep}
-          <button type="button" onMouseDown={e => { e.preventDefault(); cmd('insertUnorderedList'); }} aria-label="Bullet list" title="Bullet list" style={tb()}>
-            <svg width="15" height="12" viewBox="0 0 14 11" fill="currentColor"><circle cx="1.5" cy="1.5" r="1.5"/><rect x="4" y="0.5" width="10" height="2" rx="1"/><circle cx="1.5" cy="5.5" r="1.5"/><rect x="4" y="4.5" width="10" height="2" rx="1"/><circle cx="1.5" cy="9.5" r="1.5"/><rect x="4" y="8.5" width="10" height="2" rx="1"/></svg>
-          </button>
-          <button type="button" onMouseDown={e => { e.preventDefault(); cmd('insertOrderedList'); }} aria-label="Numbered list" title="Numbered list" style={tb({ fontSize: 12, fontWeight: 700 })}>1.</button>
-          <button type="button" onMouseDown={e => { e.preventDefault(); addLink(); }} aria-label="Add link" title="Add link" style={tb()}>🔗</button>
-          {sep}
-          <button type="button" onClick={() => setShowTpl(v => !v)} aria-label="Templates" aria-expanded={showTpl} title="Templates" style={tb({ fontSize: 13, fontWeight: 700, background: showTpl ? 'var(--k-f3f4f6)' : 'none' })}>📄{!p.isMobile && ' Templates'}</button>
-          <button type="button" onClick={() => setShowMore(v => !v)} aria-label="More formatting" aria-expanded={showMore} title="More formatting" style={tb({ fontSize: 13, fontWeight: 700, background: showMore ? 'var(--k-f3f4f6)' : 'none' })}>Aa</button>
-          {!p.isMobile && p.crmFiles && <button type="button" onClick={() => setPickerOpen(true)} aria-label="Attach from the deal" title="Attach a document from this deal — nothing to download" style={tb({ marginLeft: 'auto', gap: 5, fontSize: 13 })}>📁 Deal docs</button>}
-          {!p.isMobile && <button type="button" onClick={() => attachRef.current?.click()} aria-label="Attach files" title="Attach files" style={tb({ marginLeft: p.crmFiles ? 0 : 'auto', gap: 5, fontSize: 13 })}>📎 Attach</button>}
-          <input ref={attachRef} type="file" multiple style={{ display: 'none' }}
-            onChange={e => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
-        </div>
+        <EmailToolbar bodyRef={p.bodyRef} isMobile={p.isMobile}
+          showTpl={showTpl} onToggleTpl={() => setShowTpl(v => !v)} showMore={showMore} onToggleMore={() => setShowMore(v => !v)}
+          onDealDocs={p.crmFiles ? () => setPickerOpen(true) : undefined} onAttach={() => attachRef.current?.click()} attachCount={attachCount}
+          onChange={() => { syncMirror(); scheduleSave(); }} />
+        <input ref={attachRef} type="file" multiple style={{ display: 'none' }}
+          onChange={e => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
         {showTpl && (
           <div style={{ padding: '8px 10px', background: 'var(--k-f9fafb)', borderBottom: '1px solid var(--k-f3f4f6)' }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 6 }}>Start from a template</div>
