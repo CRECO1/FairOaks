@@ -360,12 +360,17 @@ export function Ico({ n, size = 17 }: { n: IcoName; size?: number }) {
  * A toolbar row that never wraps or scrolls: it shows as many groups (split at <TSep />) as fit the width, and the rest wait under a "⋯" button.
  * The groups are measured in a hidden copy, so it re-fits whenever the row is resized (side panels opening, window resizing, phones).
  */
-export function OverflowRow({ children, style, moreTitle = 'More tools' }: { children: ReactNode; style?: CSSProperties; moreTitle?: string }) {
+export function OverflowRow({ children, style, moreTitle = 'More tools', pin }: { children: ReactNode; style?: CSSProperties; moreTitle?: string; /** Tool titles that come first (in this order) whatever the order below — a phone has room for ~8, so the ones people actually reach for go first. */ pin?: string[] }) {
   // Buttons are hidden ONE AT A TIME from the end (not a whole group at once), so a toolbar uses all the room it has; what doesn't fit sits under "⋯".
   const items = Children.toArray(children);
-  const flat: Array<{ node: ReactNode; sep: boolean }> = [];
+  const flat0: Array<{ node: ReactNode; sep: boolean }> = [];
   let sep = false;
-  for (const it of items) { if (isValidElement(it) && it.type === TSep) { sep = flat.length > 0; continue; } flat.push({ node: it, sep }); sep = false; }
+  for (const it of items) { if (isValidElement(it) && it.type === TSep) { sep = flat0.length > 0; continue; } flat0.push({ node: it, sep }); sep = false; }
+  const titleOf = (n: ReactNode) => (isValidElement(n) ? String((n.props as { title?: unknown }).title ?? '') : '');
+  const flat = pin?.length
+    ? [...pin.flatMap(t => flat0.filter(f => titleOf(f.node) === t)).map(f => ({ ...f, sep: false })),
+       ...flat0.filter(f => !pin.includes(titleOf(f.node))).map((f, i) => ({ ...f, sep: i === 0 }))]
+    : flat0;
   const row = useRef<HTMLDivElement>(null), probe = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState(flat.length);
   const n = flat.length;

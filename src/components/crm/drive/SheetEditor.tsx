@@ -1437,7 +1437,8 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         </Pop>
       </div>
       {/* icon toolbar */}
-      <OverflowRow style={{ padding: '3px 10px 5px', borderBottom: '1px solid var(--k-e5e7eb)' }}>
+      <OverflowRow style={{ padding: '3px 10px 5px', borderBottom: '1px solid var(--k-e5e7eb)' }}
+        pin={isMobile ? ['Undo (Ctrl+Z)', 'Redo (Ctrl+Y)', 'Bold (Ctrl+B)', 'Italic (Ctrl+I)', 'Text color', 'Fill color', 'Horizontal align', 'Wrap text'] : undefined}>
         <TBtn title="Search the menus (Alt+/)" onClick={() => setPalette(true)}><Ico n="menus" /></TBtn>
         <TBtn title="Undo (Ctrl+Z)" onClick={() => undo.undo()}><Ico n="undo" /></TBtn>
         <TBtn title="Redo (Ctrl+Y)" onClick={() => undo.redo()}><Ico n="redo" /></TBtn>
