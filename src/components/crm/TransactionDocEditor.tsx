@@ -162,6 +162,9 @@ export default function TransactionDocEditor({
   // horizontal scroll, for tapping small fields precisely on a phone.
   const [zoom, setZoom] = useState<'fit' | 'full'>('fit');
   const [noticeOpen, setNoticeOpen] = useState(isMobile);
+  // Phone: the placing tools (hint, signer, tool strip) take half the screen. They open by default only where placing is the job (the e-sign
+  // composer); filling in a form starts with the form.
+  const [toolsOpen, setToolsOpen] = useState(!!(recipients && recipients.length) || !!onSend);
 
   const bytesRef = useRef<Uint8Array | null>(null);
   const pdfRef = useRef<{ getPage: (n: number) => Promise<PdfPage> } | null>(null);
@@ -807,8 +810,12 @@ export default function TransactionDocEditor({
 
         <div
           style={isMobile
-            ? { display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
+            ? { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }
             : { marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {isMobile && status === 'ready' && (
+            <button onClick={() => setToolsOpen(o => !o)} aria-pressed={toolsOpen} title="Add or move signature, date, text and checkbox spots on this document"
+              style={{ ...actionBtn, background: toolsOpen ? '#fdf6e9' : '#fff', color: '#a06a12', border: '1px solid #f0e2c4', flexShrink: 0 }}>{toolsOpen ? '✕ Fields' : '🛠 Fields'}</button>
+          )}
           {live.status !== 'off' && (
             <span title={live.status === 'live' ? 'Live — everyone with this form open sees changes as they are made. Nothing is saved to the deal until someone clicks Save.' : live.status === 'denied' ? 'Live editing is not available for you on this form' : 'Connecting…'}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#6b7280', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
@@ -842,7 +849,7 @@ export default function TransactionDocEditor({
       </div>
 
       {/* Mobile: be honest that precise field placement wants a bigger screen */}
-      {isMobile && noticeOpen && status === 'ready' && (
+      {isMobile && toolsOpen && noticeOpen && status === 'ready' && (
         <div style={{ background: '#fffdf6', borderBottom: '1px solid #f0e2c4', padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', flexShrink: 0 }}>
           <span style={{ fontSize: 15, lineHeight: 1.3 }}>💡</span>
           <div style={{ flex: 1, fontSize: 12.5, color: '#7c5a12', lineHeight: 1.45, fontFamily: "'DM Sans',sans-serif" }}>
@@ -856,7 +863,7 @@ export default function TransactionDocEditor({
       {/* Phone field toolbar — there isn't width for the desktop rail, so the same
           controls sit in a horizontal strip: pick who the field is for, pick a tool,
           then tap the document to drop it (drag ✥ to nudge, ⤡ to resize). */}
-      {isMobile && status === 'ready' && (
+      {isMobile && toolsOpen && status === 'ready' && (
         <div style={{ background: '#fff', borderBottom: '1px solid #eef0f2', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 7, flexShrink: 0 }}>
           {recipients?.length ? (
             <select value={sigKey} onChange={e => setSigKey(e.target.value)} aria-label="Place fields for which signer"
@@ -1054,7 +1061,7 @@ export default function TransactionDocEditor({
                 {/* A checkbox is about 11px on screen: corner handles would cover the whole box
                     and turn a click into a drag. Checkboxes show handles only once selected,
                     placed beside the box instead of on it (and never a resize handle). */}
-                {(isCheck ? isSel : (showGrip || isMobile)) && (
+                {(isCheck ? isSel : showGrip) && (
                   <div
                     onMouseDown={e => onDragStart(e, f)}
                     onTouchStart={e => onTouchDragStart(e, f, true)}
@@ -1080,7 +1087,7 @@ export default function TransactionDocEditor({
                       width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: isMobile ? 13 : 10, cursor: 'pointer', lineHeight: isMobile ? '26px' : '17px', padding: 0 }}>✕</button>
                 )}
                 {/* Resize: drag right to widen the box (the text size is the same on every field). */}
-                {!isCheck && (showGrip || isMobile) && (
+                {!isCheck && showGrip && (
                   <div
                     onMouseDown={e => onResizeStart(e, f)}
                     onTouchStart={e => onTouchResizeStart(e, f)}
