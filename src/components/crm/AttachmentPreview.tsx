@@ -52,7 +52,7 @@ function Thumb({ item, w, h }: { item: PreviewItem; w: number; h: number }) {
   return (
     <div style={box} aria-hidden>
       <span style={{ fontSize: 11, color: 'var(--k-9ca3af)', textAlign: 'center', padding: 4 }}>
-        {t === undefined && (kind !== 'other' || kind === 'doc' || /\.(mov|mp4|m4v|webm)$/i.test(item.name)) ? 'Loading…' : kind === 'other' || kind === 'doc' ? (item.name.split('.').pop() ?? 'file').toUpperCase().slice(0, 5) : 'No preview'}
+        {t === undefined && (kind !== 'other' || /\.(mov|mp4|m4v|webm)$/i.test(item.name)) ? 'Loading…' : kind === 'other' || kind === 'doc' ? (item.name.split('.').pop() ?? 'file').toUpperCase().slice(0, 5) : 'No preview'}
       </span>
     </div>
   );
