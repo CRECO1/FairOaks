@@ -28,7 +28,7 @@ export async function xlsxToTabs(buf: Buffer): Promise<ImportTab[]> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf as unknown as ArrayBuffer);
   const tabs: ImportTab[] = [];
-  for (const ws of wb.worksheets.slice(0, SHEETS)) {
+  for (const ws of wb.worksheets.filter(w => !w.state || w.state === 'visible').slice(0, SHEETS)) {   // a hidden / very-hidden sheet was hidden on purpose: it is not turned into a visible tab
     const grid: string[][] = [];
     const fmts: Record<string, CellFmt> = {};
     const bold: string[] = [];
@@ -37,7 +37,7 @@ export async function xlsxToTabs(buf: Buffer): Promise<ImportTab[]> {
     for (let r = 1; r <= maxR; r++) {
       const row = ws.getRow(r);
       const line: string[] = new Array(maxC).fill('');
-      if (row.height && row.height > 0) rowHeights[r - 1] = px(row.height);
+      if (row.height && row.height > 0) rowHeights[r - 1] = Math.min(1000, px(row.height));
       for (let c = 1; c <= maxC; c++) {
         const cell = row.getCell(c);
         const key = `${r - 1}:${c - 1}`;
@@ -55,7 +55,7 @@ export async function xlsxToTabs(buf: Buffer): Promise<ImportTab[]> {
           if (font.underline) f.u = 1;
           if (font.strike) f.s = 1;
           if (font.name && /^[A-Za-z0-9 ._-]{1,60}$/.test(font.name)) { f.fn = font.name; if (FONT_FAMILIES.some(x => x[0] === font.name)) f.ff = font.name; }
-          if (font.size && font.size !== 10) f.fs = px(font.size);   // 10pt is the sheet's default look; anything else is kept exactly
+          if (font.size && font.size !== 10) f.fs = Math.min(400, Math.max(4, px(font.size)));   // 10pt is the sheet's default look; anything else is kept exactly
         }
         const al = cell.alignment;
         if (al?.horizontal === 'center' || al?.horizontal === 'centerContinuous') f.al = 'c'; else if (al?.horizontal === 'right') f.al = 'r'; else if (al?.horizontal === 'left') f.al = 'l';
@@ -72,12 +72,12 @@ export async function xlsxToTabs(buf: Buffer): Promise<ImportTab[]> {
       grid.push(line);
     }
     const widths: Record<number, number> = {};
-    for (let c = 1; c <= maxC; c++) { const w = ws.getColumn(c).width; if (w && w > 0) widths[c - 1] = r2(w * 7 + 5); }
+    for (let c = 1; c <= maxC; c++) { const w = ws.getColumn(c).width; if (w && w > 0) widths[c - 1] = Math.min(2000, r2(w * 7 + 5)); }
     const merges: Array<[number, number, number, number]> = [];
     const colIdx = (s: string) => { let n = 0; for (const ch of s) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
     for (const m of ((ws.model as { merges?: string[] }).merges ?? [])) {
       const mm = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(m);
-      if (mm) { const r1 = +mm[2] - 1, c1 = colIdx(mm[1]), r2_ = +mm[4] - 1, c2 = colIdx(mm[3]); if (r2_ < MAX_ROWS && c2 < MAX_COLS) merges.push([r1, c1, r2_, c2]); }
+      if (mm) { const r1 = +mm[2] - 1, c1 = colIdx(mm[1]), r2_ = +mm[4] - 1, c2 = colIdx(mm[3]); if (r2_ < MAX_ROWS && c2 < MAX_COLS && merges.length < 2000) merges.push([r1, c1, r2_, c2]); }
     }
     const view = ws.views?.[0] as { state?: string; ySplit?: number } | undefined;
     const ps = ws.pageSetup;
@@ -90,8 +90,9 @@ export async function xlsxToTabs(buf: Buffer): Promise<ImportTab[]> {
 /** The old binary Excel format (.xls) read with SheetJS: every sheet's values as the cells show them (formatting isn't carried over). */
 export async function xlsToTabs(buf: Buffer): Promise<ImportTab[]> {
   const XLSX = await import('xlsx');
-  const wb = XLSX.read(buf, { type: 'buffer', cellDates: false });
-  return wb.SheetNames.slice(0, SHEETS).map(n => {
+  const wb = XLSX.read(buf, { type: 'buffer', cellDates: false, sheetRows: MAX_ROWS + 1 });   // only the rows we keep are read
+  const hidden = new Set((wb.Workbook?.Sheets ?? []).map((sh, i) => (sh.Hidden ? wb.SheetNames[i] : null)).filter((n): n is string => !!n));   // hidden sheets stay hidden
+  return wb.SheetNames.filter(n => !hidden.has(n)).slice(0, SHEETS).map(n => {
     const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[n], { header: 1, raw: false, defval: '', blankrows: true }) as unknown[][];
     const grid = rows.slice(0, MAX_ROWS).map(r => r.slice(0, MAX_COLS).map(c => (c == null ? '' : String(c))));
     return { name: n, grid: grid.length ? grid : [['']], frozen: 1 };
@@ -100,3 +101,6 @@ export async function xlsToTabs(buf: Buffer): Promise<ImportTab[]> {
 
 /** Row 1 stays the header (frozen), so sorting a column leaves it on top — as in Google Sheets. */
 export const withHeaderRow = (tabs: ImportTab[]): ImportTab[] => tabs.map(t => (t.frozen ? t : { ...t, frozen: 1 }));
+
+/** A grid from an untrusted file, cut to what a sheet can hold (a CSV has no limit of its own: a 10 MB file of commas would otherwise become millions of cells). */
+export const capGrid = (grid: string[][]): string[][] => grid.slice(0, MAX_ROWS).map(r => r.slice(0, MAX_COLS));

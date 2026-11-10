@@ -129,6 +129,7 @@ async function confirm(body: Record<string, unknown>, ctx: Ctx) {
   const storagePath = typeof body.storagePath === 'string' ? body.storagePath : '';
   const filename = typeof body.filename === 'string' ? body.filename.slice(0, 255) : '';
   if (!UUID_RE.test(clientId) || !storagePath || !filename) return NextResponse.json({ error: 'clientId, storagePath and filename required' }, { status: 400 });
+  if (!CONTENT_TYPES[extOf(filename)]) return NextResponse.json({ error: `.${extOf(filename) || '?'} files can't be attached here — use PDF, Word, Excel, CSV, JPG, PNG or WebP.` }, { status: 400 });   // confirm comes back from the browser: re-check the type
   if (!(await assertOwnsResource('crm_clients', clientId, ctx))) return notFound('Contact not found');
 
   // The path comes back from the browser: it must be a file directly inside THIS contact's folder.

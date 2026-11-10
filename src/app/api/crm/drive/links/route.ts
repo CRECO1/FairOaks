@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
         if (kind === 'deal') { const { data: d } = await dc.admin.from('crm_deals').select('client,property').eq('id', tid).maybeSingle(); label = [d?.client, d?.property].filter(Boolean).join(' · ') || 'Deal'; }
         else { const { data: c } = await dc.admin.from('crm_clients').select('first_name,last_name,business_name').eq('id', tid).maybeSingle(); label = [[c?.first_name, c?.last_name].filter(Boolean).join(' '), c?.business_name].filter(Boolean).join(' · ') || 'Contact'; }
       }
-      out.push({ id: l.id as string, kind, target_id: tid, label, created_by: l.created_by as string | null, created_at: l.created_at as string, can_open: can });
+      out.push({ id: l.id as string, kind, target_id: can ? tid : '', label, created_by: l.created_by as string | null, created_at: l.created_at as string, can_open: can });
     }
     return NextResponse.json({ links: out });
   }

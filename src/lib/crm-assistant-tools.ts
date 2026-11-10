@@ -246,7 +246,7 @@ async function fileBytesOnto(db: SupabaseClient, ctx: AgentCtx, buf: Buffer, fil
   const j = (v: unknown) => JSON.stringify(v);
   const safe = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
   const ext = (fileName.split('.').pop() ?? '').toLowerCase();
-  const MIME: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', csv: 'text/csv', txt: 'text/plain' };
+  const MIME: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', csv: 'text/csv', txt: 'text/plain' };
   const contentType = MIME[ext];
   if (!contentType) return j({ error: `.${ext} files can’t be filed here.` });
 

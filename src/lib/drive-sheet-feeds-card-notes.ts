@@ -22,7 +22,7 @@ export async function buildRobertCardNotes(dc: DriveContext): Promise<FeedData> 
   const acts: Act[] = [];
   if (robert) for (let from = 0; from < MAX_ACTIVITIES; from += 1000) {
     const { data } = await dc.admin.from('crm_client_activities').select('client_id,type,note,created_at').eq('agent_id', robert)
-      .not('client_id', 'is', null).not('note', 'is', null).order('created_at', { ascending: false }).range(from, from + 999);
+      .not('client_id', 'is', null).not('note', 'is', null).neq('type', 'deal_update').order('created_at', { ascending: false }).range(from, from + 999);   // 'deal_update' = stage lines on a contact for a deal, which may be a deal the viewer isn't on
     acts.push(...((data ?? []) as Act[])); if (!data || data.length < 1000) break;
   }
   const real = acts.filter(a => (a.note ?? '').trim() && !/^Team note · /.test(a.note ?? ''));
@@ -63,7 +63,7 @@ export async function buildRobertActivity(dc: DriveContext): Promise<FeedData> {
     return out;
   };
   const calls = robert ? await page<CallRow>(f => dc.admin.from('crm_call_log').select('contact_id,started_at,direction,outcome,result,duration_sec,notes,to_number').eq('handled_by', robert).order('started_at', { ascending: false }).range(f, f + 999)) : [];
-  const acts = robert ? await page<ActRow>(f => dc.admin.from('crm_client_activities').select('client_id,type,note,created_at').eq('agent_id', robert).not('client_id', 'is', null).order('created_at', { ascending: false }).range(f, f + 999)) : [];
+  const acts = robert ? await page<ActRow>(f => dc.admin.from('crm_client_activities').select('client_id,type,note,created_at').eq('agent_id', robert).not('client_id', 'is', null).neq('type', 'deal_update').order('created_at', { ascending: false }).range(f, f + 999)) : [];
 
   const ids = [...new Set([...calls.map(c => c.contact_id), ...acts.map(a => a.client_id)].filter((x): x is string => !!x))];
   const clients = new Map<string, Client>();
@@ -76,10 +76,14 @@ export async function buildRobertActivity(dc: DriveContext): Promise<FeedData> {
     ...calls.map(c => ({ at: c.started_at, kind: `${c.direction === 'inbound' ? 'Inbound' : 'Outbound'} call`, id: c.contact_id, what: [c.outcome || c.result, c.duration_sec != null ? `${c.duration_sec}s` : '', (c.notes ?? '').replace(/\s+/g, ' ').trim()].filter(Boolean).join(' — '), phone: phone(c.to_number) })),
     ...acts.filter(a => !/^Team note · /.test(a.note ?? '')).map(a => ({ at: a.created_at, kind: TYPE_LABEL[a.type] ? `Card: ${TYPE_LABEL[a.type]}` : 'Card note', id: a.client_id, what: (a.note ?? '').replace(/\s+/g, ' ').trim(), phone: '' })),
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 4000);
-  const rows = all.map((r, i) => {
+  // The row key must not depend on where the row happens to sit in the list (a new call would shift every key and wipe the team's columns on the next refresh):
+  // it is the row's own identity, with a counter only for rows that are identical in kind, contact and time.
+  const seen = new Map<string, number>();
+  const rows = all.map(r => {
+    const base = `${r.kind}|${r.id ?? ''}|${r.at}`; const n = (seen.get(base) ?? 0) + 1; seen.set(base, n);
     const c = r.id ? clients.get(r.id) : undefined;
     if (r.id && !c) return null;   // a contact the viewer cannot open
-    return { key: `${r.kind}|${r.id ?? ''}|${r.at}|${i}`, cells: [stamp(r.at), r.kind, c ? [c.first_name, c.last_name].filter(Boolean).join(' ').trim() : '', c?.business_name ?? '', r.phone || phone(c?.phone || c?.cell_phone), r.what.slice(0, 1500)] };
+    return { key: `${base}|${n}`, cells: [stamp(r.at), r.kind, c ? [c.first_name, c.last_name].filter(Boolean).join(' ').trim() : '', c?.business_name ?? '', r.phone || phone(c?.phone || c?.cell_phone), r.what.slice(0, 1500)] };
   }).filter((x): x is { key: string; cells: string[] } => !!x);
   return {
     feed: 'robert_activity', title: 'Activity log',

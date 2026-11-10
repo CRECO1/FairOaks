@@ -184,6 +184,7 @@ async function confirm(body: Record<string, unknown>, ctx: Ctx) {
   if (!dealId || !storagePath || !filename) {
     return NextResponse.json({ error: 'dealId, storagePath and filename required' }, { status: 400 });
   }
+  if (!CONTENT_TYPES[extOf(filename)]) return typeError(filename);   // the recorded name must be a type a deal can hold (presign checks it; confirm comes back from the browser)
   if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
 
   // The path comes back from the browser, so it has to be a file directly inside this

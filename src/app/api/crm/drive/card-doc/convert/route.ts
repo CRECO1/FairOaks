@@ -6,14 +6,15 @@ import { jsonToDriveState } from '@/lib/drive-markdown';
 import { logDocEvent, mirrorDocToFeeds } from '@/lib/drive-events';
 import { DOC_COLS } from '@/lib/drive-types';
 import { parseCsv, sheetStateFromTabs } from '@/lib/drive-sheet';
-import { xlsxToTabs, xlsToTabs, withHeaderRow } from '@/lib/xlsx-import';
+import { xlsxToTabs, xlsToTabs, withHeaderRow, capGrid } from '@/lib/xlsx-import';
+import { userRateLimit } from '@/lib/user-ratelimit';
 
 // "Edit as a live document" for a Word (.docx) / text (.txt) file — or an Excel (.xlsx / .xls) / CSV file, which becomes a live SHEET (columns can be
 // dragged into a new order there) — that sits on a DEAL's Docs tab or a CONTACT's Files:
 //   POST { source: 'deal' | 'client', id }   (id = the crm_deal_docs / crm_client_docs row)
 // Makes a live My Drive document from it and LINKS it to the same deal / contact, so it shows on the card as a live document that
 // everyone who can open the card can edit. The uploaded file stays as it is, and a file is converted once (asking again returns the
-// same document). The new document starts PRIVATE for an agent (the card link is what gives the card's people access).
+// same document). The new document starts PRIVATE for everyone, admins included (the card link is what gives the card's people access).
 
 export const maxDuration = 30;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -22,6 +23,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 export async function POST(req: NextRequest) {
   const dc = await driveContext(req);
   if (!dc) return unauthorized();
+  if (!(await userRateLimit('drive-convert', dc.ctx.userId, 60, '1 h')).success) return NextResponse.json({ error: 'Too many conversions this hour. Try again later.' }, { status: 429 });
   const b = await req.json().catch(() => ({})) as { source?: string; id?: string };
   if ((b.source !== 'deal' && b.source !== 'client') || !b.id || !UUID_RE.test(b.id)) return NextResponse.json({ error: 'source (deal or client) and id are required' }, { status: 400 });
 
@@ -57,17 +59,20 @@ export async function POST(req: NextRequest) {
   // Already converted? Reuse it (and make sure it is linked here).
   const { data: made } = await dc.admin.from('crm_drive_doc_events').select('doc_id').eq('kind', 'created').eq('detail->>from_card_doc_id', key).order('created_at', { ascending: false }).limit(5);
   for (const m of made ?? []) {
-    const { data: prev } = await dc.admin.from('crm_drive_docs').select(DOC_COLS).eq('id', m.doc_id as string).is('trashed_at', null).maybeSingle();
+    // Read through the caller's own access (RLS): a converted document that was made private and unlinked is not handed to — or re-linked by —
+    // someone who can't open it; they get their own new copy instead.
+    const { data: prev } = await dc.userDb.from('crm_drive_docs').select(DOC_COLS).eq('id', m.doc_id as string).eq('business_unit', dc.bu).is('trashed_at', null).maybeSingle();
     if (prev) { await link(prev.id as string); return NextResponse.json({ item: prev, existing: true }); }
   }
 
   const { data: blob } = await dc.admin.storage.from('deal-docs').download(row.storage_path as string);
   if (!blob) return NextResponse.json({ error: 'Could not read that file' }, { status: 500 });
+  if (blob.size > MAX_BYTES) return NextResponse.json({ error: 'That file is too large to convert (10 MB max)' }, { status: 413 });   // the real size, not the recorded one
   let state: { ystate: string; text: string };
   try {
     const buf = Buffer.from(await blob.arrayBuffer());
     if (isSheet) {
-      if (isCsv) state = sheetStateFromTabs([{ name: 'Sheet1', grid: parseCsv(buf.toString('utf8')), frozen: 1 }]);
+      if (isCsv) state = sheetStateFromTabs([{ name: 'Sheet1', grid: capGrid(parseCsv(buf.toString('utf8'))), frozen: 1 }]);
       else if (isXls) state = sheetStateFromTabs(withHeaderRow(await xlsToTabs(buf)));   // old binary Excel: values only (no colours / borders)
       else state = sheetStateFromTabs(withHeaderRow(await xlsxToTabs(buf)));             // keeps how it looks: fills, fonts, borders, widths, merges
     } else {
@@ -82,7 +87,8 @@ export async function POST(req: NextRequest) {
 
   const { data: doc, error } = await dc.admin.from('crm_drive_docs').insert({
     business_unit: dc.bu, folder_id: null, title: name.replace(/\.(docx|txt|xlsx|xlsm|xls|csv)$/i, '').slice(0, 300), created_by: dc.ctx.userId, updated_by: dc.ctx.userId,
-    visibility: dc.ctx.role === 'agent' ? 'private' : 'team', shared_with: [], deal_id: null, ystate: state.ystate, content_text: state.text, version: 1, ...(isSheet ? { kind: 'sheet' } : {}),
+    visibility: 'private', shared_with: [], deal_id: null,   // ALWAYS private: the link below opens it for the people who can open this card (the deal rule applies), and nobody else. 'team' made a deal's file readable by every agent in the workspace.
+    ystate: state.ystate, content_text: state.text, version: 1, ...(isSheet ? { kind: 'sheet' } : {}),
   }).select(DOC_COLS).single();
   if (error || !doc) return NextResponse.json({ error: 'Could not create the document' }, { status: 500 });
   await logDocEvent(dc.admin, { docId: doc.id as string, bu: dc.bu, actor: dc.ctx.userId, kind: 'created', detail: { via: isSheet ? 'sheet' : isDocx ? 'word' : 'text', from: name, from_card_doc_id: key } });

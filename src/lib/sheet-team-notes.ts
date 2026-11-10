@@ -12,7 +12,7 @@ export const MAX_CONTACTS_PER_SAVE = 200;
 const bytes = (b64: string) => new Uint8Array(Buffer.from(b64, 'base64'));
 
 /** The text every team column holds for each feed row: `<tabId>|<rowKey>` → text. Formulas are not notes. */
-export function teamNotesByRow(stateB64: string | null | undefined): Map<string, string> {
+export function teamNotesByRow(stateB64: string | null | undefined, live?: Set<string>): Map<string, string> {
   const out = new Map<string, string>();
   if (!stateB64) return out;
   const doc = new Y.Doc();
@@ -29,6 +29,7 @@ export function teamNotesByRow(stateB64: string | null | undefined): Map<string,
       if (maxC < from) return;
       const cs = tCells(tab);
       (keys as Y.Map<number>).forEach((r, rowKey) => {
+        live?.add(`${tabId}|${rowKey}`);   // this feed row exists in the sheet (whether or not it has a note)
         const parts: string[] = [];
         for (let c = from; c <= maxC; c++) {
           const v = String(cs.get(`${r}:${c}`) ?? '').trim();
@@ -61,8 +62,16 @@ export function notesByContact(rows: Map<string, string>): Map<string, string> {
 
 /** The contacts whose combined note differs between two saves of the sheet (added, edited or cleared). */
 export function changedContacts(before: string | null | undefined, after: string): Array<{ ref: string; text: string }> {
-  const a = notesByContact(teamNotesByRow(before)), b = notesByContact(teamNotesByRow(after));
+  const liveRows = new Set<string>();
+  const a = notesByContact(teamNotesByRow(before)), b = notesByContact(teamNotesByRow(after, liveRows));
+  // A note counts as CLEARED only while the contact's row is still in the sheet. A row that merely dropped out of a refreshed feed (a retired
+  // campaign, an unsubscribed contact…) took its cells with it, and that must never delete the note already on the contact's card.
+  const stillThere = new Set<string>();
+  liveRows.forEach(k => { const r = contactRef(k); if (r) stillThere.add(r); });
   const refs = new Set([...a.keys(), ...b.keys()]);
-  return [...refs].filter(r => (a.get(r) ?? '') !== (b.get(r) ?? '')).map(ref => ({ ref, text: b.get(ref) ?? '' }));
+  return [...refs]
+    .filter(r => (a.get(r) ?? '') !== (b.get(r) ?? ''))
+    .filter(r => (b.get(r) ?? '') !== '' || stillThere.has(r))
+    .map(ref => ({ ref, text: b.get(ref) ?? '' }));
 }
 

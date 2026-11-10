@@ -6,7 +6,8 @@ import { jsonToDriveState } from '@/lib/drive-markdown';
 import { logDocEvent } from '@/lib/drive-events';
 import { DOC_COLS } from '@/lib/drive-types';
 import { parseCsv, sheetStateFromTabs } from '@/lib/drive-sheet';
-import { xlsxToTabs, xlsToTabs, withHeaderRow } from '@/lib/xlsx-import';
+import { xlsxToTabs, xlsToTabs, withHeaderRow, capGrid } from '@/lib/xlsx-import';
+import { userRateLimit } from '@/lib/user-ratelimit';
 
 // "Edit as a live document": turns an uploaded Word (.docx) or plain-text (.txt) file into a NEW live My Drive document (same folder, same sharing), so it
 // can be edited together like any other document. The uploaded file is left exactly as it is, and a file is converted ONCE: asking again
@@ -20,6 +21,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const dc = await driveContext(req);
   if (!dc) return unauthorized();
+  if (!(await userRateLimit('drive-convert', dc.ctx.userId, 60, '1 h')).success) return NextResponse.json({ error: 'Too many conversions this hour. Try again later.' }, { status: 429 });
   const { id } = await params;
   if (!UUID_RE.test(id)) return notFound();
   const { data: f } = await dc.userDb.from('crm_drive_files').select('id,name,mime,size,storage_path,folder_id,visibility,shared_with,deal_id,trashed_at').eq('id', id).eq('business_unit', dc.bu).maybeSingle();
@@ -39,11 +41,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: blob } = await dc.admin.storage.from('drive-files').download(f.storage_path as string);
   if (!blob) return NextResponse.json({ error: 'Could not read that file' }, { status: 500 });
+  if (blob.size > MAX_BYTES) return NextResponse.json({ error: 'That file is too large to convert (10 MB max)' }, { status: 413 });
   let state: { ystate: string; text: string };
   try {
     const buf = Buffer.from(await blob.arrayBuffer());
     if (isSheet) {
-      if (isCsv) state = sheetStateFromTabs([{ name: 'Sheet1', grid: parseCsv(buf.toString('utf8')), frozen: 1 }]);
+      if (isCsv) state = sheetStateFromTabs([{ name: 'Sheet1', grid: capGrid(parseCsv(buf.toString('utf8'))), frozen: 1 }]);
       else if (isXls) state = sheetStateFromTabs(withHeaderRow(await xlsToTabs(buf)));   // old binary Excel: values only
       else state = sheetStateFromTabs(withHeaderRow(await xlsxToTabs(buf)));
     } else {

@@ -81,6 +81,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
     share?: { visibility: 'team' | 'private'; shared_with?: string[] };
     trash?: boolean;
   };
+  // A live document made from an uploaded file moves, is shared and is trashed together with that file. So only the file's owner (or an admin)
+  // may do those to the document — someone who merely converted another person's file can edit it, but can't carry the original away with it.
+  if (kind === 'doc' && !dc.isAdmin && (body.move || body.share || body.trash !== undefined)) {
+    const pair = (await liveCopies(dc.admin, { docIds: [id] }))[0];
+    if (pair) {
+      const { data: f } = await dc.admin.from('crm_drive_files').select('created_by').eq('id', pair.file_id).maybeSingle();
+      if (f && f.created_by !== dc.ctx.userId) return forbidden('This document was made from a file that belongs to someone else — only they (or an admin) can move, share or trash it');
+    }
+  }
   // Templates are team-wide and live outside the folders: they can be renamed, edited and trashed, not moved or re-shared.
   if (isTemplate && (body.move || body.share)) return NextResponse.json({ error: 'A template can’t be moved or shared separately — it is always available to the team' }, { status: 400 });
   const now = new Date().toISOString();
@@ -117,6 +126,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
       const { data: dest } = await dc.userDb.from('crm_drive_folders').select('id,visibility,shared_with,deal_id,trashed_at').eq('id', target).eq('business_unit', dc.bu).maybeSingle();
       if (!dest || dest.trashed_at) return notFound('That folder is not available');
       adopt = { visibility: dest.visibility, shared_with: dest.shared_with ?? [], deal_id: dest.deal_id };
+      // The move writes the destination's sharing over the item's own. Someone who can see it but doesn't own it must not be able to widen (or narrow) who
+      // else can — that is the share branch below, which needs the owner or an admin.
+      if (kind !== 'folder' && !canManage) {
+        const cur = row as unknown as { visibility?: string; shared_with?: string[] | null };
+        const same = adopt.visibility === cur.visibility && [...adopt.shared_with].sort().join() === [...(cur.shared_with ?? [])].sort().join();
+        if (!same) return forbidden('Only the owner or an admin can move this into a folder that is shared differently');
+      }
       // Forms are always shared with the team, so they can't go into a private or deal folder — and neither can a folder that holds forms.
       if (dest.visibility !== 'team' || dest.deal_id) {
         if (kind === 'form') return NextResponse.json({ error: 'Forms can only go in team folders (not private ones)' }, { status: 400 });
@@ -141,8 +157,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
     const visibility = body.share.visibility === 'private' ? 'private' : 'team';
     if (visibility === 'private' && kind === 'folder' && (await subtree(dc, id)).formIds.length) return NextResponse.json({ error: 'This folder has forms in it, and forms are always shared with the team — move the forms out first' }, { status: 400 });
     let shared: string[] = [];
-    if (visibility === 'private' && body.share.shared_with?.length) {
-      const { data } = await dc.admin.from('crm_profiles').select('id').eq('business_unit', dc.bu).in('id', body.share.shared_with.slice(0, 50));
+    if (visibility === 'private' && Array.isArray(body.share.shared_with) && body.share.shared_with.length) {
+      const { data } = await dc.admin.from('crm_profiles').select('id').eq('business_unit', dc.bu).in('id', body.share.shared_with.filter(x => typeof x === 'string').slice(0, 50));
       shared = ((data ?? []) as Array<{ id: string }>).map(p => p.id);
     }
     const patch = { visibility, shared_with: shared };
@@ -250,6 +266,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ k
   let sourceFileId: string | null = null;
   if (kind === 'doc') {
     sourceFileId = (await liveCopies(dc.admin, { docIds: [id] }))[0]?.file_id ?? null;
+    if (sourceFileId && !dc.isAdmin) {
+      const { data: f } = await dc.admin.from('crm_drive_files').select('created_by').eq('id', sourceFileId).maybeSingle();
+      if (f && f.created_by !== dc.ctx.userId) return forbidden('This document was made from a file that belongs to someone else — only they (or an admin) can delete it for good');
+    }
     if (sourceFileId) {
       const { data } = await dc.admin.from('crm_drive_files').select('storage_path').eq('id', sourceFileId).maybeSingle();
       if (data?.storage_path) paths = [data.storage_path as string];
