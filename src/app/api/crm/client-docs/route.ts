@@ -17,6 +17,7 @@ const CONTENT_TYPES: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg',
   png: 'image/png',
   webp: 'image/webp',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', csv: 'text/csv',
 };
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const SIGNED_URL_TTL_SECONDS = 3600;
@@ -111,7 +112,7 @@ async function presign(body: Record<string, unknown>, ctx: Ctx) {
   if (!contentType) {
     const ext = extOf(filename);
     const hint = ext === 'heic' || ext === 'heif' ? ' Share the photo as a JPG, or set Camera → Formats to Most Compatible.' : '';
-    return NextResponse.json({ error: `.${ext || '?'} files can't be attached here — use PDF, Word, JPG, PNG or WebP.${hint}` }, { status: 400 });
+    return NextResponse.json({ error: `.${ext || '?'} files can't be attached here — use PDF, Word, Excel, CSV, JPG, PNG or WebP.${hint}` }, { status: 400 });
   }
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
   const storagePath = `client-${clientId}/${Date.now()}_${safeName}`;

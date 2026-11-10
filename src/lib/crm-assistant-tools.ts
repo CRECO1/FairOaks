@@ -253,7 +253,7 @@ async function fileBytesOnto(db: SupabaseClient, ctx: AgentCtx, buf: Buffer, fil
   if (target.deal_id) {
     const deal = await loadDealForWrite(db, ctx, target.deal_id);
     if (typeof deal === 'string') return deal;
-    if (!['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp'].includes(ext)) return j({ error: 'Deals accept PDF, Word and JPG/PNG/WebP files. Save this one to a property instead, or convert it.' });
+    if (!['pdf', 'doc', 'docx', 'xlsx', 'xls', 'csv', 'jpg', 'jpeg', 'png', 'webp'].includes(ext)) return j({ error: 'Deals accept PDF, Word, Excel, CSV and JPG/PNG/WebP files. Save this one to a property instead, or convert it.' });
     const storagePath = `${target.deal_id}/${Date.now()}_${safe}`;
     const { error: upErr } = await db.storage.from('deal-docs').upload(storagePath, buf, { contentType, upsert: false });
     if (upErr) return j({ error: upErr.message });

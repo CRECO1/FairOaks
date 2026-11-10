@@ -19,6 +19,7 @@ export const DEAL_DOC_ACCEPT = [
   'application/msword', '.doc',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.docx',
   'image/jpeg', '.jpg', '.jpeg', 'image/png', '.png', 'image/webp', '.webp',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx', 'application/vnd.ms-excel', '.xls', 'text/csv', '.csv',
 ].join(',');
 const MAX_BYTES = 25 * 1024 * 1024;   // the deal-docs bucket's own limit
 const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
@@ -124,7 +125,7 @@ export default function DealDocUpload({ dealId, clientId, authToken, showToast, 
           <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
             {touch ? 'Tap to add a file or photo' : 'Drop files here or click to browse'}
           </div>
-          <div style={{ fontSize: 12, color: '#9ca3af' }}>PDF, Word, JPG, PNG · Max 25 MB each</div>
+          <div style={{ fontSize: 12, color: '#9ca3af' }}>PDF, Word, Excel, CSV, JPG, PNG · Max 25 MB each</div>
         </>
       )}
     </label>

@@ -17,6 +17,7 @@ const CONTENT_TYPES: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg',
   png: 'image/png',
   webp: 'image/webp',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', csv: 'text/csv',
 };
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB — the bucket's own limit
 // Short-lived by design: the client re-signs at click time via the docId path in GET,
@@ -27,7 +28,7 @@ const extOf = (name: string) => (name.split('.').pop() ?? '').toLowerCase();
 function typeError(name: string) {
   const ext = extOf(name);
   const hint = ext === 'heic' || ext === 'heif' ? ' Share the photo as a JPG, or set Camera → Formats to Most Compatible.' : '';
-  return NextResponse.json({ error: `.${ext || '?'} files can't be attached to a deal — use PDF, Word, JPG, PNG or WebP.${hint}` }, { status: 400 });
+  return NextResponse.json({ error: `.${ext || '?'} files can't be attached to a deal — use PDF, Word, Excel, CSV, JPG, PNG or WebP.${hint}` }, { status: 400 });
 }
 
 // ── GET: list docs for a deal (with signed download URLs) ─────────────────────

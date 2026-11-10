@@ -16,6 +16,7 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const CONTENT_TYPES: Record<string, string> = {
   pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', csv: 'text/csv',
 };
 const extOf = (n: string) => (n.split('.').pop() ?? '').toLowerCase();
 
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
   } else return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
 
   const contentType = CONTENT_TYPES[extOf(name)];
-  if (!contentType) return NextResponse.json({ error: `.${extOf(name) || '?'} files can't be saved to a deal — only PDF, Word, JPG, PNG or WebP.` }, { status: 400 });
+  if (!contentType) return NextResponse.json({ error: `.${extOf(name) || '?'} files can't be saved to a deal — only PDF, Word, Excel, CSV, JPG, PNG or WebP.` }, { status: 400 });
   if (bytes.length > MAX_FILE_SIZE) return NextResponse.json({ error: 'File must be 25 MB or smaller' }, { status: 400 });
 
   const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);

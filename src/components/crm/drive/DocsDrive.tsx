@@ -328,7 +328,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
       blob = new Blob([(await docToPdf(j.json, j.title, { letterhead: j.letterhead })) as BlobPart], { type: 'application/pdf' });
     } else {
       const f = item as DriveFile;
-      if (!/\.(pdf|docx?|jpe?g|png|webp)$/i.test(f.name)) throw new Error(`${where === 'deal' ? 'A deal’s Docs tab' : 'A contact’s Files'} takes PDF, Word, JPG, PNG or WebP files — this one can stay here in My Drive.`);
+      if (!/\.(pdf|docx?|xlsx?|csv|jpe?g|png|webp)$/i.test(f.name)) throw new Error(`${where === 'deal' ? 'A deal’s Docs tab' : 'A contact’s Files'} takes PDF, Word, Excel, CSV, JPG, PNG or WebP files — this one can stay here in My Drive.`);
       const j = await api<{ url: string }>(`/api/crm/drive/file/${f.id}`);
       const r = await fetch(j.url);
       if (!r.ok) throw new Error('Could not read that file');
