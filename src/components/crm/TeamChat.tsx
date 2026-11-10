@@ -64,6 +64,28 @@ function Avatar({ name, team, size = 38 }: { name: string; team?: boolean; size?
   return <span aria-hidden style={{ width: size, height: size, borderRadius: team ? 11 : '50%', background: team ? '#111' : `hsl(${h} 42% 52% / .22)`, color: team ? GOLD : 'var(--c-ink, #111)', fontWeight: 700, fontSize: size * 0.38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, letterSpacing: .3 }}>{team ? <Ico n="users" size={size * 0.52} /> : initials(name)}</span>;
 }
 
+// Signed image links are good for an hour; keep one per file so scrolling back doesn't re-fetch.
+const imgUrls = new Map<string, { url: string; at: number }>();
+function AttImage({ room, att, auth, mine, onOpen }: { room: string; att: Att; auth: () => Record<string, string>; mine: boolean; onOpen: () => void }) {
+  const [url, setUrl] = useState<string | null>(() => { const h = imgUrls.get(att.path); return h && Date.now() - h.at < 50 * 60_000 ? h.url : null; });
+  const [bad, setBad] = useState(false);
+  useEffect(() => {
+    if (url || bad) return;
+    let live = true;
+    fetch(`/api/crm/chat/file?${new URLSearchParams({ room, path: att.path })}`, { headers: auth() })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('x'))).then((j: { url?: string }) => { if (!j.url) throw new Error('x'); imgUrls.set(att.path, { url: j.url, at: Date.now() }); if (live) setUrl(j.url); })
+      .catch(() => { if (live) setBad(true); });
+    return () => { live = false; };
+  }, [url, bad, room, att.path, auth]);
+  if (bad) return null;
+  return (
+    <button onClick={onOpen} aria-label={`Open ${att.name}`} title={att.name} className="tc-btn" style={{ display: 'block', padding: 0, borderRadius: 10, overflow: 'hidden', background: mine ? 'rgba(0,0,0,.12)' : SOFT, minHeight: url ? undefined : 90, minWidth: url ? undefined : 160, lineHeight: 0 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {url ? <img src={url} alt={att.name} loading="lazy" onError={() => setBad(true)} style={{ display: 'block', maxWidth: '100%', maxHeight: 240, objectFit: 'contain' }} /> : <span className="tc-skel" style={{ display: 'block', height: 90, borderRadius: 10 }} />}
+    </button>
+  );
+}
+
 export default function TeamChat({ token, meId, people, isMobile, onUnread, initialRoom, deals = [], contacts = [], onOpenLink }: { token?: string; meId: string; people: ChatPerson[]; isMobile: boolean; onUnread?: (n: number) => void; initialRoom?: string; deals?: ChatOption[]; contacts?: ChatOption[]; onOpenLink?: (l: Lnk) => void }) {
   const [rooms, setRooms] = useState<Record<string, RoomInfo>>({});
   const [room, setRoom] = useState<string | null>(initialRoom ?? (isMobile ? null : 'team'));
@@ -94,6 +116,8 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   const roomRef = useRef(room); roomRef.current = room;
   const lastAt = useRef<string | null>(null);
   const seen = useRef(0);
+  const draftKey = (r: string) => `tc-draft:${meId}:${r}`;
+  const saveDraft = (r: string | null, v: string) => { if (!r) return; try { if (v) localStorage.setItem(draftKey(r), v); else localStorage.removeItem(draftKey(r)); } catch { /* private mode: no drafts */ } };
   const auth = useCallback((): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const nameOf = useCallback((id: string) => id === meId ? 'You' : (people.find(p => p.id === id)?.name ?? 'Teammate'), [people, meId]);
 
@@ -109,7 +133,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
 
   // open a conversation: load its history, then poll for anything newer
   useEffect(() => {
-    setMsgs([]); lastAt.current = null; seen.current = 0; stick.current = true; setAway(0); setSel(null); setErr(''); setLastRead(null); setLoaded(false); setOtherRead(null); setFind(null); setPendAtt([]); setPendLinks([]); setPicker(null); if (room && !isMobile) setTimeout(() => input.current?.focus(), 50);
+    setMsgs([]); lastAt.current = null; seen.current = 0; stick.current = true; setAway(0); setSel(null); setErr(''); setLastRead(null); setLoaded(false); setOtherRead(null); setFind(null); setPendAtt([]); { let d = ''; try { d = room ? localStorage.getItem(draftKey(room)) ?? '' : ''; } catch { /* none */ } setText(d); } setPendLinks([]); setPicker(null); if (room && !isMobile) setTimeout(() => input.current?.focus(), 50);
     if (!room) return;
     let alive = true;
     let tick = 0;
@@ -137,7 +161,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
       if (++tick % 5 === 0) { lastAt.current = null; void pull(false); } else void pull(false);
     }, 3000);
     return () => { alive = false; clearInterval(t); };
-  }, [room, auth, loadRooms, isMobile]);
+  }, [room, auth, loadRooms, isMobile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { void loadRooms(); const t = setInterval(() => { if (document.visibilityState === 'visible') void loadRooms(); }, 15000); return () => clearInterval(t); }, [loadRooms]);
 
@@ -148,7 +172,9 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
     if (!grew) { seen.current = msgs.length; return; }
     const first = seen.current === 0;
     seen.current = msgs.length;
-    if (first || stick.current || last?.sender_id === meId) { bottom.current?.scrollIntoView({ block: 'end', behavior: first ? 'auto' : 'smooth' }); setAway(0); }
+    const marker = first ? document.getElementById('tc-new') : null;
+    if (marker) { marker.scrollIntoView({ block: 'center', behavior: 'auto' }); stick.current = false; }   // opening a chat with unread lands on the 'New messages' line
+    else if (first || stick.current || last?.sender_id === meId) { bottom.current?.scrollIntoView({ block: 'end', behavior: first ? 'auto' : 'smooth' }); setAway(0); }
     else setAway(n => n + 1);
   }, [msgs, meId]);
   const onScroll = () => { const el = scroller.current; if (!el) return; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; if (stick.current) setAway(0); };
@@ -165,7 +191,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
       const r = await fetch('/api/crm/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth() }, body: JSON.stringify({ room, body, attachments: pendAtt, links: pendLinks.map(l => ({ kind: l.kind, id: l.id })) }) });
       const j = await r.json().catch(() => ({})) as { message?: Msg; error?: string };
       if (!r.ok || !j.message) throw new Error(j.error || 'Could not send');
-      setText(''); setPendAtt([]); setPendLinks([]);
+      setText(''); saveDraft(room, ''); setPendAtt([]); setPendLinks([]);
       lastAt.current = j.message.created_at;
       setMsgs(prev => prev.some(m => m.id === j.message!.id) ? prev : [...prev, j.message!]);
       void loadRooms();
@@ -214,6 +240,8 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   const pickShown = (pq.trim() ? pickList.filter(o => o.label.toLowerCase().includes(pq.trim().toLowerCase())) : pickList).slice(0, 8);
   const addLink = (o: ChatOption) => { if (!picker) return; setPendLinks(l => l.some(x => x.id === o.id) || l.length >= 5 ? l : [...l, { kind: picker, id: o.id, label: o.label }]); setPicker(null); input.current?.focus(); };
 
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = async (m: Msg) => { try { await navigator.clipboard.writeText(m.body); setCopied(m.id); setTimeout(() => setCopied(c => c === m.id ? null : c), 1400); } catch { setErr('Could not copy'); } };
   const remove = async (id: string) => {
     if (!window.confirm('Delete this message for everyone?')) return;
     setMsgs(prev => prev.filter(m => m.id !== id));
@@ -235,6 +263,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   const listed = q ? items.filter(i => i.title.toLowerCase().includes(q)) : items;
   const canSend = !!(text.trim() || pendAtt.length || pendLinks.length) && !sending && uploading === 0;
 
+  const draftOf = (r: string) => { if (r === room) return ''; try { return (localStorage.getItem(draftKey(r)) ?? '').slice(0, 60); } catch { return ''; } };
   const row = (i: typeof items[number]) => (
     <button key={i.room} className="tc-item" aria-current={i.room === room} onClick={() => { setRoom(i.room); setRooms(r => r[i.room] ? { ...r, [i.room]: { ...r[i.room], unread: 0 } } : r); }}
       style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderLeft: `3px solid ${i.room === room ? GOLD : 'transparent'}`, background: i.room === room ? 'rgba(201,146,44,.14)' : undefined, cursor: 'pointer', color: 'inherit' }}>
@@ -246,7 +275,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
           <span style={{ fontSize: 12.5, color: i.info?.unread ? 'var(--c-text)' : MUTED, fontWeight: i.info?.unread ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {i.info?.last ? `${i.info.last.sender_id === meId ? 'You: ' : i.room === 'team' ? `${nameOf(i.info.last.sender_id).split(' ')[0]}: ` : ''}${i.info.last.body || 'Attachment'}` : (i.sub || 'No messages yet')}
+            {draftOf(i.room) ? <><span style={{ color: '#b3261e', fontWeight: 600 }}>Draft: </span>{draftOf(i.room)}</> : i.info?.last ? `${i.info.last.sender_id === meId ? 'You: ' : i.room === 'team' ? `${nameOf(i.info.last.sender_id).split(' ')[0]}: ` : ''}${i.info.last.body || 'Attachment'}` : (i.sub || 'No messages yet')}
           </span>
           {!!i.info?.unread && <span style={{ marginLeft: 'auto', background: GOLD, color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 20, textAlign: 'center', padding: '1px 6px', borderRadius: 10, flexShrink: 0 }}>{i.info.unread > 99 ? '99+' : i.info.unread}</span>}
         </span>
@@ -326,20 +355,24 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
           return (
             <React.Fragment key={m.id}>
               {newDay && <div style={{ textAlign: 'center', margin: '12px 0 6px' }}><span style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, background: SOFT, padding: '3px 11px', borderRadius: 12 }}>{dayLabel(m.created_at)}</span></div>}
-              {firstNew && <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: GOLD, fontSize: 12, fontWeight: 700, margin: '8px 0' }}><span style={{ flex: 1, height: 1, background: GOLD, opacity: .5 }} />New messages<span style={{ flex: 1, height: 1, background: GOLD, opacity: .5 }} /></div>}
+              {firstNew && <div id="tc-new" style={{ display: 'flex', alignItems: 'center', gap: 8, color: GOLD, fontSize: 12, fontWeight: 700, margin: '8px 0' }}><span style={{ flex: 1, height: 1, background: GOLD, opacity: .5 }} />New messages<span style={{ flex: 1, height: 1, background: GOLD, opacity: .5 }} /></div>}
               <div className={`tc-row${sel === m.id ? ' tc-sel' : ''}`} style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: tight ? 0 : 8 }}>
                 {!mine && <div style={{ width: 30, flexShrink: 0, alignSelf: 'flex-start' }}>{head && <Avatar name={nameOf(m.sender_id)} size={30} />}</div>}
+                {mine && !!m.body && <button className="tc-btn tc-act tc-icon" onClick={() => void copy(m)} aria-label="Copy message text" title={copied === m.id ? 'Copied' : 'Copy'} style={{ width: 28, height: 28, color: copied === m.id ? GOLD : undefined }}><Ico n={copied === m.id ? 'check' : 'copy'} size={15} /></button>}
                 {mine && <button className="tc-btn tc-act tc-icon" onClick={() => void remove(m.id)} aria-label="Delete this message" title="Delete" style={{ width: 28, height: 28 }}><Ico n="trash" size={15} /></button>}
                 <div style={{ maxWidth: isMobile ? '82%' : '70%', minWidth: 0 }}>
                   {head && <div style={{ fontSize: 12, fontWeight: 600, color: MUTED, margin: '0 4px 2px' }}>{nameOf(m.sender_id)}</div>}
-                  <div title={fullTime(m.created_at)} onClick={() => { if (isMobile && mine) setSel(s => s === m.id ? null : m.id); }}
+                  <div title={fullTime(m.created_at)} onClick={() => { if (isMobile) setSel(s => s === m.id ? null : m.id); }}
                     style={{ background: mine ? GOLD : SOFT, color: mine ? '#1a1206' : 'inherit', padding: '8px 12px', borderRadius: 16, borderBottomRightRadius: mine && lastInRun ? 5 : 16, borderBottomLeftRadius: !mine && lastInRun ? 5 : 16, fontSize: 14.5, lineHeight: 1.42, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                     {m.body && renderBody(m.body, names, mine, term)}
                     {(m.links ?? []).map(l => card(l.id, ICON[l.kind], KIND[l.kind], l.label, null, mine, !!m.body, () => onOpenLink?.(l)))}
-                    {(m.attachments ?? []).map(a => card(a.path, a.type.startsWith('image/') ? <Ico n="image" size={17} /> : <Ico n="paperclip" size={17} />, null, a.name, `${fmtSize(a.size)} · open`, mine, !!m.body || !!m.links?.length, () => void openAtt(a)))}
+                    {(m.attachments ?? []).map((a, k) => a.type.startsWith('image/') && a.type !== 'image/svg+xml' && room
+                      ? <div key={a.path} style={{ marginTop: (m.body || m.links?.length || k > 0) ? 7 : 0 }}><AttImage room={room} att={a} auth={auth} mine={mine} onOpen={() => void openAtt(a)} /></div>
+                      : card(a.path, <Ico n="paperclip" size={17} />, null, a.name, `${fmtSize(a.size)} · open`, mine, !!m.body || !!m.links?.length || k > 0, () => void openAtt(a)))}
                   </div>
                   {(lastInRun || (mine && m.id === lastMine)) && <div style={{ fontSize: 11, color: MUTED, margin: '2px 4px 0', textAlign: mine ? 'right' : 'left' }}>{lastInRun && when(m.created_at)}{mine && m.id === lastMine && otherRead && otherRead >= m.created_at && <span style={{ color: GOLD, fontWeight: 600 }}>{lastInRun ? ' · ' : ''}Seen</span>}</div>}
                 </div>
+                {!mine && !!m.body && <button className="tc-btn tc-act tc-icon" onClick={() => void copy(m)} aria-label="Copy message text" title={copied === m.id ? 'Copied' : 'Copy'} style={{ width: 28, height: 28, alignSelf: 'center', color: copied === m.id ? GOLD : undefined }}><Ico n={copied === m.id ? 'check' : 'copy'} size={15} /></button>}
               </div>
             </React.Fragment>
           );
@@ -371,7 +404,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
         <div className="tc-field" style={{ display: 'flex', alignItems: 'flex-end', gap: 2, padding: '4px 5px 4px 4px', borderRadius: 14, border: BORDER, background: 'var(--c-surface-2, #fafafa)', transition: 'border-color .12s, box-shadow .12s' }}>
           <button className="tc-icon" onClick={() => fileInput.current?.click()} disabled={pendAtt.length >= 5} title="Attach a file" aria-label="Attach a file"><Ico n="paperclip" size={19} /></button>
           <button className="tc-icon" onClick={() => { if (picker) setPicker(null); else void openPicker('deal'); }} title="Link a deal, contact or document" aria-label="Link a deal, contact or document" style={picker ? { background: 'rgba(201,146,44,.22)', color: GOLD } : undefined}><Ico n="link" size={19} /></button>
-          <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setMi(0); }} rows={1} maxLength={4000} aria-label="Write a message"
+          <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setMi(0); saveDraft(room, e.target.value); }} rows={1} maxLength={4000} aria-label="Write a message"
             placeholder={cur?.room === 'team' ? 'Message the team — @name pings a phone' : `Message ${cur?.title.split(' ')[0] ?? ''}`}
             onPaste={e => { const fs = Array.from(e.clipboardData.files); if (fs.length) { e.preventDefault(); void uploadFiles(fs); } }}
             onKeyDown={e => {
