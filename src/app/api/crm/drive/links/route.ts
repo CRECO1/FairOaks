@@ -55,12 +55,12 @@ export async function GET(req: NextRequest) {
   if (!(await canOpenCard(dc, kind, cardId))) return notFound('Not found');
   const { data: links } = await dc.admin.from('crm_drive_doc_links').select('id,doc_id,created_by,created_at').eq(kind === 'deal' ? 'deal_id' : 'client_id', cardId).order('created_at', { ascending: false });
   const ids = (links ?? []).map(l => l.doc_id as string);
-  const { data: docs } = ids.length ? await dc.admin.from('crm_drive_docs').select('id,title,updated_at,updated_by,version').in('id', ids).is('trashed_at', null) : { data: [] };
+  const { data: docs } = ids.length ? await dc.admin.from('crm_drive_docs').select('id,title,updated_at,updated_by,version,kind').in('id', ids).is('trashed_at', null) : { data: [] };
   const byId = new Map((docs ?? []).map(d => [d.id as string, d]));
   return NextResponse.json({
     links: (links ?? []).filter(l => byId.has(l.doc_id as string)).map(l => {
       const d = byId.get(l.doc_id as string)!;
-      return { id: l.id, doc_id: l.doc_id, title: d.title, updated_at: d.updated_at, updated_by: d.updated_by, linked_by: l.created_by, linked_at: l.created_at };
+      return { id: l.id, doc_id: l.doc_id, title: d.title, kind: d.kind, updated_at: d.updated_at, updated_by: d.updated_by, linked_by: l.created_by, linked_at: l.created_at };
     }),
   });
 }

@@ -16,7 +16,7 @@ const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
  * Each document can be sent for signature (the E-Sign flow takes the PDF), downloaded as PDF / Word, opened or removed from the card.
  */
 
-interface Linked { id: string; doc_id: string; title: string; updated_at: string; updated_by: string | null; linked_by: string | null; linked_at: string }
+interface Linked { id: string; doc_id: string; title: string; kind?: string; updated_at: string; updated_by: string | null; linked_by: string | null; linked_at: string }
 interface Tpl { id: string; title: string }
 
 function ago(iso: string) {
@@ -147,11 +147,12 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
               <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflowWrap: 'anywhere' }}>{l.title}</div>
               <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>Live from My Drive · edited {ago(l.updated_at)} by {who(l.updated_by)}</div>
             </div>
-            {onSignDoc && (
+            {onSignDoc && l.kind !== 'sheet' && (
               <button type="button" onClick={() => onSignDoc(l.doc_id, l.title, dealId)} title="Turn the latest version into a PDF and send it for e-signature"
                 style={{ ...smallBtn, color: '#a06a12', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', cursor: 'pointer' }}>✍ Sign</button>
             )}
-            {(['pdf', 'word'] as const).map(k => (
+            {/* a spreadsheet has no PDF / Word / signature version — it downloads as Excel from inside the sheet */}
+            {(l.kind === 'sheet' ? [] : ['pdf', 'word'] as const).map(k => (
               <button key={k} type="button" onClick={() => void download(l, k)} disabled={!!busy} title={k === 'pdf' ? 'Download the latest version as a PDF' : 'Download the latest version as a Word (.docx) file'}
                 style={{ ...smallBtn, cursor: busy ? 'default' : 'pointer', opacity: busy && busy !== `${l.id}:${k}` ? .5 : 1 }}>
                 {busy === `${l.id}:${k}` ? '…' : k === 'pdf' ? '⬇ PDF' : '⬇ Word'}
