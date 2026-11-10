@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import PdfViewer from './PdfViewer';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { renderWorkbookCached, isXlsxName, XR_CSS } from '@/lib/xlsx-render';
@@ -156,18 +157,18 @@ export default function DocPreviewModal({ file: first, files, start = 0, onClose
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      else if (list && (e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !(e.target instanceof HTMLInputElement)) go(e.key === 'ArrowRight' ? 1 : -1);
+      if (e.key === 'Escape') { e.stopImmediatePropagation(); onClose(); }
+      else if (list && (e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !(e.target instanceof HTMLInputElement)) { e.stopImmediatePropagation(); go(e.key === 'ArrowRight' ? 1 : -1); }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose, list]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (isImg || !previewable) setReady(true); }, [isImg, previewable]);
 
   const downloadUrl = file.url + (file.url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(file.name);
   const btn: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
 
-  return (
+  const modal = (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.62)', zIndex: 1000, display: 'flex', flexDirection: 'column', padding: 24 }}>
       {/* Print only the rendered document, at full size, with nothing else. */}
@@ -220,4 +221,6 @@ export default function DocPreviewModal({ file: first, files, start = 0, onClose
       </div>
     </div>
   );
+  // Drawn on <body>, not inside whichever card opened it: a card/pop-up ancestor can never clip, cover or shift it.
+  return typeof document === 'undefined' ? modal : createPortal(modal, document.body);
 }
