@@ -334,6 +334,9 @@ export default function SignPage() {
   const strokes = useRef<Pt[][]>([]);
   const hasInk = () => strokes.current.some(s => s.length > 0);
 
+  // The tab / history entry says what this is (not the site's marketing title).
+  useEffect(() => { if (data?.title) document.title = `Sign: ${data.title}`; else document.title = 'Secure e-signature'; }, [data?.title]);
+
   const [narrow, setNarrow] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 640px)');
@@ -615,13 +618,14 @@ export default function SignPage() {
 
   const submit = useCallback(async () => {
     setErr('');
-    if (!consent) { setErr('Please check the box to consent to sign electronically.'); return; }
     if (!adopted) { changeSignature(); return; }
+    // The button reads "N spots left to confirm", so pressing it takes the signer to the next one (the consent box comes after).
     if (fields.length && remaining.length) {
       setErr(`You still have ${remaining.length} spot${remaining.length === 1 ? '' : 's'} to confirm on the document.`);
       if (isInput(remaining[0].type)) scrollToInput(remaining[0].id); else scrollToField(remaining[0].id);
       return;
     }
+    if (!consent) { setErr('Please check the box to consent to sign electronically.'); return; }
     setSubmitting(true);
     try {
       // Both paths hand the server a PNG, so the executed PDF stamps the signer's own
@@ -896,8 +900,8 @@ export default function SignPage() {
             <strong>Place your signature.</strong>{' '}
             {narrow
               // Nine lines of instructions pushed the document off a phone's first screen.
-              ? <>Tap the gold spots in the document, or the gold <span style={{ color: GOLD, fontWeight: 700 }}>Jump</span> button.{inputFields.length > 0 && <> Type your details under <strong>Fill in</strong>.</>}</>
-              : <>Tap each highlighted gold spot in the document below (there {fields.length === 1 ? 'is 1' : `are ${fields.length}`}), or use the gold <span style={{ color: GOLD, fontWeight: 700 }}>Jump to my signature</span> button.{inputFields.length > 0 && <> Type your details under <strong>Fill in</strong>.</>} Then check the box and Finish &amp; Sign.</>}
+              ? <>Tap the gold spots in the document, or the gold <span style={{ color: GOLD, fontWeight: 700 }}>Place</span> button.{inputFields.length > 0 && <> Type your details under <strong>Fill in</strong>.</>}</>
+              : <>Tap each highlighted gold spot in the document below (there {fields.length === 1 ? 'is 1' : `are ${fields.length}`}), or use the gold <span style={{ color: GOLD, fontWeight: 700 }}>Place my signature</span> button.{inputFields.length > 0 && <> Type your details under <strong>Fill in</strong>.</>} Then check the box and Finish &amp; Sign.</>}
             {/* Its own row: a 44px-tall button inline in the paragraph split it in two. */}
             <div>
               <button onClick={changeSignature} style={{ display: 'inline-flex', alignItems: 'center', minHeight: TAP, background: 'none', border: 'none', padding: 0, color: GOLD, fontWeight: 700, fontSize: 14, cursor: 'pointer', textDecoration: 'underline' }}>Change my signature style</button>
@@ -905,7 +909,7 @@ export default function SignPage() {
           </div>
         )}
         {/* Edge to edge on a phone: every pixel of width is document you can read. */}
-        <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden', ...(narrow ? { margin: '0 -12px 16px', borderRadius: 0 } : {}) }}>
+        <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden', ...(narrow ? { marginLeft: -12, marginRight: -12, borderRadius: 0 } : {}) }}>
           {data?.doc_url
             ? <DocView url={data.doc_url} fields={fields} filled={filled} values={values} onFill={fillField} onClear={clearField}
                 onPick={f => scrollToInput(f.id)} onLabels={setLabels} focusId={focusId}
@@ -1006,7 +1010,7 @@ export default function SignPage() {
           {err && <div role="alert" style={{ background: '#fef2f2', color: '#dc2626', fontSize: 13.5, padding: '10px 12px', borderRadius: 8, marginBottom: 12 }}>{err}</div>}
 
           <button onClick={submit} disabled={submitting}
-            style={{ width: '100%', minHeight: 52, padding: '14px 0', background: GOLD, color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.7 : 1 }}>
+            style={{ width: '100%', minHeight: 52, padding: '14px 0', background: GOLD, color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.7 : fields.length && remaining.length ? 0.8 : 1 }}>
             {submitting ? 'Submitting…'
               : fields.length && remaining.length ? `${remaining.length} spot${remaining.length === 1 ? '' : 's'} left to confirm`
               : 'Finish & Sign'}
@@ -1058,10 +1062,10 @@ export default function SignPage() {
           {pill === 'jump' && nextField ? (
             <button
               onClick={() => { if (!isInput(nextField.type)) scrollToField(nextField.id); fillField(nextField); }}
-              title="Jump to your next signing spot and sign it"
+              title="Place your signature at the next signing spot"
               style={{ pointerEvents: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, minHeight: 52, maxWidth: '100%', whiteSpace: 'nowrap', background: GOLD, color: '#fff', border: 'none', borderRadius: 999, padding: narrow ? '12px 18px' : '13px 22px', fontSize: narrow ? 14 : 15, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 28px rgba(201,146,44,.5)' }}>
               <span style={{ fontSize: 12.5, fontWeight: 800, background: 'rgba(255,255,255,.25)', borderRadius: 999, padding: '2px 9px', flexShrink: 0 }}>{fields.length - remaining.length} / {fields.length}</span>
-              {remaining.length === fields.length ? 'Jump to my signature ▸' : `Jump to next — ${typeLabel(nextField.type)} ▸`}
+              {remaining.length === fields.length ? 'Place my signature ▸' : `Place next — ${typeLabel(nextField.type)} ▸`}
             </button>
           ) : (
             <button onClick={scrollToAdopt}
