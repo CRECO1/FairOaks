@@ -246,7 +246,7 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
         <button type="button" onClick={() => setPanel(p => (p === 'activity' ? null : 'activity'))} aria-pressed={panel === 'activity'} aria-label="Activity log" title="Activity — every change to this spreadsheet"
           style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px', background: panel === 'activity' ? 'var(--k-fdf6e9)' : 'var(--k-fff)' }}>📜</button>
         <button type="button" onClick={() => setHistory(true)} aria-label="Version history" title="Version history" style={{ ...btnStyle(isMobile), padding: isMobile ? '0 8px' : '0 10px' }}>🕘</button>
-        {onShare && <button type="button" onClick={() => onShare(doc)} style={{ ...btnStyle(isMobile), background: '#c9922c', color: '#fff', border: 'none' }}>Share</button>}
+        {onShare && <button type="button" onClick={() => onShare({ ...doc, title })} style={{ ...btnStyle(isMobile), background: '#c9922c', color: '#fff', border: 'none' }}>Share</button>}
       </header>
       {status === 'denied' && (
         <div style={{ background: 'var(--k-fffbeb)', color: 'var(--k-92400e)', padding: '8px 16px', fontSize: 13, borderBottom: '1px solid var(--k-fde68a)' }}>
