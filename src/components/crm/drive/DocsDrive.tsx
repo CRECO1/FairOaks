@@ -155,9 +155,9 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     return j as T;
   }, [headers]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {   // silent = a background refresh: keep what is on screen instead of flashing the loading state
     if (view === 'forms') { setLoading(false); return; }
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const qs = view === 'starred' ? `view=starred&ids=${encodeURIComponent([...starsRef.current].join(','))}` : view === 'folder' ? `view=folder&folder=${folderId ?? 'root'}` : view === 'search' ? `view=search&q=${encodeURIComponent(q)}` : `view=${view}`;
       setData(await api<DriveListing>(`/api/crm/drive?${qs}`));
@@ -207,7 +207,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     return () => window.removeEventListener('crm:open-drive-doc', h);
   }, []);
   // A document or form was changed in its own tab (renamed, saved, shared): reload what is on screen.
-  useEffect(() => onDriveChanged(() => { void load(); void loadTree(); }), [load, loadTree]);
+  useEffect(() => onDriveChanged(() => { void load(true); void loadTree(); }), [load, loadTree]);
   // The Copilot filed something into My Drive: reload what is on screen.
   useEffect(() => { const f = () => { void load(); void loadTree(); }; window.addEventListener('crm:drive-updated', f); return () => window.removeEventListener('crm:drive-updated', f); }, [load, loadTree]);
 

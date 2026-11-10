@@ -12455,7 +12455,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         const isImage = doc.file_type?.startsWith('image/');
                         const isPdf = doc.file_type === 'application/pdf';
                         const icon = isPdf ? '📄' : isImage ? '🖼️' : '📝';
-                        const size = doc.file_size ? (doc.file_size > 1024 * 1024 ? `${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : `${Math.round(doc.file_size / 1024)} KB`) : '';
+                        const size = doc.file_size ? (doc.file_size > 1024 * 1024 ? `${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(doc.file_size / 1024))} KB`) : '';
                         const uploader = profiles.find(p => p.id === doc.uploaded_by);
                         const uploaderName = uploader ? uploader.first_name : profile!.id === doc.uploaded_by ? profile!.first_name : 'Agent';
                         return (

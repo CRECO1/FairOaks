@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import DI from './DriveIcons';
+import DI, { toneFor } from './DriveIcons';
 import type { DrivePerson } from './DocsDrive';
 import { OPEN_LIVE_DOC, LIVE_DOCS_CHANGED } from './card-edit';
 import { openDriveTab, driveDocPath, onDriveChanged } from './open-tab';
@@ -142,7 +142,7 @@ export default function LinkedDocs({ dealId, clientId, authToken, currentUser, p
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {(items ?? []).map(l => (
           <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '9px 12px' }}>
-            <span style={{ width: 34, height: 34, borderRadius: 9, background: '#2563eb1f', color: '#2563eb', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><DI n="doc" size={18} /></span>
+            {(() => { const t = toneFor('doc', { sheet: l.kind === 'sheet' }); return <span style={{ width: 34, height: 34, borderRadius: 9, background: `${t.color}1f`, color: t.color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><DI n={t.icon} size={18} /></span>; })()}
             <div style={{ flex: isMobile ? '1 1 calc(100% - 48px)' : '1 1 160px', minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', overflowWrap: 'anywhere' }}>{l.title}</div>
               <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>Live from My Drive · edited {ago(l.updated_at)} by {who(l.updated_by)}</div>
