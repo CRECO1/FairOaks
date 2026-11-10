@@ -6253,7 +6253,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               /billing requires admin_users membership on the CRECO side;
               non-admin agents would just hit a 404. rel for the standard
               new-tab security pair. */}
-          {isAdmin && (
+          {isSuperAdmin && (
             <a
               href="https://www.crecotx.com/billing/"
               target="_blank"
@@ -6464,7 +6464,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button className={`crm-nav${page === 'emails' ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab('inbox'); setMobileMenuOpen(false); }}><Ico n="mail" />Emails{emailBadge > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{emailBadge > 99 ? '99+' : emailBadge}</span>}</button>
                 <button className={`crm-nav${page === 'teamchat' ? ' active' : ''}`} onClick={() => { setPage('teamchat'); loadProfiles(); if (!clients.length) loadClients(); setMobileMenuOpen(false); }}><Ico n="users" />Team Chat{chatUnread > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{chatUnread > 99 ? '99+' : chatUnread}</span>}</button>
                 {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}><Ico n="briefcase" />Broker / Agents</button>}
-                {isAdmin && (
+                {isSuperAdmin && (
                   <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
                     <Ico n="receipt" />Billing <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>↗</span>
                   </a>
