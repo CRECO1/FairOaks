@@ -535,6 +535,7 @@ export default function TransactionDocEditor({
   }, [build, form.name]);
 
   const saveTemplate = useCallback(async () => {
+    if (!window.confirm(`Save this field layout as the standard for “${form.name}”?\n\nEvery new copy of this form will start with these fields in these places. Your answers are not part of it.`)) return;
     setBusy(true);
     try {
       const h: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -544,7 +545,7 @@ export default function TransactionDocEditor({
       onToast?.(res.ok ? '✓ Field layout saved for this form' : 'Could not save the layout');
     } catch { onToast?.('Could not save the layout'); }
     finally { setBusy(false); }
-  }, [fields, authToken, form.id, onToast]);
+  }, [fields, authToken, form.id, form.name, onToast]);
 
   // One save at a time. `silent` = an automatic save: no toast, no busy state, no history refresh.
   const savingRef = useRef(false);
@@ -616,11 +617,21 @@ export default function TransactionDocEditor({
     if (snap === autoRef.current) return;
     const t = setTimeout(async () => {
       setAutoState('saving');
+      for (let i = 0; i < 10 && savingRef.current; i++) await new Promise(r => setTimeout(r, 500));   // a save is already running: wait for it
       const ok = await doSave(true);
       if (ok) { autoRef.current = snap; setAutoState('saved'); } else setAutoState('error');
     }, 6000);
     return () => clearTimeout(t);
   }, [fields, autoOn, status, doSave]);
+  // Closing the tab (or reloading) with a change that hasn't been saved yet: the browser asks first.
+  useEffect(() => {
+    if (!autoOn) return;
+    const h = (e: BeforeUnloadEvent) => {
+      if (status === 'ready' && autoRef.current && JSON.stringify(latestFields.current) !== autoRef.current) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, [autoOn, status]);
   const requestClose = useCallback(async () => {
     if (autoOn && status === 'ready' && autoRef.current && JSON.stringify(latestFields.current) !== autoRef.current) await doSave(true);
     onClose();
@@ -792,7 +803,7 @@ export default function TransactionDocEditor({
             </span>
           )}
           {subIdRef.current && !isMobile && <button onClick={() => setShowHistory(true)} title="Edit history — who changed what" style={{ ...actionBtn, background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', flexShrink: 0 }}>🕘 History{edits.length ? ` (${edits.length})` : ''}</button>}
-          {isAdmin && !isMobile && !imported && !onSend && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
+          {isAdmin && !isMobile && !imported && !onSend && <button onClick={saveTemplate} disabled={busy} title="Admin: save where the fields are on this form as the standard layout every new copy starts from. This does not save your answers — use Save for that." style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
           {!listingId && deals && deals.length > 0 && (
             <select value={dealSel} onChange={e => setDealSel(e.target.value)} title="Link this document to a deal"
               style={{ padding: isMobile ? '11px 10px' : '8px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', maxWidth: 230, flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
@@ -966,7 +977,7 @@ export default function TransactionDocEditor({
                       background: `${rc}22`, border: `1.5px dashed ${rc}`, outline: lock ? `2px solid ${lock.color}` : isSel ? `2px solid ${rc}` : 'none', pointerEvents: lock ? 'none' : undefined }}>
                     <span style={{ fontSize: `max(7px, ${cqw(6.5)})`, fontWeight: 700, color: rc, textTransform: rec ? 'none' : 'capitalize', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 3px', pointerEvents: 'none' }}>{glyph} {who} {kind}</span>
                     {isSel && (
-                      <button onClick={e => { e.stopPropagation(); delField(f.id); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} aria-label="Delete field"
+                      <button onClick={e => { e.stopPropagation(); delField(f.id); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} aria-label="Delete field" tabIndex={-1}
                         style={{ position: 'absolute', top: isMobile ? -13 : -9, right: isMobile ? -13 : -9, width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: isMobile ? 13 : 10, cursor: 'pointer', lineHeight: isMobile ? '26px' : '17px', padding: 0 }}>✕</button>
                     )}
                   </div>
@@ -1040,7 +1051,7 @@ export default function TransactionDocEditor({
                 {isSel && (
                   <button onClick={e => { e.stopPropagation(); delField(f.id); }}
                     onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-                    aria-label="Delete field"
+                    aria-label="Delete field" tabIndex={-1}
                     style={{ position: 'absolute',
                       ...(isCheck
                         ? { top: '50%', right: -((isMobile ? 26 : 17) + 4), transform: 'translateY(-50%)' }
