@@ -5915,7 +5915,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     <div className="crm-app-shell" data-crm-theme={crmTheme} style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: isTabletOrMobile ? '100dvh' : '100vh', overflow: 'hidden', background: 'var(--k-f2f2f2)' }}>
       <CrmShield exempt={isSuperAdmin} name={`${profile.first_name} ${profile.last_name}`.trim()} email={profile.email} token={session?.access_token} page={page} />
       {showMfa && <MfaSettings onClose={() => setShowMfa(false)} onChange={setHasMfa} />}
-      {isAdmin && !hasMfa && !showMfa && !mfaNagOff && (
+      {false && isAdmin && !hasMfa && !showMfa && !mfaNagOff && (
         <div role="status" style={{ position: 'fixed', left: '50%', bottom: 16, transform: 'translateX(-50%)', zIndex: 2500, background: '#111', color: '#fff', border: '1px solid #c9922c', borderRadius: 10, padding: '10px 14px', fontSize: 13, display: 'flex', gap: 12, alignItems: 'center', maxWidth: '92vw', boxShadow: '0 10px 30px rgba(0,0,0,.35)' }}>
           <span>Protect this account: turn on 2-step verification.</span>
           <button onClick={() => setShowMfa(true)} style={{ background: '#c9922c', color: '#111', border: 'none', borderRadius: 6, padding: '5px 12px', fontWeight: 700, cursor: 'pointer' }}>Set up</button>

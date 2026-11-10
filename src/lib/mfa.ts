@@ -3,6 +3,8 @@
 // Supabase stamps every access token with an assurance level: `aal1` = password only, `aal2` = password + a verified second factor.
 // A user who has enrolled a factor must present an aal2 token; a password alone is not enough to read CRM data.
 
+export const MFA_ENFORCED = false;
+
 type FactorLike = { status?: string | null; factor_type?: string | null };
 
 /** The assurance level claimed by an access token ("aal1" / "aal2"), or null if it can't be read. Never trusted on its own:
@@ -24,5 +26,7 @@ export function hasVerifiedFactor(user?: { factors?: FactorLike[] | null } | nul
 
 /** True when this login has a second factor set up but the token was issued without using it. */
 export function needsSecondFactor(user: { factors?: FactorLike[] | null } | null | undefined, token?: string | null): boolean {
+  // 2-step login code is switched OFF (Zack, 2026-11-09: too much friction). To re-enable, set MFA_ENFORCED = true and re-run supabase/mfa-enforce-2026-11.sql.
+  if (!MFA_ENFORCED) return false;
   return hasVerifiedFactor(user) && jwtAal(token) !== 'aal2';
 }
