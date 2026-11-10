@@ -4,7 +4,7 @@
 // stamp or the PDF that goes out for signature would still show the OLD text.
 // Keep the layout maths identical to the editor's build().
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { parseRich, drawRichText, drawnWidth, hasMarkup, FORM_FONT_SIZE, type RichFonts } from '@/lib/rich-text';
+import { parseRich, drawRichText, drawnWidth, hasMarkup, drawInkText, FORM_FONT_SIZE, FORM_INK_RGB, FORM_INK_WEIGHT, type RichFonts } from '@/lib/rich-text';
 
 export interface StampField {
   page: number; fx: number; fy: number; fw: number;
@@ -35,7 +35,7 @@ export async function stampOverlay(blank: Uint8Array, fields: StampField[]): Pro
     ital: await doc.embedFont(StandardFonts.HelveticaOblique),
     boldItal: await doc.embedFont(StandardFonts.HelveticaBoldOblique),
   };
-  const ink = rgb(0.06, 0.06, 0.1);
+  const ink = rgb(...FORM_INK_RGB);
   const pgs = doc.getPages();
   for (const f of fields) {
     const pg = pgs[(f.page ?? 1) - 1]; if (!pg) continue;
@@ -50,7 +50,7 @@ export async function stampOverlay(blank: Uint8Array, fields: StampField[]): Pro
         const box = f.fw * width;
         const xw = font.widthOfTextAtSize('X', size);
         const cap = size * 0.72;
-        pg.drawText('X', { x: f.fx * width + Math.max(0, (box - xw) / 2), y: height - f.fy * height + Math.max(1, (box - cap) / 2), size, font, color: ink });
+        drawInkText(pg, 'X', { x: f.fx * width + Math.max(0, (box - xw) / 2), y: height - f.fy * height + Math.max(1, (box - cap) / 2), size, font, color: ink, weight: FORM_INK_WEIGHT });
       }
       continue;
     }
@@ -58,11 +58,11 @@ export async function stampOverlay(blank: Uint8Array, fields: StampField[]): Pro
     if (!val) continue;
     const maxW = Math.max(24, f.fw * width - 4);
     if (hasMarkup(val)) {
-      drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
+      drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink, weight: FORM_INK_WEIGHT });
     } else if (drawnWidth(font, val, size) <= maxW) {
-      pg.drawText(val, { x, y, size, font, color: ink });
+      drawInkText(pg, val, { x, y, size, font, color: ink, weight: FORM_INK_WEIGHT });
     } else {
-      drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
+      drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink, weight: FORM_INK_WEIGHT });
     }
   }
   return doc.save();

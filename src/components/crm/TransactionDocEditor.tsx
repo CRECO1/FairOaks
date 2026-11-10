@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { parseRich, drawRichText, drawnWidth, hasMarkup, FORM_FONT_SIZE, type RichFonts } from '@/lib/rich-text';
+import { parseRich, drawRichText, drawnWidth, hasMarkup, drawInkText, FORM_FONT_SIZE, FORM_INK_HEX, FORM_INK_RGB, FORM_INK_WEIGHT, type RichFonts } from '@/lib/rich-text';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
@@ -541,7 +541,7 @@ export default function TransactionDocEditor({
       ital: await doc.embedFont(StandardFonts.HelveticaOblique),
       boldItal: await doc.embedFont(StandardFonts.HelveticaBoldOblique),
     };
-    const ink = rgb(0.06, 0.06, 0.1);
+    const ink = rgb(...FORM_INK_RGB);
     const pgs = doc.getPages();
     for (const f of fields) {
       const pg = pgs[f.page - 1]; if (!pg) continue;
@@ -559,7 +559,7 @@ export default function TransactionDocEditor({
           const box = f.fw * width;
           const xw = font.widthOfTextAtSize('X', size);
           const cap = size * 0.72;
-          pg.drawText('X', { x: f.fx * width + Math.max(0, (box - xw) / 2), y: height - f.fy * height + Math.max(1, (box - cap) / 2), size, font, color: ink });
+          drawInkText(pg, 'X', { x: f.fx * width + Math.max(0, (box - xw) / 2), y: height - f.fy * height + Math.max(1, (box - cap) / 2), size, font, color: ink, weight: FORM_INK_WEIGHT });
         }
         continue;
       }
@@ -569,12 +569,12 @@ export default function TransactionDocEditor({
       // plain value keeps the single-drawText fast path (clean text extraction).
       const maxW = Math.max(24, f.fw * width - 4);
       if (hasMarkup(val)) {
-        drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
+        drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink, weight: FORM_INK_WEIGHT });
       } else if (drawnWidth(font, val, size) <= maxW) {
-        pg.drawText(val, { x, y, size, font, color: ink });
+        drawInkText(pg, val, { x, y, size, font, color: ink, weight: FORM_INK_WEIGHT });
       } else {
         // Too long for the blank: wrap at the same size (never shrink), so every field matches.
-        drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
+        drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink, weight: FORM_INK_WEIGHT });
       }
     }
     return doc.save();
@@ -1088,9 +1088,9 @@ export default function TransactionDocEditor({
                       onTouchStart={e => e.stopPropagation()}
                       style={{ width: '100%', height: '100%', minWidth: 11, minHeight: 11, boxSizing: 'border-box', margin: 0, padding: 0,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                        border: `1.5px solid ${checked ? '#0b1f4d' : 'rgba(37,99,235,.55)'}`, borderRadius: 2,
+                        border: `1.5px solid ${checked ? FORM_INK_HEX : 'rgba(37,99,235,.55)'}`, borderRadius: 2,
                         background: checked ? 'rgba(37,99,235,.10)' : 'rgba(255,255,255,.6)',
-                        color: '#0b1f4d', fontSize: cqw(em * 1.05), lineHeight: 1, fontWeight: 700, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+                        color: FORM_INK_HEX, fontSize: cqw(em * 1.05), lineHeight: 1, fontWeight: 700, fontFamily: 'Helvetica, Arial, sans-serif' }}>
                       {checked ? '✔' : ''}
                     </button>
                   );
@@ -1102,7 +1102,7 @@ export default function TransactionDocEditor({
                     onFocus={() => setSelected(f.id)}
                     locked={!!lock}
                     stopDrag
-                    style={{ width: '100%', minHeight: `max(9px, ${cqw(em * 1.05)})`, fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
+                    style={{ width: '100%', minHeight: `max(9px, ${cqw(em * 1.05)})`, fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: FORM_INK_HEX, WebkitTextStroke: `${cqw(em * FORM_INK_WEIGHT)} ${FORM_INK_HEX}`,
                       textAlign: 'left', padding: '0 2px', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                   />
                 )}
