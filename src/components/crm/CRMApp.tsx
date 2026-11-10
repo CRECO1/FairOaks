@@ -97,6 +97,8 @@ import { fetchAll } from '@/lib/campaign-engagement';
 import { segmentOf, SEGMENTS, SEGMENT_LABEL, type Segment } from '@/lib/contact-segment';
 import { specForForm, type LoiSpec } from '@/lib/loi-spec';
 import { deriveSide } from '@/lib/representation-side';
+import CommissionPanel from '@/components/crm/CommissionPanel';
+import { EMPTY_COMMISSION_FORM, formFromCommission, commissionErrors, type CommissionForm } from '@/lib/commission';
 import Skeleton from '@/components/crm/Skeleton';
 
 // Use the SSR browser client so the session is stored in cookies,
@@ -1143,7 +1145,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [commissionLoading, setCommissionLoading] = useState(false);
   const [commissionSaving, setCommissionSaving] = useState(false);
   const [allCommissions, setAllCommissions] = useState<Commission[]>([]);
-  const [commissionForm, setCommissionForm] = useState({ sale_price: '', commission_rate: '3', agent_split: '70', referral_fee: '0', referral_to: '', transaction_fee: '0', status: 'pending' as Commission['status'], close_date: '', paid_date: '', notes: '' });
+  const [commissionForm, setCommissionForm] = useState<CommissionForm>(EMPTY_COMMISSION_FORM);
+  const commissionReq = useRef(0);   // newest Commission-tab load wins, so a slow answer for a deal you already left can't overwrite this one
   const [commissionFilterYear, setCommissionFilterYear] = useState<string>(new Date().getFullYear().toString());
   const [commissionFilterAgent, setCommissionFilterAgent] = useState<string>('');
   const [commissionFilterStatus, setCommissionFilterStatus] = useState<string>('');
@@ -2684,36 +2687,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [activeDeal, session?.access_token, businessUnit, loadDealForms]); // eslint-disable-line
 
   const loadDealCommission = useCallback(async (dealId: string, billableValue?: number | null) => {
+    const mine = ++commissionReq.current;
     setCommissionLoading(true);
+    // Start from a clean form for THIS deal — rate, split, dates and notes used to carry over from the deal opened before.
+    setCommissionForm({ ...EMPTY_COMMISSION_FORM, sale_price: billableValue != null && billableValue > 0 ? String(billableValue) : '' });
     try {
       const res = await fetch(`/api/crm/commissions?business_unit=${businessUnit}&deal_id=${dealId}`, {
         headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
       });
       const json = await res.json();
+      if (mine !== commissionReq.current) return;
       const c = (json.commissions ?? [])[0] ?? null;
       setDealCommission(c);
-      if (c) {
-        setCommissionForm({
-          sale_price: String(c.sale_price ?? ''),
-          commission_rate: String(c.commission_rate ?? '3'),
-          agent_split: String(c.agent_split ?? '70'),
-          referral_fee: String(c.referral_fee ?? '0'),
-          referral_to: c.referral_to ?? '',
-          transaction_fee: String(c.transaction_fee ?? '0'),
-          status: c.status ?? 'pending',
-          close_date: c.close_date ?? '',
-          paid_date: c.paid_date ?? '',
-          notes: c.notes ?? '',
-        });
-      } else {
-        // No commission yet — pre-fill sale price from deal's Billable Value
-        setCommissionForm(prev => ({
-          ...prev,
-          sale_price: billableValue != null && billableValue > 0 ? String(billableValue) : '',
-        }));
-      }
+      // No commission yet → keep the clean form above (sale price pre-filled from the deal's Billable Value).
+      if (c) setCommissionForm(formFromCommission(c));
     } catch { /* ignore */ }
-    finally { setCommissionLoading(false); }
+    finally { if (mine === commissionReq.current) setCommissionLoading(false); }
   }, [businessUnit, session?.access_token]);
 
   async function loadAllCommissions() {
@@ -2725,7 +2714,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function saveCommission(deal: Deal) {
-    if (!commissionForm.sale_price) { showToast('Enter a sale/lease price first'); return; }
+    const bad = Object.values(commissionErrors(commissionForm))[0];
+    if (bad) { showToast(bad); return; }
     setCommissionSaving(true);
     try {
       const payload = {
@@ -2737,24 +2727,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         commission_rate: Number(commissionForm.commission_rate),
         agent_split: Number(commissionForm.agent_split),
         referral_fee: Number(commissionForm.referral_fee),
-        referral_to: commissionForm.referral_to || null,
+        referral_to: commissionForm.referral_to.trim() || null,
         transaction_fee: Number(commissionForm.transaction_fee),
         status: commissionForm.status,
         close_date: commissionForm.close_date || null,
         paid_date: commissionForm.paid_date || null,
-        notes: commissionForm.notes || null,
+        notes: commissionForm.notes.trim() || null,
       };
       const res = await fetch('/api/crm/commissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) },
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
-      if (!res.ok) { showToast('Error: ' + json.error); return; }
-      setDealCommission(json.commission);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(res.status === 403 ? 'Only an admin can change a saved commission' : `Could not save the commission${json.error ? `: ${json.error}` : ''}`); return; }
+      // The saved row replaces the form so what is on screen is exactly what the database holds (the DB computes the totals).
+      const saved = { ...json.commission, agent: dealCommission?.agent ?? json.commission.agent } as Commission;
+      setDealCommission(saved);
+      setCommissionForm(formFromCommission(saved));
       setAllCommissions(prev => {
         const exists = prev.find(c => c.deal_id === deal.id);
-        return exists ? prev.map(c => c.deal_id === deal.id ? json.commission : c) : [json.commission, ...prev];
+        return exists ? prev.map(c => c.deal_id === deal.id ? { ...c, ...saved } : c) : [saved, ...prev];
       });
       showToast('Commission saved ✓');
     } finally { setCommissionSaving(false); }
@@ -12819,91 +12812,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {commissionLoading ? (
                     <Skeleton rows={4} />
                   ) : (
-                    <div>
-                      {/* Live preview banner */}
-                      {commissionForm.sale_price && (
-                        (() => {
-                          const sp = Number(commissionForm.sale_price) || 0;
-                          const rate = Number(commissionForm.commission_rate) || 0;
-                          const split = Number(commissionForm.agent_split) || 0;
-                          const ref = Number(commissionForm.referral_fee) || 0;
-                          const txFee = Number(commissionForm.transaction_fee) || 0;
-                          const gross = sp * (rate / 100);
-                          const agentNet = gross * (split / 100) - ref - txFee;
-                          const brokerNet = gross - gross * (split / 100);
-                          return (
-                            <div className="stats-3col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20, background: 'var(--k-f9f5ef)', border: '1px solid var(--k-e8dcc8)', borderRadius: 10, padding: '14px 16px' }}>
-                              <div style={{ textAlign: 'center' }}>
-                                <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 500, marginBottom: 3 }}>Gross Commission</div>
-                                <div style={{ fontSize: 18, fontWeight: 700, color: '#c9922c' }}>${gross.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
-                              </div>
-                              <div style={{ textAlign: 'center', borderLeft: '1px solid var(--k-e8dcc8)', borderRight: '1px solid var(--k-e8dcc8)' }}>
-                                <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 500, marginBottom: 3 }}>Agent Net</div>
-                                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--k-059669)' }}>${agentNet.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
-                              </div>
-                              <div style={{ textAlign: 'center' }}>
-                                <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 500, marginBottom: 3 }}>Brokerage Net</div>
-                                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--k-374151)' }}>${brokerNet.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
-                              </div>
-                            </div>
-                          );
-                        })()
-                      )}
-
-                      {/* Form grid */}
-                      <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                        <div style={{ gridColumn: '1/-1' }}>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Sale / Lease Price ($) *</label>
-                          <input className="crm-input" type="number" style={{ marginTop: 4 }} value={commissionForm.sale_price} onChange={e => setCommissionForm(f => ({ ...f, sale_price: e.target.value }))} placeholder="0" />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Commission Rate (%)</label>
-                          <input className="crm-input" type="number" step="0.1" style={{ marginTop: 4 }} value={commissionForm.commission_rate} onChange={e => setCommissionForm(f => ({ ...f, commission_rate: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Agent Split (%)</label>
-                          <input className="crm-input" type="number" style={{ marginTop: 4 }} value={commissionForm.agent_split} onChange={e => setCommissionForm(f => ({ ...f, agent_split: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Referral Fee ($)</label>
-                          <input className="crm-input" type="number" style={{ marginTop: 4 }} value={commissionForm.referral_fee} onChange={e => setCommissionForm(f => ({ ...f, referral_fee: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Referral To</label>
-                          <input className="crm-input" style={{ marginTop: 4 }} value={commissionForm.referral_to} onChange={e => setCommissionForm(f => ({ ...f, referral_to: e.target.value }))} placeholder="Agent / Brokerage name" />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Transaction Fee ($)</label>
-                          <input className="crm-input" type="number" style={{ marginTop: 4 }} value={commissionForm.transaction_fee} onChange={e => setCommissionForm(f => ({ ...f, transaction_fee: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Status</label>
-                          <select className="crm-input" style={{ marginTop: 4 }} value={commissionForm.status} onChange={e => setCommissionForm(f => ({ ...f, status: e.target.value as Commission['status'] }))}>
-                            <option value="pending">Pending</option>
-                            <option value="paid">Paid</option>
-                            <option value="disputed">Disputed</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Close Date</label>
-                          <input className="crm-input" type="date" style={{ marginTop: 4 }} value={commissionForm.close_date} onChange={e => setCommissionForm(f => ({ ...f, close_date: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Paid Date</label>
-                          <input className="crm-input" type="date" style={{ marginTop: 4 }} value={commissionForm.paid_date} onChange={e => setCommissionForm(f => ({ ...f, paid_date: e.target.value }))} />
-                        </div>
-                        <div style={{ gridColumn: '1/-1' }}>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Notes</label>
-                          <textarea className="crm-input" style={{ marginTop: 4, minHeight: 60, resize: 'vertical' }} value={commissionForm.notes} onChange={e => setCommissionForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any additional notes…" />
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-                        <button className="crm-btn crm-btn-gold" onClick={() => saveCommission(activeDeal)} disabled={commissionSaving}>
-                          {commissionSaving ? 'Saving…' : dealCommission ? 'Update Commission' : 'Save Commission'}
-                        </button>
-                      </div>
-                    </div>
+                    <CommissionPanel
+                      form={commissionForm}
+                      setForm={setCommissionForm}
+                      saved={dealCommission}
+                      saving={commissionSaving}
+                      canEdit={isAdmin || !dealCommission}
+                      agentName={(() => { const o = profiles.find(pr => pr.id === activeDeal.agent_id); return o ? `${o.first_name} ${o.last_name}`.trim() : undefined; })()}
+                      dealType={activeDeal.type}
+                      onSave={() => saveCommission(activeDeal)}
+                    />
                   )}
                 </div>
               )}
