@@ -112,7 +112,7 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
 
   return (
     <div className="es-touch" onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, background: narrow ? '#2b2f33' : 'rgba(17,24,39,.72)', zIndex: 1100, display: 'flex', flexDirection: 'column',
+      style={{ position: 'fixed', inset: 0, background: '#2b2f33', zIndex: 1100, display: 'flex', flexDirection: 'column',
         padding: narrow ? 'env(safe-area-inset-top) 0 0' : 'max(10px, min(18px, 3vw))', fontFamily: "'DM Sans',sans-serif" }}>
       {narrow ? (
         <div style={{ flexShrink: 0 }}>

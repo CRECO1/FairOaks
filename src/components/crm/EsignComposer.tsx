@@ -285,7 +285,7 @@ export default function EsignComposer({
 
           {/* 1 — the document */}
           <Section title="Add document" open={open === 'doc'} onToggle={() => setOpen(o => o === 'doc' ? null : 'doc')}
-            done={doc ? `${doc.pageCount ? `${doc.pageCount} page${doc.pageCount === 1 ? '' : 's'}` : 'Ready'}` : undefined}>
+            done={doc ? `${(doc.title ?? '').length > 34 ? `${(doc.title ?? '').slice(0, 33)}…` : (doc.title ?? 'Document')} · ${doc.pageCount ? `${doc.pageCount} page${doc.pageCount === 1 ? '' : 's'}` : 'Ready'}` : undefined}>
             <input ref={fileRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
             {doc ? (
@@ -393,7 +393,7 @@ export default function EsignComposer({
                   })}
                 </div>
                 <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-                  <button onClick={() => setRecipients(rs => [...rs, { key: newKey(), name: '', email: '', role: 'client', inPerson: false }])}
+                  <button onClick={() => setRecipients(rs => [...rs, { key: newKey(), name: '', email: '', inPerson: false, role: (ROLES.map(r => r[0] as string).find(v => !rs.some(x => x.role === v)) ?? 'other') as Recipient['role'] }])}
                     style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '8px 14px', cursor: 'pointer' }}>＋ Add recipient</button>
                   {agentName && !recipients.some(r => r.email && r.email === agentEmail) && (
                     <button onClick={() => setRecipients(rs => [...rs, { key: newKey(), name: agentName, email: agentEmail || '', role: 'agent' }])}

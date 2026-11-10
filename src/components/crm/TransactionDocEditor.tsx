@@ -443,6 +443,27 @@ export default function TransactionDocEditor({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [deletedStack.length, undoDelete]);
+  // Placing spots precisely, from the keyboard: Delete removes the selected field, the arrow keys nudge it (Shift = 10x), Esc puts the tool
+  // down and deselects. Never while typing in a field, never on a field a teammate has locked.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'Escape') { if (tool !== 'select' || selected) { setTool('select'); setSelected(null); } return; }
+      if (!selected || lockOf(selected)) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); delField(selected); return; }
+      const step = e.shiftKey ? 0.013 : 0.0013;   // about 10 px / 1 px on a normal-width page
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+      if (!dx && !dy) return;
+      e.preventDefault();
+      setFields(fs => fs.map(f => f.id === selected ? { ...f, fx: Math.min(Math.max(0, f.fx + dx), Math.max(0, 1 - f.fw)), fy: Math.min(Math.max(0, f.fy + dy), 1) } : f));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, tool, lockOf]);
 
   // Put back any field from the form's standard layout that is missing from this
   // document (e.g. deleted by accident and saved). Fields still present — matched by
