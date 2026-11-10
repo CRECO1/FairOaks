@@ -83,15 +83,15 @@ export default function CommissionPanel({ form, setForm, saved, saving, canEdit,
         </span>
       </div>
       {hasPrice ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
           {[
-            { label: 'Gross commission', v: fig.gross, color: GOLD },
+            { label: 'Gross', v: fig.gross, color: GOLD },
             { label: 'Agent net', v: fig.agentShare, color: 'var(--k-059669)' },
             { label: 'Brokerage net', v: fig.brokerageNet, color: 'var(--k-374151)' },
           ].map(t => (
-            <div key={t.label} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e8dcc8)', borderRadius: 8, padding: '10px 12px', minWidth: 0 }}>
+            <div key={t.label} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e8dcc8)', borderRadius: 8, padding: '9px 10px', minWidth: 0 }}>
               <div style={{ fontSize: 10.5, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 3 }}>{t.label}</div>
-              <div style={{ fontSize: 21, fontWeight: 700, color: t.color, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>{money(t.v)}</div>
+              <div style={{ fontSize: 'clamp(15px, 4.6vw, 21px)', fontWeight: 700, color: t.color, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>{money(t.v)}</div>
             </div>
           ))}
         </div>
