@@ -1733,6 +1733,11 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
         <>
           <div onMouseDown={() => setCtx(null)} onContextMenu={e => { e.preventDefault(); setCtx(null); }} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
           <div role="menu" style={{ position: 'fixed', top: Math.max(8, Math.min(ctx.y, window.innerHeight - 500)), left: Math.min(ctx.x, window.innerWidth - 230), maxHeight: 'calc(100vh - 16px)', overflowY: 'auto', zIndex: 1301, minWidth: 210, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.22)', padding: 6 }}>
+            {ctx.head === 'col' && <>
+              <Item onClick={() => { sortBy(ctx.c, 1); setCtx(null); }}>Sort sheet A → Z</Item>
+              <Item onClick={() => { sortBy(ctx.c, -1); setCtx(null); }}>Sort sheet Z → A</Item>
+              <Divider />
+            </>}
             <Item onClick={() => { const t = doCopy(false); void navigator.clipboard?.writeText(t).catch(() => {}); setCtx(null); }}>Copy</Item>
             <Item onClick={() => { const t = doCopy(true); void navigator.clipboard?.writeText(t).catch(() => {}); setCtx(null); }}>Cut</Item>
             <Item onClick={() => { setCtx(null); void navigator.clipboard?.readText().then(paste).catch(() => onToast('Use Ctrl+V to paste — the browser blocked reading the clipboard')); }}>Paste</Item>
@@ -1748,9 +1753,11 @@ function Grid({ handle, me, userId, isAdmin, peers, isMobile, docId, authToken, 
             {ctx.head !== 'row' && <Item onClick={() => { hide('col'); setCtx(null); }}>Hide column{R.c2 > R.c1 ? 's' : ''}</Item>}
             {hiddenCount > 0 && <Item onClick={() => { unhideAll(); setCtx(null); }}>Show hidden rows and columns</Item>}
             <Divider />
-            <Item onClick={() => { sortBy(ctx.c, 1); setCtx(null); }}>Sort sheet by {colName(ctx.c)}, A → Z</Item>
-            <Item onClick={() => { sortBy(ctx.c, -1); setCtx(null); }}>Sort sheet by {colName(ctx.c)}, Z → A</Item>
-            <Divider />
+            {ctx.head !== 'col' && <>
+              <Item onClick={() => { sortBy(ctx.c, 1); setCtx(null); }}>Sort sheet by {colName(ctx.c)}, A → Z</Item>
+              <Item onClick={() => { sortBy(ctx.c, -1); setCtx(null); }}>Sort sheet by {colName(ctx.c)}, Z → A</Item>
+              <Divider />
+            </>}
             <Item hint="Ctrl+Alt+M" onClick={() => { onCommentAt({ tabId, r: sel.r, c: sel.c }); setCtx(null); }}>Comment…</Item>
             <Item onClick={() => { setDlg('note'); setCtx(null); }}>{selNote ? 'Edit note…' : 'Add a note…'}</Item>
             <Item onClick={() => { setDlg('valid'); setCtx(null); }}>Dropdown / checkbox…</Item>
