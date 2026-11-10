@@ -6,7 +6,7 @@ import { jsonToDriveState } from '@/lib/drive-markdown';
 import { logDocEvent } from '@/lib/drive-events';
 import { DOC_COLS } from '@/lib/drive-types';
 import { parseCsv, sheetStateFromTabs } from '@/lib/drive-sheet';
-import { xlsxToTabs } from '@/lib/xlsx-import';
+import { xlsxToTabs, xlsToTabs, withHeaderRow } from '@/lib/xlsx-import';
 
 // "Edit as a live document": turns an uploaded Word (.docx) or plain-text (.txt) file into a NEW live My Drive document (same folder, same sharing), so it
 // can be edited together like any other document. The uploaded file is left exactly as it is, and a file is converted ONCE: asking again
@@ -25,9 +25,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { data: f } = await dc.userDb.from('crm_drive_files').select('id,name,mime,size,storage_path,folder_id,visibility,shared_with,deal_id,trashed_at').eq('id', id).eq('business_unit', dc.bu).maybeSingle();
   if (!f || f.trashed_at) return notFound('That file is not available');
   const isDocx = /\.docx$/i.test(String(f.name)), isTxt = /\.txt$/i.test(String(f.name));
-  const isCsv = /\.csv$/i.test(String(f.name)), isXlsx = /\.xlsx$/i.test(String(f.name));
-  const isSheet = isCsv || isXlsx;
-  if (!isDocx && !isTxt && !isSheet) return NextResponse.json({ error: /\.(doc|rtf)$/i.test(String(f.name)) ? 'Older Word (.doc) files can’t be edited here — open it in Word, choose Save As → Word Document (.docx), and upload that' : 'Only Word (.docx), text (.txt), CSV and Excel (.xlsx) files can be turned into an editable document' }, { status: 400 });
+  const isCsv = /\.csv$/i.test(String(f.name)), isXlsx = /\.(xlsx|xlsm)$/i.test(String(f.name)), isXls = /\.xls$/i.test(String(f.name));
+  const isSheet = isCsv || isXlsx || isXls;
+  if (!isDocx && !isTxt && !isSheet) return NextResponse.json({ error: /\.(doc|rtf)$/i.test(String(f.name)) ? 'Older Word (.doc) files can’t be edited here — open it in Word, choose Save As → Word Document (.docx), and upload that' : 'Only Word (.docx), text (.txt), CSV and Excel (.xlsx / .xls) files can be turned into an editable document' }, { status: 400 });
   if (Number(f.size) > MAX_BYTES) return NextResponse.json({ error: 'That file is too large to convert (10 MB max)' }, { status: 413 });
 
   // Already converted? Open that document (if it is still around and the caller can see it).
@@ -44,9 +44,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const buf = Buffer.from(await blob.arrayBuffer());
     if (isSheet) {
       if (isCsv) state = sheetStateFromTabs([{ name: 'Sheet1', grid: parseCsv(buf.toString('utf8')), frozen: 1 }]);
-      else {
-        state = sheetStateFromTabs(await xlsxToTabs(buf));
-      }
+      else if (isXls) state = sheetStateFromTabs(withHeaderRow(await xlsToTabs(buf)));   // old binary Excel: values only
+      else state = sheetStateFromTabs(withHeaderRow(await xlsxToTabs(buf)));
     } else {
       const json = isDocx ? (await docxToDocJson(buf)).json : textToDocJson(buf.toString('utf8'));
       state = jsonToDriveState(json, { letterhead: true });   // CRECO letterhead on (the switch is in the editor)
@@ -57,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   if (!state.text.trim()) return NextResponse.json({ error: 'That file has nothing readable to edit' }, { status: 422 });
 
-  const title = String(f.name).replace(/\.(docx|csv|xlsx)$/i, '').slice(0, 300);
+  const title = String(f.name).replace(/\.(docx|csv|xlsx|xlsm|xls)$/i, '').slice(0, 300);
   const { data: doc, error } = await dc.admin.from('crm_drive_docs').insert({
     business_unit: dc.bu, folder_id: f.folder_id, title, created_by: dc.ctx.userId, updated_by: dc.ctx.userId,
     visibility: f.visibility, shared_with: f.shared_with ?? [], deal_id: f.deal_id, ystate: state.ystate, content_text: state.text, version: 1, ...(isSheet ? { kind: 'sheet' } : {}),

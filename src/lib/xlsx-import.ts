@@ -86,3 +86,17 @@ export async function xlsxToTabs(buf: Buffer): Promise<ImportTab[]> {
   }
   return tabs;
 }
+
+/** The old binary Excel format (.xls) read with SheetJS: every sheet's values as the cells show them (formatting isn't carried over). */
+export async function xlsToTabs(buf: Buffer): Promise<ImportTab[]> {
+  const XLSX = await import('xlsx');
+  const wb = XLSX.read(buf, { type: 'buffer', cellDates: false });
+  return wb.SheetNames.slice(0, SHEETS).map(n => {
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[n], { header: 1, raw: false, defval: '', blankrows: true }) as unknown[][];
+    const grid = rows.slice(0, MAX_ROWS).map(r => r.slice(0, MAX_COLS).map(c => (c == null ? '' : String(c))));
+    return { name: n, grid: grid.length ? grid : [['']], frozen: 1 };
+  });
+}
+
+/** Row 1 stays the header (frozen), so sorting a column leaves it on top — as in Google Sheets. */
+export const withHeaderRow = (tabs: ImportTab[]): ImportTab[] => tabs.map(t => (t.frozen ? t : { ...t, frozen: 1 }));

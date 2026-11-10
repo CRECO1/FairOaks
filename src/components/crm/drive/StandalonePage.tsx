@@ -4,14 +4,27 @@ import { CRM_TOKENS_CSS } from '../crm-tokens-css';
 
 /** The look of the CRM (colour tokens, font, light / dark as chosen in the CRM) around a standalone My Drive page. */
 export function StandaloneShell({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  useEffect(() => { try { if (localStorage.getItem('crm:theme') === 'dark') setTheme('dark'); } catch { /* private mode */ } }, []);
+  // The theme is read after the page loads, so the first paint is hidden rather than flashing light and then switching to dark.
+  const [theme, setTheme] = useState<'light' | 'dark' | null>(null);
+  useEffect(() => { let t: 'light' | 'dark' = 'light'; try { if (localStorage.getItem('crm:theme') === 'dark') t = 'dark'; } catch { /* private mode */ } setTheme(t); }, []);
   return (
-    <div className="crm-app-shell" data-crm-theme={theme} style={{ fontFamily: "'DM Sans',sans-serif", minHeight: '100dvh', background: 'var(--c-canvas)' }}>
+    <div className="crm-app-shell" data-crm-theme={theme ?? 'light'} style={{ fontFamily: "'DM Sans',sans-serif", minHeight: '100dvh', background: 'var(--c-canvas)', visibility: theme ? 'visible' : 'hidden' }}>
       <style>{CRM_TOKENS_CSS}</style>
       {children}
     </div>
   );
+}
+
+/** True on a phone-width window, and follows the window as it is resized / rotated (the editors switch to their phone layout). */
+export function useIsMobile(): boolean {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const f = () => setM(mq.matches);
+    f(); mq.addEventListener('change', f);
+    return () => mq.removeEventListener('change', f);
+  }, []);
+  return m;
 }
 
 /** A one-line message in the middle of the page (loading, signing in, not allowed…). */

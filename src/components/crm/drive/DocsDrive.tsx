@@ -74,7 +74,7 @@ function Tile({ n, color, size = 36 }: { n: DIName; color: string; size?: number
 }
 const initials = (name: string) => (name.replace(/[^A-Za-z ]/g, '').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2) || '·').toUpperCase();
 /** Files that can become a live document. */
-const canEditFile = (name: string) => /\.(docx|txt|csv|xlsx)$/i.test(name);
+const canEditFile = (name: string) => /\.(docx|txt|csv|xlsx|xlsm|xls)$/i.test(name);
 const fmtSize = (n: number | null) => (n == null ? '' : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 function fmtWhen(iso: string) {

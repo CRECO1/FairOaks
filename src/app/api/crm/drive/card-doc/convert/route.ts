@@ -5,8 +5,8 @@ import { docxToDocJson, textToDocJson } from '@/lib/docx-to-doc';
 import { jsonToDriveState } from '@/lib/drive-markdown';
 import { logDocEvent, mirrorDocToFeeds } from '@/lib/drive-events';
 import { DOC_COLS } from '@/lib/drive-types';
-import { parseCsv, sheetStateFromTabs, MAX_COLS, MAX_ROWS, type ImportTab } from '@/lib/drive-sheet';
-import { xlsxToTabs } from '@/lib/xlsx-import';
+import { parseCsv, sheetStateFromTabs } from '@/lib/drive-sheet';
+import { xlsxToTabs, xlsToTabs, withHeaderRow } from '@/lib/xlsx-import';
 
 // "Edit as a live document" for a Word (.docx) / text (.txt) file — or an Excel (.xlsx / .xls) / CSV file, which becomes a live SHEET (columns can be
 // dragged into a new order there) — that sits on a DEAL's Docs tab or a CONTACT's Files:
@@ -67,11 +67,9 @@ export async function POST(req: NextRequest) {
   try {
     const buf = Buffer.from(await blob.arrayBuffer());
     if (isSheet) {
-      // The first row is kept as the header (frozen) so sorting a column leaves it on top, as in Google Sheets.
-      const head = (tabs: ImportTab[]) => tabs.map(t => (t.frozen ? t : { ...t, frozen: 1 }));
       if (isCsv) state = sheetStateFromTabs([{ name: 'Sheet1', grid: parseCsv(buf.toString('utf8')), frozen: 1 }]);
-      else if (isXls) state = sheetStateFromTabs(head(await xlsToTabs(buf)));   // old binary Excel: values only (no colours / borders)
-      else state = sheetStateFromTabs(head(await xlsxToTabs(buf)));             // keeps how it looks: fills, fonts, borders, widths, merges
+      else if (isXls) state = sheetStateFromTabs(withHeaderRow(await xlsToTabs(buf)));   // old binary Excel: values only (no colours / borders)
+      else state = sheetStateFromTabs(withHeaderRow(await xlsxToTabs(buf)));             // keeps how it looks: fills, fonts, borders, widths, merges
     } else {
       const json = isDocx ? (await docxToDocJson(buf)).json : textToDocJson(buf.toString('utf8'));
       state = jsonToDriveState(json, { letterhead: true });
@@ -90,15 +88,4 @@ export async function POST(req: NextRequest) {
   await logDocEvent(dc.admin, { docId: doc.id as string, bu: dc.bu, actor: dc.ctx.userId, kind: 'created', detail: { via: isSheet ? 'sheet' : isDocx ? 'word' : 'text', from: name, from_card_doc_id: key } });
   await link(doc.id as string);
   return NextResponse.json({ item: doc });
-}
-
-// The old binary Excel format (.xls) read with SheetJS: every sheet's values as the cells show them (formatting isn't carried over).
-async function xlsToTabs(buf: Buffer): Promise<ImportTab[]> {
-  const XLSX = await import('xlsx');
-  const wb = XLSX.read(buf, { type: 'buffer', cellDates: false });
-  return wb.SheetNames.slice(0, 20).map(n => {
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[n], { header: 1, raw: false, defval: '', blankrows: true }) as unknown[][];
-    const grid = rows.slice(0, MAX_ROWS).map(r => r.slice(0, MAX_COLS).map(c => (c == null ? '' : String(c))));
-    return { name: n, grid: grid.length ? grid : [['']], frozen: 1 };
-  });
 }

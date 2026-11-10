@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { leaveDrivePage } from './open-tab';
 import { useCrmSession } from './useCrmSession';
-import { StandaloneShell, PageMessage, Toast, useToast } from './StandalonePage';
+import { StandaloneShell, PageMessage, Toast, useToast, useIsMobile } from './StandalonePage';
 
 const TransactionDocEditor = dynamic(() => import('../TransactionDocEditor'), { ssr: false });
 
@@ -15,6 +15,7 @@ export default function DriveFormPage({ submissionId }: { submissionId: string }
   const formName = q?.get('name') ?? 'Form';
   const { state, token, isAdmin } = useCrmSession(bu);
   const [msg, toast] = useToast();
+  const isMobile = useIsMobile();
   const [url, setUrl] = useState<string | null>(null);
   const [err, setErr] = useState('');
   const valid = /^[0-9a-f-]{36}$/i.test(submissionId) && /^[0-9a-f-]{36}$/i.test(formId);
@@ -37,7 +38,7 @@ export default function DriveFormPage({ submissionId }: { submissionId: string }
 
   return (
     <StandaloneShell>
-      <TransactionDocEditor autoSave form={{ id: formId, name: formName }} url={url} authToken={token} isAdmin={isAdmin} businessUnit={bu} submissionId={submissionId} isMobile={false}
+      <TransactionDocEditor autoSave form={{ id: formId, name: formName }} url={url} authToken={token} isAdmin={isAdmin} businessUnit={bu} submissionId={submissionId} isMobile={isMobile}
         onToast={toast} onClose={() => leaveDrivePage(bu)} onSaved={() => {}} />
       <Toast msg={msg} />
     </StandaloneShell>

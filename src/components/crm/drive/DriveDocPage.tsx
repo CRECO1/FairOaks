@@ -5,7 +5,7 @@ import type { DriveDoc } from '@/lib/drive-types';
 import { ShareDialog } from './DocsDrive';
 import { leaveDrivePage } from './open-tab';
 import { useCrmSession } from './useCrmSession';
-import { StandaloneShell, PageMessage, Toast, useToast } from './StandalonePage';
+import { StandaloneShell, PageMessage, Toast, useToast, useIsMobile } from './StandalonePage';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
 
@@ -17,6 +17,7 @@ export default function DriveDocPage({ docId }: { docId: string }) {
   const bu: 'commercial' | 'residential' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bu') === 'residential' ? 'residential' : 'commercial';
   const { state, token, me, people, isAdmin } = useCrmSession(bu);
   const [msg, toast] = useToast();
+  const isMobile = useIsMobile();
   const [share, setShare] = useState<DriveDoc | null>(null);
   const valid = /^[0-9a-f-]{36}$/i.test(docId);
 
@@ -39,14 +40,14 @@ export default function DriveDocPage({ docId }: { docId: string }) {
 
   return (
     <StandaloneShell>
-      <LiveDocEditor docId={docId} authToken={token} user={{ id: me.id, name }} isMobile={false} people={people} isAdmin={isAdmin}
+      <LiveDocEditor docId={docId} authToken={token} user={{ id: me.id, name }} isMobile={isMobile} people={people} isAdmin={isAdmin}
         onClose={() => leaveDrivePage(bu)}
         onToast={toast}
         onLoaded={doc => { document.title = `${doc.title || 'Untitled'} — My Drive`; }}
         onTitle={(_id, title) => { document.title = `${title || 'Untitled'} — My Drive`; }}
         onShare={doc => { if (isAdmin || doc.created_by === me.id) setShare(doc); else toast('Only the owner or an admin can change who this is shared with'); }}
         onSign={doc => { const u = `/crm/${bu}?signdoc=${doc.id}&title=${encodeURIComponent(doc.title || '')}`; if (!window.open(u, '_blank')) window.location.href = u; }} />
-      {share && <ShareDialog kind="doc" item={share} people={people.filter(p => p.id !== me.id)} can isMobile={false} who={who} onClose={() => setShare(null)} onSave={(v, s) => void saveShare(share, v, s)} />}
+      {share && <ShareDialog kind="doc" item={share} people={people.filter(p => p.id !== me.id)} can isMobile={isMobile} who={who} onClose={() => setShare(null)} onSave={(v, s) => void saveShare(share, v, s)} />}
       <Toast msg={msg} />
     </StandaloneShell>
   );
