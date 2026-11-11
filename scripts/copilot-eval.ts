@@ -22,6 +22,8 @@ const tool = (id: string, name: string, input: unknown, result: unknown): Msg[] 
   { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: JSON.stringify(result) }] },
 ];
 
+// A date in the FUTURE for the scheduling cases — a hard-coded one goes stale and the model (rightly) flags it as past instead of booking.
+const NEXT_THURSDAY = (() => { const d = new Date(); d.setDate(d.getDate() + ((4 - d.getDay() + 7) % 7 || 7)); return d.toISOString().slice(0, 10); })();
 const SEND_TOOLS = ['send_for_signature', 'send_email'];
 const PREPPED = [
   U('prep the Findley lease for signature'),
@@ -53,6 +55,8 @@ const cases: Case[] = [
   { name: 'reminder -> create_task', history: [U('remind me Friday to call Lloyd Pearson about the warehouse')], anyOf: ['create_task', 'search_contacts'] },
   { name: 'email a doc to a contact queues send_email (reviewable)', history: [U('email Diana Findley the lease and ask her to sign this week')], anyOf: ['search_contacts', 'read_document', 'send_email', 'list_deals'] },
   { name: 'unknown legal value is not invented', history: [U('fill in the security deposit on the Findley lease')], never: ['fill_document'], say: /\?|how much|amount|what/i },
+  { name: 'LLC contact: searches first, never invents a person', history: [U('add Bird Dog Equities, LLC as a buyer contact, email rc@birddogeq.com')], anyOf: ['search_contacts', 'create_contact'],
+    check: calls => { const c = calls.find(x => x.name === 'create_contact'); const i = (c?.input ?? {}) as Record<string, unknown>; return c && (i.first_name || i.last_name) ? 'invented a first/last name for a company' : c && !i.business_name ? 'company name missing from create_contact' : null; } },
   { name: 'LOI term change uses edit_loi path (reads first)', history: [U('change the price on the Chestnut LOI to $1.2M')], anyOf: ['read_document'], never: ['fill_document', 'send_for_signature'] },
 ];
 
@@ -72,8 +76,8 @@ const inviteCheck = (n: number, hhmm: RegExp) => (calls: Anthropic.ToolUseBlock[
 cases.push(
   { name: 'calendar invite request: looks up guests, never emails a stand-in', history: [U('send Brian and Robert a calendar invite for the property tour tomorrow at 1:30 PM at 4946 Center Park Blvd')], anyOf: ['search_contacts', 'schedule_event'], never: ['send_email', 'create_task'] },
   { name: 'guests found: one timed schedule_event with both attendees + location', history: [U('send Brian and Robert a calendar invite for the property tour on 2026-11-12 at 1:30 PM at 4946 Center Park Blvd'), ...FOUND], anyOf: ['schedule_event'], never: ['send_email'], check: c => inviteCheck(1, /^(13:30|1:30\s*PM)$/i)(c) ?? (sched(c)[0].location ? null : 'no location passed') },
-  { name: 'meeting with a tenant: finds them, invites by calendar, no email stand-in', history: [U('set up a meeting with Lloyd Pearson, the tenant rep, Thursday 2026-11-05 at 10 AM at 8000 Fair Oaks Pkwy')], anyOf: ['search_contacts', 'schedule_event'], never: ['send_email', 'create_task'] },
-  { name: 'landlord walkthrough: timed event with the landlord as attendee', history: [U('book a walkthrough with Nita Parikh on 2026-11-05 at 3 PM at 4946 Center Park Blvd and send her the invite'), ...tool('t8', 'search_contacts', { query: 'Nita Parikh' }, { contacts: [{ id: 'c-n', first_name: 'Nita', last_name: 'Parikh', email: 'nitaparikh@marutius.com', type: 'Landlord/Investor' }] })], anyOf: ['schedule_event'], never: ['send_email'], check: c => { const e = sched(c)[0]; return !e ? 'no schedule_event' : !(e.attendees ?? []).map((a: string) => a.toLowerCase()).includes('nitaparikh@marutius.com') ? `landlord not invited: ${JSON.stringify(e.attendees)}` : !e.time ? 'no time' : null; } },
+  { name: 'meeting with a tenant: finds them, invites by calendar, no email stand-in', history: [U(`set up a meeting with Lloyd Pearson, the tenant rep, Thursday ${NEXT_THURSDAY} at 10 AM at 8000 Fair Oaks Pkwy`)], anyOf: ['search_contacts', 'schedule_event'], never: ['send_email', 'create_task'] },
+  { name: 'landlord walkthrough: timed event with the landlord as attendee', history: [U(`book a walkthrough with Nita Parikh on ${NEXT_THURSDAY} at 3 PM at 4946 Center Park Blvd and send her the invite`), ...tool('t8', 'search_contacts', { query: 'Nita Parikh' }, { contacts: [{ id: 'c-n', first_name: 'Nita', last_name: 'Parikh', email: 'nitaparikh@marutius.com', type: 'Landlord/Investor' }] })], anyOf: ['schedule_event'], never: ['send_email'], check: c => { const e = sched(c)[0]; return !e ? 'no schedule_event' : !(e.attendees ?? []).map((a: string) => a.toLowerCase()).includes('nitaparikh@marutius.com') ? `landlord not invited: ${JSON.stringify(e.attendees)}` : !e.time ? 'no time' : null; } },
   { name: '"confirm the meeting with" is a calendar invite, not an email', history: [U('confirm our 11:30 team meeting next Wednesday 2026-11-11 at Fair Oaks Country Club with Brian and Robert'), ...FOUND], anyOf: ['schedule_event'], never: ['send_email'], check: inviteCheck(1, /11:30|11:30\s*AM/i) },
   { name: 'tour + lunch = two separate timed events', history: [U('invite Brian and Robert to the tour at 1:30 PM and lunch at 11:30 AM, both on 2026-11-12, tour at 4946 Center Park Blvd, lunch at Fair Oaks Country Club'), ...FOUND], anyOf: ['schedule_event'], never: ['send_email'], check: inviteCheck(2, /^(\d{1,2}:\d{2})/) },
 );

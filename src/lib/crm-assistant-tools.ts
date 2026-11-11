@@ -163,6 +163,14 @@ async function findDuplicateContact(db: SupabaseClient, ctx: AgentCtx, input: Re
     const c = (data ?? []).find(x => [x.phone, x.cell_phone].some(p => String(p ?? '').replace(/\D/g, '').slice(-10) === digits));
     if (c) return { id: c.id, label: [c.first_name, c.last_name].filter(Boolean).join(' ') || c.business_name || 'a contact', email: c.email, why: 'the same name and phone number' };
   }
+  // A company/LLC/trust with no person's name: the checks above need an email or a first/last name, so without this the same
+  // entity could be added again and again. (A named person at the same business is a different contact and is not caught here.)
+  const biz = String(input.business_name ?? '').trim();
+  if (biz && !String(input.first_name ?? '').trim() && !String(input.last_name ?? '').trim()) {
+    const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email').eq('business_unit', unit).ilike('business_name', escapeLike(biz)).eq('first_name', '').eq('last_name', '').limit(1);
+    const c = data?.[0];
+    if (c) return { id: c.id, label: c.business_name || biz, email: c.email, why: 'the same business name' };
+  }
   return null;
 }
 
@@ -809,6 +817,8 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
     const parsed = JSON.parse(out) as { error?: unknown };
     if (parsed && typeof parsed.error === 'string' && DB_WORDING.test(parsed.error)) {
       console.error(`[copilot tool ${name}]`, parsed.error);
+      // A missing required value is the one database failure the agent can act on, so say that much (never which column).
+      if (/null value in column/i.test(parsed.error)) return JSON.stringify({ ...parsed, error: 'Nothing was saved because a required detail was missing. Ask the agent which detail is missing (usually a name) instead of retrying the same call.' });
       return JSON.stringify({ ...parsed, error: GENERIC_FAIL });
     }
   } catch { /* not JSON: pass through */ }
@@ -1574,6 +1584,9 @@ async function runToolRaw(name: string, input: Record<string, any>, ctx: AgentCt
         const row: Record<string, any> = {
           type: input.type, business_unit: ctx.businessUnit ?? 'commercial', agent_id: ctx.userId,
           last_touched_at: new Date().toISOString(),
+          // first_name is NOT NULL with no default. A company, LLC or trust has no first name, so store '' exactly as the CRM's own
+          // Add Contact form does — without this every business-only contact failed on insert.
+          first_name: '',
         };
         for (const f of ['first_name', 'last_name', 'business_name', 'email', 'phone', 'cell_phone', 'brokerage', 'notes', 'lead_source', 'address', 'city', 'state', 'zip']) {
           if (input[f]) row[f] = String(input[f]).trim();
