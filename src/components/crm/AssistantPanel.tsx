@@ -4,10 +4,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { getOpenDoc, announceDocUpdated } from '@/lib/open-doc';
 import { pruneOld, fitForSend, PENDING_KEEP_MS, STORE_LIMIT_CHARS } from '@/lib/copilot-chat';
 import { ATTACHMENT_ACCEPT, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES, attachmentInfo, type AttachmentRef } from '@/lib/copilot-attachment-types';
+import { ndjsonParser, CONFIRMED_ID_PREFIX } from '@/lib/copilot-stream';
 
 // The in-CRM copilot: a slide-out chat that talks to /api/crm/assistant, which runs a
 // Claude tool-use loop over the agent's CRM. Writes are confirmed before they run.
-type Block = { type: string; text?: string; name?: string; input?: unknown; copilot_attachment?: AttachmentRef };
+type Block = { type: string; id?: string; text?: string; name?: string; input?: unknown; copilot_attachment?: AttachmentRef };
 type Msg = { role: 'user' | 'assistant'; content: string | Block[] };
 /** A write the copilot has queued. `id` is the server's signed approval ticket: sending
  *  it back is what authorises that exact call, so it is never inspected here. */
@@ -40,25 +41,47 @@ function loadSaved(userId?: string): Saved | null {
   } catch { return null; }
 }
 
-const SUGGESTIONS = [
-  'What tasks do I have open?',
-  'Show my deals in the LOI stage',
-  'Create a task to follow up with…',
-  'Add a new contact to the CRM',
-  'Fill this contract in from a contact',
-  'Look up a property or business online',
+// Starter chips, drawn from what agents actually use the Copilot for (contacts, letters of intent, contracts, e-sign)
+// rather than a tour of every feature. A chip with `fill` only starts the sentence in the box for the agent to finish —
+// sending a half-question like "Create a task to follow up with…" just made the Copilot ask what they meant.
+type Chip = { label: string; fill?: string };
+const SUGGESTIONS: Chip[] = [
+  { label: 'Add a contact…', fill: 'Add a contact: ' },
+  { label: 'Draft an LOI for…', fill: 'Draft an LOI for ' },
+  { label: 'Email a document to…', fill: 'Email ' },
+  { label: 'What’s still out for signature?' },
+  { label: 'What’s due today?' },
+  { label: 'Look up a business or owner online…', fill: 'Look up ' },
 ];
+/** With a document open, the first chip is about THAT document. */
+function chipsFor(open: { kind: 'loi' | 'form'; title: string } | null): Chip[] {
+  if (!open) return SUGGESTIONS;
+  const first: Chip = open.kind === 'loi'
+    ? { label: 'Change a term on this LOI…', fill: 'On this LOI, change ' }
+    : { label: 'Fill this form in from a contact…', fill: 'Fill this form in from ' };
+  return [first, ...SUGGESTIONS.slice(0, 5)];
+}
 
 // Web answers carry source links; make them tappable. Only http(s) — anything else in
 // the model's text stays plain text, never an href.
-const URL_RE = /(https?:\/\/[^\s<>"')\]]+)/g;
+// A file link from the Copilot arrives as [file name](url): show the name, not a 300-character signed address.
+const LINK_RE = /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"')\]]+)/g;
 function linkify(text: string): React.ReactNode[] {
-  return text.split(URL_RE).map((part, i) => {
-    if (i % 2 === 0) return part;
-    const url = part.replace(/[.,;:!?]+$/, '');
-    const tail = part.slice(url.length);
-    return <React.Fragment key={i}><a href={url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', wordBreak: 'break-all' }}>{url}</a>{tail}</React.Fragment>;
-  });
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(LINK_RE)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push(text.slice(last, at));
+    if (m[2]) {
+      out.push(<a key={at} href={m[2]} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', fontWeight: 600, overflowWrap: 'anywhere' }}>{m[1]}</a>);
+    } else {
+      const url = m[3].replace(/[.,;:!?]+$/, '');
+      out.push(<React.Fragment key={at}><a href={url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', wordBreak: 'break-all' }}>{url}</a>{m[3].slice(url.length)}</React.Fragment>);
+    }
+    last = at + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
 }
 
 function textOf(content: string | Block[]): string {
@@ -76,7 +99,8 @@ const prettySize = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixe
 type Pick = { key: string; name: string; size: number; status: 'uploading' | 'ready' | 'error'; error?: string; ref?: AttachmentRef; preview?: string };
 function toolsOf(content: string | Block[]): string[] {
   if (typeof content === 'string') return [];
-  return content.filter(b => b.type === 'tool_use').map(b => b.name || 'tool');
+  // A confirmed write is logged as a tool call too, but the ✓ line right after it already says what ran.
+  return content.filter(b => b.type === 'tool_use' && !(b.id ?? '').startsWith(CONFIRMED_ID_PREFIX)).map(b => b.name || 'tool');
 }
 const TOOL_LABEL: Record<string, string> = {
   search_contacts: 'searched contacts', get_contact: 'looked up a contact', list_tasks: 'checked tasks',
@@ -89,6 +113,8 @@ const TOOL_LABEL: Record<string, string> = {
   send_email: 'sent an email', schedule_event: 'scheduled an event',
   create_contact: 'added a contact', update_contact: 'updated a contact', create_property: 'added a property',
   read_document: 'read a document', fill_document: 'filled in a document', edit_loi: 'edited a letter of intent', draft_campaign: 'drafted a campaign',
+  get_file_link: 'got a file link', list_deal_files: 'looked at the deal’s files', save_preference: 'saved a preference', forget_preference: 'removed a preference',
+  open_record: 'opened a record', create_deal: 'created a deal', update_deal: 'updated a deal', web_search: 'searched the web', web_fetch: 'read a web page',
 };
 
 export default function AssistantPanel({ token, userId, onClose, onNavigate, onOpenRecord, onRefresh }: {
@@ -110,6 +136,9 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
   const [stamps, setStamps] = useState<number[]>(restored.current?.stamps ?? []);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  /** The turn in progress: what the Copilot is doing right now, and the reply as it is written. */
+  const [live, setLive] = useState<{ step: string; text: string } | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [pending, setPending] = useState<Pending[]>(() => {
     const r = restored.current;
     return r?.pending?.length && r.pendingAt && Date.now() - r.pendingAt < PENDING_KEEP_MS ? r.pending : [];
@@ -123,7 +152,7 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
   const uploading = picks.some(p => p.status === 'uploading');
   const readyRefs = picks.filter(p => p.status === 'ready' && p.ref).map(p => p.ref as AttachmentRef);
 
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, loading]);
+  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, loading, live]);
 
   // ── Sync with the database ──────────────────────────────────────────────────
   // Read through a ref: the unmount flush runs a closure from the first render, by which time the token may have rotated.
@@ -279,10 +308,31 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         // The saved log can outgrow what the server accepts in one request; send the recent tail.
-        body: JSON.stringify({ messages: fitForSend(next), ...(confirming ? { confirm: confirmTickets } : {}), openDoc: getOpenDoc() }),
+        // A question is answered as a stream of progress lines; a confirm click is one quick JSON reply.
+        body: JSON.stringify({ messages: fitForSend(next), ...(confirming ? { confirm: confirmTickets } : { stream: true }), openDoc: getOpenDoc() }),
       });
-      const j = await res.json();
-      if (!res.ok) { setError(j.error || 'Something went wrong.'); setMessages(messages); setStamps(stamps); }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let j: any = null;
+      if (res.ok && res.body && (res.headers.get('content-type') || '').includes('ndjson')) {
+        let text = '', step = '', failed = '';
+        const parser = ndjsonParser(e => {
+          if (e.t === 'text') { text += e.d; step = ''; setLive({ step, text }); }
+          else if (e.t === 'step') { step = e.label; setLive({ step, text }); }
+          else if (e.t === 'round') { if (text && !text.endsWith('\n\n')) text += '\n\n'; }
+          else if (e.t === 'done') j = e.payload;
+          else if (e.t === 'error') failed = e.error;
+        });
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        for (;;) { const { done, value } = await reader.read(); if (done) break; parser.push(dec.decode(value, { stream: true })); }
+        parser.push(dec.decode()); parser.end();
+        // The stream ended without a result: the connection dropped, or the turn failed part-way.
+        if (!j) j = { error: failed || 'The connection dropped before I finished — try again.' };
+      } else {
+        j = await res.json();
+      }
+      // A failed turn is taken back out of the log; put what they typed back in the box so it isn't lost.
+      if (!res.ok || !Array.isArray(j?.messages)) { setError(j?.error || 'Something went wrong.'); setMessages(messages); setStamps(stamps); if (!confirming && typeof content === 'string') setInput(content); }
       else {
         const nowMs = Date.now();
         const got = j.messages as Msg[];
@@ -301,8 +351,8 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
           else if (a.type === 'refresh') onRefresh?.(a.scope);
         }
       }
-    } catch { setError('Network error — try again.'); setMessages(messages); setStamps(stamps); }
-    finally { setLoading(false); }
+    } catch { setError('Network error — try again.'); setMessages(messages); setStamps(stamps); if (!confirming && typeof content === 'string') setInput(content); }
+    finally { setLoading(false); setLive(null); }
   }
 
   // Render each turn: user text, assistant text, and a subtle line of what tools ran.
@@ -363,13 +413,21 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
         {messages.length === 0 && (
           <div style={{ color: 'var(--k-6b7280)', fontSize: 14, lineHeight: 1.6 }}>
             <p style={{ marginTop: 0 }}>Hi — I can look things up and take actions in your CRM. Try:</p>
-            {SUGGESTIONS.map(s => (
-              <button key={s} onClick={() => send(s)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '9px 12px', marginBottom: 8, cursor: 'pointer', fontSize: 13.5, color: 'var(--k-374151)', fontFamily: 'inherit' }}>{s}</button>
+            {chipsFor(getOpenDoc()).map(c => (
+              <button key={c.label} onClick={() => { if (c.fill) { setInput(c.fill); inputRef.current?.focus(); } else send(c.label); }} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '11px 12px', marginBottom: 8, cursor: 'pointer', fontSize: 13.5, color: 'var(--k-374151)', fontFamily: 'inherit' }}>{c.label}</button>
             ))}
+            <p style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', margin: '4px 2px 0' }}>You can also attach a business card, a flyer or a contract with 📎.</p>
           </div>
         )}
         {bubbles}
-        {loading && <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '4px 2px' }}>Thinking…</div>}
+        {loading && (
+          <div style={{ marginBottom: 10 }} aria-live="polite">
+            {live?.text && (
+              <div style={{ maxWidth: '86%', whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55, padding: '9px 13px', borderRadius: 12, borderBottomLeftRadius: 3, background: 'var(--k-fff)', color: 'var(--k-1f2937)', border: '1px solid var(--k-e5e7eb)', marginBottom: 4, overflowWrap: 'anywhere' }}>{linkify(live.text)}</div>
+            )}
+            <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', padding: '4px 2px' }}>{live?.step ? `${live.step}…` : live?.text ? 'Writing…' : 'Thinking…'}</div>
+          </div>
+        )}
         {error && <div style={{ fontSize: 13, color: 'var(--k-dc2626)', padding: '4px 2px' }}>{error}</div>}
       </div>
 
@@ -377,9 +435,19 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
       {pending.length > 0 && !loading && (
         <div style={{ padding: '12px 16px', background: 'var(--k-fffbeb)', borderTop: '1px solid var(--k-fde68a)', flexShrink: 0 }}>
           <div style={{ fontSize: 13, color: 'var(--k-92400e)', fontWeight: 600, marginBottom: 8 }}>Confirm to run:</div>
-          {pending.map((p, i) => <div key={i} style={{ fontSize: 13, color: '#78350f', marginBottom: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>• {p.summary}</div>)}
+          {/* Several of the same action share one card: drop any line with ✕, then confirm the rest in one click. */}
+          <div style={{ maxHeight: '38vh', overflowY: 'auto' }}>
+            {pending.map(p => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 6 }}>
+                <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#78350f', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>• {p.summary}</div>
+                {pending.length > 1 && (
+                  <button onClick={() => setPending(prev => prev.filter(x => x.id !== p.id))} aria-label="Leave this one out" title="Leave this one out" style={{ background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', fontSize: 15, lineHeight: 1, minWidth: 32, minHeight: 32, flexShrink: 0, fontFamily: 'inherit' }}>✕</button>
+                )}
+              </div>
+            ))}
+          </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button onClick={() => send('', pending.map(p => p.id))} style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 8, padding: '11px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Confirm &amp; run</button>
+            <button onClick={() => send('', pending.map(p => p.id))} style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 8, padding: '11px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>{pending.length > 1 ? `Confirm all ${pending.length}` : 'Confirm & run'}</button>
             <button onClick={() => { setPending([]); send('Actually, don’t do that.'); }} style={{ background: 'var(--k-fff)', color: 'var(--k-6b7280)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '11px 18px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Cancel</button>
           </div>
         </div>
@@ -404,7 +472,7 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
         <input ref={fileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT} onChange={e => addFiles(e.target.files)} style={{ display: 'none' }} aria-hidden tabIndex={-1} />
         <button onClick={() => fileInputRef.current?.click()} disabled={loading || picks.length >= ATTACHMENT_MAX_FILES} aria-label="Attach a file or photo" title="Attach a photo, PDF, Word, Excel or CSV"
           style={{ background: 'var(--k-fff)', color: 'var(--k-6b7280)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: loading || picks.length >= ATTACHMENT_MAX_FILES ? 'default' : 'pointer', fontSize: 19, opacity: picks.length >= ATTACHMENT_MAX_FILES ? 0.5 : 1 }}>📎</button>
-        <textarea value={input} onChange={e => setInput(e.target.value)} rows={1} placeholder={picks.length ? 'Say what to do with the file…' : 'Ask or tell me to do something…'}
+        <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} rows={1} placeholder={picks.length ? 'Say what to do with the file…' : 'Ask or tell me to do something…'}
           onPaste={e => { const fs = Array.from(e.clipboardData?.files ?? []); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
           style={{ flex: 1, resize: 'none', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '11px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none', minHeight: 44, maxHeight: 120, boxSizing: 'border-box' }} />

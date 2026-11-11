@@ -1,67 +1,18 @@
 import { userRateLimit } from '@/lib/user-ratelimit';
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
-import { sendGuard, TOOLS, WRITE_TOOLS, CLIENT_TOOLS, DRIVE_TOOLS, DRIVE_WRITE_TOOLS, canUseDrive, resolveRecord, DOC_EDIT_TOOLS, DEAL_WRITE_TOOLS, CONTACT_WRITE_TOOLS, runTool, precheckWrite, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
-import { writeAuditLog } from '@/lib/audit';
-import { systemPrompt } from '@/lib/crm-assistant-prompt';
+import { type AgentCtx } from '@/lib/crm-assistant-tools';
 import { rateLimit } from '@/lib/ratelimit';
-import { signPendingWrite, verifyPendingWrite, consumePendingWrite } from '@/lib/copilot-confirm';
-import { WEB_TOOLS, compactWebTurns } from '@/lib/copilot-web';
-import { hydrateAttachments } from '@/lib/copilot-attachments';
+import { runCopilotTurn, runConfirmedWrites, type OpenDoc } from '@/lib/copilot-turn';
+import { loadCopilotPrefs } from '@/lib/copilot-prefs';
+import { ndjsonResponse } from '@/lib/copilot-stream';
 
 export const runtime = 'nodejs';
 // Web research adds server-side search/fetch rounds inside each Claude call.
 // Research questions run several web searches in one turn (a batch of businesses is the worst case), so this is the long ceiling.
 export const maxDuration = 300;
-
-const MODEL = process.env.CRM_ASSISTANT_MODEL || 'claude-sonnet-5';
-
-
-/**
- * Per-tool-call oversight trail.
- *
- * Records WHAT the copilot was asked to do on someone's behalf, not what they typed:
- * free-text arguments (email bodies, campaign copy, notes) are reduced to a field
- * name and a length, while ids, names and flags are kept so the row is still useful
- * for "which contact did that touch". Best-effort — it never blocks a tool.
- */
-const BULK_TEXT_ARGS = new Set(['body', 'email_body', 'note', 'notes', 'message', 'prompt', 'description', 'highlights', 'values', 'fields']);
-
-function safeArgs(input: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(input ?? {})) {
-    if (BULK_TEXT_ARGS.has(k)) {
-      out[k] = typeof v === 'string' ? `<${v.length} chars>`
-        : Array.isArray(v) ? `<${v.length} items>`
-        : v && typeof v === 'object' ? `<${Object.keys(v).length} fields: ${Object.keys(v).slice(0, 12).join(', ')}>`
-        : v;
-    } else if (typeof v === 'string' && v.length > 200) {
-      out[k] = `${v.slice(0, 200)}…`;
-    } else {
-      out[k] = v;
-    }
-  }
-  return out;
-}
-
-async function logToolCall(ctx: AgentCtx, req: NextRequest, tool: string, input: Record<string, unknown>, outcome: 'executed' | 'queued_for_confirmation' | 'rejected_precheck', result?: string) {
-  let ok: boolean | undefined;
-  let error: string | undefined;
-  if (result) {
-    try { const parsed = JSON.parse(result); if (parsed && typeof parsed === 'object') { ok = !parsed.error; if (parsed.error) error = String(parsed.error).slice(0, 200); } }
-    catch { /* non-JSON result — leave ok undefined */ }
-  }
-  await writeAuditLog({
-    actorId: ctx.userId,
-    action: 'copilot_tool',
-    targetType: tool,
-    targetId: (input?.contact_id ?? input?.deal_id ?? input?.listing_id ?? input?.submission_id ?? input?.task_id ?? undefined) as string | undefined,
-    metadata: { tool, outcome, write: WRITE_TOOLS.has(tool), args: safeArgs(input), role: ctx.role, business_unit: ctx.businessUnit, ...(ok !== undefined ? { ok } : {}), ...(error ? { error } : {}) },
-    req,
-  });
-}
 
 interface ReqBody {
   messages?: Anthropic.MessageParam[];
@@ -69,29 +20,17 @@ interface ReqBody {
   confirm?: unknown[];
   /** The document the agent has open on screen right now (so "this LOI" means something). */
   openDoc?: { submissionId?: unknown; title?: unknown; kind?: unknown } | null;
+  /** true = answer as a stream of progress lines (lib/copilot-stream) instead of one JSON body. */
+  stream?: unknown;
 }
 
-/** A UI directive for the browser: navigate, or reload a document the Copilot just edited. */
-type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'open-record'; kind: 'deal' | 'contact'; id: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string } | { type: 'refresh'; scope: 'deals' | 'contacts' | 'drive' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** The text of the agent's newest typed message (tool results and attachments don't count). */
-function lastUserText(msgs: Array<{ role: string; content: unknown }>): string {
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    const m = msgs[i];
-    if (m.role !== 'user') continue;
-    if (typeof m.content === 'string') return m.content;
-    const text = Array.isArray(m.content) ? (m.content as Array<{ type?: string; text?: string }>).filter(b => b.type === 'text').map(b => b.text ?? '').join(' ') : '';
-    if (text.trim()) return text;
-  }
-  return '';
-}
 
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
-  // The costliest endpoint in the app: each call is up to six Claude rounds with tool
+  // The costliest endpoint in the app: each call is up to eight Claude rounds with tool
   // results fed back in. Auth alone bounds WHO can spend that, not HOW MUCH.
   const { success } = await rateLimit(req, 'copilot');
   if (!success) return NextResponse.json({ error: "You're going a bit fast for me — give it a minute." }, { status: 429 });
@@ -100,10 +39,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "That's a lot of Copilot requests for one day. It resets shortly — ask the account owner if you need more." }, { status: 429 });
   }
 
-  const { messages: incoming = [], confirm = [], openDoc }: ReqBody = await req.json();
+  const { messages: incoming = [], confirm = [], openDoc, stream: wantStream }: ReqBody = await req.json();
   if (!Array.isArray(incoming) || incoming.length === 0) return NextResponse.json({ error: 'messages required' }, { status: 400 });
   // The whole conversation is replayed by the client on every turn, so its size is
-  // caller-controlled and gets re-sent to the model up to six times per request. Without
+  // caller-controlled and gets re-sent to the model up to eight times per request. Without
   // a ceiling one request can bill an arbitrary number of tokens. Generous on purpose:
   // a single turn can add a dozen entries (each tool round appends an assistant turn and
   // a tool_result turn), so these sit far above any real conversation.
@@ -111,152 +50,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'That conversation has gotten too long — start a new chat.' }, { status: 413 });
   }
 
-  // Agent's first name for a personal system prompt.
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
-  const { data: prof } = await db.from('crm_profiles').select('first_name').eq('id', ctx.userId).single();
-
-  // The document on the agent's screen, if any. The id is only a hint for the model — every tool
-  // still checks the workspace itself — and the title is clipped so it can't smuggle a paragraph.
-  const open: { submissionId: string; title: string; kind: 'loi' | 'form' } | null = openDoc && typeof openDoc.submissionId === 'string' && UUID.test(openDoc.submissionId)
-    ? { submissionId: openDoc.submissionId, title: String(openDoc.title ?? '').replace(/[\r\n]+/g, ' ').slice(0, 120), kind: openDoc.kind === 'loi' ? 'loi' as const : 'form' as const }
-    : null;
-
   // Enrich the context so tools can call the CRM's own HTTP endpoints as this agent.
   const toolCtx: AgentCtx = { ...ctx, token: req.headers.get('authorization')?.replace(/^Bearer\s+/i, ''), origin: req.nextUrl.origin };
 
   // ── Confirmed writes run first, and run from the ticket, not from the model ──────
-  // Replaying the approved call is the whole point: the agent read a summary, and this
-  // executes exactly the call that summary described. The model is not asked again.
-  const confirmed: { summary: string; ok: boolean; error?: string }[] = [];
-  const confirmActions: ClientAction[] = [];
-  if (Array.isArray(confirm) && confirm.length) {
-    for (const token of confirm.slice(0, 5)) {
-      const call = verifyPendingWrite(token, toolCtx);
-      if (!call) { confirmed.push({ summary: 'One action could not be confirmed', ok: false, error: 'That confirmation expired or was not valid — ask me again.' }); continue; }
-      // Single-use: a replayed confirm must not run an outward action a second time.
-      if (!(await consumePendingWrite(call.nonce))) { confirmed.push({ summary: 'One action was not run', ok: false, error: 'That confirmation was already used — ask me again if you want it done again.' }); continue; }
-      const summary = describeWrite(call.name, call.input);
-      const result = await runTool(call.name, call.input, toolCtx);
-      await logToolCall(toolCtx, req, call.name, call.input, 'executed', result);
-      let err: string | undefined;
-      try {
-        const p = JSON.parse(result);
-        if (p?.error) err = String(p.error);
-        // A document edit just landed: tell the browser so an open editor reloads it live.
-        else if (DOC_EDIT_TOOLS.has(call.name) && typeof p?.submission_id === 'string') confirmActions.push({ type: 'doc-updated', submissionId: p.submission_id });
-        // The CRM loads deals/contacts once; without this a deal the copilot just created isn't in the pipeline until a reload.
-        else if (DEAL_WRITE_TOOLS.has(call.name)) confirmActions.push({ type: 'refresh', scope: 'deals' });
-        else if (CONTACT_WRITE_TOOLS.has(call.name)) confirmActions.push({ type: 'refresh', scope: 'contacts' });
-        // A document or folder just landed in My Drive: reload it if it is on screen.
-        else if (DRIVE_WRITE_TOOLS.has(call.name)) confirmActions.push({ type: 'refresh', scope: 'drive' });
-      } catch { /* non-JSON */ }
-      confirmed.push({ summary, ok: !err, error: err });
-    }
-  }
-
   // Confirming is a button, not a question, so it does not need the model: the actions
   // have already run and the outcome is known. Returning straight away also removes the
   // failure this replaced — a round-trip that could answer with anything at all — and
   // makes the confirm click free.
-  if (confirmed.length) {
-    const lines = confirmed.map(c => (c.ok ? `✓ ${c.summary}` : `⚠ ${c.summary} — ${c.error ?? 'did not go through'}`));
-    const reply = lines.join('\n');
-    const out = [...incoming, { role: 'assistant' as const, content: [{ type: 'text' as const, text: reply }] }];
-    return NextResponse.json({ messages: out, reply, pendingWrites: [], clientActions: confirmActions, confirmed });
+  if (Array.isArray(confirm) && confirm.length) {
+    try { return NextResponse.json(await runConfirmedWrites({ ctx: toolCtx, incoming, confirm, req })); }
+    catch (e) { console.error('[crm-assistant] confirm', e); return NextResponse.json({ error: 'The assistant hit an error. Try again.' }, { status: 500 }); }
   }
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const messages = [...incoming];
-  // Attached files are stored as small references in the chat; they're turned into real content for the model
-  // on each call (and only the caller's own files, newest few). `messages` itself stays reference-only so the
-  // history returned to the browser never carries file bytes.
-  const attachmentCache = new Map<string, { parts: Anthropic.ContentBlockParam[]; bytes: number }>();
-  const pendingWrites: { id: string; name: string; summary: string }[] = [];
-  // UI directives for the browser to apply when the response lands (navigation).
-  const clientActions: ClientAction[] = [];
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+  // Agent's first name for a personal system prompt, and what they have asked the Copilot to remember.
+  const [{ data: prof }, prefs] = await Promise.all([
+    db.from('crm_profiles').select('first_name').eq('id', ctx.userId).single(),
+    loadCopilotPrefs(db, ctx.userId),
+  ]);
 
-  try {
-    for (let round = 0; round < 8; round++) {
-      const res = await client.messages.create({
-        model: MODEL,
-        max_tokens: 6000,
-        // The prompt + tool list are ~35k tokens and a research turn makes several calls in a row — cache them so rounds 2+ bill at the cache rate.
-        system: [{ type: 'text', text: systemPrompt(ctx, prof?.first_name || 'the agent', open), cache_control: { type: 'ephemeral' } }],
-        tools: [...TOOLS.filter(t => !DRIVE_TOOLS.has(t.name) || canUseDrive(ctx)), ...WEB_TOOLS],
-        messages: await hydrateAttachments(db, ctx.userId, messages, attachmentCache),
-      });
-      messages.push({ role: 'assistant', content: res.content });
+  // The document on the agent's screen, if any. The id is only a hint for the model — every tool
+  // still checks the workspace itself — and the title is clipped so it can't smuggle a paragraph.
+  const open: OpenDoc | null = openDoc && typeof openDoc.submissionId === 'string' && UUID.test(openDoc.submissionId)
+    ? { submissionId: openDoc.submissionId, title: String(openDoc.title ?? '').replace(/[\r\n]+/g, ' ').slice(0, 120), kind: openDoc.kind === 'loi' ? 'loi' as const : 'form' as const }
+    : null;
 
-      // A long web search can pause mid-turn. Re-sending the conversation as it stands
-      // resumes it — no "continue" message, the trailing server_tool_use is the cue.
-      if (res.stop_reason === 'pause_turn') continue;
+  const turn = { ctx: toolCtx, db, incoming, req, firstName: prof?.first_name || 'the agent', open, prefs };
 
-      if (res.stop_reason !== 'tool_use') {
-        // Web answers arrive as many small text blocks (one per citation), so join
-        // them without separators — a newline here would break sentences apart.
-        const reply = res.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('').trim();
-        const history = compactWebTurns(messages);
-        const last = history[history.length - 1];
-        const shown = typeof last?.content === 'string' ? last.content
-          : (last?.content as Anthropic.ContentBlockParam[] | undefined)?.filter((b): b is Anthropic.TextBlockParam => b.type === 'text').map(b => b.text).join('\n').trim();
-        return NextResponse.json({ messages: history, reply: shown || reply, pendingWrites, clientActions, confirmed });
-      }
-
-      // Execute each requested tool. Reads run immediately. Writes never run here: they
-      // are turned into an approval ticket for the agent to confirm, and a note goes back
-      // to the model so it explains what it has queued instead of retrying.
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-      for (const block of res.content) {
-        if (block.type !== 'tool_use') continue;
-        const input = (block.input ?? {}) as Record<string, any>;
-        let content: string;
-        if (CLIENT_TOOLS.has(block.name)) {
-          // Nothing to execute server-side — resolve the target, hand it to the
-          // client, and tell the model it's done so it can answer in the same turn.
-          // Deliberately NOT a WRITE: making someone confirm a tab switch would be
-          // absurd, and there is no data change to confirm.
-          if (block.name === 'open_record') {
-            const rr = await resolveRecord(input, toolCtx);
-            if ('error' in rr) content = JSON.stringify({ error: rr.error });
-            else {
-              clientActions.push({ type: 'open-record', ...rr.action });
-              content = JSON.stringify({ ok: true, opened: rr.action.label, note: 'It is open on their screen now. Say so in one short line — do not tell them where to click.' });
-            }
-            await logToolCall(toolCtx, req, block.name, input, 'executed', content);
-            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content });
-            continue;
-          }
-          const r = resolveNav(String(input.destination ?? ''), toolCtx);
-          if ('error' in r) {
-            content = JSON.stringify({ error: r.error });
-          } else {
-            const t: NavTarget = r.target;
-            clientActions.push({ type: 'navigate', page: t.page, tab: t.tab, label: t.label });
-            content = JSON.stringify({ ok: true, opened: t.label, note: 'The screen has switched. Say so in one short line.' });
-          }
-          await logToolCall(toolCtx, req, block.name, input, 'executed', content);
-        } else if (WRITE_TOOLS.has(block.name) && (content = sendGuard(block.name, lastUserText(incoming)) ?? '')) {
-          // A send the agent never asked for (a vague "do it"): refused here, in code, whatever the model decided.
-          await logToolCall(toolCtx, req, block.name, input, 'rejected_precheck', content);
-        } else if (WRITE_TOOLS.has(block.name) && (content = await precheckWrite(block.name, input, toolCtx) ?? '')) {
-          // Refused before the agent is ever asked to confirm — the model gets the reason and fixes the call.
-          await logToolCall(toolCtx, req, block.name, input, 'rejected_precheck', content);
-        } else if (WRITE_TOOLS.has(block.name)) {
-          pendingWrites.push({ id: signPendingWrite(toolCtx, block.name, input), name: block.name, summary: await describeWriteRich(block.name, input, toolCtx) });
-          content = JSON.stringify({ status: 'NOT_EXECUTED', reason: 'Queued for the agent\'s one-click confirmation in the app. In one short line, restate what will happen. Do not ask a yes/no question and do not retry.' });
-          await logToolCall(toolCtx, req, block.name, input, 'queued_for_confirmation');
-        } else {
-          content = await runTool(block.name, input, toolCtx);
-          await logToolCall(toolCtx, req, block.name, input, 'executed', content);
-        }
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content });
-      }
-      messages.push({ role: 'user', content: toolResults });
-    }
-    // Loop guard hit.
-    return NextResponse.json({ messages: compactWebTurns(messages), reply: "I ran out of steps on that one — could you narrow it down a bit?", pendingWrites, clientActions, confirmed });
-  } catch (e) {
-    console.error('[crm-assistant]', e);
-    return NextResponse.json({ error: 'The assistant hit an error. Try again.' }, { status: 500 });
+  if (wantStream !== true) {
+    try { return NextResponse.json(await runCopilotTurn(turn)); }
+    catch (e) { console.error('[crm-assistant]', e); return NextResponse.json({ error: 'The assistant hit an error. Try again.' }, { status: 500 }); }
   }
+
+  // Streamed: progress lines while the turn runs, then the same payload the JSON branch returns.
+  return ndjsonResponse(
+    (emit, signal) => runCopilotTurn({ ...turn, emit, signal }),
+    e => { console.error('[crm-assistant]', e); return 'The assistant hit an error. Try again.'; },
+  );
 }
