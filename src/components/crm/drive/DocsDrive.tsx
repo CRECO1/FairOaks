@@ -18,6 +18,7 @@ import type { DriveDoc, DriveFile, DriveFolder, DriveFormItem, DriveListing, Dri
 import { DRIVE_FILE_MAX, DRIVE_EMAIL_MAX } from '@/lib/drive-types';
 import { shrinkImage } from '@/lib/image-shrink';
 import { BUILTIN_TEMPLATES, type BuiltinTemplate } from '@/lib/drive-builtin-templates';
+import { useDriveHoverPreview, type HoverItem } from './DriveHoverPreview';
 
 const LiveDocEditor = dynamic(() => import('./LiveDocEditor'), { ssr: false });
 const DocQuickView = dynamic(() => import('./DocQuickView'), { ssr: false });
@@ -593,6 +594,13 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     <button type="button" className="dd-dots" aria-label={`Actions for ${title}`} onClick={() => setDlg({ t: 'menu', kind, item: it })}
       style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, flexShrink: 0, border: 'none', borderRadius: 8, background: 'none', color: 'var(--k-6b7280)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><DI n="dots" size={18} /></button>
   );
+  // Hover preview: rest the pointer on a document's name and a read-only peek floats beside it (DriveHoverPreview.tsx). Off on phones,
+  // in the trash, and whenever another panel is open.
+  const hover = useDriveHoverPreview({
+    enabled: !isMobile && !inTrash && !dlg && !newOpen && !quickDocId && !preview && !openDocId && !formEditor,
+    authToken,
+    describe: (k, it) => { const t = tone(k, it as Item); return { title: nameOf(k, it as Item), sub: rowSub(k, it as Item), icon: t.icon, color: t.color }; },
+  });
   const row = (kind: Kind, it: Item) => {
     const title = nameOf(kind, it);
     const snippet = (it as DriveDoc).snippet;
@@ -600,7 +608,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     return (
       <div key={`${kind}${it.id}`} className="dd-row" {...dragProps(kind, it)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '5px 10px 5px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 60 : 54, ...(isSel(kind, it) ? { background: 'var(--k-fdf6e9)' } : {}) }}>
         {chk(kind, it)}
-        <button type="button" onClick={() => openItem(kind, it)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+        <button type="button" onClick={() => openItem(kind, it)} {...hover.bind(kind, it as HoverItem)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           <Tile n={t.icon} color={t.color} />
           <span style={{ minWidth: 0, flex: 1 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -649,7 +657,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     return (
       <div key={`${kind}${it.id}`} className="dd-card dd-gcard" {...dragProps(kind, it)} style={{ border: `1px solid ${isSel(kind, it) ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 12, background: isSel(kind, it) ? 'var(--k-fdf6e9)' : 'var(--k-fff)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ position: 'relative' }}>
-          <button type="button" onClick={() => openItem(kind, it)} aria-label={`Open ${title}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 112, border: 'none', borderBottom: '1px solid var(--k-f0f0f0)', background: `${t.color}0d`, padding: snippet ? '12px 14px' : 0, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+          <button type="button" onClick={() => openItem(kind, it)} {...hover.bind(kind, it as HoverItem)} aria-label={`Open ${title}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 112, border: 'none', borderBottom: '1px solid var(--k-f0f0f0)', background: `${t.color}0d`, padding: snippet ? '12px 14px' : 0, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
             {snippet
               ? <span style={{ display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: 11.5, lineHeight: 1.45, color: 'var(--k-6b7280)', width: '100%' }}>{snippet}</span>
               : <span style={{ color: t.color }}><DI n={t.icon} size={40} /></span>}
@@ -659,7 +667,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px 8px 10px' }}>
           <span style={{ color: t.color, display: 'inline-flex' }}><DI n={t.icon} size={17} /></span>
-          <button type="button" onClick={() => openItem(kind, it)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+          <button type="button" onClick={() => openItem(kind, it)} {...hover.bind(kind, it as HoverItem)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
             <span title={title} style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', fontSize: 13.5, fontWeight: 600, color: 'var(--k-1a1a1a)', lineHeight: 1.3, overflow: 'hidden', overflowWrap: 'anywhere' }}>{title}</span>
             <span style={{ display: 'block', fontSize: 11.5, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{who(it.created_by)} · {fmtWhen(it.updated_at)}</span>
           </button>
@@ -984,6 +992,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           onToast={onToast} onClose={() => { setFormEditor(null); refresh(); }} onSaved={refresh} />
       )}
       {quickDocId && <DocQuickView docId={quickDocId} authToken={authToken} isMobile={isMobile} onToast={onToast} onClose={() => setQuickDocId(null)} onOpen={id => { setQuickDocId(null); openDoc(id); }} />}
+      {hover.card}
 
       {openDocId && (
         <LiveDocEditor docId={openDocId} authToken={authToken} user={currentUser} isMobile={isMobile} people={profiles} isAdmin={isAdmin}
