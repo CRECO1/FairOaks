@@ -5,26 +5,17 @@
 // the TransactionDocEditor overlay) render the same markup via drawRichText; the editor
 // control (RichText.tsx) produces and consumes it. Keep this file DOM-free so it is safe
 // to import anywhere; DOM serialization lives in RichText.tsx.
-import { pushGraphicsState, popGraphicsState, setTextRenderingMode, setLineWidth, setStrokingColor, TextRenderingMode } from 'pdf-lib';
 import type { PDFPage, PDFFont, Color } from 'pdf-lib';
 
-// Every form field is filled in at ONE look — size, ink colour and weight — in the editor, the saved PDF and the server stamper, so a form always reads the same.
-// Size is in points before the 0.85 scale the editor has always applied (12.5 → 10.6pt on the page; it was 11 → 9.35pt).
+// Every form field is filled in at ONE look — typeface (see form-fonts.ts: Liberation Sans Bold), size and ink — in the editor,
+// the saved PDF, the server stamper and the signing-time fields, so a form always reads the same.
+// Size is in points before the 0.85 scale the editor has always applied (12.5 → 10.6pt on the page).
 export const FORM_FONT_SIZE = 12.5;
-// Ink for everything filled into a form: the dark blue the zipForms exports use, so answers stand out from the printed form.
-export const FORM_INK_HEX = '#0d1a8c';
-export const FORM_INK_RGB: [number, number, number] = [0.05, 0.1, 0.55];
-// A medium weight, between Helvetica regular and bold (the standard PDF fonts have no in-between): the glyphs get a hairline outline in the same ink,
-// this fraction of the font size wide. The editor draws the same thing with -webkit-text-stroke so screen and PDF match. Real **bold** still reads as bold.
-export const FORM_INK_WEIGHT = 0.012;
-
-/** Draw one run of text; with `weight` it is outlined in its own colour for the medium weight above. */
-export function drawInkText(page: PDFPage, text: string, o: { x: number; y: number; size: number; font: PDFFont; color: Color; weight?: number }) {
-  if (!o.weight) { page.drawText(text, { x: o.x, y: o.y, size: o.size, font: o.font, color: o.color }); return; }
-  page.pushOperators(pushGraphicsState(), setTextRenderingMode(TextRenderingMode.FillAndOutline), setLineWidth(o.size * o.weight), setStrokingColor(o.color));
-  page.drawText(text, { x: o.x, y: o.y, size: o.size, font: o.font, color: o.color });
-  page.pushOperators(popGraphicsState());
-}
+// Navy ink for everything filled into a form: dark enough to read at a glance, clearly distinct from the printed black form text.
+export const FORM_INK_HEX = '#0b1f5c';
+export const FORM_INK_RGB: [number, number, number] = [0.043, 0.122, 0.36];
+// On-screen stack for the same face (Arial Bold ≈ Liberation Sans Bold, glyph for glyph) so the editor matches the saved PDF.
+export const FORM_FONT_CSS = "Arial, 'Liberation Sans', Helvetica, sans-serif";
 
 export interface Run { text: string; b: boolean; i: boolean; c?: string }   // c = '#rrggbb' when coloured
 
@@ -100,8 +91,6 @@ export interface RichDrawOpts {
   maxW: number;           // Infinity for single-line (no wrap)
   fonts: RichFonts;
   color: Color;
-  /** Medium-weight outline as a fraction of the font size (see FORM_INK_WEIGHT); omit for plain text. */
-  weight?: number;
 }
 
 /** Draw wrapped rich text; returns the number of lines drawn. */
@@ -115,7 +104,7 @@ export function drawRichText(o: RichDrawOpts): number {
     line.forEach((w, wi) => {
       if (wi > 0) cx += spaceW;
       for (const s of w) {
-        drawInkText(o.page, s.text, { x: cx, y: o.y - lines * o.lineHeight, size: o.size, font: fontFor(s, o.fonts), color: runColor(s, o.color), weight: o.weight });
+        o.page.drawText(s.text, { x: cx, y: o.y - lines * o.lineHeight, size: o.size, font: fontFor(s, o.fonts), color: runColor(s, o.color) });
         cx += drawnWidth(fontFor(s, o.fonts), s.text, o.size);
       }
     });

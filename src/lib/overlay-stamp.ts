@@ -3,16 +3,16 @@
 // Save; the Copilot edits a document's values from the server, so it needs the same
 // stamp or the PDF that goes out for signature would still show the OLD text.
 // Keep the layout maths identical to the editor's build().
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { parseRich, drawRichText, drawnWidth, hasMarkup, drawInkText, FORM_FONT_SIZE, FORM_INK_RGB, FORM_INK_WEIGHT, type RichFonts } from '@/lib/rich-text';
+import { PDFDocument, rgb } from 'pdf-lib';
+import { embedFormFonts } from '@/lib/form-fonts';
+import { parseRich, drawRichText, drawnWidth, hasMarkup, FORM_FONT_SIZE, FORM_INK_RGB } from '@/lib/rich-text';
 
 export interface StampField {
   page: number; fx: number; fy: number; fw: number;
   value?: string | null; size?: number; type?: string;
 }
 
-// pdf-lib's StandardFonts can only draw WinAnsi (Latin-1); map typographic characters
-// to ASCII and drop the rest so a stamp never throws mid-render.
+// Keep stamped text to Latin-1: map typographic characters to ASCII and drop the rest so a stamp never throws mid-render.
 const winAnsi = (s: string): string =>
   (s || '')
     .replace(/[‘’‚′]/g, "'")
@@ -28,13 +28,7 @@ const winAnsi = (s: string): string =>
 export async function stampOverlay(blank: Uint8Array, fields: StampField[]): Promise<Uint8Array> {
   // Texas REALTORS PDFs ship with permission encryption pdf-lib refuses to edit unless told.
   const doc = await PDFDocument.load(blank, { ignoreEncryption: true });
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const rich: RichFonts = {
-    reg: font,
-    bold: await doc.embedFont(StandardFonts.HelveticaBold),
-    ital: await doc.embedFont(StandardFonts.HelveticaOblique),
-    boldItal: await doc.embedFont(StandardFonts.HelveticaBoldOblique),
-  };
+  const { font, rich } = await embedFormFonts(doc);
   const ink = rgb(...FORM_INK_RGB);
   const pgs = doc.getPages();
   for (const f of fields) {
@@ -50,7 +44,7 @@ export async function stampOverlay(blank: Uint8Array, fields: StampField[]): Pro
         const box = f.fw * width;
         const xw = font.widthOfTextAtSize('X', size);
         const cap = size * 0.72;
-        drawInkText(pg, 'X', { x: f.fx * width + Math.max(0, (box - xw) / 2), y: height - f.fy * height + Math.max(1, (box - cap) / 2), size, font, color: ink, weight: FORM_INK_WEIGHT });
+        pg.drawText('X', { x: f.fx * width + Math.max(0, (box - xw) / 2), y: height - f.fy * height + Math.max(1, (box - cap) / 2), size, font, color: ink });
       }
       continue;
     }
@@ -58,11 +52,11 @@ export async function stampOverlay(blank: Uint8Array, fields: StampField[]): Pro
     if (!val) continue;
     const maxW = Math.max(24, f.fw * width - 4);
     if (hasMarkup(val)) {
-      drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink, weight: FORM_INK_WEIGHT });
+      drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
     } else if (drawnWidth(font, val, size) <= maxW) {
-      drawInkText(pg, val, { x, y, size, font, color: ink, weight: FORM_INK_WEIGHT });
+      pg.drawText(val, { x, y, size, font, color: ink });
     } else {
-      drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink, weight: FORM_INK_WEIGHT });
+      drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
     }
   }
   return doc.save();

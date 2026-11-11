@@ -11,6 +11,8 @@ import { randomBytes } from 'crypto';
 import { isBrokerFilled } from '@/lib/esign-fields';
 import { friendlyTitle } from '@/lib/esign-title';
 import { PDFDocument, StandardFonts, rgb, PDFImage } from 'pdf-lib';
+import { embedFormFonts } from '@/lib/form-fonts';
+import { FORM_FONT_SIZE, FORM_INK_RGB } from '@/lib/rich-text';
 import { Resend } from 'resend';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { chicagoDateUS } from '@/lib/chicago-time';
@@ -171,7 +173,10 @@ export async function stampSignerFields(
   data: { signaturePng?: Uint8Array; typedName: string; dateStr: string },
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(baseBytes, { ignoreEncryption: true });
-  const font = await doc.embedFont(StandardFonts.Helvetica);
+  // Anything typed into a form (date signed, printed name) uses the same standard form text as every other fill.
+  const { font } = await embedFormFonts(doc);
+  const fillSize = FORM_FONT_SIZE * 0.85;
+  const fillInk = rgb(...FORM_INK_RGB);
   const cursive = await doc.embedFont(StandardFonts.HelveticaOblique);
   const png = data.signaturePng ? await doc.embedPng(data.signaturePng) : null;
   const pages = doc.getPages();
@@ -195,10 +200,10 @@ export async function stampSignerFields(
         pg.drawText(winAnsi(data.typedName), { x, y: baseline + 2, size: f.type === 'initial' ? 12 : 18, font: cursive, color: rgb(0.05, 0.05, 0.35) });
       }
     } else if (f.type === 'date_signed') {
-      pg.drawText(winAnsi(data.dateStr), { x, y: baseline + 2, size: 10, font, color: rgb(0.06, 0.06, 0.1) });
+      pg.drawText(winAnsi(data.dateStr), { x, y: baseline + 2, size: fillSize, font, color: fillInk });
     } else {
       // a text field bound to this signer (e.g. printed name)
-      pg.drawText(winAnsi(data.typedName), { x, y: baseline + 2, size: 10, font, color: rgb(0.06, 0.06, 0.1) });
+      pg.drawText(winAnsi(data.typedName), { x, y: baseline + 2, size: fillSize, font, color: fillInk });
     }
   }
   return doc.save();

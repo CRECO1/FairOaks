@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { parseRich, drawRichText, drawnWidth, hasMarkup, drawInkText, FORM_FONT_SIZE, FORM_INK_HEX, FORM_INK_RGB, FORM_INK_WEIGHT, type RichFonts } from '@/lib/rich-text';
+import { PDFDocument, rgb } from 'pdf-lib';
+import { parseRich, drawRichText, drawnWidth, hasMarkup, FORM_FONT_SIZE, FORM_INK_HEX, FORM_INK_RGB, FORM_FONT_CSS } from '@/lib/rich-text';
+import { embedFormFonts } from '@/lib/form-fonts';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
@@ -534,13 +535,7 @@ export default function TransactionDocEditor({
     // Texas REALTORS PDFs ship with permission encryption; pdf-lib refuses to
     // load them for editing unless we explicitly ignore it.
     const doc = await PDFDocument.load(bytesRef.current, { ignoreEncryption: true });
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const rich: RichFonts = {
-      reg: font,
-      bold: await doc.embedFont(StandardFonts.HelveticaBold),
-      ital: await doc.embedFont(StandardFonts.HelveticaOblique),
-      boldItal: await doc.embedFont(StandardFonts.HelveticaBoldOblique),
-    };
+    const { font, rich } = await embedFormFonts(doc);
     const ink = rgb(...FORM_INK_RGB);
     const pgs = doc.getPages();
     for (const f of fields) {
@@ -559,7 +554,7 @@ export default function TransactionDocEditor({
           const box = f.fw * width;
           const xw = font.widthOfTextAtSize('X', size);
           const cap = size * 0.72;
-          drawInkText(pg, 'X', { x: f.fx * width + Math.max(0, (box - xw) / 2), y: height - f.fy * height + Math.max(1, (box - cap) / 2), size, font, color: ink, weight: FORM_INK_WEIGHT });
+          pg.drawText('X', { x: f.fx * width + Math.max(0, (box - xw) / 2), y: height - f.fy * height + Math.max(1, (box - cap) / 2), size, font, color: ink });
         }
         continue;
       }
@@ -569,12 +564,12 @@ export default function TransactionDocEditor({
       // plain value keeps the single-drawText fast path (clean text extraction).
       const maxW = Math.max(24, f.fw * width - 4);
       if (hasMarkup(val)) {
-        drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink, weight: FORM_INK_WEIGHT });
+        drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
       } else if (drawnWidth(font, val, size) <= maxW) {
-        drawInkText(pg, val, { x, y, size, font, color: ink, weight: FORM_INK_WEIGHT });
+        pg.drawText(val, { x, y, size, font, color: ink });
       } else {
         // Too long for the blank: wrap at the same size (never shrink), so every field matches.
-        drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink, weight: FORM_INK_WEIGHT });
+        drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
       }
     }
     return doc.save();
@@ -1090,7 +1085,7 @@ export default function TransactionDocEditor({
                         display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
                         border: `1.5px solid ${checked ? FORM_INK_HEX : 'rgba(37,99,235,.55)'}`, borderRadius: 2,
                         background: checked ? 'rgba(37,99,235,.10)' : 'rgba(255,255,255,.6)',
-                        color: FORM_INK_HEX, fontSize: cqw(em * 1.05), lineHeight: 1, fontWeight: 700, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+                        color: FORM_INK_HEX, fontSize: cqw(em * 1.05), lineHeight: 1, fontWeight: 700, fontFamily: FORM_FONT_CSS }}>
                       {checked ? '✔' : ''}
                     </button>
                   );
@@ -1102,8 +1097,8 @@ export default function TransactionDocEditor({
                     onFocus={() => setSelected(f.id)}
                     locked={!!lock}
                     stopDrag
-                    style={{ width: '100%', minHeight: `max(9px, ${cqw(em * 1.05)})`, fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: FORM_INK_HEX, WebkitTextStroke: `${cqw(em * FORM_INK_WEIGHT)} ${FORM_INK_HEX}`,
-                      textAlign: 'left', padding: '0 2px', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                    style={{ width: '100%', minHeight: `max(9px, ${cqw(em * 1.05)})`, fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: FORM_INK_HEX, fontWeight: 700,
+                      textAlign: 'left', padding: '0 2px', fontFamily: FORM_FONT_CSS, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                   />
                 )}
                 {/* A checkbox is about 11px on screen: corner handles would cover the whole box
