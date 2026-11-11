@@ -11,7 +11,7 @@ const GRAY  = rgb(0.34, 0.36, 0.40);
 const ITAL  = rgb(0.20, 0.20, 0.22);
 
 const PH = 792;                 // US Letter height
-const LOGO_W = 240;             // header logo width (points); height derives from aspect
+const LOGO_W = 112;             // header logo width (points); height derives from aspect
 const CONTENT_BOTTOM = 80;      // body must stay above this — the footer sits below it
 const FOOTER_RULE_Y = 64;
 
@@ -30,16 +30,20 @@ function center(page, text, y, size, font, color, PW) {
   page.drawText(text, { x: (PW - font.widthOfTextAtSize(text, size)) / 2, y, size, font, color });
 }
 
-// Page-1 logo letterhead. Returns the y at which body content should begin.
+// Page-1 letterhead: small logo top-left, firm contact right-aligned on the same row, one rule beneath.
+// Returns the y at which body content should begin.
 function drawHeader(page, { logo, times, PW, M }) {
   const h = LOGO_W * (logo.height / logo.width);
-  const logoY = PH - 30 - h;
-  page.drawImage(logo, { x: (PW - LOGO_W) / 2, y: logoY, width: LOGO_W, height: h });
-  let y = logoY - 13;
-  center(page, HEAD_CONTACT, y, 8, times, GRAY, PW);
-  y -= 9;
-  page.drawLine({ start: { x: M, y }, end: { x: PW - M, y }, thickness: 2.4, color: BLACK });
-  return y - 20;
+  const logoY = PH - 36 - h;
+  page.drawImage(logo, { x: M, y: logoY, width: LOGO_W, height: h });
+  const lines = ['8000 Fair Oaks Pkwy, Suite 100', 'Fair Oaks Ranch, TX 78015', '(210) 817-3443  \u2022  crecotx.com'];
+  const top = logoY + h / 2 + 12;
+  lines.forEach((t, i) => {
+    page.drawText(t, { x: PW - M - times.widthOfTextAtSize(t, 8.5), y: top - i * 11.5, size: 8.5, font: times, color: GRAY });
+  });
+  const y = logoY - 12;
+  page.drawLine({ start: { x: M, y }, end: { x: PW - M, y }, thickness: 1.2, color: BLACK });
+  return y - 22;
 }
 
 // Footer band — drawn on every page.
