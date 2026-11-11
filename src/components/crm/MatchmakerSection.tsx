@@ -390,7 +390,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                   <span><b>Actively searching</b> <span style={{ color: 'var(--k-9ca3af)' }}>{req.autoMatch ? '— stays on while the email alert is on' : `— marks ${tenantFirst} as looking for space now`}</span></span>
                 </label>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 13.5, color: 'var(--k-374151)', cursor: setupMissing ? 'default' : 'pointer', minHeight: isMobile ? 44 : undefined }}>
-                  <input type="checkbox" checked={req.autoMatch} disabled={setupMissing} onChange={e => setReq(r => ({ ...r, autoMatch: e.target.checked, active: e.target.checked ? true : r.active }))} style={{ width: 17, height: 17, accentColor: '#c9922c', marginTop: 2 }} />
+                  <input type="checkbox" checked={req.autoMatch} disabled={setupMissing} onChange={e => setReq(r => ({ ...r, autoMatch: e.target.checked }))} style={{ width: 17, height: 17, accentColor: '#c9922c', marginTop: 2 }} />
                   <span><b>Email me new matches</b> <span style={{ color: 'var(--k-9ca3af)' }}>— one email each morning, only when something <i>new</i> fits {possessive(tenantFirst)} search. It goes to you, never to {tenantFirst}.</span></span>
                 </label>
                 {setupMissing && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>Lease budget, timing, needs and the email alert are used for searching now, and start saving after a one-time database update (ask an admin).</div>}
