@@ -4,7 +4,8 @@
  * Exits non-zero on the first failed expectation, so it can sit in front of a deploy like the other *-check scripts.
  */
 import assert from 'node:assert/strict';
-import { criteriaFromRow, describeCriteria, EMPTY_NEED, matchProperties, parseRate, propertyLine, type MatchProperty, type NeedCriteria } from '../src/lib/matchmaker/match';
+import { criteriaFromRow, describeCriteria, EMPTY_NEED, matchProperties, parseRate, possessive, propertyLine, type MatchProperty, type NeedCriteria } from '../src/lib/matchmaker/match';
+import { buildMatchEmail } from '../src/lib/matchmaker/email';
 
 const NOW = new Date('2026-11-11T12:00:00Z');
 const day = (n: number) => new Date(NOW.getTime() - n * 86_400_000).toISOString();
@@ -95,5 +96,11 @@ ok('a contact row becomes a search (and zero/blank means "no limit")', () => {
 });
 ok('a search reads back as one line', () => assert.equal(describeCriteria(need), 'Lease · Office · 3,000–5,000 SF · up to $26/SF/yr · Boerne / Hill Country'));
 ok('a property reads back as one line', () => assert.equal(propertyLine(props[0]), 'Office · 4,200 SF · $22/SF/yr NNN · Boerne / Hill Country'));
+ok('possessives: a name ending in s takes just the apostrophe', () => { assert.equal(possessive('Maria Alvarez'), 'Maria Alvarez’s'); assert.equal(possessive('Package Cues'), 'Package Cues’'); assert.equal(possessive('  Lloyd Pearson IV '), 'Lloyd Pearson IV’s'); });
+ok('the alert email says "Package Cues’ search", not "Cues’s"', () => {
+  const broker = { name: 'Zachary Stovall', email: 'z@example.com', phone: '(210) 555-0100', title: 'Broker' };
+  const e = buildMatchEmail({ audience: 'agent', broker, tenant: { name: 'Lloyd Pearson IV', firstName: 'Lloyd', business: 'Package Cues' }, criteria: need, results: res.slice(0, 1) });
+  assert.ok(e.text.includes('Package Cues’ search')); assert.ok(e.html.includes('Package Cues</strong>&rsquo; search')); assert.ok(!/Cues(’|'|&rsquo;)s/.test(e.text + e.html));
+});
 
 console.log(`\n${n} checks passed`);

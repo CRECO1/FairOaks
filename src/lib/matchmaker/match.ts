@@ -397,6 +397,10 @@ export function describeCriteria(c: NeedCriteria): string {
   return parts.join(' · ');
 }
 
+/** The ending that turns a name into a possessive: "Maria" → "’s", "Package Cues" → "’". */
+export function possessiveSuffix(name: string): string { return /s$/i.test(name.trim()) ? '’' : '’s'; }
+export function possessive(name: string): string { return `${name.trim()}${possessiveSuffix(name)}`; }
+
 /** Which marketplace or channel a Property DB row came from, for a small label. */
 export function sourceLabel(p: Pick<MatchProperty, 'source' | 'listing_url'>): string {
   const s = `${p.source ?? ''} ${p.listing_url ?? ''}`.toLowerCase();

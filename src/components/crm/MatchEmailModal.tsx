@@ -10,7 +10,7 @@
  * Uses the CRM's .overlay / .modal classes, so on a phone it is a bottom sheet like every other dialog.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FIT_LABEL, propertyLine, EMAIL_MIN_SCORE, type MatchResult } from '@/lib/matchmaker/match';
+import { FIT_LABEL, propertyLine, possessive, EMAIL_MIN_SCORE, type MatchResult } from '@/lib/matchmaker/match';
 
 export interface MailTenant { id: string; name: string; firstName: string | null; email: string | null }
 interface Preview { subject: string; html: string; to: string | null; count: number }
@@ -78,7 +78,7 @@ export default function MatchEmailModal({ audience, tenant, candidates, authToke
             <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--k-111)' }}>Email these matches to {who}</div>
             <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginTop: 3, lineHeight: 1.5 }}>
               {audience === 'client'
-                ? <>Goes from <b>your Gmail</b> to <b>{pv?.to || tenant.email || '—'}</b>, with your signature. It is saved on {tenant.name}’s card. <b>Nothing is sent until you press Send.</b></>
+                ? <>Goes from <b>your Gmail</b> to <b>{pv?.to || tenant.email || '—'}</b>, with your signature. It is saved on {possessive(tenant.name)} card. <b>Nothing is sent until you press Send.</b></>
                 : <>A copy for <b>your inbox</b> ({pv?.to || '…'}) — handy to read on your phone or forward. <b>Nothing goes to {tenant.name}.</b></>}
             </div>
           </div>

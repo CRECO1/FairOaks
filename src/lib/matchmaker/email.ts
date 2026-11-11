@@ -10,7 +10,7 @@
  * Pure (no network, no environment): the caller passes the CRM link and the broker. Everything that came from a listing or a contact
  * is escaped, and only http(s) links are ever put in an href.
  */
-import { describeCriteria, FIT_LABEL, propertyLine, sourceLabel, type Fit, type MatchResult, type NeedCriteria } from './match';
+import { describeCriteria, FIT_LABEL, possessive, possessiveSuffix, propertyLine, sourceLabel, type Fit, type MatchResult, type NeedCriteria } from './match';
 
 export interface EmailBroker { name: string; email?: string | null; phone?: string | null; title?: string | null }
 export interface MatchEmailInput {
@@ -100,7 +100,7 @@ export function buildMatchEmail(i: MatchEmailInput): MatchEmail {
     : `${n === 1 ? 'A space' : `${n} spaces`} that fit${n === 1 ? 's' : ''}<br />what you&rsquo;re looking for`;
 
   const intro = i.audience === 'agent'
-    ? `<p style="margin:0 0 14px;font-size:16.9px;color:#555;line-height:1.68;">Hi ${esc(first)}, the Matchmaker ${i.isNew ? 'found new listings' : 'pulled these listings'} that fit <strong style="color:#1a1a1a;">${esc(who)}</strong>&rsquo;s search.</p>`
+    ? `<p style="margin:0 0 14px;font-size:16.9px;color:#555;line-height:1.68;">Hi ${esc(first)}, the Matchmaker ${i.isNew ? 'found new listings' : 'pulled these listings'} that fit <strong style="color:#1a1a1a;">${esc(who)}</strong>${possessiveSuffix(who).replace('’', '&rsquo;')} search.</p>`
     : (i.note?.trim()
       ? i.note.trim().split(/\n{2,}/).map(par => `<p style="margin:0 0 14px;font-size:16.9px;color:#555;line-height:1.68;">${esc(par).replace(/\n/g, '<br />')}</p>`).join('')
       : `<p style="margin:0 0 14px;font-size:16.9px;color:#555;line-height:1.68;">Hi ${esc(first)}, I went through the listings we track and pulled the spaces closest to what you described. For each one I&rsquo;ve noted why it fits and anything we still need to confirm.</p>`);
@@ -180,7 +180,7 @@ export function buildMatchEmail(i: MatchEmailInput): MatchEmail {
 </html>`;
 
   const lines: string[] = [];
-  lines.push(i.audience === 'agent' ? `Hi ${first}, the Matchmaker ${i.isNew ? 'found new listings' : 'pulled these listings'} that fit ${who}'s search.` : (i.note?.trim() || `Hi ${first}, I pulled the spaces closest to what you described.`));
+  lines.push(i.audience === 'agent' ? `Hi ${first}, the Matchmaker ${i.isNew ? 'found new listings' : 'pulled these listings'} that fit ${possessive(who)} search.` : (i.note?.trim() || `Hi ${first}, I pulled the spaces closest to what you described.`));
   if (crit) lines.push('', `Search: ${crit}`);
   for (const r of i.results) {
     const p = r.property;
