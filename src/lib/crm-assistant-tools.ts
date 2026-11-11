@@ -17,6 +17,8 @@ import { chicagoToday, chicagoDateUS } from '@/lib/chicago-time';
 import { detectSigningSpots, type PrepField } from '@/lib/esign-prep';
 import { searchTexasEntities, texasEntityDetail, containsPhrase } from '@/lib/texas-entity';
 import { loadCopilotPrefs, saveCopilotPrefs, PREF_MAX, PREF_MAX_CHARS } from '@/lib/copilot-prefs';
+import { criteriaFromRow, describeCriteria, FIT_LABEL, hasCriteria as needHasCriteria, matchProperties, propertyLine, sourceLabel, type MatchResult, type NeedCriteria } from '@/lib/matchmaker/match';
+import { canAct, canSee, composeMatchEmail, deliverMatchEmail, loadCandidates, loadMatchState, loadTenant, tenantNames } from '@/lib/matchmaker/server';
 
 // token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
 // form-submissions) as the agent, so the copilot goes through the exact same auth, RBAC
@@ -483,7 +485,33 @@ export const PREF_TOOLS = new Set(['save_preference', 'forget_preference']);
 
 export const WRITE_TOOLS = new Set(['save_preference', 'forget_preference', 'create_drive_folder', 'create_drive_doc', 'edit_drive_doc', 'link_drive_doc', 'create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'prepare_esign', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'update_property', 'link_property_contact', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
-  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit', 'edit_file', 'enroll_campaign_contacts', 'duplicate_campaign']);
+  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit', 'edit_file', 'enroll_campaign_contacts', 'duplicate_campaign',
+  'save_tenant_needs', 'email_tenant_matches']);
+
+// ── Matchmaker helpers: a tenant's search against the Property DB (src/lib/matchmaker) ──────────────────────────────────────────────
+const MM_ASSET = ['Retail', 'Industrial', 'Office', 'Flex', 'Mixed-Use', 'Land', 'Medical'];
+const MM_NOTE = 'These come from the Property DB (broker emails and marketplace alerts) and many were added months ago. Never promise a space is available — the listing broker confirms. Web results are not in this list.';
+const mmNum = (v: unknown): number | null => { const s = String(v ?? '').replace(/[^0-9.]/g, ''); const n = Number(s); return s !== '' && Number.isFinite(n) && n > 0 ? n : null; };
+const mmDate = (v: unknown) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v ?? '')) ? String(v) : null);
+const crmCtx = (c: AgentCtx) => ({ userId: c.userId, role: c.role, businessUnit: c.businessUnit });
+/** What the agent described, as a search. Anything unrecognised is dropped, never guessed. */
+function needFromInput(i: Record<string, any>): NeedCriteria {
+  return {
+    dealType: i.deal_type === 'lease' || i.deal_type === 'sale' ? i.deal_type : '',
+    assetTypes: (Array.isArray(i.asset_types) ? i.asset_types : []).map(String).filter((t: string) => MM_ASSET.includes(t)),
+    sizeMin: mmNum(i.size_min), sizeMax: mmNum(i.size_max), rateMax: mmNum(i.rate_max), priceMin: mmNum(i.price_min), priceMax: mmNum(i.price_max),
+    areas: (Array.isArray(i.areas) ? i.areas : []).map((a: unknown) => String(a ?? '').trim()).filter(Boolean).slice(0, 12),
+    moveInBy: mmDate(i.move_in_by), mustHaves: String(i.must_haves ?? '').trim().slice(0, 300),
+  };
+}
+const mmRow = (r: MatchResult) => {
+  const p = r.property;
+  return {
+    property_id: p.id, address: [p.address, p.suite ? `Suite ${p.suite}` : ''].filter(Boolean).join(', ') || p.name, name: p.name, summary: propertyLine(p),
+    fit: FIT_LABEL[r.fit], why: r.reasons.slice(0, 4), confirm: r.caveats.slice(0, 3), source: sourceLabel(p),
+    link: p.listing_url || p.flyer_url || p.brochure_url || null, listed_by: [p.listing_company, p.listing_agent_name, p.listing_agent_phone].filter(Boolean).join(' · ') || null,
+  };
+};
 
 // Which screen data a confirmed write makes stale — the panel tells the CRM to reload it, so a deal the
 // copilot just created shows up in the pipeline without a page refresh.
@@ -577,6 +605,36 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { status: { type: 'string', description: 'Optional status filter, e.g. "active"' } } } },
   { name: 'get_property', description: 'Get a property/listing\'s full details by id — including asking price, size, zoning, description and highlights.',
     input_schema: { type: 'object', properties: { listing_id: { type: 'string' } }, required: ['listing_id'] } },
+  { name: 'search_property_db', description: "Search the brokerage's PROPERTY DATABASE — thousands of broker-email and marketplace listings (LoopNet, Crexi alerts, broker flyers) — for space that fits a description, best fit first, each with why it fits and what to confirm. Use it for \"what do we have for a 3,000 SF office in Boerne under $26?\" — no tenant needed. This is NOT the brokerage's own listings (find_property / list_properties). Many entries were added months ago: say so, and never promise availability — the listing broker confirms.",
+    input_schema: { type: 'object', properties: {
+      deal_type: { type: 'string', enum: ['lease', 'sale'] },
+      asset_types: { type: 'array', items: { type: 'string', enum: MM_ASSET }, description: 'Property types wanted' },
+      size_min: { type: 'number', description: 'Square feet' }, size_max: { type: 'number', description: 'Square feet' },
+      rate_max: { type: 'number', description: 'Lease budget, dollars per SF per YEAR (a monthly figure must be converted first)' },
+      price_min: { type: 'number' }, price_max: { type: 'number', description: 'Sale budget in dollars' },
+      areas: { type: 'array', items: { type: 'string' }, description: 'Submarkets, cities or ZIP codes, e.g. "Boerne / Hill Country", "San Antonio", "78258"' },
+      must_haves: { type: 'string', description: 'Things the space needs, comma separated, e.g. "drive-thru, 24 ft clear, corner"' },
+      move_in_by: { type: 'string', description: 'YYYY-MM-DD' },
+      limit: { type: 'number', description: 'How many to return (default 8, max 15)' } } } },
+  { name: 'find_tenant_matches', description: "Run a contact's SAVED search (what a tenant or buyer needs) against the Property DB: the best fits with why each fits and what to confirm, which were already emailed, and how many the agent hid as 'not a fit'. contact_id from search_contacts. If the contact has no saved search it says so — ask the agent for size, area, budget and timing and save it with save_tenant_needs.",
+    input_schema: { type: 'object', properties: { contact_id: { type: 'string' }, limit: { type: 'number', description: 'Default 8, max 15' } }, required: ['contact_id'] } },
+  { name: 'save_tenant_needs', description: "Save or change a tenant's/buyer's SEARCH on their contact: deal type, property types, size, lease budget, sale price, areas, move-in date, must-haves — and whether they are actively searching and whether the agent wants a morning email of NEW matches. WRITE — confirm the details with the agent first. Only the fields you pass change; pass null to clear one. email_new_matches emails the AGENT (never the tenant) once a day, and only when something new fits.",
+    input_schema: { type: 'object', properties: {
+      contact_id: { type: 'string' },
+      deal_type: { type: ['string', 'null'], enum: ['lease', 'sale', null] },
+      asset_types: { type: 'array', items: { type: 'string', enum: MM_ASSET } },
+      size_min: { type: ['number', 'null'] }, size_max: { type: ['number', 'null'] },
+      rate_max: { type: ['number', 'null'], description: 'Lease budget, dollars per SF per YEAR' },
+      price_min: { type: ['number', 'null'] }, price_max: { type: ['number', 'null'] },
+      areas: { type: 'array', items: { type: 'string' }, description: 'Submarkets, cities or ZIP codes' },
+      move_in_by: { type: ['string', 'null'], description: 'YYYY-MM-DD' },
+      must_haves: { type: ['string', 'null'] },
+      actively_searching: { type: 'boolean' }, email_new_matches: { type: 'boolean' } }, required: ['contact_id'] } },
+  { name: 'email_tenant_matches', description: "Email the best matches for a contact's SAVED search as a nicely laid-out email. audience 'agent' = a copy to the agent's own inbox; audience 'tenant' = to the tenant/buyer from the agent's own Gmail, with the agent's signature. WRITE + OUTWARD — calling this only QUEUES it: the agent sees a confirmation card with the recipient, subject and the listings, and NOTHING is sent until they click Confirm. Choose property_ids from find_tenant_matches, or omit them to take the best few. Use 'tenant' only when the agent asked to email the tenant. Add a short `note` (the agent's own words) for a tenant email only if the agent gave you something to say.",
+    input_schema: { type: 'object', properties: {
+      contact_id: { type: 'string' }, audience: { type: 'string', enum: ['agent', 'tenant'] },
+      property_ids: { type: 'array', items: { type: 'string' }, description: 'property_id values from find_tenant_matches' },
+      note: { type: 'string', description: 'Optional personal note at the top of a tenant email' } }, required: ['contact_id', 'audience'] } },
   { name: 'list_forms', description: 'List the available transaction-doc form templates (leases, contracts, addenda, etc.) — name, form_code, category.',
     input_schema: { type: 'object', properties: {} } },
   { name: 'autofill_loi', description: "Pre-fill a Letter of Intent and report what it could and could not fill, with where each value came from. READ-ONLY — it creates nothing. A deal is OPTIONAL: pass deal_id when there is one, or contact_id alone, or NEITHER and just let the agent's own details and today's date fill while they give you the rest. Always run this before complete_loi.",
@@ -1646,6 +1704,74 @@ async function runToolRaw(name: string, input: Record<string, any>, ctx: AgentCt
         await logCopilot(db, ctx, `Emailed ${c.email} — “${input.subject}”${names.length ? ` (attached: ${names.join(', ')})` : ''}`, input.contact_id);
         return j({ ok: true, sent: true, to: c.email, attached: names });
       }
+      // ── Matchmaker: a tenant's search against the Property DB ─────────────────────────────────────────────────────────────
+      case 'search_property_db': {
+        const need = needFromInput(input);
+        if (!needHasCriteria(need)) return j({ error: 'Give me at least one thing to search on: a property type, a size, a budget or an area.' });
+        const props = await loadCandidates(db, ctx.businessUnit ?? 'commercial');
+        const all = matchProperties(need, props);
+        const lim = Math.min(15, Math.max(1, Math.floor(Number(input.limit)) || 8));
+        return j({ search: describeCriteria(need), total_matches: all.length, showing: Math.min(lim, all.length), properties_in_database: props.length, results: all.slice(0, lim).map(mmRow), note: MM_NOTE });
+      }
+      case 'find_tenant_matches': {
+        const { row } = await loadTenant(db, String(input.contact_id ?? ''));
+        if (!row || !canSee(crmCtx(ctx), row)) return j({ error: 'Contact not found' });
+        const need = criteriaFromRow(row);
+        if (!needHasCriteria(need)) return j({ error: 'That contact has no saved search yet.', hint: 'Ask the agent what they need — property type, size, area, budget, timing — then save it with save_tenant_needs.' });
+        const [props, st] = await Promise.all([loadCandidates(db, row.business_unit), loadMatchState(db, [row.id])]);
+        const s = st.byClient.get(row.id)!;
+        const all = matchProperties(need, props).filter(r => !s.dismissed.has(r.property.id));
+        const lim = Math.min(15, Math.max(1, Math.floor(Number(input.limit)) || 8));
+        return j({
+          contact: tenantNames(row).name, search: describeCriteria(need), actively_searching: !!row.req_active, morning_email_on: !!row.req_auto_match,
+          total_matches: all.length, showing: Math.min(lim, all.length), hidden_as_not_a_fit: s.dismissed.size,
+          results: all.slice(0, lim).map(r => ({ ...mmRow(r), already_emailed: s.emailed.has(r.property.id) ? `${s.emailed.get(r.property.id)!.to === 'client' ? 'to the tenant' : 'to the agent'} on ${s.emailed.get(r.property.id)!.at.slice(0, 10)}` : null })),
+          note: MM_NOTE,
+        });
+      }
+      case 'save_tenant_needs': {
+        const cc = crmCtx(ctx);
+        const { row, setupMissing } = await loadTenant(db, String(input.contact_id ?? ''));
+        if (!row || !canSee(cc, row)) return j({ error: 'Contact not found' });
+        if (!canAct(cc, row)) return j({ error: "That contact isn't assigned to you" });
+        const has = (k: string) => input[k] !== undefined;
+        const patch: Record<string, any> = {};
+        if (has('deal_type')) { if (input.deal_type === null) patch.req_deal_type = null; else if (input.deal_type === 'lease' || input.deal_type === 'sale') patch.req_deal_type = input.deal_type; else return j({ error: "deal_type must be 'lease' or 'sale'" }); }
+        if (has('asset_types')) { const t = (Array.isArray(input.asset_types) ? input.asset_types : []).map(String); if (t.some((x: string) => !MM_ASSET.includes(x))) return j({ error: `asset_types must come from: ${MM_ASSET.join(', ')}` }); patch.asset_types = t; }
+        for (const [key, col] of [['size_min', 'req_size_min'], ['size_max', 'req_size_max'], ['rate_max', 'req_rate_max'], ['price_min', 'req_price_min'], ['price_max', 'req_price_max']] as const) {
+          if (has(key)) patch[col] = input[key] === null ? null : mmNum(input[key]);
+        }
+        if (has('areas')) patch.req_submarkets = (Array.isArray(input.areas) ? input.areas : []).map((a: unknown) => String(a ?? '').trim()).filter(Boolean).slice(0, 12);
+        if (has('move_in_by')) { if (input.move_in_by === null) patch.req_move_in_by = null; else if (mmDate(input.move_in_by)) patch.req_move_in_by = input.move_in_by; else return j({ error: 'move_in_by must be a date like 2027-03-01' }); }
+        if (has('must_haves')) patch.req_must_haves = input.must_haves === null ? null : (String(input.must_haves).trim().slice(0, 300) || null);
+        if (has('actively_searching')) patch.req_active = !!input.actively_searching;
+        if (has('email_new_matches')) { patch.req_auto_match = !!input.email_new_matches; if (input.email_new_matches) patch.req_active = true; }
+        if (!Object.keys(patch).length) return j({ error: 'Nothing to change — pass at least one field.' });
+        const NEW_COLS = ['req_deal_type', 'req_rate_max', 'req_move_in_by', 'req_must_haves', 'req_active', 'req_auto_match'];
+        if (setupMissing && Object.keys(patch).some(k => NEW_COLS.includes(k))) return j({ error: 'Lease budget, timing, must-haves and the morning email need a one-time database update that has not been applied yet — an admin has to run it. Size, price, property type and area can still be saved.' });
+        const merged = criteriaFromRow({ ...row, ...patch });
+        if ((patch.req_auto_match || patch.req_active) && !needHasCriteria(merged)) return j({ error: 'There is no search to match yet — save the property type, size or area first.' });
+        const { error } = await db.from('crm_clients').update(patch).eq('id', row.id);
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Saved the search for ${tenantNames(row).name}: ${describeCriteria(merged) || 'cleared'}`, row.id);
+        return j({ ok: true, saved: describeCriteria(merged), actively_searching: patch.req_active ?? !!row.req_active, morning_email_on: patch.req_auto_match ?? !!row.req_auto_match });
+      }
+      case 'email_tenant_matches': {
+        const cc = crmCtx(ctx);
+        const audience = input.audience === 'tenant' ? 'client' : input.audience === 'agent' ? 'agent' : null;
+        if (!audience) return j({ error: "audience must be 'agent' (a copy to the agent's own inbox) or 'tenant'" });
+        const { row, setupMissing } = await loadTenant(db, String(input.contact_id ?? ''));
+        if (!row || !canSee(cc, row)) return j({ error: 'Contact not found' });
+        if (setupMissing) return j({ error: 'Emailing matches needs a one-time database update that has not been applied yet — an admin has to run it.' });
+        if (audience === 'client' && !canAct(cc, row)) return j({ error: "That contact isn't assigned to you" });
+        const ids = (Array.isArray(input.property_ids) ? input.property_ids : []).map(String).filter((x: string) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 20);
+        const c = await composeMatchEmail(db, row, { brokerId: ctx.userId, audience, propertyIds: ids.length ? ids : undefined, note: typeof input.note === 'string' ? input.note.slice(0, 2000) : undefined });
+        if ('error' in c) return j({ error: c.error });
+        const sent = await deliverMatchEmail(db, cc, row, c, audience);
+        if (!sent.ok) return j({ error: sent.error });
+        await logCopilot(db, ctx, `Emailed ${c.results.length} matching listing${c.results.length === 1 ? '' : 's'} to ${sent.to}`, row.id);
+        return j({ ok: true, sent: true, to: sent.to, listings: c.results.length, subject: c.email.subject });
+      }
       case 'schedule_event': {
         let clientName: string | undefined;
         if (input.contact_id) {
@@ -1978,6 +2104,13 @@ async function runToolRaw(name: string, input: Record<string, any>, ctx: AgentCt
 const MEETING_WORDS = /\b(invit(e|ation)|tour|showing|walk-?through|site walk|site visit|meeting|lunch|appointment)\b/i;
 const WHEN_WORDS = /\b(\d{1,2}(:\d{2})?\s*(a\.?m\.?|p\.?m\.?)|tomorrow|tonight|today|mon(day)?|tue(s(day)?)?|wed(nesday)?|thu(r(s(day)?)?)?|fri(day)?|sat(urday)?|sun(day)?)\b/i;
 export async function precheckWrite(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string | null> {
+  if (name === 'save_tenant_needs' || name === 'email_tenant_matches') {
+    // Fail before the confirmation card, not after the agent has clicked it.
+    const { row } = await loadTenant(admin(), String(input.contact_id ?? ''));
+    if (!row || !canSee(crmCtx(ctx), row)) return j({ error: 'Contact not found' });
+    if ((name === 'save_tenant_needs' || input.audience === 'tenant') && !canAct(crmCtx(ctx), row)) return j({ error: "That contact isn't assigned to you" });
+    if (name === 'email_tenant_matches' && input.audience === 'tenant' && !row.email) return j({ error: 'That contact has no email address on file.' });
+  }
   if (name === 'send_email' && !input.email_only) {
     const text = `${input.subject ?? ''} ${String(input.body ?? '').replace(/<[^>]+>/g, ' ')}`;
     if (MEETING_WORDS.test(String(input.subject ?? '')) && WHEN_WORDS.test(text)) {
@@ -2014,6 +2147,22 @@ async function describeWriteRichBase(name: string, input: Record<string, any>, c
   if (name === 'create_drive_doc') {
     const body = String(input.content ?? '').trim();
     return `${describeWrite(name, input)}\n\n${body.slice(0, 1500)}${body.length > 1500 ? `\n… (${body.length.toLocaleString()} characters in all)` : ''}`;
+  }
+  if (name === 'email_tenant_matches') {
+    // The confirmation card shows exactly what would go out: who it is to, the subject, and each listing.
+    try {
+      const db = admin();
+      const { row } = await loadTenant(db, String(input.contact_id ?? ''));
+      if (row && canSee(crmCtx(ctx), row)) {
+        const audience = input.audience === 'tenant' ? 'client' : 'agent';
+        const ids = (Array.isArray(input.property_ids) ? input.property_ids : []).map(String).filter((x: string) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 20);
+        const c = await composeMatchEmail(db, row, { brokerId: ctx.userId, audience, propertyIds: ids.length ? ids : undefined, note: typeof input.note === 'string' ? input.note.slice(0, 2000) : undefined });
+        if ('error' in c) return `${describeWrite(name, input)}\n\n⚠️ ${c.error}`;
+        const list = c.results.map((r, i) => `${i + 1}. ${[r.property.address, r.property.suite ? `Suite ${r.property.suite}` : ''].filter(Boolean).join(', ') || r.property.name} — ${propertyLine(r.property)} (${FIT_LABEL[r.fit]})`).join('\n');
+        const note = typeof input.note === 'string' && input.note.trim() ? `\n\nYour note: ${input.note.trim().slice(0, 600)}` : '';
+        return `${describeWrite(name, input)}\n\nTo: ${c.to ?? '— no address on file —'}\nSubject: ${c.email.subject}\n\n${list}${note}\n\nIt goes out only when you confirm.`;
+      }
+    } catch { /* fall back to the one-line description */ }
   }
   if (name === 'send_email') {
     try {
@@ -2215,6 +2364,11 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'prepare_esign': return `Place initials / signature / date boxes for ${(input.signers || []).map((x: any) => x.role).join(', ') || 'the signers'} — draft only, nothing is sent`;
     case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => [s.name, s.email && `<${s.email}>`].filter(Boolean).join(' ')).join(', ')} — this emails them the document`;
     case 'send_email': return `📧 Send the email “${input.subject}” from your Gmail — this emails the contact`;
+    case 'save_tenant_needs': {
+      const what = describeCriteria(needFromInput(input));
+      return `🎯 Save this search on the contact${what ? `: ${what}` : ''}${input.email_new_matches === true ? ' — and email YOU new matches each morning (never the tenant)' : ''}${input.email_new_matches === false ? ' — and turn the morning email off' : ''}`;
+    }
+    case 'email_tenant_matches': return input.audience === 'tenant' ? '📧 Email the matching listings to the tenant from your Gmail — this emails a real person' : '📧 Email the matching listings to your own inbox';
     case 'schedule_event': {
       const guests: string[] = Array.isArray(input.attendees) ? input.attendees : [];
       return `📅 Add “${input.title}” to your calendar on ${input.date}${input.time ? ` at ${input.time}` : ' (all day)'}${input.time && guests.length ? ` and send a calendar invite to ${guests.join(', ')}` : ' — no one is invited'}`;

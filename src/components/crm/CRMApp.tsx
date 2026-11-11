@@ -2551,6 +2551,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     window.history.replaceState({}, '', window.location.pathname + window.location.hash);
     void signLiveDoc(id, p.get('title') || 'Document');
   }, [session, profile, signLiveDoc]);
+  // A Matchmaker alert email links to /crm/<bu>?mm=<tenant id>#properties: open Properties → Matchmaker on that tenant.
+  const [matchmakerClientId, setMatchmakerClientId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!session || !profile) return;
+    const id = new URLSearchParams(window.location.search).get('mm');
+    if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return;
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    setPage('properties'); setPropertiesTab('matchmaker'); setMatchmakerClientId(id);
+  }, [session, profile]);
   const loadClientDocs = useCallback(async (clientId: string) => {
     try {
       const r = await authGet(`/api/crm/form-submissions?client_id=${clientId}`);
@@ -11687,6 +11696,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   currentUserId={profile?.id}
                   authToken={session?.access_token}
                   isMobile={isMobile}
+                  initialClientId={matchmakerClientId ?? undefined}
                 />
               )}
               {propertiesTab === 'floorplan' && (

@@ -130,6 +130,10 @@
     {
       "path": "/api/cron/purge-drive-trash",
       "schedule": "45 10 * * *"
+    },
+    {
+      "path": "/api/cron/matchmaker",
+      "schedule": "30 12 * * *"
     }
   ]
 }
