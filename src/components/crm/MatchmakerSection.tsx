@@ -6,7 +6,7 @@ import { usePropertyShortlist } from '@/lib/use-property-shortlist';
 import { summarizeProperties, type FilterableProperty } from '@/lib/property-filters';
 import StarButton from '@/components/crm/StarButton';
 import MatchEmailModal from '@/components/crm/MatchEmailModal';
-import { criteriaFromRow, FIT_LABEL, hasCriteria as hasNeed, matchProperties, MATCH_COLUMNS, possessive, propertyLine, sourceLabel, type DealType, type Fit, type MatchProperty, type NeedCriteria } from '@/lib/matchmaker/match';
+import { criteriaFromRow, displayName, FIT_LABEL, hasCriteria as hasNeed, matchProperties, MATCH_COLUMNS, possessive, propertyLine, propertyTitle, sourceLabel, type DealType, type Fit, type MatchProperty, type NeedCriteria } from '@/lib/matchmaker/match';
 
 const SHOW = 60;   // rendered at once; the heading always reports the true total
 const ASSET_TYPES = ['Retail', 'Office', 'Industrial', 'Flex', 'Land', 'Medical', 'Mixed-Use'];
@@ -71,6 +71,16 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   const [showHidden, setShowHidden] = useState(false);
   const [mail, setMail] = useState<null | 'agent' | 'client'>(null);
   const autoOpened = useRef(false);
+  // How wide the results list is: wide enough for the actions to sit beside each listing, else they go underneath — the same for every row.
+  const [listW, setListW] = useState(0);
+  const roRef = useRef<ResizeObserver | null>(null);
+  const listRef = useCallback((el: HTMLDivElement | null) => {
+    roRef.current?.disconnect(); roRef.current = null;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(entries => setListW(Math.round(entries[0].contentRect.width)));
+    ro.observe(el); roRef.current = ro;
+  }, []);
+  const wideRows = !isMobile && listW >= 600;
   const authHeaders = useMemo(() => ({ 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }), [authToken]);
 
   const load = useCallback(async () => {
@@ -130,11 +140,20 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   }
   // A link from an alert email opens straight on that tenant.
   useEffect(() => {
-    if (!initialClientId || autoOpened.current || !buyers.length) return;
+    if (!initialClientId || autoOpened.current || loading) return;
+    autoOpened.current = true;
     const b = buyers.find(x => x.id === initialClientId);
-    if (b) { autoOpened.current = true; setWho(''); pick(b); }
+    if (b) { setWho(''); pick(b); return; }
+    // not one of the buyer / tenant / investor types the list shows (a tenant-rep client saved by the Copilot, say): open it anyway
+    void (async () => {
+      const { data } = await supabase.from('crm_clients').select(BUYER_COLS + (setupMissing ? '' : BUYER_COLS_NEW)).eq('id', initialClientId).maybeSingle();
+      if (!data) return;
+      const row = data as unknown as Buyer;
+      setBuyers(prev => (prev.some(x => x.id === row.id) ? prev : [row, ...prev]));
+      setWho(''); pick(row);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialClientId, buyers]);
+  }, [initialClientId, buyers, loading]);
 
   async function saveReq() {
     if (!sel) return;
@@ -162,7 +181,10 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   const need = useMemo(() => crit(req), [req]);
   const hasCriteria = hasNeed(need);
   // Saved criteria drive the emails and the daily alert, so emailing waits until what is on screen has been saved.
-  const dirty = !!sel && JSON.stringify(need) !== JSON.stringify(criteriaFromRow(sel));
+  const critDirty = !!sel && JSON.stringify(need) !== JSON.stringify(criteriaFromRow(sel));
+  // the two switches save with the criteria, so flipping one leaves something to save too (it just does not hold up emailing)
+  const flagsDirty = !!sel && !setupMissing && ((req.active || req.autoMatch) !== !!sel.req_active || req.autoMatch !== !!sel.req_auto_match);
+  const anyDirty = critDirty || flagsDirty;
 
   const results = useMemo(() => (hasCriteria ? matchProperties(need, props) : []), [need, props, hasCriteria]);
   const visible = useMemo(() => results.filter(r => !dismissed.has(r.property.id)), [results, dismissed]);
@@ -192,7 +214,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
 
   async function addCall(p: Prop) {
     if (!sel) return;
-    const title = `🎯 Show ${p.name || p.address || 'property'} to ${buyerName(sel)}`;
+    const title = `🎯 Show ${propertyTitle(p)} to ${buyerName(sel)}`;
     const notes = [
       propertyLine(p),
       p.listing_agent_name ? `Listing: ${p.listing_agent_name}${p.listing_agent_phone ? ' ' + p.listing_agent_phone : ''}` : '',
@@ -233,14 +255,14 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   const inp: React.CSSProperties = { padding: '8px 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box', fontFamily: "'DM Sans',sans-serif" };
   const lbl: React.CSSProperties = { fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 6 };
   const ghost: React.CSSProperties = { minHeight: isMobile ? 44 : 32, padding: '0 14px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
-  const canMail = !!sel && !setupMissing && !dirty && hasCriteria && visible.length > 0;
+  const canMail = !!sel && !setupMissing && !critDirty && hasCriteria && visible.length > 0;
   const tenantFirst = sel ? (sel.first_name || buyerName(sel)) : '';
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: 'var(--k-111)', marginBottom: 4 }}>🎯 Matchmaker</h2>
-        <p style={{ fontSize: 14, color: 'var(--k-6b7280)' }}>Save a buyer/tenant’s search → see the best-fitting properties from your database, with why — then email them. {loading ? 'Loading…' : `${buyers.length} prospects · ${props.length} properties`}</p>
+        <p style={{ fontSize: 14, color: 'var(--k-6b7280)' }}>Save a buyer/tenant’s search → see the best-fitting properties from your database, with why — then email them. {loading ? 'Loading…' : `${buyers.length.toLocaleString()} prospects · ${props.length.toLocaleString()} properties`}</p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(240px, 300px) 1fr', gap: 18, alignItems: 'start' }}>
@@ -265,6 +287,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                 </button>
               );
             })}
+            {loading && <div style={{ padding: 16, fontSize: 13, color: 'var(--k-9ca3af)', textAlign: 'center' }}>Loading prospects…</div>}
             {!loading && buyerMatches.length === 0 && <div style={{ padding: 16, fontSize: 13, color: 'var(--k-9ca3af)', textAlign: 'center' }}>No one matches that.</div>}
           </div>
           {buyerMatches.length > filteredBuyers.length && (
@@ -286,7 +309,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                 <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--k-111)', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{buyerName(sel)}</span>
                   <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', fontWeight: 500, flexShrink: 0 }}>· {sel.type}</span>
-                  <button onClick={() => { setSel(null); setDismissed(new Set()); setEmailed({}); }} title="Search without a buyer — keeps these criteria"
+                  <button onClick={() => { setSel(null); setDismissed(new Set()); setEmailed({}); }} title="Search without a buyer — keeps these criteria" aria-label="Search without a buyer"
                     style={{ background: 'none', border: 'none', color: '#c9b48a', cursor: 'pointer', fontSize: 14, padding: '0 2px', flexShrink: 0 }}>✕</button>
                 </div>
               ) : (
@@ -295,17 +318,18 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                {hasCriteria && <button onClick={clearReq} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Clear</button>}
-                {sel && <button onClick={saveReq} disabled={busy} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : dirty ? 'Save criteria' : 'Saved ✓'}</button>}
+                {hasCriteria && <button onClick={clearReq} style={{ padding: '7px 12px', minHeight: isMobile ? 44 : undefined, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Clear</button>}
+                {sel && <button onClick={saveReq} disabled={busy || !anyDirty} style={{ padding: '7px 14px', minHeight: isMobile ? 44 : undefined, borderRadius: 8, border: anyDirty ? 'none' : '1px solid var(--k-e5e7eb)', background: anyDirty ? '#c9922c' : 'var(--k-fff)', color: anyDirty ? '#fff' : 'var(--k-16a34a)', fontSize: 13, fontWeight: 700, cursor: busy || !anyDirty ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : anyDirty ? 'Save changes' : '✓ Saved'}</button>}
               </div>
             </div>
-            <div style={lbl}>Looking to</div>
+            <div style={lbl}>Looking to{!req.dealType && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500, marginLeft: 6 }}>· leave both off to see lease and sale</span>}</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
               <button onClick={() => setReq(r => ({ ...r, dealType: r.dealType === 'lease' ? '' : 'lease' }))} aria-pressed={req.dealType === 'lease'} style={chip(req.dealType === 'lease')}>Lease</button>
               <button onClick={() => setReq(r => ({ ...r, dealType: r.dealType === 'sale' ? '' : 'sale' }))} aria-pressed={req.dealType === 'sale'} style={chip(req.dealType === 'sale')}>Buy</button>
             </div>
             <div style={lbl}>Asset types</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+              {req.assetTypes.filter(t => !ASSET_TYPES.includes(t)).map(t => <button key={t} onClick={() => setReq(r => ({ ...r, assetTypes: r.assetTypes.filter(x => x !== t) }))} style={chip(true)} title="Click to remove">{t} ✕</button>)}
               {ASSET_TYPES.map(t => {
                 const on = req.assetTypes.includes(t);
                 return <button key={t} onClick={() => setReq(r => ({ ...r, assetTypes: on ? r.assetTypes.filter(x => x !== t) : [...r.assetTypes, t] }))} style={chip(on)}>{t}</button>;
@@ -363,13 +387,19 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
               <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--k-eef0f2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13.5, color: 'var(--k-374151)', cursor: setupMissing ? 'default' : 'pointer', minHeight: isMobile ? 44 : undefined }}>
                   <input type="checkbox" checked={req.active || req.autoMatch} disabled={setupMissing || req.autoMatch} onChange={e => setReq(r => ({ ...r, active: e.target.checked }))} style={{ width: 17, height: 17, accentColor: '#c9922c' }} />
-                  <span><b>Actively searching</b> <span style={{ color: 'var(--k-9ca3af)' }}>— marks {tenantFirst} as looking for space now</span></span>
+                  <span><b>Actively searching</b> <span style={{ color: 'var(--k-9ca3af)' }}>{req.autoMatch ? '— stays on while the email alert is on' : `— marks ${tenantFirst} as looking for space now`}</span></span>
                 </label>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 13.5, color: 'var(--k-374151)', cursor: setupMissing ? 'default' : 'pointer', minHeight: isMobile ? 44 : undefined }}>
                   <input type="checkbox" checked={req.autoMatch} disabled={setupMissing} onChange={e => setReq(r => ({ ...r, autoMatch: e.target.checked, active: e.target.checked ? true : r.active }))} style={{ width: 17, height: 17, accentColor: '#c9922c', marginTop: 2 }} />
                   <span><b>Email me new matches</b> <span style={{ color: 'var(--k-9ca3af)' }}>— one email each morning, only when something <i>new</i> fits {possessive(tenantFirst)} search. It goes to you, never to {tenantFirst}.</span></span>
                 </label>
                 {setupMissing && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>Lease budget, timing, needs and the email alert are used for searching now, and start saving after a one-time database update (ask an admin).</div>}
+                {anyDirty && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', background: 'var(--k-fdf6e8)', border: '1px solid #ecd9a8', borderRadius: 10, padding: '10px 12px' }}>
+                    <span style={{ fontSize: 13, color: 'var(--k-a8741a)', fontWeight: 600 }}>You have unsaved changes</span>
+                    <button onClick={saveReq} disabled={busy} style={{ padding: '8px 16px', minHeight: isMobile ? 44 : undefined, width: isMobile ? '100%' : undefined, borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save changes'}</button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -382,7 +412,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                 : 'Set criteria above to search'}
             </div>
             {hasCriteria && visible.length > 0 && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div style={isMobile ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, width: '100%' } : { display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button onClick={async () => {
                   const list = visible.slice(0, 25).map(r => r.property) as unknown as FilterableProperty[];
                   let ok = false;
@@ -393,35 +423,36 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                 </button>
                 {sel && (
                   <>
-                    <button onClick={() => (canMail ? setMail('agent') : onToast(dirty ? 'Save the criteria first — emails use what is saved' : setupMissing ? 'Emailing needs the one-time database update first' : 'Nothing to email yet'))} style={{ ...ghost, opacity: canMail ? 1 : .55 }}>✉️ Email me these</button>
-                    {sel.email && <button onClick={() => (canMail ? setMail('client') : onToast(dirty ? 'Save the criteria first — emails use what is saved' : setupMissing ? 'Emailing needs the one-time database update first' : 'Nothing to email yet'))} style={{ ...ghost, opacity: canMail ? 1 : .55, borderColor: '#c9922c', color: 'var(--k-a8741a)' }}>✉️ Email to {tenantFirst}</button>}
+                    <button onClick={() => (canMail ? setMail('agent') : onToast(critDirty ? 'Save the criteria first — emails use what is saved' : setupMissing ? 'Emailing needs the one-time database update first' : 'Nothing to email yet'))} style={{ ...ghost, opacity: canMail ? 1 : .55 }}>✉️ Email me these</button>
+                    {sel.email && <button onClick={() => (canMail ? setMail('client') : onToast(critDirty ? 'Save the criteria first — emails use what is saved' : setupMissing ? 'Emailing needs the one-time database update first' : 'Nothing to email yet'))} style={{ ...ghost, opacity: canMail ? 1 : .55, borderColor: '#c9922c', color: 'var(--k-a8741a)', ...(isMobile ? { gridColumn: '1 / -1' } : {}) }}>✉️ Email to {tenantFirst}</button>}
                   </>
                 )}
               </div>
             )}
           </div>
-          {sel && dirty && hasCriteria && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', margin: '-4px 0 10px' }}>You’ve changed the criteria — <b>Save criteria</b> to email these.</div>}
+          {sel && critDirty && hasCriteria && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', margin: '-4px 0 10px' }}>You’ve changed the criteria — <b>Save changes</b> to email these.</div>}
+          {hasCriteria && req.submarkets.length === 0 && visible.length > 40 && <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', margin: '-4px 0 10px' }}>Searching every area in your database — add a city, neighborhood or ZIP above to narrow it down.</div>}
           {sel && hiddenCount > 0 && (
             <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', margin: '-4px 0 10px' }}>
               {hiddenCount} marked “not a fit” for {tenantFirst} {showHidden ? 'shown below, dimmed' : 'hidden'} · <button onClick={() => setShowHidden(v => !v)} style={{ background: 'none', border: 'none', color: 'var(--k-a8741a)', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12.5, fontFamily: "'DM Sans',sans-serif" }}>{showHidden ? 'hide them' : 'show them'}</button>
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div ref={listRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {shown.slice(0, SHOW).map(r => {
               const p = r.property;
               const isHidden = dismissed.has(p.id);
               const tel = p.listing_agent_phone ? p.listing_agent_phone.replace(/[^\d+]/g, '') : '';
               const sent = emailed[p.id];
               return (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '11px 12px 11px 14px', opacity: isHidden ? .5 : 1 }}>
-                  <div style={{ flex: '1 1 300px', minWidth: 0 }}>
+                <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: wideRows ? 'nowrap' : 'wrap', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '11px 12px 11px 14px', opacity: isHidden ? .5 : 1 }}>
+                  <div style={{ flex: wideRows ? '1 1 0' : '1 1 100%', minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
                       <span style={fitStyle(r.fit)}>{FIT_LABEL[r.fit]}</span>
                       <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', padding: '2px 8px', borderRadius: 10 }}>{sourceLabel(p)}</span>
                       {sent && <span title={`Emailed ${sent.to === 'client' ? 'to the tenant' : 'to you'} ${new Date(sent.at).toLocaleDateString()}`} style={{ fontSize: 11, fontWeight: 600, color: 'var(--k-16a34a)' }}>✉ sent {sentWhen(sent.at)}</span>}
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap' }}>{p.address || p.name || 'Property'}{p.suite ? `, Suite ${p.suite}` : ''}</div>
-                    <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>{p.name && p.address && p.name !== p.address ? `${p.name} · ` : ''}{propertyLine(p)}</div>
+                    <div title={propertyTitle(p)} style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>{propertyTitle(p)}</div>
+                    <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>{p.address && displayName(p) ? `${displayName(p)} · ` : ''}{propertyLine(p)}</div>
                     {r.reasons.length > 0 && (
                       <div style={{ marginTop: 5, fontSize: 12, color: 'var(--k-374151)', lineHeight: 1.5 }}>
                         {r.reasons.slice(0, 3).map(w => <div key={w}><span style={{ color: 'var(--k-16a34a)', fontWeight: 700 }}>✓</span> {w}</div>)}
@@ -439,7 +470,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                       </div>
                     )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', marginTop: wideRows ? 0 : 2 }}>
                     {p.listing_url && <a href={p.listing_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, color: 'var(--k-6b7280)', textDecoration: 'none', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: isMobile ? '12px 14px' : '6px 12px', whiteSpace: 'nowrap' }}>View ↗</a>}
                     {/* Queueing a showing call needs somebody to show it TO. */}
                     {!sel
@@ -461,8 +492,8 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
             {!hasCriteria && (
               <div style={{ textAlign: 'center', padding: 50, color: 'var(--k-9ca3af)', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12 }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
-                <div style={{ fontSize: 15, fontWeight: 600 }}>Pick an asset type or a size to search {props.length.toLocaleString()} properties</div>
-                <div style={{ fontSize: 13, marginTop: 5 }}>Or choose a buyer on the left to load the criteria you saved for them.</div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>{sel ? `Tell the Matchmaker what ${tenantFirst} needs` : `Pick an asset type or a size to search ${props.length.toLocaleString()} properties`}</div>
+                <div style={{ fontSize: 13, marginTop: 5 }}>{sel ? 'Pick a property type or a size above, then save — it ranks your database and you can email the best matches.' : 'Or choose a buyer on the left to load the criteria you saved for them.'}</div>
               </div>
             )}
           </div>

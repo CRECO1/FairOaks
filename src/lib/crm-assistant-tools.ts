@@ -17,7 +17,7 @@ import { chicagoToday, chicagoDateUS } from '@/lib/chicago-time';
 import { detectSigningSpots, type PrepField } from '@/lib/esign-prep';
 import { searchTexasEntities, texasEntityDetail, containsPhrase } from '@/lib/texas-entity';
 import { loadCopilotPrefs, saveCopilotPrefs, PREF_MAX, PREF_MAX_CHARS } from '@/lib/copilot-prefs';
-import { criteriaFromRow, describeCriteria, FIT_LABEL, hasCriteria as needHasCriteria, matchProperties, propertyLine, sourceLabel, type MatchResult, type NeedCriteria } from '@/lib/matchmaker/match';
+import { criteriaFromRow, describeCriteria, displayName, FIT_LABEL, hasCriteria as needHasCriteria, matchProperties, propertyLine, propertyTitle, sourceLabel, type MatchResult, type NeedCriteria } from '@/lib/matchmaker/match';
 import { canAct, canSee, composeMatchEmail, deliverMatchEmail, loadCandidates, loadMatchState, loadTenant, tenantNames } from '@/lib/matchmaker/server';
 
 // token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
@@ -507,7 +507,7 @@ function needFromInput(i: Record<string, any>): NeedCriteria {
 const mmRow = (r: MatchResult) => {
   const p = r.property;
   return {
-    property_id: p.id, address: [p.address, p.suite ? `Suite ${p.suite}` : ''].filter(Boolean).join(', ') || p.name, name: p.name, summary: propertyLine(p),
+    property_id: p.id, address: propertyTitle(p), name: p.address ? displayName(p) || null : null, summary: propertyLine(p),
     fit: FIT_LABEL[r.fit], why: r.reasons.slice(0, 4), confirm: r.caveats.slice(0, 3), source: sourceLabel(p),
     link: p.listing_url || p.flyer_url || p.brochure_url || null, listed_by: [p.listing_company, p.listing_agent_name, p.listing_agent_phone].filter(Boolean).join(' · ') || null,
   };
@@ -2158,7 +2158,7 @@ async function describeWriteRichBase(name: string, input: Record<string, any>, c
         const ids = (Array.isArray(input.property_ids) ? input.property_ids : []).map(String).filter((x: string) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 20);
         const c = await composeMatchEmail(db, row, { brokerId: ctx.userId, audience, propertyIds: ids.length ? ids : undefined, note: typeof input.note === 'string' ? input.note.slice(0, 2000) : undefined });
         if ('error' in c) return `${describeWrite(name, input)}\n\n⚠️ ${c.error}`;
-        const list = c.results.map((r, i) => `${i + 1}. ${[r.property.address, r.property.suite ? `Suite ${r.property.suite}` : ''].filter(Boolean).join(', ') || r.property.name} — ${propertyLine(r.property)} (${FIT_LABEL[r.fit]})`).join('\n');
+        const list = c.results.map((r, i) => `${i + 1}. ${propertyTitle(r.property)} — ${propertyLine(r.property)} (${FIT_LABEL[r.fit]})`).join('\n');
         const note = typeof input.note === 'string' && input.note.trim() ? `\n\nYour note: ${input.note.trim().slice(0, 600)}` : '';
         return `${describeWrite(name, input)}\n\nTo: ${c.to ?? '— no address on file —'}\nSubject: ${c.email.subject}\n\n${list}${note}\n\nIt goes out only when you confirm.`;
       }

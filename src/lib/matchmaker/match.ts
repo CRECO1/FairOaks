@@ -143,8 +143,13 @@ function dealKinds(p: MatchProperty, pr: Pricing): { lease: boolean | null; sale
     const both = t.includes('both');
     return { lease: both || t.includes('lease'), sale: both || t.includes('sale') };
   }
-  const lease = pr.lease.low != null ? true : null;
-  const sale = pr.sale != null ? true : null;
+  // no listing type: the listing's own headline often says it ("Fully Leased Retail Building for Sale", "…Available For Lease")
+  const said = `${p.name ?? ''} ${p.address ?? ''}`.toLowerCase();
+  const saysSale = /\bfor sale\b/.test(said), saysLease = /\bfor (?:lease|rent)\b|\bsublease\b/.test(said);
+  const lease = pr.lease.low != null || saysLease ? true : null;
+  const sale = pr.sale != null || saysSale ? true : null;
+  if (saysSale && !saysLease && pr.lease.low == null) return { lease: false, sale: true };
+  if (saysLease && !saysSale && pr.sale == null) return { lease: true, sale: false };
   if (lease && !sale) return { lease: true, sale: false };
   if (sale && !lease) return { lease: false, sale: true };
   return { lease, sale };
@@ -227,6 +232,26 @@ function areaMatch(c: NeedCriteria, p: MatchProperty): 'exact' | 'city' | null {
     if (sub && (sub === w || sub.includes(w) || (w.length > 4 && w.includes(sub)))) return 'exact';
   }
   for (const w of wanted) if ((city && (city === w || city.includes(w))) || (county && county === w)) return 'city';
+  return null;
+}
+
+/**
+ * What a listing's NAME says it is, when the asset_type column does not (the Property DB files "Extra Space Storage" under Office).
+ * For a search that did not ask for that kind of space the listing is kept, flagged, and never ranked above "worth a look" — so a
+ * self-storage facility is not sent to a dental practice as a strong fit.
+ */
+const USE_HINTS: Array<{ re: RegExp; ask: RegExp; label: string; suits: string[] }> = [
+  { re: /\b(?:self|mini|personal|boat|rv)[ -]?(?:storage|warehouse)\b|\bextra space storage\b|\bpublic storage\b|\bcubesmart\b|\blife storage\b|\bstorage (?:units?|facility|center)\b|\bu-?haul\b/i, ask: /\bstorage\b|\bwarehouse\b/i, label: 'a storage facility', suits: ['industrial', 'flex', 'warehouse', 'land'] },
+  { re: /\b(?:gas station|c-?store|convenience store|truck stop|car ?wash)\b/i, ask: /\bgas\b|\bfuel\b|c-?store|convenience|truck stop|car ?wash/i, label: 'a gas station or car wash', suits: ['retail', 'land', 'mixed-use'] },
+];
+function unusualUse(c: NeedCriteria, p: MatchProperty, wantTypes: string[]): string | null {
+  if (!wantTypes.length) return null;
+  const said = `${p.name ?? ''} ${p.address ?? ''}`;
+  for (const h of USE_HINTS) {
+    if (!h.re.test(said)) continue;
+    if (h.suits.some(t => wantTypes.includes(t)) || h.ask.test(c.mustHaves)) return null;   // a tenant who wants that kind of space, or asked for it by name
+    return h.label;
+  }
   return null;
 }
 
@@ -362,6 +387,14 @@ export function matchProperties(c: NeedCriteria, props: MatchProperty[], opts: M
     if (p.listing_url) score += 2;
     if (p.listing_agent_name && p.listing_agent_phone) score += 2;
 
+    // the listing's own name says it is something else
+    const odd = unusualUse(c, p, wantTypes);
+    if (odd) {
+      const said = (p.name || p.address || '').trim();
+      caveats.unshift(`Named “${said.length > 40 ? `${said.slice(0, 38)}…` : said}” — looks like ${odd}; confirm it fits`);
+      score = Math.min(score, EMAIL_MIN_SCORE - 2);
+    }
+
     score = Math.max(0, Math.min(100, Math.round(score)));
     const fit: Fit = score >= 75 ? 'strong' : score >= EMAIL_MIN_SCORE ? 'good' : 'possible';
     const result: MatchResult = { property: p, score, fit, reasons, caveats };
@@ -400,6 +433,40 @@ export function describeCriteria(c: NeedCriteria): string {
 /** The ending that turns a name into a possessive: "Maria" → "’s", "Package Cues" → "’". */
 export function possessiveSuffix(name: string): string { return /s$/i.test(name.trim()) ? '’' : '’s'; }
 export function possessive(name: string): string { return `${name.trim()}${possessiveSuffix(name)}`; }
+
+// ─── how a listing is named ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+const ADDRESS_WORDS: Record<string, string> = { drive: 'dr', street: 'st', road: 'rd', avenue: 'ave', boulevard: 'blvd', parkway: 'pkwy', highway: 'hwy', lane: 'ln', court: 'ct', place: 'pl', circle: 'cir', north: 'n', south: 's', east: 'e', west: 'w', suite: 'ste' };
+const addressKey = (s?: string | null) => (s ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map(w => ADDRESS_WORDS[w] ?? w).join(' ');
+const SUITE_NAME = /^(?:suite|ste|unit)\b\.?\s*#?\s*([\w-]+)$/i;
+
+/** The suite, from the suite column or — as the Property DB sometimes has it — from a name that is just "Suite 500". */
+export function suiteOf(p: Pick<MatchProperty, 'suite' | 'name'>): string {
+  const s = String(p.suite ?? '').trim();
+  if (s) return s.replace(/^(?:suite|ste)\.?\s*#?\s*/i, '');
+  const m = SUITE_NAME.exec((p.name ?? '').trim());
+  return m ? m[1] : '';
+}
+
+/** The property's name when it adds something: not when it only repeats the address ("140 industrial dr Ste103") or is just a suite number. */
+export function displayName(p: Pick<MatchProperty, 'name' | 'address'>): string {
+  const name = (p.name ?? '').trim();
+  if (!name || SUITE_NAME.test(name)) return '';
+  const a = addressKey(p.address), n = addressKey(name);
+  if (!a) return name;
+  if (n === a || n.startsWith(`${a} `) || a.startsWith(`${n} `)) return '';
+  const na = n.split(' '), aa = a.split(' ');
+  if (/^\d/.test(na[0]) && na[0] === aa[0] && na[1] === aa[1]) return '';       // same street number and street, written differently
+  return name;
+}
+
+/** One line to call a listing by: "29620 W IH-10, Suite 204" — or its name when there is no address. */
+export function propertyTitle(p: Pick<MatchProperty, 'name' | 'address' | 'suite'>): string {
+  const suite = suiteOf(p);
+  // the name stands in for a missing address (a broker headline), unless the name is only a suite number
+  const base = p.address || (SUITE_NAME.test((p.name ?? '').trim()) ? '' : (p.name ?? '').trim());
+  return base ? (suite ? `${base}, Suite ${suite}` : base) : (suite ? `Suite ${suite}` : 'Property');
+}
 
 /** Which marketplace or channel a Property DB row came from, for a small label. */
 export function sourceLabel(p: Pick<MatchProperty, 'source' | 'listing_url'>): string {

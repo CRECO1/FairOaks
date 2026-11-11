@@ -10,7 +10,7 @@
  * Pure (no network, no environment): the caller passes the CRM link and the broker. Everything that came from a listing or a contact
  * is escaped, and only http(s) links are ever put in an href.
  */
-import { describeCriteria, FIT_LABEL, possessive, possessiveSuffix, propertyLine, sourceLabel, type Fit, type MatchResult, type NeedCriteria } from './match';
+import { describeCriteria, displayName, FIT_LABEL, possessive, possessiveSuffix, propertyLine, propertyTitle, sourceLabel, type Fit, type MatchResult, type NeedCriteria } from './match';
 
 export interface EmailBroker { name: string; email?: string | null; phone?: string | null; title?: string | null }
 export interface MatchEmailInput {
@@ -46,15 +46,17 @@ const FIT_STYLE: Record<Fit, { bg: string; fg: string; bar: string }> = {
 
 /** The age caveat repeats on nearly every row (most of the database is a few months old), so it is shown once, not per listing. */
 const isAgeCaveat = (c: string) => /^(Added|Last checked) .* ago — confirm/.test(c) || c === 'Availability not confirmed';
+/** The caveats are written for the broker; to a client "Couldn’t confirm: medical build-out" reads better as "To confirm: …". */
+const clientCaveat = (c: string) => c.replace(/^Couldn’t confirm: /, 'To confirm: ');
 
 function card(r: MatchResult, audience: 'agent' | 'client'): string {
   const p = r.property;
   const fit = FIT_STYLE[r.fit];
-  const title = [p.address, p.suite ? `Suite ${p.suite}` : ''].filter(Boolean).join(', ') || p.name || 'Property';
-  const sub = p.name && p.address && p.name !== p.address ? p.name : '';
+  const title = propertyTitle(p);
+  const sub = p.address ? displayName(p) : '';
   const listing = safeUrl(p.listing_url);
   const flyer = safeUrl(p.flyer_url) || safeUrl(p.brochure_url);
-  const caveats = r.caveats.filter(c => !isAgeCaveat(c)).slice(0, 3);
+  const caveats = r.caveats.filter(c => !isAgeCaveat(c)).slice(0, 3).map(c => (audience === 'client' ? clientCaveat(c) : c));
   const why = r.reasons.slice(0, 4);
   const by = [p.listing_company, p.listing_agent_name].filter(Boolean).join(' · ');
   const phone = p.listing_agent_phone ? String(p.listing_agent_phone) : '';
@@ -113,11 +115,11 @@ export function buildMatchEmail(i: MatchEmailInput): MatchEmail {
   const crmUrl = safeUrl(i.crmUrl);
   const cta = i.audience === 'agent'
     ? `<table cellpadding="0" cellspacing="0" role="presentation"><tr><td class="btn" style="background:${GOLD};border-radius:6px;padding:14px 26px;"><a href="${esc(crmUrl || 'https://www.fairoaksrealtygroup.com/crm/commercial')}" style="color:#1A1A1A;font-weight:700;text-decoration:none;font-size:16px;">Open Matchmaker</a></td></tr></table>
-       <p style="margin:18px 0 0;font-size:14.5px;color:#777;line-height:1.6;">To send these to ${esc(who)}, use <strong>Email to tenant</strong> in Matchmaker &mdash; you&rsquo;ll see the email first and it goes from your own Gmail.</p>`
+       <p style="margin:18px 0 0;font-size:14.5px;color:#777;line-height:1.6;">To send these to ${esc(who)}, use <strong>Email to ${esc(i.tenant.firstName || i.tenant.name)}</strong> in Matchmaker &mdash; you&rsquo;ll see the email first and it goes from your own Gmail.</p>`
     : `<p style="margin:0;font-size:16.9px;color:#555;line-height:1.68;">Want to tour any of these? Just reply to this email${i.broker.phone ? ` or call/text me at <a href="${esc(telHref(i.broker.phone))}" style="color:${GOLD};text-decoration:none;font-weight:700;">${esc(i.broker.phone)}</a>` : ''}, and I&rsquo;ll set it up.</p>`;
 
   const footer = i.audience === 'agent'
-    ? `<strong style="color:${GOLD};letter-spacing:.5px;">CRECO &mdash; Matchmaker alert</strong><br/>You&rsquo;re getting this because &ldquo;Email me new matches&rdquo; is on for ${esc(who)}. Turn it off any time in Matchmaker.<br/>Listings come from your Property DB (broker emails and marketplace alerts); confirm availability with the listing broker before you promise anything.`
+    ? `<strong style="color:${GOLD};letter-spacing:.5px;">CRECO &mdash; Matchmaker${i.isNew ? ' alert' : ''}</strong><br/>${i.isNew ? `You&rsquo;re getting this because &ldquo;Email me new matches&rdquo; is on for ${esc(who)}. Turn it off any time in Matchmaker.` : `You asked Matchmaker to email you a copy of these matches for ${esc(who)}. Nothing was sent to them.`}<br/>Listings come from your Property DB (broker emails and marketplace alerts); confirm availability with the listing broker before you promise anything.`
     : `<strong style="color:${GOLD};letter-spacing:.5px;">CRECO &mdash; Commercial Real Estate Company</strong><br/>Availability, pricing and terms come from public listings and broker emails and aren&rsquo;t guaranteed. I&rsquo;ll confirm the details with each listing broker before you tour.`;
 
   const html = `<!DOCTYPE html>
@@ -184,9 +186,9 @@ export function buildMatchEmail(i: MatchEmailInput): MatchEmail {
   if (crit) lines.push('', `Search: ${crit}`);
   for (const r of i.results) {
     const p = r.property;
-    lines.push('', `${[p.address, p.suite ? `Suite ${p.suite}` : ''].filter(Boolean).join(', ') || p.name || 'Property'} (${FIT_LABEL[r.fit]})`, propertyLine(p));
+    lines.push('', `${propertyTitle(p)} (${FIT_LABEL[r.fit]})`, propertyLine(p));
     for (const w of r.reasons.slice(0, 4)) lines.push(`  + ${w}`);
-    for (const c of r.caveats.filter(c => !isAgeCaveat(c)).slice(0, 3)) lines.push(`  ? ${c}`);
+    for (const c of r.caveats.filter(c => !isAgeCaveat(c)).slice(0, 3)) lines.push(`  ? ${i.audience === 'client' ? clientCaveat(c) : c}`);
     const l = safeUrl(p.listing_url); if (l) lines.push(`  ${l}`);
     const by = [p.listing_company, p.listing_agent_name, p.listing_agent_phone].filter(Boolean).join(' · '); if (by) lines.push(`  Listed by ${by}`);
   }

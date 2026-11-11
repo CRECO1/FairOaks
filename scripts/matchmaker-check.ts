@@ -4,7 +4,7 @@
  * Exits non-zero on the first failed expectation, so it can sit in front of a deploy like the other *-check scripts.
  */
 import assert from 'node:assert/strict';
-import { criteriaFromRow, describeCriteria, EMPTY_NEED, matchProperties, parseRate, possessive, propertyLine, type MatchProperty, type NeedCriteria } from '../src/lib/matchmaker/match';
+import { criteriaFromRow, describeCriteria, displayName, EMAIL_MIN_SCORE, EMPTY_NEED, matchProperties, parseRate, possessive, propertyLine, propertyTitle, suiteOf, type MatchProperty, type NeedCriteria } from '../src/lib/matchmaker/match';
 import { buildMatchEmail } from '../src/lib/matchmaker/email';
 
 const NOW = new Date('2026-11-11T12:00:00Z');
@@ -101,6 +101,52 @@ ok('the alert email says "Package Cues’ search", not "Cues’s"', () => {
   const broker = { name: 'Zachary Stovall', email: 'z@example.com', phone: '(210) 555-0100', title: 'Broker' };
   const e = buildMatchEmail({ audience: 'agent', broker, tenant: { name: 'Lloyd Pearson IV', firstName: 'Lloyd', business: 'Package Cues' }, criteria: need, results: res.slice(0, 1) });
   assert.ok(e.text.includes('Package Cues’ search')); assert.ok(e.html.includes('Package Cues</strong>&rsquo; search')); assert.ok(!/Cues(’|'|&rsquo;)s/.test(e.text + e.html));
+});
+
+// ── how a listing is named, and a name that says it is something else ───────────────────────────────────────────────────────────
+ok('names: one that only repeats the address is not shown twice', () => {
+  assert.equal(displayName({ name: '140 industrial dr Ste103', address: '140 Industrial Drive' }), '');
+  assert.equal(displayName({ name: '11630 South U.S Hwy 181', address: '11630 S U.S. Hwy 181' }), '');
+  assert.equal(displayName({ name: '116 N. Plant Ave.', address: '116 N. Plant Ave.' }), '');
+  assert.equal(displayName({ name: 'Fair Oaks Crossing', address: '29250 Old Fredericksburg Rd' }), 'Fair Oaks Crossing');
+});
+ok('names: "Suite 500" kept in the name column becomes the suite', () => {
+  assert.equal(displayName({ name: 'Suite 500', address: '15501 Ranch Rd 620 N' }), '');
+  assert.equal(suiteOf({ name: 'Suite 500' }), '500'); assert.equal(suiteOf({ suite: 'Suite 204', name: null }), '204');
+  assert.equal(propertyTitle({ address: '15501 Ranch Rd 620 N', name: 'Suite 500' }), '15501 Ranch Rd 620 N, Suite 500');
+  assert.equal(propertyTitle({ address: null, name: 'Boerne Personal Warehouse' }), 'Boerne Personal Warehouse');
+  assert.equal(propertyTitle({ address: null, name: '5,237 SF Flex Warehouse For Lease', suite: '204' }), '5,237 SF Flex Warehouse For Lease, Suite 204');   // a headline stands in for the address
+  assert.equal(propertyTitle({ address: null, name: 'Suite 500' }), 'Suite 500'); assert.equal(propertyTitle({ address: null, name: null }), 'Property');
+});
+ok('a storage facility filed under Office is not a strong fit for an office search', () => {
+  const r = matchProperties({ ...EMPTY_NEED, assetTypes: ['Office', 'Medical'], sizeMin: 2000, sizeMax: 4000 }, [P('s', { name: 'Extra Space Storage', asset_type: 'Office', available_sf: 3000, lease_rate_min: 20, photos: ['p.jpg'] }), P('o', { available_sf: 3000, lease_rate_min: 20 })], { now: NOW });
+  const s = r.find(x => x.property.id === 's')!;
+  assert.ok(s); assert.equal(s.fit, 'possible'); assert.ok(s.caveats[0].includes('looks like a storage facility')); assert.ok(s.score < EMAIL_MIN_SCORE); assert.equal(r[0].property.id, 'o');
+});
+ok('…but a tenant who wants storage / industrial space, or asks for it, still sees it normally', () => {
+  const sp = P('s', { name: 'Extra Space Storage', asset_type: 'Industrial', available_sf: 3000, lease_rate_min: 8 });
+  assert.ok(!matchProperties({ ...EMPTY_NEED, assetTypes: ['Industrial'], sizeMin: 2000, sizeMax: 4000 }, [sp], { now: NOW })[0].caveats.some(c => /storage facility/.test(c)));
+  assert.ok(!matchProperties({ ...EMPTY_NEED, assetTypes: ['Office'], mustHaves: 'storage' }, [{ ...sp, asset_type: 'Office' }], { now: NOW })[0].caveats.some(c => /storage facility/.test(c)));
+});
+ok('a headline that says "for sale" keeps a sale listing out of a lease search (and vice versa)', () => {
+  const sale = P('fs', { name: 'Fully Leased Retail Building for Sale', asset_type: 'Retail', listing_type: null, available_sf: 4000 });
+  const lease = P('fl', { name: '5,237 SF Warehouse Available For Lease', asset_type: 'Retail', listing_type: null, available_sf: 4000 });
+  const leaseSearch = matchProperties({ ...EMPTY_NEED, dealType: 'lease', assetTypes: ['Retail'], sizeMin: 3000, sizeMax: 5000 }, [sale, lease], { now: NOW });
+  assert.deepEqual(leaseSearch.map(r => r.property.id), ['fl']); assert.ok(!leaseSearch[0].caveats.includes('Not stated whether it is for lease'));
+  const saleSearch = matchProperties({ ...EMPTY_NEED, dealType: 'sale', assetTypes: ['Retail'], sizeMin: 3000, sizeMax: 5000 }, [sale, lease], { now: NOW });
+  assert.deepEqual(saleSearch.map(r => r.property.id), ['fs']);
+});
+const broker = { name: 'Zachary Stovall', email: 'z@example.com', phone: '(210) 555-0100', title: 'Broker' };
+ok('the broker copy says "Email to Lloyd", and only an alert claims the switch is on', () => {
+  const base = { audience: 'agent' as const, broker, tenant: { name: 'Lloyd Pearson IV', firstName: 'Lloyd', business: 'Package Cues' }, criteria: need, results: res.slice(0, 1) };
+  const copy = buildMatchEmail(base), alert = buildMatchEmail({ ...base, isNew: true });
+  assert.ok(copy.html.includes('<strong>Email to Lloyd</strong>')); assert.ok(copy.html.includes('You asked Matchmaker to email you a copy')); assert.ok(!copy.html.includes('Email me new matches'));
+  assert.ok(alert.html.includes('Email me new matches') && alert.html.includes('Matchmaker alert'));
+});
+ok('a client email says "To confirm: …", not the broker-facing "Couldn’t confirm"', () => {
+  const dt: NeedCriteria = { ...EMPTY_NEED, assetTypes: ['Retail'], mustHaves: 'drive-thru' };
+  const e = buildMatchEmail({ audience: 'client', broker, tenant: { name: 'Sam Ortega', firstName: 'Sam', business: null }, criteria: dt, results: matchProperties(dt, [P('dt', { asset_type: 'Retail', description: 'Inline space' })], { now: NOW }) });
+  assert.ok(e.html.includes('To confirm: drive-thru') && e.text.includes('To confirm: drive-thru')); assert.ok(!e.html.includes('Couldn’t confirm') && !e.text.includes('Couldn’t confirm'));
 });
 
 console.log(`\n${n} checks passed`);
