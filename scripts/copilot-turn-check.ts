@@ -110,6 +110,30 @@ function wellFormed(msgs: Anthropic.MessageParam[]): string | null {
     }
   }
 
+  // 3b. "My tasks" means mine: what I own or am assigned, as the dashboard counts it — never a task I only created for someone else.
+  {
+    const mineIds = async (ids: string[]) => {
+      if (!ids.length) return { own: 0, foreign: 0 };
+      const { data } = await db.from('crm_tasks').select('id, agent_id, assigned_to').in('id', ids);
+      const own = (data ?? []).filter(t => t.agent_id === ctx.userId || t.assigned_to === ctx.userId).length;
+      return { own, foreign: (data ?? []).length - own };
+    };
+    const mine = JSON.parse(await runTool('list_tasks', {}, ctx));
+    const m = await mineIds((mine.tasks as { id: string }[]).map(t => t.id));
+    check('list_tasks: every task in "mine" is owned by or assigned to me', m.foreign === 0 && (mine.tasks as { mine: boolean }[]).every(t => t.mine), `${mine.count} mine, ${mine.for_others?.count ?? 0} created for others ${JSON.stringify(mine.for_others?.by_person ?? {})}`);
+    const deleg = JSON.parse(await runTool('list_tasks', { scope: 'delegated' }, ctx));
+    const d = await mineIds((deleg.tasks as { id: string }[]).map(t => t.id));
+    check('list_tasks: "delegated" holds only other people\'s tasks, each with an owner name', d.own === 0 && (deleg.tasks as { owner: string }[]).every(t => t.owner && t.owner !== 'you'), `${deleg.count} delegated`);
+    // The dashboard's own number: open tasks I own, dated before today, not call-list calls.
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
+    const { data: dash } = await db.from('crm_tasks').select('id, type, description, notes, due_date').eq('agent_id', ctx.userId).is('completed_at', null).lt('due_date', today);
+    const dashOverdue = (dash ?? []).filter(t => !(t.type === 'call' && /(^|\n)From:\s*\S/.test(`${t.description ?? ''}\n${t.notes ?? ''}`))).length;
+    const od = JSON.parse(await runTool('list_tasks', { due: 'overdue' }, ctx));
+    check('list_tasks: my overdue count is the dashboard\'s overdue count', od.count === dashOverdue, `copilot ${od.count} vs dashboard rule ${dashOverdue}`);
+    const td = JSON.parse(await runTool('list_tasks', { due: 'today' }, ctx));
+    console.log(`     due today: ${td.count} mine; created for others: ${JSON.stringify(td.for_others?.by_person ?? {})}`);
+  }
+
   // 4. Confirming a write leaves its real result (and the new id) in the log, and the next turn uses it.
   if (process.env.CHECK_WRITES === '1') {
     const name = `ZZ Copilot Check ${Date.now().toString(36)} LLC`;

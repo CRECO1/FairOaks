@@ -502,8 +502,8 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Name, email, or business to search for' } }, required: ['query'] } },
   { name: 'get_contact', description: "Get a contact's full details — including type, tags, notes, contact info, and their deals — by contact id.",
     input_schema: { type: 'object', properties: { contact_id: { type: 'string' } }, required: ['contact_id'] } },
-  { name: 'list_tasks', description: 'List tasks. Defaults to open tasks assigned to the current agent. Use scope="all" to include the whole team, status="completed" or "all" to change status filter. Every task comes back with a `bucket` (overdue / today / this_week / upcoming / no_date, in Central time) and `kind` (task or call_list). Use `due` to ask for one bucket — "due this week" means due="this_week", which already includes today. Call-list calls are carried over, not overdue: they come back as bucket "call_list".',
-    input_schema: { type: 'object', properties: { status: { type: 'string', enum: ['open', 'completed', 'all'] }, scope: { type: 'string', enum: ['mine', 'all'] }, due: { type: 'string', enum: ['overdue', 'today', 'this_week', 'upcoming', 'call_list'], description: 'Only tasks in this bucket.' } } } },
+  { name: 'list_tasks', description: 'List tasks. Defaults to the agent\'s OWN open tasks — the ones they own or that are assigned to them, which is exactly what their dashboard counts. `count` and `tasks` are those only. Tasks the agent CREATED FOR SOMEONE ELSE (a call list handed to a teammate) are not theirs: they come back apart, as `for_others` (how many, and for whom) — never add them to the agent\'s own number. Use scope="delegated" to list those tasks themselves (each with its `owner`), scope="all" for the whole team (each with `owner` and `mine`), and status="completed" or "all" to change the status filter. Every task comes back with a `bucket` (overdue / today / this_week / upcoming / no_date, in Central time) and `kind` (task or call_list). Use `due` to ask for one bucket — "due this week" means due="this_week", which already includes today. Call-list calls are carried over, not overdue: they come back as bucket "call_list".',
+    input_schema: { type: 'object', properties: { status: { type: 'string', enum: ['open', 'completed', 'all'] }, scope: { type: 'string', enum: ['mine', 'delegated', 'all'], description: 'mine (default) = the agent\'s own; delegated = tasks they created for other people; all = the whole team' }, due: { type: 'string', enum: ['overdue', 'today', 'this_week', 'upcoming', 'call_list'], description: 'Only tasks in this bucket.' } } } },
   { name: 'list_deals', description: 'List deals, newest first. Optionally filter by stage. Returns client, property, value, and stage.',
     input_schema: { type: 'object', properties: { stage: { type: 'string', enum: DEAL_STAGES }, scope: { type: 'string', enum: ['mine', 'all'] } } } },
   { name: 'get_deal', description: "Get a deal's full details by id: stage, side we represent, the primary contact and every tagged contact (with type, email, phone and a role_hint for documents), the linked property record, and the documents already on the deal. Use it to cross-reference who is on the deal before preparing a document.",
@@ -917,16 +917,27 @@ async function runToolRaw(name: string, input: Record<string, any>, ctx: AgentCt
         if (status === 'open') q = q.is('completed_at', null);
         else if (status === 'completed') q = q.not('completed_at', 'is', null);
 
-        // Ownership is agent_id OR assigned_to OR created_by, for EVERY role.
-        // This used to filter admins on assigned_to alone, which is null on 52 of
-        // the 70 tasks in the book — so the copilot told an admin holding 34 open
-        // tasks that he had none. Telling someone their queue is empty when it
-        // isn't is worse than any other failure this tool can have.
-        if ((input.scope ?? 'mine') === 'mine' || ctx.role === 'agent') {
-          q = q.or(`agent_id.eq.${ctx.userId},assigned_to.eq.${ctx.userId},created_by.eq.${ctx.userId}`);
-        }
+        // What is pulled: every task tied to this person — owned (agent_id), assigned to them, or created by them — for
+        // EVERY role. (It once filtered admins on assigned_to alone, which is null on most tasks, and told an admin
+        // holding 34 open tasks that he had none.) What counts as THEIRS is narrower, and is decided below.
+        const scope: 'mine' | 'delegated' | 'all' = input.scope === 'all' || input.scope === 'delegated' ? input.scope : 'mine';
+        const wholeTeam = scope === 'all' && ctx.role !== 'agent';
+        if (!wholeTeam) q = q.or(`agent_id.eq.${ctx.userId},assigned_to.eq.${ctx.userId},created_by.eq.${ctx.userId}`);
         const { data, error } = await q;
         if (error) return j({ error: error.message });
+
+        // MINE = I own it or it is assigned to me. That is the dashboard's rule (it loads agent_id = me) plus the Tasks
+        // page's "mine" filter (assigned_to = me). A task I only CREATED — a call list handed to a teammate — is theirs:
+        // counting those told the broker "6 tasks due today" on a day his dashboard correctly said none.
+        const isMine = (t: { agent_id?: unknown; assigned_to?: unknown }) => t.agent_id === ctx.userId || t.assigned_to === ctx.userId;
+        const ownerId = (t: { agent_id?: unknown; assigned_to?: unknown }) => ((t.assigned_to ?? t.agent_id) as string | null) ?? null;
+        const otherIds = [...new Set((data ?? []).filter(t => !isMine(t)).map(ownerId).filter((x): x is string => !!x))];
+        const names = new Map<string, string>();
+        if (otherIds.length) {
+          const { data: people } = await db.from('crm_profiles').select('id, first_name, last_name').in('id', otherIds);
+          for (const p of people ?? []) names.set(p.id as string, (p.first_name as string | null)?.trim() || (p.last_name as string | null)?.trim() || 'a teammate');
+        }
+        const ownerName = (t: { agent_id?: unknown; assigned_to?: unknown }) => (isMine(t) ? 'you' : names.get(ownerId(t) ?? '') ?? 'unassigned');
 
         // Bucket in Central time (the office's day), the way the Tasks page does it. The model was
         // left to compare dates itself and called 10 of 12 tasks "due this week"; and call-list
@@ -940,12 +951,21 @@ async function runToolRaw(name: string, input: Record<string, any>, ctx: AgentCt
           const due = (t.due_date as string | null)?.slice(0, 10) ?? null;
           const listCall = t.type === 'call' && /(^|\n)From:\s*\S/.test(`${t.description ?? ''}\n${t.notes ?? ''}`);
           const bucket = listCall ? 'call_list' : !due ? 'no_date' : due < todayStr ? 'overdue' : due === todayStr ? 'today' : due <= weekEnd ? 'this_week' : 'upcoming';
-          const { description: _d, notes: _n, type: _t, ...rest } = t as Record<string, unknown>;
-          return { ...rest, due_date: due, bucket, kind: listCall ? 'call_list' : 'task' };
+          const { description: _d, notes: _n, type: _t, agent_id: _a, assigned_to: _as, ...rest } = t as Record<string, unknown>;
+          return { ...rest, due_date: due, bucket, kind: listCall ? 'call_list' : 'task', mine: isMine(t), owner: ownerName(t) };
         });
         const want = input.due as string | undefined;
-        const out = want ? rows.filter(r => want === 'this_week' ? (r.bucket === 'today' || r.bucket === 'this_week') : r.bucket === want) : rows;
-        return j({ today: todayStr, week_ends: weekEnd, count: out.length, tasks: out.slice(0, 40) });
+        const inWindow = want ? rows.filter(r => want === 'this_week' ? (r.bucket === 'today' || r.bucket === 'this_week') : r.bucket === want) : rows;
+        const others = inWindow.filter(r => !r.mine);
+        if (scope === 'all') return j({ today: todayStr, week_ends: weekEnd, count: inWindow.length, yours: inWindow.length - others.length, tasks: inWindow.slice(0, 40) });
+        if (scope === 'delegated') return j({ today: todayStr, week_ends: weekEnd, count: others.length, note: 'These are tasks the agent created for OTHER people — each one\'s `owner` is who has to do it. They are not the agent\'s own tasks.', tasks: others.slice(0, 40) });
+        const mine = inWindow.filter(r => r.mine);
+        const byPerson: Record<string, number> = {};
+        for (const r of others) byPerson[r.owner] = (byPerson[r.owner] ?? 0) + 1;
+        return j({
+          today: todayStr, week_ends: weekEnd, count: mine.length, tasks: mine.slice(0, 40),
+          ...(others.length ? { for_others: { count: others.length, by_person: byPerson, note: 'Tasks the agent created for other people that fall in the same window. They are NOT the agent\'s and are not in `count`. Answer with the agent\'s own number first, then mention these in one line (how many, and whose). List them only if asked — scope "delegated".' } } : {}),
+        });
       }
       case 'list_deals': {
         let q = db.from('crm_deals').select('id, client, property, value, stage, type, last_touch').order('created_at', { ascending: false }).limit(30);
