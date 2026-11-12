@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, hiddenDealIds, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { onDeal } from '@/lib/deal-access';
+import { dropWalledTasks } from '@/lib/task-walls';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   const db = adminClient();
   let dq = db.from('crm_deals').select('id, property, stage, type, last_touch, agent_id, assigned_agent_ids').eq('client_id', clientId);
-  let tq = db.from('crm_tasks').select('id, title, due_date, status, deal_id').eq('client_id', clientId).neq('status', 'done').is('completed_at', null);   // was neq('status','completed') — a value the table never holds, so finished tasks showed as upcoming
+  let tq = db.from('crm_tasks').select('id, title, due_date, status, deal_id, agent_id, assigned_to').eq('client_id', clientId).neq('status', 'done').is('completed_at', null);   // was neq('status','completed') — a value the table never holds, so finished tasks showed as upcoming
   if (!isAdminRole(ctx.role)) { dq = dq.eq('business_unit', ctx.businessUnit); tq = tq.eq('business_unit', ctx.businessUnit); }
   const [hidden, deals, tasks, acts] = await Promise.all([
     hiddenDealIds(ctx),
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
   const hide = new Set([...hidden, ...(deals.data ?? []).filter(d => !onDeal(ctx, d as { agent_id?: string | null; assigned_agent_ids?: string[] | null })).map(d => d.id as string)]);
   return NextResponse.json({
     deals: (deals.data ?? []).filter(d => !hide.has(d.id as string)).map(d => ({ id: d.id, property: d.property, stage: d.stage, type: d.type })),
-    tasks: (tasks.data ?? []).filter(t => !t.deal_id || !hide.has(t.deal_id as string)).map(t => ({ id: t.id, title: t.title, due: t.due_date })),
+    tasks: (await dropWalledTasks(db, ctx, tasks.data ?? [])).filter(t => !t.deal_id || !hide.has(t.deal_id as string)).map(t => ({ id: t.id, title: t.title, due: t.due_date })),   // minus a teammate's tasks the owner walled off from this person
     last: acts.data?.[0] ? { type: acts.data[0].type, note: String(acts.data[0].note ?? '').replace(/\s+/g, ' ').slice(0, 140), at: acts.data[0].created_at } : null,
   });
 }

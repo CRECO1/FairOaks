@@ -2,6 +2,7 @@ import { needsSecondFactor } from '@/lib/mfa';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { adminClient } from '@/lib/supabase-admin';
+import { taskWalled, walledTaskOwners } from '@/lib/task-walls';
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { createHash } from 'crypto';
@@ -270,7 +271,7 @@ export async function assertOwnsResource(
   opts: { ownerColumns?: string[]; requireOwner?: boolean } = {},
 ): Promise<Record<string, unknown> | null> {
   const { ownerColumns = [], requireOwner = false } = opts;
-  const extra = table === 'crm_deals' ? ['is_restricted', 'agent_id', 'assigned_agent_ids'] : table === 'crm_clients' ? ['lead_hold'] : [];
+  const extra = table === 'crm_deals' ? ['is_restricted', 'agent_id', 'assigned_agent_ids'] : table === 'crm_clients' ? ['lead_hold'] : table === 'crm_tasks' ? ['agent_id', 'assigned_to'] : [];
   const select = Array.from(new Set(['id', 'business_unit', ...ownerColumns, ...extra])).join(', ');
   const { data } = await adminClient().from(table).select(select).eq('id', id).maybeSingle();
   const row = data as Record<string, unknown> | null;
@@ -284,6 +285,8 @@ export async function assertOwnsResource(
   // applies to crm_deals itself. Being in the same workspace is not enough to reach a colleague's deal, its files or its forms.
   if (table === 'crm_deals' && !isAdminRole(ctx.role)
     && row.agent_id !== ctx.userId && !((row.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return null;
+  // A teammate's task the owner has walled off from this person (crm_task_walls) is not theirs to read or change — not even for an admin.
+  if (table === 'crm_tasks' && taskWalled(row as { agent_id?: string | null; assigned_to?: string | null }, await walledTaskOwners(adminClient(), ctx), ctx.userId)) return null;
   if (isAdminRole(ctx.role)) return row;
   if (row.business_unit !== ctx.businessUnit) return null;
   if (requireOwner && !ownerColumns.some(col => row[col] === ctx.userId)) return null;

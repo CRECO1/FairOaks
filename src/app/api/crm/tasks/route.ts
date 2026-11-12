@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { notifyAssignment, senderName } from '@/lib/notify';
 import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, dbError, hiddenDealIds, excludeHiddenDeals, heldClientIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { dropWalledTasks } from '@/lib/task-walls';
 import { validAssignee } from '@/lib/crm-assignee';
 import { normalizeStatus } from '@/lib/tasks-view';
 
@@ -31,7 +32,8 @@ export async function GET(req: NextRequest) {
   const { data, error } = await q;
   if (error) return dbError('api/crm/tasks', error);
   const heldTasks = await heldClientIds(ctx);   // tasks on a lead still on hold stay with the broker
-  return NextResponse.json({ tasks: heldTasks.size ? (data ?? []).filter(t => !t.client_id || !heldTasks.has(t.client_id as string)) : (data ?? []) });
+  const rows = await dropWalledTasks(supabase, ctx, data ?? []);   // a teammate's tasks the owner has walled off from this person (crm_task_walls) are not theirs to see, even for an admin
+  return NextResponse.json({ tasks: heldTasks.size ? rows.filter(t => !t.client_id || !heldTasks.has(t.client_id as string)) : rows });
 }
 
 export async function POST(req: NextRequest) {

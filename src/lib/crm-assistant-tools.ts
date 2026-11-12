@@ -19,6 +19,7 @@ import { searchTexasEntities, texasEntityDetail, containsPhrase } from '@/lib/te
 import { loadCopilotPrefs, saveCopilotPrefs, PREF_MAX, PREF_MAX_CHARS } from '@/lib/copilot-prefs';
 import { criteriaFromRow, describeCriteria, displayName, FIT_LABEL, hasCriteria as needHasCriteria, matchProperties, propertyLine, propertyTitle, sourceLabel, type MatchResult, type NeedCriteria } from '@/lib/matchmaker/match';
 import { canAct, canSee, composeMatchEmail, deliverMatchEmail, loadCandidates, loadMatchState, loadTenant, tenantNames } from '@/lib/matchmaker/server';
+import { dropWalledTasks, taskWalled, walledTaskOwners, type TaskLike } from '@/lib/task-walls';
 
 // token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
 // form-submissions) as the agent, so the copilot goes through the exact same auth, RBAC
@@ -338,6 +339,7 @@ async function outOfWorkspace(db: SupabaseClient, ctx: AgentCtx, table: string, 
   if (table === 'crm_tasks') {
     if (ctx.role === 'agent' && data.agent_id !== ctx.userId && data.assigned_to !== ctx.userId && data.created_by !== ctx.userId) return JSON.stringify({ error: "That task isn't yours" });
     if (data.deal_id && (await hiddenDeals(db, ctx)).includes(data.deal_id)) return nf();
+    if (taskWalled(data as TaskLike, await walledTaskOwners(db, ctx), ctx.userId)) return nf();   // a teammate's task the owner walled off from this person
   }
   return null;
 }
@@ -981,8 +983,9 @@ async function runToolRaw(name: string, input: Record<string, any>, ctx: AgentCt
         const scope: 'mine' | 'delegated' | 'all' = input.scope === 'all' || input.scope === 'delegated' ? input.scope : 'mine';
         const wholeTeam = scope === 'all' && ctx.role !== 'agent';
         if (!wholeTeam) q = q.or(`agent_id.eq.${ctx.userId},assigned_to.eq.${ctx.userId},created_by.eq.${ctx.userId}`);
-        const { data, error } = await q;
+        const { data: pulled, error } = await q;
         if (error) return j({ error: error.message });
+        const data = await dropWalledTasks(db, ctx, pulled ?? []);   // a teammate's tasks the owner walled off from this person never reach the model
 
         // MINE = I own it or it is assigned to me. That is the dashboard's rule (it loads agent_id = me) plus the Tasks
         // page's "mine" filter (assigned_to = me). A task I only CREATED — a call list handed to a teammate — is theirs:
