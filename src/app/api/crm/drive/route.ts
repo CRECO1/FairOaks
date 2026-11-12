@@ -97,12 +97,16 @@ export async function GET(req: NextRequest) {
   }
 
   if (view === 'trash') {
-    const [f, d, fl, fm] = await Promise.all([
-      userDb.from('crm_drive_folders').select(FOLDER_COLS).eq('business_unit', bu).not('trashed_at', 'is', null),
-      userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).not('trashed_at', 'is', null),
-      userDb.from('crm_drive_files').select(FILE_COLS).eq('business_unit', bu).not('trashed_at', 'is', null),
-      userDb.from('crm_drive_forms').select(FORM_LINK_COLS).eq('business_unit', bu).not('trashed_at', 'is', null),
-    ]);
+    // YOUR trash, as the screen promises ("Items you delete stay here…"). The read policies let everyone see every team item, so without this the
+    // trash was one shared bin: an admin (Brian) saw what Robert had thrown away. Only the account owner sees everyone's, so a teammate's slip can still
+    // be undone; an item someone else trashed that is yours shows up in your trash, not theirs.
+    const own = dc.isSuperAdmin ? null : dc.ctx.userId;
+    let fq = userDb.from('crm_drive_folders').select(FOLDER_COLS).eq('business_unit', bu).not('trashed_at', 'is', null);
+    let dq = userDb.from('crm_drive_docs').select(DOC_COLS).eq('business_unit', bu).not('trashed_at', 'is', null);
+    let lq = userDb.from('crm_drive_files').select(FILE_COLS).eq('business_unit', bu).not('trashed_at', 'is', null);
+    let mq = userDb.from('crm_drive_forms').select(FORM_LINK_COLS).eq('business_unit', bu).not('trashed_at', 'is', null);
+    if (own) { fq = fq.eq('created_by', own); dq = dq.eq('created_by', own); lq = lq.eq('created_by', own); mq = mq.eq('created_by', own); }
+    const [f, d, fl, fm] = await Promise.all([fq, dq, lq, mq]);
     if (f.error || d.error || fl.error) return NextResponse.json({ error: 'Could not load the trash' }, { status: 500 });
     const folders = (f.data ?? []) as DriveFolder[];
     const docs = (d.data ?? []) as DriveDoc[];
@@ -250,7 +254,7 @@ export async function POST(req: NextRequest) {
   } else if (isSheet) {
     // A sheet can start with live CRM tabs (one per requested feed), filled right away from the CRM.
     const wantedFeeds = (Array.isArray(body.feeds) ? body.feeds : []).filter(isFeed);
-    if (wantedFeeds.length && !(await feedsAllowed(wantedFeeds, dc))) return NextResponse.json({ error: 'That feed is private to its owner and the admins' }, { status: 403 });
+    if (wantedFeeds.length && !(await feedsAllowed(wantedFeeds, dc))) return NextResponse.json({ error: 'That live tracker is private to the person it belongs to' }, { status: 403 });
     if (wantedFeeds.length) {
       const ydoc = new YY.Doc();
       try {

@@ -20,14 +20,16 @@ export const FEEDS = {
   robert_activity: { name: 'Activity log', build: buildRobertActivity },
 } as const;
 export type FeedKey = keyof typeof FEEDS;
-// Outreach feeds hold one broker's sent mail, replies and send-later queue, read with the service key — so only that person or an
-// admin may build them. Everything else (contact + call feeds) is limited by the contacts the caller can already see.
+// Outreach feeds hold one person's sent mail, replies, calls and send-later queue, read with the service key — so only that person or the
+// account owner may build them. NOT every admin: Brian is an admin, and each person's tracker is private to them (his own sheet is shared with
+// him alone and he cannot open Robert's), so "admin" must not let him rebuild Robert's data in a sheet of his own. Everything else
+// (contact + call feeds) is limited by the contacts the caller can already see.
 const FEED_OWNER: Partial<Record<FeedKey, string>> = {
   robert_emails: 'robert@crecotx.com', robert_summary: 'robert@crecotx.com', robert_card_notes: 'robert@crecotx.com', robert_activity: 'robert@crecotx.com',
   brian_emails: 'brian@crecotx.com', brian_summary: 'brian@crecotx.com',
 };
 export async function feedsAllowed(keys: FeedKey[], dc: DriveContext): Promise<boolean> {
-  if (dc.isAdmin) return true;
+  if (dc.isSuperAdmin) return true;
   for (const k of keys) {
     const owner = FEED_OWNER[k]; if (!owner) continue;
     const { data } = await dc.admin.from('crm_profiles').select('id').ilike('email', owner).maybeSingle();

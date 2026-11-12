@@ -12,8 +12,8 @@ export async function GET(req: NextRequest) {
   if (!ctx) return unauthorized();
 
   const { searchParams } = req.nextUrl;
-  // Non-admins are pinned to their own workspace (the auto-stats below aggregate
-  // by business_unit only, so a client-supplied ?unit= would leak the other unit's counts).
+  // Non-admins are pinned to their own workspace (a client-supplied ?unit= must not
+  // reach into the other unit's numbers).
   const unit      = isAdminRole(ctx.role) ? toUnit(searchParams.get('unit')) : toUnit(ctx.businessUnit);
   const weekStart = searchParams.get('week_start');
   const allTime   = searchParams.get('all') === 'true';
@@ -50,11 +50,17 @@ export async function GET(req: NextRequest) {
     .lte('log_date', weekEnd);
 
   // ── Auto-stats from CRM ────────────────────────────────────────────────
+  // YOUR numbers, like the rest of this personal log. They used to count the whole workspace, so one person's "Overdue" showed everyone's tasks (Brian's
+  // included Robert's 33 call tasks) and every "New Records" total included the whole team's. Mine = the dashboard's rule: tasks I own or am assigned,
+  // contacts I own. (`agentId` is the signed-in user's own id, never client input, so it is safe inside the filter string.)
+  const mineTasks = `agent_id.eq.${agentId},assigned_to.eq.${agentId}`;
+
   // New contacts added each day this week
   const { data: newContacts } = await supabase
     .from('crm_clients')
     .select('created_at')
     .eq('business_unit', unit)
+    .eq('agent_id', agentId)
     .gte('created_at', weekStartUtc)
     .lt('created_at', weekEndUtc);
 
@@ -63,6 +69,7 @@ export async function GET(req: NextRequest) {
     .from('crm_tasks')
     .select('updated_at')
     .eq('business_unit', unit)
+    .or(mineTasks)
     .eq('status', 'done')
     .gte('updated_at', weekStartUtc)
     .lt('updated_at', weekEndUtc);
@@ -72,6 +79,7 @@ export async function GET(req: NextRequest) {
     .from('crm_tasks')
     .select('due_date')
     .eq('business_unit', unit)
+    .or(mineTasks)
     .neq('status', 'done')
     .gte('due_date', weekStart)
     .lte('due_date', weekEnd);

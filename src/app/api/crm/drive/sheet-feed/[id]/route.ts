@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => ({})) as { feeds?: unknown };
   const wanted = (Array.isArray(body.feeds) ? body.feeds : []).filter(isFeed);
   if (!wanted.length) return NextResponse.json({ error: 'No feed requested' }, { status: 400 });
-  if (!(await feedsAllowed(wanted, dc))) return NextResponse.json({ error: 'That feed is private to its owner and the admins' }, { status: 403 });
+  if (!(await feedsAllowed(wanted, dc))) return NextResponse.json({ error: 'That live tracker is private to the person it belongs to' }, { status: 403 });
   try {
     const feeds = await Promise.all(wanted.map(k => FEEDS[k].build(dc)));
     return NextResponse.json({ feeds, message: `Refreshed ${feeds.map(f => f.title).join(' and ')} from the CRM` });
