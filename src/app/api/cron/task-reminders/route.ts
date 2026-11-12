@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
       assignee:crm_profiles!assigned_to(id, first_name, last_name, email)
     `)
     .in('status', ['open', 'in_progress'])
+    .is('completed_at', null)   // finished in the Call Queue or Dashboard (stamp only) must not be nagged about
     .lte('due_date', todayStr)
     .not('due_date', 'is', null);
 

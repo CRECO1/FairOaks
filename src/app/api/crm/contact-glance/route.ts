@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
   const db = adminClient();
   let dq = db.from('crm_deals').select('id, property, stage, type, last_touch, agent_id, assigned_agent_ids').eq('client_id', clientId);
-  let tq = db.from('crm_tasks').select('id, title, due_date, status, deal_id').eq('client_id', clientId).neq('status', 'completed');
+  let tq = db.from('crm_tasks').select('id, title, due_date, status, deal_id').eq('client_id', clientId).neq('status', 'done').is('completed_at', null);   // was neq('status','completed') — a value the table never holds, so finished tasks showed as upcoming
   if (!isAdminRole(ctx.role)) { dq = dq.eq('business_unit', ctx.businessUnit); tq = tq.eq('business_unit', ctx.businessUnit); }
   const [hidden, deals, tasks, acts] = await Promise.all([
     hiddenDealIds(ctx),

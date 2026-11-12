@@ -3,6 +3,7 @@ import { notifyAssignment, senderName } from '@/lib/notify';
 import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, dbError, hiddenDealIds, excludeHiddenDeals, heldClientIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { validAssignee } from '@/lib/crm-assignee';
+import { normalizeStatus } from '@/lib/tasks-view';
 
 const VALID_UNITS = ['residential', 'commercial'] as const;
 type BusinessUnit = typeof VALID_UNITS[number];
@@ -45,13 +46,14 @@ export async function POST(req: NextRequest) {
   if (assigned_to && !(await validAssignee(String(assigned_to), ctx))) return NextResponse.json({ error: 'Invalid assigned_to' }, { status: 400 });
   if (!title) return NextResponse.json({ error: 'title required' }, { status: 400 });
   const supabase = adminClient();
+  const newStatus = normalizeStatus(status) ?? 'open';   // a task created straight into "Done" is stamped too, so every page agrees it is finished
   const { data, error } = await supabase.from('crm_tasks').insert({
     title, description, due_date: due_date || null, assigned_to: assigned_to || null,
     // agent_id = the person responsible; the Call Queue is scoped by agent_id, so
     // a 'call'/'follow_up' task must carry it to show up there.
     agent_id: assigned_to || ctx.userId,
     client_id: client_id || null, deal_id: deal_id || null, type: type || null,
-    priority: priority ?? 'normal', status: status || 'open',
+    priority: priority ?? 'normal', status: newStatus, completed_at: newStatus === 'done' ? new Date().toISOString() : null,
     business_unit: isAdminRole(ctx.role) ? toUnit(business_unit ?? null, toUnit(ctx.businessUnit)) : toUnit(ctx.businessUnit),
     created_by: ctx.userId,
   }).select().single();

@@ -11,6 +11,7 @@ import MfaChallenge from './MfaChallenge';
 import MfaSettings from './MfaSettings';
 import { needsSecondFactor, hasVerifiedFactor } from '@/lib/mfa';
 import { CRM_TOKENS_CSS } from '@/components/crm/crm-tokens-css';
+import { isDone } from '@/lib/tasks-view';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import EmailsSection, { type EmailsTab } from './EmailsSection';
 import type { ContactMatch } from './GmailMailbox';
@@ -288,7 +289,7 @@ const isListCall = (t: { type?: string | null; description?: string | null; note
 const overdueMine = (all: Task[], meId: string | null | undefined) =>
   all.filter(t => {
     const owner = (t as { assigned_to?: string; agent_id?: string }).assigned_to ?? (t as { agent_id?: string }).agent_id;
-    return t.status !== 'done' && t.due_date && t.due_date < today() && owner === meId && !isListCall(t as never);
+    return !isDone(t as never) && t.due_date && t.due_date < today() && owner === meId && !isListCall(t as never);
   }).length;
 
 function fmtPhone(v: string): string {
@@ -3234,6 +3235,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .select('*')
       .eq('agent_id', agent.id)
       .is('completed_at', null)
+      .neq('status', 'done')   // a task marked Done on the Tasks page is finished here too
       .order('due_date', { ascending: true });
     setAllTasks((data ?? []) as CRMTask[]);
   }
@@ -3246,6 +3248,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .select('*')
       .eq('agent_id', agentId)
       .is('completed_at', null)
+      .neq('status', 'done')
       .order('due_date', { ascending: true });
     setCallViewTasks((data ?? []) as CRMTask[]);
   }
@@ -3311,7 +3314,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function completeTask(taskId: string) {
     const task = allTasks.find(t => t.id === taskId);
     const now = new Date().toISOString();
-    await supabase.from('crm_tasks').update({ completed_at: now }).eq('id', taskId);
+    await supabase.from('crm_tasks').update({ completed_at: now, status: 'done' }).eq('id', taskId);
     setAllTasks(prev => prev.filter(t => t.id !== taskId));
     showToast('Task completed ✓');
     // Log a touch on the linked contact
@@ -3595,7 +3598,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             const cid = task.client_id;
             const hdr = { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) };
             if (undo.nextTaskId) await supabase.from('crm_tasks').delete().eq('id', undo.nextTaskId);
-            if (undo.taskId) await supabase.from('crm_tasks').update({ completed_at: null }).eq('id', undo.taskId);
+            if (undo.taskId) await supabase.from('crm_tasks').update({ completed_at: null, status: 'open' }).eq('id', undo.taskId);   // status too, or the Tasks page keeps showing it as done
             if (undo.cbId) {
               try {
                 await fetch(`/api/crm/calls?id=${undo.cbId}`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ handled: false, needs_follow_up: true, follow_up_due: undo.cbPrevDue ?? null }) });
@@ -4009,7 +4012,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     let cancelled = false;
     (async () => {
       const { data } = await supabase.from('crm_tasks').select('agent_id')
-        .is('completed_at', null).in('type', ['call', 'follow_up']).lte('due_date', today()).limit(5000);
+        .is('completed_at', null).neq('status', 'done').in('type', ['call', 'follow_up']).lte('due_date', today()).limit(5000);
       if (cancelled) return;
       const m: Record<string, number> = {};
       for (const r of data ?? []) if (r.agent_id) m[r.agent_id as string] = (m[r.agent_id as string] ?? 0) + 1;
@@ -8901,6 +8904,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 showToast={showToast}
                 onRefresh={loadTasks}
                 currentUserId={profile?.id}
+                onOpenContact={id => { const c = clients.find(x => x.id === id); if (c) { setPage('contacts'); setActiveClient(c); } else showToast('Contact is still loading — try again in a moment'); }}
                 onMention={(ids, message, taskId) => createMentionNotifications(ids, `@${profile?.first_name} ${message}`, 'task', taskId)}
                 onTaskComplete={task => {
                   if (task.client_id) {

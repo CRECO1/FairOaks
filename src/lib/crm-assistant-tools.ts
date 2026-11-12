@@ -968,11 +968,11 @@ async function runToolRaw(name: string, input: Record<string, any>, ctx: AgentCt
         q = notHidden(q, await hiddenDeals(db, ctx));
         const heldIds = await heldClientIds(db, ctx);
         if (heldIds.length) q = q.or(`client_id.is.null,client_id.not.in.(${heldIds.join(',')})`);
-        // "Open" is completed_at IS NULL, matching how the Tasks page itself
-        // decides. Filtering on status='open' silently hid in_progress tasks, and
-        // status='completed' matched nothing at all because the column holds
-        // 'done' — asking for completed tasks always returned an empty list.
-        if (status === 'open') q = q.is('completed_at', null);
+        // "Open" is neither stamped (completed_at) nor marked done, matching how the Tasks page itself
+        // decides (a task finished on either screen is finished everywhere). Filtering on status='open'
+        // silently hid in_progress tasks, and status='completed' matched nothing at all because the
+        // column holds 'done' — asking for completed tasks always returned an empty list.
+        if (status === 'open') q = q.is('completed_at', null).neq('status', 'done');
         else if (status === 'completed') q = q.not('completed_at', 'is', null);
 
         // What is pulled: every task tied to this person — owned (agent_id), assigned to them, or created by them — for
@@ -1081,7 +1081,7 @@ async function runToolRaw(name: string, input: Record<string, any>, ctx: AgentCt
       }
       case 'complete_task': {
         const bad = await outOfWorkspace(db, ctx, 'crm_tasks', input.task_id, 'Task'); if (bad) return bad;
-        const { error } = await db.from('crm_tasks').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', input.task_id);
+        const { error } = await db.from('crm_tasks').update({ status: 'done', completed_at: new Date().toISOString() }).eq('id', input.task_id);   // 'done' is what the Tasks page, Call Queue and digests understand
         if (error) return j({ error: error.message });
         await logCopilot(db, ctx, 'Completed a task');
         return j({ ok: true });

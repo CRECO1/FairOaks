@@ -347,7 +347,7 @@ export async function GET(req: NextRequest) {
         // They answered: settle the "remind me if no reply" tasks created before this message.
         if (!viaThread) {
         const sentMs = Number(msg.internalDate) || Date.now();
-        await db.from('crm_tasks').update({ completed_at: new Date().toISOString() })
+        await db.from('crm_tasks').update({ completed_at: new Date().toISOString(), status: 'done' })
           .eq('client_id', contact.id).is('completed_at', null).like('notes', 'Email follow-up%').lt('created_at', new Date(sentMs).toISOString());
         }
       }
