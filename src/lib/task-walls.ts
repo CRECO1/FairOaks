@@ -55,3 +55,15 @@ export async function dropWalledTasks<T extends TaskLike>(db: SupabaseClient, wh
   const owners = await walledTaskOwners(db, who);
   return owners.size ? rows.filter(t => !taskWalled(t, owners, who.userId)) : rows;
 }
+
+// ── Agents see only their own tasks ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// The database policy on crm_tasks already limits an `agent` to tasks tied to them. The Tasks routes read with the service key and bypass it, and
+// used to hand every agent the whole workspace's tasks (Robert or Ed could read Brian's and Zack's). A task is the agent's OWN when they own it
+// (agent_id) or are assigned to it (assigned_to) — the dashboard's rule and the Tasks page's "Mine". Admins are not limited here (the walls above
+// are what hide one person's tasks from an admin).
+
+/** PostgREST `or` filter that keeps only tasks the person owns or is assigned to. `userId` is the signed-in user's own id, never client input. */
+export const ownTasksFilter = (userId: string) => `agent_id.eq.${userId},assigned_to.eq.${userId}`;
+
+/** The same rule as a plain test, for in-memory lists and checks. */
+export const isOwnTask = (t: TaskLike, userId: string) => t.agent_id === userId || t.assigned_to === userId;

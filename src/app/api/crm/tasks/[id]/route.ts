@@ -4,12 +4,16 @@ import { adminClient } from '@/lib/supabase-admin';
 import { validAssignee } from '@/lib/crm-assignee';
 import { normalizeStatus, syncDone } from '@/lib/tasks-view';
 
+/** For an agent, a task is theirs when they own it or are assigned to it (admins pass the ownership check regardless). */
+const OWN_TASK = { ownerColumns: ['agent_id', 'assigned_to'], requireOwner: true };
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const { id } = await params;
-  // Tasks are shared across a workspace, so business_unit is the scope (admins bypass).
-  if (!(await assertOwnsResource('crm_tasks', id, ctx))) return notFound();
+  // An admin may change any task in the workspace (bar a teammate's they are walled off from); an agent only their own — owner or assignee. This route
+  // writes with the service key, so this check is the only gate: the database policy never sees the write.
+  if (!(await assertOwnsResource('crm_tasks', id, ctx, OWN_TASK))) return notFound();
 
   const body = await req.json().catch(() => null);
   if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
@@ -41,7 +45,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const { id } = await params;
-  if (!(await assertOwnsResource('crm_tasks', id, ctx))) return notFound();
+  if (!(await assertOwnsResource('crm_tasks', id, ctx, OWN_TASK))) return notFound();
 
   const supabase = adminClient();
   const { error } = await supabase.from('crm_tasks').delete().eq('id', id);

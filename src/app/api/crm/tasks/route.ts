@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { notifyAssignment, senderName } from '@/lib/notify';
 import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, dbError, hiddenDealIds, excludeHiddenDeals, heldClientIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { dropWalledTasks } from '@/lib/task-walls';
+import { dropWalledTasks, ownTasksFilter } from '@/lib/task-walls';
 import { validAssignee } from '@/lib/crm-assignee';
 import { normalizeStatus } from '@/lib/tasks-view';
 
@@ -28,6 +28,9 @@ export async function GET(req: NextRequest) {
   if (status !== 'all') q = q.eq('status', status);
   if (assignedTo) q = q.eq('assigned_to', assignedTo);
   if (clientId)   q = q.eq('client_id', clientId);
+  // An agent reads only their own tasks (owner or assignee) — what the database policy on crm_tasks says. This route reads with the service key, so it
+  // has to say it too: it used to hand every agent the whole workspace's tasks. Admins see the workspace (minus any walls, below).
+  if (!isAdminRole(ctx.role)) q = q.or(ownTasksFilter(ctx.userId));
   q = excludeHiddenDeals(q, await hiddenDealIds(ctx)); // tasks on private deals stay private
   const { data, error } = await q;
   if (error) return dbError('api/crm/tasks', error);

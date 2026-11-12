@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, hiddenDealIds, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { onDeal } from '@/lib/deal-access';
-import { dropWalledTasks } from '@/lib/task-walls';
+import { dropWalledTasks, ownTasksFilter } from '@/lib/task-walls';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   const db = adminClient();
   let dq = db.from('crm_deals').select('id, property, stage, type, last_touch, agent_id, assigned_agent_ids').eq('client_id', clientId);
   let tq = db.from('crm_tasks').select('id, title, due_date, status, deal_id, agent_id, assigned_to').eq('client_id', clientId).neq('status', 'done').is('completed_at', null);   // was neq('status','completed') — a value the table never holds, so finished tasks showed as upcoming
-  if (!isAdminRole(ctx.role)) { dq = dq.eq('business_unit', ctx.businessUnit); tq = tq.eq('business_unit', ctx.businessUnit); }
+  if (!isAdminRole(ctx.role)) { dq = dq.eq('business_unit', ctx.businessUnit); tq = tq.eq('business_unit', ctx.businessUnit).or(ownTasksFilter(ctx.userId)); }   // an agent sees only their own tasks on the contact
   const [hidden, deals, tasks, acts] = await Promise.all([
     hiddenDealIds(ctx),
     dq.order('created_at', { ascending: false }).limit(12),

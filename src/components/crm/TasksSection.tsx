@@ -710,7 +710,8 @@ export default function TasksSection({
 
   const profileById = useMemo(() => Object.fromEntries(profiles.map(p => [p.id, p])) as Record<string, Profile>, [profiles]);
   const clientById = useMemo(() => new Map(clients.map(c => [c.id, c] as const)), [clients]);
-  const whoEff = who === 'all' || who === 'none' ? who : who === 'me' ? (meId ? 'me' : 'all') : (profileById[who] ? who : (meId ? 'me' : 'all'));
+  // An agent only ever has their own tasks (the server sends nothing else), so there is nobody else to look at — whatever view was saved from before.
+  const whoEff = !isAdmin ? (meId ? 'me' : 'all') : who === 'all' || who === 'none' ? who : who === 'me' ? (meId ? 'me' : 'all') : (profileById[who] ? who : (meId ? 'me' : 'all'));
   const showOwner = whoEff === 'all';   // the owner's initials only tell you something when several people's tasks are mixed together
 
   // Finished tasks leave the page's flow: a stray "Task completed" note must still reach the contact if you navigate away inside the undo window.
@@ -1045,7 +1046,7 @@ export default function TasksSection({
             <div style={{ fontSize: 26, marginBottom: 6 }}>{filtersOn ? '🔍' : '✅'}</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', marginBottom: 4 }}>{filtersOn ? 'No tasks match' : (whoEff === 'me' ? 'You are all caught up' : 'Nothing here')}</div>
             <div style={{ fontSize: 12.5 }}>{filtersOn ? 'Try clearing a filter.' : 'Add a task above, or press N.'}</div>
-            {search.trim() && whoEff !== 'all' && (
+            {isAdmin && search.trim() && whoEff !== 'all' && (
               <button onClick={() => { setWho('all'); setFocus(''); }}
                 style={{ marginTop: 12, marginRight: 8, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-a8741a)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Search everyone&rsquo;s tasks</button>
             )}
@@ -1268,7 +1269,7 @@ export default function TasksSection({
             <button key={p.id} onClick={() => pickWho(p.id)} aria-pressed={whoEff === p.id} style={chip(whoEff === p.id)}>{p.first_name} {count(openByOwner.get(p.id) ?? 0, whoEff === p.id)}</button>
           ))}
           {isAdmin && unassignedCt > 0 && <button onClick={() => pickWho('none')} aria-pressed={whoEff === 'none'} style={chip(whoEff === 'none')}>Unassigned {count(unassignedCt, whoEff === 'none')}</button>}
-          <button onClick={() => pickWho('all')} aria-pressed={whoEff === 'all'} style={chip(whoEff === 'all')}>Everyone {count(openTotal, whoEff === 'all')}</button>
+          {isAdmin && <button onClick={() => pickWho('all')} aria-pressed={whoEff === 'all'} style={chip(whoEff === 'all')}>Everyone {count(openTotal, whoEff === 'all')}</button>}
         </div>
         {!isMobile && viewToggle}
         {!isMobile && newButton}

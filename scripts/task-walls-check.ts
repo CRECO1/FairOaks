@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { dropWalledTasks, taskWalled, walledTaskOwners } from '../src/lib/task-walls';
+import { dropWalledTasks, isOwnTask, ownTasksFilter, taskWalled, walledTaskOwners } from '../src/lib/task-walls';
 
 const ROBERT = 'robert', BRIAN = 'brian', ZACK = 'zack', ED = 'ed';
 const walls = new Set([ROBERT]);   // Brian is walled off from Robert
@@ -73,6 +73,17 @@ function fakeDb(rows: Array<{ hidden_owner: string; hidden_from: string }>, opts
     assert.deepEqual((await dropWalledTasks(fakeDb(rows).db, { userId: BRIAN, role: 'admin' }, list)).map(t => t.id), [2, 3, 5]));
   await ok("Zack's list is untouched", async () => assert.equal((await dropWalledTasks(fakeDb(rows).db, { userId: ZACK, role: 'super_admin' }, list)).length, 5));
   await ok("Robert's own list is untouched", async () => assert.equal((await dropWalledTasks(fakeDb(rows).db, { userId: ROBERT, role: 'agent' }, list)).length, 5));
+
+  // ── agents see only their own tasks (Robert, Ed) ──
+  await ok('a task filed under an agent is theirs', () => assert.equal(isOwnTask({ agent_id: ROBERT, assigned_to: null }, ROBERT), true));
+  await ok('a task assigned to an agent is theirs', () => assert.equal(isOwnTask({ agent_id: BRIAN, assigned_to: ROBERT }, ROBERT), true));
+  await ok("a colleague's task is not an agent's own", () => assert.equal(isOwnTask({ agent_id: BRIAN, assigned_to: BRIAN }, ROBERT), false));
+  await ok("Zack's task is not an agent's own", () => assert.equal(isOwnTask({ agent_id: ZACK, assigned_to: null }, ED), false));
+  await ok("a task nobody owns is not an agent's own", () => assert.equal(isOwnTask({ agent_id: null, assigned_to: null }, ROBERT), false));
+  await ok('having created a task for someone else does not make it your own', () => assert.equal(isOwnTask({ agent_id: ED, assigned_to: ED, created_by: ROBERT } as never, ROBERT), false));
+  await ok('the filter asks for owner or assignee and nothing else', () => assert.equal(ownTasksFilter('abc'), 'agent_id.eq.abc,assigned_to.eq.abc'));
+  await ok("Robert's list, cut to his own: his tasks (owned 1, 5; assigned 4), not Brian's 2 or Zack's 3", () => assert.deepEqual(list.filter(t => isOwnTask(t, ROBERT)).map(t => t.id), [1, 4, 5]));
+  await ok("Ed's list, cut to his own, is empty", () => assert.equal(list.filter(t => isOwnTask(t, ED)).length, 0));
 
   console.log(`\n${n} checks passed`);
 })().catch(e => { console.error('\nFAILED:', e.message); process.exit(1); });
