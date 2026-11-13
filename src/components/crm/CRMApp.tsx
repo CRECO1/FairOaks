@@ -1775,6 +1775,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Notification center
   const [showNotifications, setShowNotifications] = useState(false);
+  // Alerts already shown to this person in the bell panel. The badge counts only ones not yet seen, so opening the
+  // bell clears it (overdue tasks / new leads / birthdays / lease dates are state-based and can't be marked read).
+  const [seenAlerts, setSeenAlerts] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!profile?.id) return;
+    try { setSeenAlerts(new Set(JSON.parse(localStorage.getItem(`creco_seen_alerts_${profile.id}`) || '[]'))); } catch { /* storage blocked: badge just resets on reload */ }
+  }, [profile?.id]);
 
   // Mobile full menu sheet
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -5853,10 +5860,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             });
             // Old unread notifications stop counting after three weeks, so the bell number means "new".
             const unreadMentions = mentions.filter(n => !n.read_at && (now - new Date(n.created_at).getTime()) < 21 * 86400000);
-            const totalAlerts = overdueTasks.length + newLeads.length + upcomingBdays.length + lxpUrgent.length + unreadMentions.length;
+            const alertKeys = [
+              ...overdueTasks.map(t => `t:${t.id}`),
+              ...newLeads.map(c => `l:${c.id}`),
+              ...upcomingBdays.map(c => `b:${c.id}:${new Date().getFullYear()}`),
+              ...lxpUrgent.map(c => `x:${c.id}:${c.lease_expiration_date}`),
+              ...unreadMentions.map(n => `m:${n.id}`),
+            ];
+            const totalAlerts = alertKeys.filter(k => !seenAlerts.has(k)).length;
             return (
               <div style={{ position: 'relative' }}>
-                <button onClick={() => { setShowNotifications(n => !n); loadMentions(); }} title="Notifications"
+                <button onClick={() => {
+                  // Opening the panel counts as seeing everything in it (keep the last 500 keys so storage stays small).
+                  if (!showNotifications) {
+                    const merged = Array.from(new Set([...Array.from(seenAlerts), ...alertKeys])).slice(-500);
+                    setSeenAlerts(new Set(merged));
+                    try { if (profile?.id) localStorage.setItem(`creco_seen_alerts_${profile.id}`, JSON.stringify(merged)); } catch { /* ignore */ }
+                  }
+                  setShowNotifications(n => !n); loadMentions();
+                }} title="Notifications"
                   aria-label="Notifications" style={{ position: 'relative', width: compact ? 44 : 38, height: compact ? 44 : 38, flexShrink: 0, borderRadius: 8, border: compact ? `1px solid ${totalAlerts > 0 ? 'rgba(201,146,44,.6)' : 'rgba(255,255,255,.15)'}` : `1px solid ${totalAlerts > 0 ? 'var(--c-warn-line)' : 'var(--c-line)'}`, background: compact ? (showNotifications || totalAlerts > 0 ? 'rgba(201,146,44,.18)' : 'rgba(255,255,255,.1)') : (showNotifications ? 'var(--c-warn-soft)' : totalAlerts > 0 ? 'var(--c-warn-soft)' : 'var(--c-surface-2)'), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all .15s' }}>
                   <Ico n="bell" size={17} style={{ color: compact ? 'rgba(255,255,255,.85)' : 'var(--c-ink-2)' }} />
                   {totalAlerts > 0 && (
