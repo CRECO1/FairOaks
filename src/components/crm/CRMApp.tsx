@@ -11823,7 +11823,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 if (dp && !nums.some(n => n.num.replace(/\D/g, '').slice(-10) === dp.replace(/\D/g, '').slice(-10))) nums.push({ label: 'On the deal', num: dp });
                 if (!nums.some(n => n.num.trim())) return null;
                 return (
-                  <span style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', flexShrink: 0 }}>
+                  <span style={{ display: 'inline-flex', flexShrink: 0 }}>
                     <CallSplit variant="pill" isMobile={isMobile} numbers={nums}
                       mainStyle={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: isMobile ? 40 : 34, padding: '0 12px 0 14px', background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,.55)', fontSize: 13, fontWeight: 700, textDecoration: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
                       caretStyle={{ height: isMobile ? 40 : 34 }}

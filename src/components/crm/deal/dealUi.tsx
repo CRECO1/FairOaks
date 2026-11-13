@@ -139,8 +139,10 @@ export function DealCardStyles() {
         .dc-step button{font-size:10px;padding:8px 1px 10px}
         .dc-hq{display:none!important}
         .dc-stats{grid-template-columns:repeat(2,1fr)}
-        .dc-mbar{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#111;border-top:1px solid rgba(255,255,255,.12)}
-        .dc-mbar .dc-qa{flex:1;justify-content:center;padding:11px 6px}
+        .dc-mbar{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#111;border-top:1px solid rgba(255,255,255,.12);overflow-x:auto;scrollbar-width:none}
+        .dc-mbar::-webkit-scrollbar{display:none}
+        .dc-mbar .dc-qa{flex:1 0 auto;justify-content:center;padding:11px 9px}
+        .dc-mbar button.dc-qa svg{display:none}
         .dc-tab{padding:11px 12px;min-height:44px}
       }
       @media (prefers-reduced-motion:reduce){

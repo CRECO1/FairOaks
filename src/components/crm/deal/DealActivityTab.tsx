@@ -97,7 +97,7 @@ export default function DealActivityTab(p: DealActivityTabProps) {
       <div className="dc-card" ref={p.composerRef} style={{ marginBottom: 14 }}>
         <MentionTextarea
           className="crm-input" style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
-          placeholder="Add a note… (type @ to tag a teammate — they’ll be emailed — or a contact)"
+          placeholder="Add a note… (@ to tag — teammates get emailed)"
           profiles={p.profiles} contacts={p.clients} onCreateContact={p.createContactFromMention}
           value={note} onChange={setNote}
         />
