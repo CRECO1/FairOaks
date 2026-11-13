@@ -58,6 +58,8 @@ import CampaignEngagedPanel from '@/components/crm/CampaignEngagedPanel';
 import CampaignPreflight from '@/components/crm/CampaignPreflight';
 import CallTapPrompt from '@/components/crm/CallTapPrompt';
 import MentionTextarea, { parseMentionContactIds, parseMentionIds } from '@/components/crm/MentionTextarea';
+import DealActivityTab from '@/components/crm/deal/DealActivityTab';
+import { DealHeader, DealCardStyles, StatTiles, STAGE_PALETTE, DealTile, TileStyles, Icon, daysAgo } from '@/components/crm/deal/dealUi';
 import Ico, { type IcoName } from '@/components/crm/Ico';
 import PhoneAlerts from '@/components/crm/PhoneAlerts';
 import AlertsPrompt from '@/components/crm/AlertsPrompt';
@@ -787,6 +789,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <TileStyles />
         {STAGES.map(stage => {
           const col = STAGE_COLORS[stage];
           const stageDeals = deals.filter(d => d.stage === stage);
@@ -802,21 +805,9 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {stageDeals.map(deal => (
-                  <div key={deal.id} onClick={() => openDeal(deal)}
-                    style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderLeft: `3px solid ${col.dot}`, borderRadius: 10, padding: '11px 14px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--k-111)', marginBottom: 4 }}>{deal.is_restricted && <span title="Private deal" style={{ marginRight: 4 }}>🔒</span>}{deal.client}</div>
-                    {deal.property && <div style={{ fontSize: 13, color: 'var(--k-6b7280)', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.property}</div>}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ ...Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map((s: string) => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>
-                        {deal.type.split(' ')[0]}
-                      </span>
-                      {deal.value > 0 && <span title={valNote(deal.type)} style={{ fontSize: 13, color: 'var(--k-374151)', fontWeight: 700 }}>{fmtVal(deal)}</span>}
-                      {deal.earned_commission != null && deal.earned_commission > 0 && (
-                        <span style={{ fontSize: 11, color: 'var(--k-16a34a)', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
-                      )}
-                      {isAdmin && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginLeft: 'auto' }}>👤 {agentName(deal.agent_id)}</span>}
-                    </div>
-                  </div>
+                  <DealTile key={deal.id} deal={deal} ownerName={agentName(deal.agent_id)} showOwner={isAdmin} valueLabel={fmtVal(deal)}
+                    typeStyle={Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map((x: string) => x.split(':'))) as React.CSSProperties}
+                    onClick={() => openDeal(deal)} />
                 ))}
               </div>
             </div>
@@ -841,6 +832,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAGES.length}, minmax(236px, 1fr))`, gap: 14, overflowX: 'auto', paddingBottom: 8, alignItems: 'start' }}>
+      <TileStyles />
       {STAGES.map(stage => {
         const col = STAGE_COLORS[stage];
         const stageDeals = deals.filter(d => d.stage === stage);
@@ -879,53 +871,10 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
             {/* Cards */}
             <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 80 }}>
               {stageDeals.map(deal => (
-                <div
-                  key={deal.id}
-                  draggable
-                  onDragStart={() => setDraggedDealId(deal.id)}
-                  onDragEnd={() => { setDraggedDealId(null); setDragOverStage(null); }}
-                  onClick={() => openDeal(deal)}
-                  style={{
-                    background: 'var(--k-fff)',
-                    border: `1px solid ${draggedDealId === deal.id ? col.dot : 'var(--k-e5e7eb)'}`,
-                    borderRadius: 10,
-                    padding: '10px 12px',
-                    cursor: 'grab',
-                    opacity: draggedDealId === deal.id ? 0.5 : 1,
-                    boxShadow: '0 1px 3px rgba(0,0,0,.04)',
-                    transition: 'opacity 0.15s, box-shadow 0.15s',
-                    userSelect: 'none',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.12)')}
-                  onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,.04)')}
-                >
-                  <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--k-111)', marginBottom: 5, lineHeight: 1.35 }}>{deal.client}</div>
-                  {deal.property && (
-                    <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.property}</div>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ ...Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '1px 7px', borderRadius: 6, fontSize: 11, fontWeight: 600 } as React.CSSProperties}>
-                      {deal.type.split(' ')[0]}
-                    </span>
-                    {deal.value > 0 && (
-                      <span title={valNote(deal.type)} style={{ fontSize: 12, color: 'var(--k-374151)', fontWeight: 600 }}>{fmtVal(deal)}</span>
-                    )}
-                    {deal.earned_commission != null && deal.earned_commission > 0 && (
-                      <span style={{ fontSize: 11, color: 'var(--k-16a34a)', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
-                    )}
-                  </div>
-                  {(deal.tags ?? []).length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
-                      {(deal.tags ?? []).slice(0, 3).map(t => (
-                        <span key={t} style={{ background: 'var(--k-fef3c7)', color: 'var(--k-92400e)', padding: '1px 6px', borderRadius: 8, fontSize: 10.5, fontWeight: 600 }}>{t}</span>
-                      ))}
-                      {(deal.tags ?? []).length > 3 && <span style={{ fontSize: 10.5, color: 'var(--k-9ca3af)', fontWeight: 600 }}>+{(deal.tags ?? []).length - 3}</span>}
-                    </div>
-                  )}
-                  {isAdmin && (
-                    <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 5 }}>👤 {agentName(deal.agent_id)}</div>
-                  )}
-                </div>
+                <DealTile key={deal.id} deal={deal} ownerName={agentName(deal.agent_id)} showOwner={isAdmin} valueLabel={fmtVal(deal)}
+                  typeStyle={Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map((x: string) => x.split(':'))) as React.CSSProperties}
+                  dragging={draggedDealId === deal.id} onClick={() => openDeal(deal)}
+                  dragProps={{ draggable: true, onDragStart: () => setDraggedDealId(deal.id), onDragEnd: () => { setDraggedDealId(null); setDragOverStage(null); } }} />
               ))}
               {stageDeals.length === 0 && (isDragOver ? (
                 <div style={{ textAlign: 'center', padding: '26px 12px', color: col.dot, fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>Drop to move here</div>
@@ -1141,7 +1090,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
   // Form auto-fill review (LOIs). Opens before anything is created; Generate inside it files the draft.
   const [autofillDoc, setAutofillDoc] = useState<{ formId: string; name: string } | null>(null);
-  const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
+  const [dealTab, setDealTab] = useState<'overview' | 'activity' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
+  const dealComposerRef = useRef<HTMLDivElement>(null);
+  const [dealActivityKey, setDealActivityKey] = useState(0);
   const [dealCommission, setDealCommission] = useState<Commission | null>(null);
   const [commissionLoading, setCommissionLoading] = useState(false);
   const [commissionSaving, setCommissionSaving] = useState(false);
@@ -4311,6 +4262,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
   }
 
+  // Tag-a-teammate on a DEAL: the server writes the bell row, sends the phone alert AND emails them
+  // (no self-email, de-duped, honours crm_profiles.notify_email, private-deal aware).
+  function notifyTeammatesApi(entityType: 'deal' | 'contact', entityId: string, userIds: string[], kind: 'mention' | 'assignment', excerpt?: string) {
+    const ids = userIds.filter(id => id && id !== profile?.id);
+    if (!ids.length || !session?.access_token) return;
+    fetch('/api/crm/notify-assignment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ entity_type: entityType, entity_id: entityId, user_ids: ids, kind, excerpt }),
+    }).catch(() => {});
+  }
+
   // A tag in a property / suite / rent-roll note → bell notification for that teammate (once per person per property).
   const noteMention = (ids: string[], message: string, entityType: string, entityId?: string) =>
     createMentionNotifications(ids, `@${profile?.first_name} ${message}`, entityType, entityId);
@@ -4385,6 +4348,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const agentP = profiles.find(p => p.id === agentId);
     const label = agentP ? `${agentP.first_name} ${agentP.last_name}` : 'Agent';
     showToast(updated.includes(agentId) ? `${label} added to deal` : `${label} removed from deal`);
+    if (updated.includes(agentId)) notifyTeammatesApi('deal', dealId, [agentId], 'assignment');
   }
 
   // ── Client Import ─────────────────────────────────────────────────────────────
@@ -11843,34 +11807,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* ── Deal Modal ── (backdrop clicks deliberately don't close it: a stray click beside it, or a drag ending outside, lost the open deal; close with the X) */}
       {activeDeal && (
         <div className="overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ padding: isMobile ? (dealCompact ? '10px 14px' : '14px 14px 12px 18px') : '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flexWrap: isMobile ? 'wrap' : 'nowrap', borderRadius: '12px 12px 0 0' }}>
-              {isMobile ? (
-                <div style={{ flex: 1, minWidth: 0, order: 0 }}>
-                  <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: dealCompact ? 19 : 22, fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeDeal.client}</h3>
-                  {!dealCompact && <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', marginTop: 4, padding: '1px 8px', borderRadius: 4, fontSize: 11.5, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>}
-                </div>
-              ) : (
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeDeal.client}</h3>
-                  {/* The deal at a glance, so the card says what it is before you scroll */}
-                  <div style={{ marginTop: 3, fontSize: 12, color: 'rgba(255,255,255,.55)', display: 'flex', flexWrap: 'wrap', gap: '2px 14px' }}>
-                    {activeDeal.property && <span style={{ color: 'rgba(255,255,255,.8)' }}>{activeDeal.property}</span>}
-                    {Number(activeDeal.value) > 0 && <span><span style={{ color: 'rgba(255,255,255,.85)', fontWeight: 600 }}>${Math.round(Number(activeDeal.value)).toLocaleString('en-US')}</span> {isLease(activeDeal.type) ? 'lease value' : 'deal value'}</span>}
-                    {(() => { const o = profiles.find(pr => pr.id === activeDeal.agent_id); return o ? <span>Owner <span style={{ color: 'rgba(255,255,255,.85)', fontWeight: 600 }}>{o.first_name} {o.last_name}</span></span> : null; })()}
-                    {activeDeal.last_touch && <span>Last touch <span style={{ color: 'rgba(255,255,255,.85)', fontWeight: 600 }}>{(() => { const d = Math.floor((Date.now() - new Date(activeDeal.last_touch).getTime()) / 86400000); return d <= 0 ? 'today' : `${d}d ago`; })()}</span></span>}
-                  </div>
-                </div>
-              )}
-              {isMobile && !dealCompact && <div aria-hidden style={{ order: 2, flexBasis: '100%', height: 0 }} />}
-              {(() => {
+          <div className="modal dc-modal" onClick={e => e.stopPropagation()}>
+            <DealCardStyles />
+            <DealHeader
+              deal={activeDeal}
+              valueLabel={fmtVal(activeDeal)}
+              typeStyle={Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))) as React.CSSProperties}
+              profiles={profiles}
+              isAdmin={isAdmin}
+              compact={isMobile && dealCompact}
+              callSlot={(() => {
                 const dc = clients.find(x => x.id === activeDeal.client_id);
                 const nums = [{ label: 'Cell', num: dc?.cell_phone || '' }, { label: 'Business line', num: dc?.phone || '' }];
                 const dp = (activeDeal.client_phone || '').trim();
                 if (dp && !nums.some(n => n.num.replace(/\D/g, '').slice(-10) === dp.replace(/\D/g, '').slice(-10))) nums.push({ label: 'On the deal', num: dp });
                 if (!nums.some(n => n.num.trim())) return null;
                 return (
-                  <span style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', order: isMobile ? 3 : undefined, flexShrink: 0 }}>
+                  <span style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', flexShrink: 0 }}>
                     <CallSplit variant="pill" isMobile={isMobile} numbers={nums}
                       mainStyle={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: isMobile ? 40 : 34, padding: '0 12px 0 14px', background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,.55)', fontSize: 13, fontWeight: 700, textDecoration: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
                       caretStyle={{ height: isMobile ? 40 : 34 }}
@@ -11878,24 +11831,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </span>
                 );
               })()}
-              {gmailConnected && (
-                <button type="button" aria-label={`Email ${activeDeal.client}`} title={activeDeal.client_email ? `Email ${activeDeal.client_email}` : 'Write an email for this deal'}
-                  onClick={() => {
-                    setDealTab('emails'); setReplyToEmail(null);
-                    clearComposeBody(); resetComposeFiles();
-                    setComposeSubject(activeDeal.property ?? ''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
-                    setShowCompose(true);
-                    setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
-                  }}
-                  style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', order: isMobile ? 3 : undefined, alignItems: 'center', gap: 6, height: isMobile ? 40 : 34, padding: '0 14px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✉ Email</button>
-              )}
-              {(activeDeal.client_phone || clients.find(x => x.id === activeDeal.client_id)?.phone || clients.find(x => x.id === activeDeal.client_id)?.cell_phone) && (
-                <button type="button" aria-label={`Text ${activeDeal.client}`} title="Text from the office line" onClick={() => { setDealTextPhone(''); setDealTextOpen(o => !o); }}
-                  style={{ display: isMobile && dealCompact ? 'none' : 'inline-flex', order: isMobile ? 3 : undefined, alignItems: 'center', gap: 6, height: isMobile ? 40 : 34, padding: '0 14px', background: dealTextOpen ? '#fff' : 'transparent', color: dealTextOpen ? '#111' : '#fff', border: '1px solid rgba(255,255,255,.55)', borderRadius: 17, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>💬 Text</button>
-              )}
-              {!isMobile && <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>}
-              <button className="crm-icon-btn" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, ...(isMobile ? { order: 1, minWidth: 44, minHeight: 44 } : {}) }}>✕</button>
-            </div>
+              onClose={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }}
+              onEmail={() => {
+                if (!gmailConnected) { setDealTab('emails'); return; }
+                setDealTab('emails'); setReplyToEmail(null);
+                clearComposeBody(); resetComposeFiles();
+                setComposeSubject(activeDeal.property ?? ''); setComposeMoreTo(''); setComposeCc(''); setComposeBcc('');
+                setShowCompose(true);
+                setTimeout(() => document.getElementById('deal-compose')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+              }}
+              onText={(activeDeal.client_phone || clients.find(x => x.id === activeDeal.client_id)?.phone || clients.find(x => x.id === activeDeal.client_id)?.cell_phone) ? () => { setDealTextPhone(''); setDealTextOpen(o => !o); } : undefined}
+              textOpen={dealTextOpen}
+              onNote={() => { setDealTab('activity'); setTimeout(() => dealComposerRef.current?.querySelector('textarea')?.focus(), 80); }}
+              onMoveStage={async st => { await setStage(activeDeal, st); setDealActivityKey(k => k + 1); }}
+              onDelete={() => deleteDeal(activeDeal.id)}
+              onCopyLink={() => { navigator.clipboard?.writeText(`${window.location.origin}/crm/commercial?open=deal:${activeDeal.id}#deals`); showToast('Deal link copied'); }}
+              onOpenContact={() => { const c = clients.find(x => x.id === activeDeal.client_id); if (c) { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); setPage('contacts'); setActiveClient(c); } }}
+            />
             <div style={{ padding: isMobile ? '16px 18px' : '20px 26px', overflowY: 'auto', flex: 1 }}
               onScroll={isMobile ? (e => {
                 // Phones: once you scroll a long deal, fold the Email / Text / type row away so the content gets the screen.
@@ -11918,27 +11870,41 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     onSent={text => { if (activeDeal.client_id) logActivity(activeDeal.client_id, 'note', `💬 Texted from the office line: ${text.slice(0, 300)}`); }} />
                 );
               })()}
-              {/* Pipeline bar */}
-              <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--k-e5e7eb)', marginBottom: 18 }}>
-                {STAGES.map((s, i) => {
-                  const ci = STAGES.indexOf(activeDeal.stage);
-                  const cls = i < ci ? { background: '#1a1a1a', color: 'rgba(255,255,255,.75)' } : i === ci ? { background: '#c9922c', color: 'var(--k-111)', fontWeight: 700 } : { background: 'var(--k-f3f4f6)', color: 'var(--k-9ca3af)' };
-                  return <div key={s} onClick={() => setStage(activeDeal, s)} style={{ flex: 1, textAlign: 'center', padding: isMobile ? '12px 2px' : '9px 4px', whiteSpace: 'nowrap', fontSize: isMobile ? 11.5 : 12, fontWeight: 500, cursor: 'pointer', borderRight: i < STAGES.length - 1 ? '1px solid var(--k-e5e7eb)' : 'none', ...cls }}>{isMobile && s === 'In Contract' ? 'Contract' : s}</div>;
+              {/* Tabs */}
+              <div className="dc-tabs" role="tablist">
+                {([
+                  ['overview', 'Overview', 'flag'], ['activity', 'Activity', 'clock'], ['client', 'People', 'user'], ['emails', 'Email', 'mail'],
+                  ['docs', `Docs & Sign${dealDocs.length + dealForms.filter(f => f.url).length > 0 ? ` (${dealDocs.length + dealForms.filter(f => f.url).length})` : ''}`, 'note'],
+                  ['intel', 'Property Intel', 'tag'], ['commission', `Money${dealCommission ? ' ✓' : ''}`, 'dollar'],
+                ] as const).map(([t, label, ic]) => {
+                  const on = dealTab === t || (t === 'docs' && dealTab === 'esign');
+                  return (
+                    <button key={t} role="tab" aria-selected={on} className={`dc-tab${on ? ' on' : ''}`}
+                      onClick={() => { setDealTab(t); if (t === 'docs' && activeDeal) loadDealDocs(activeDeal.id); }}>
+                      <Icon name={ic} size={15} />{label}
+                    </button>
+                  );
                 })}
               </div>
-              {/* Tabs */}
-              <div className="crm-tabs-scroll" style={{ display: 'flex', borderBottom: '2px solid var(--k-f0ebe0)', marginBottom: 18, ...(isMobile ? { position: 'sticky', top: -16, zIndex: 3, background: 'var(--k-fff)' } : {}) }}>
-                {(['overview', 'client', 'emails', 'docs', 'esign', 'intel', 'commission'] as const).map(t => (
-                  <button key={t} onClick={() => { setDealTab(t); if (t === 'docs' && activeDeal) loadDealDocs(activeDeal.id); }}
-                    style={{ padding: isMobile ? '11px 14px' : '8px 14px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? 'var(--k-111)' : 'var(--k-6b7280)', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
-                    {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length + dealForms.filter(f => f.url).length > 0 ? ` (${dealDocs.length + dealForms.filter(f => f.url).length})` : ''}` : t === 'esign' ? 'E-Sign' : t === 'intel' ? 'Property Intel' : t === 'commission' ? `Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
-                  </button>
-                ))}
-              </div>
+
+              {/* Activity tab — unified timeline, dated notes, log a call, next step */}
+              {dealTab === 'activity' && (
+                <DealActivityTab
+                  deal={activeDeal} token={session?.access_token} profiles={profiles} clients={clients}
+                  composerRef={dealComposerRef} createContactFromMention={createContactFromMention} showToast={showToast}
+                  onTouched={() => updateDeal(activeDeal.id, {})} refreshKey={dealActivityKey}
+                />
+              )}
 
               {/* Overview tab */}
               {dealTab === 'overview' && (
                 <div>
+                  <StatTiles items={[
+                    { label: isLease(activeDeal.type) ? 'Gross lease value' : 'Deal value', value: Number(activeDeal.value) > 0 ? fmtVal(activeDeal) : '—' },
+                    { label: 'Billable', value: activeDeal.earned_commission ? `$${Number(activeDeal.earned_commission).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—', color: activeDeal.earned_commission ? '#15803d' : undefined },
+                    { label: 'Last touch', value: (() => { const d = daysAgo(activeDeal.last_touch); return d == null ? '—' : d === 0 ? 'Today' : `${d}d ago`; })(), color: (daysAgo(activeDeal.last_touch) ?? 0) > 14 ? '#b45309' : undefined },
+                    { label: 'Days open', value: String(daysAgo(activeDeal.created_at) ?? '—') },
+                  ]} />
                   <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Property</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.property} onBlur={e => updateDeal(activeDeal.id, { property: e.target.value })} /></div>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>{isLease(activeDeal.type) ? 'Gross Lease Value ($)' : 'Deal Value ($)'}</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.value} onBlur={e => updateDeal(activeDeal.id, { value: +e.target.value })} />{Number(activeDeal.value) >= 1000 && <div style={{ marginTop: 3, fontSize: 12, color: 'var(--k-9ca3af)' }}>${Math.round(Number(activeDeal.value)).toLocaleString('en-US')}</div>}</div>
@@ -12005,7 +11971,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     )}
                     <div style={{ gridColumn: '1/-1' }}>
-                      <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Notes</label>
+                      <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Summary notes <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--k-9ca3af)' }}>— dated, authored notes live on the Activity tab</span></label>
                       <div style={{ marginTop: 4 }}>
                         <MentionTextarea
                           className="crm-input"
@@ -12027,7 +11993,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             // Notify once, on save, and only people newly @mentioned — it used to fire on every keystroke.
                             const already = new Set(parseMentionIds(activeDeal.notes ?? '', profiles));
                             const fresh = parseMentionIds(dealNotesText, profiles).filter(id => !already.has(id));
-                            if (fresh.length) createMentionNotifications(fresh, `@${profile?.first_name} mentioned you in notes for deal: ${activeDeal.property || activeDeal.client}`, 'deal', activeDeal.id);
+                            if (fresh.length) notifyTeammatesApi('deal', activeDeal.id, fresh, 'mention', dealNotesText);
                             updateDeal(activeDeal.id, { notes: dealNotesText, tagged_contact_ids: tagged });
                             setActiveDeal(prev => prev ? { ...prev, notes: dealNotesText, tagged_contact_ids: tagged } : prev);
                             showToast(tagged.length ? `Notes saved ✓ · ${tagged.length} contact${tagged.length > 1 ? 's' : ''} tagged` : 'Notes saved ✓');
@@ -12065,6 +12031,51 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   )}
 
+                  <div style={{ marginTop: 16, fontSize: 12.5, color: 'var(--k-9ca3af)' }}>{(() => { const f = (iso?: string | null) => { const d = iso ? new Date(`${iso.slice(0, 10)}T12:00:00`) : null; return d && !isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'; }; return `Created ${f(activeDeal.created_at)} · last touch ${f(activeDeal.last_touch)}`; })()}</div>
+                  {isAdmin && <div style={{ marginTop: 22, paddingTop: 14, borderTop: '1px solid var(--k-f0f0f0)', textAlign: 'right' }}><button onClick={() => deleteDeal(activeDeal.id)} style={{ background: 'none', color: 'var(--k-991b1b)', border: '1px solid var(--k-fca5a5)', borderRadius: 6, padding: '5px 12px', fontSize: 12.5, cursor: 'pointer', minHeight: isMobile ? 40 : undefined }}>Delete deal</button></div>}
+                </div>
+              )}
+
+              {/* Client tab */}
+              {dealTab === 'client' && (
+                <div>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+                  {/* Linked contact — this is what files the deal on a contact card.
+                      Editing "Client Name" below only retitles the deal; re-point it here. */}
+                  <div style={{ gridColumn: '1/-1' }}>
+                    <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Linked Contact — shows this deal on their card</label>
+                    <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.client_id ?? ''}
+                      onChange={e => {
+                        const chosen = clients.find(x => x.id === e.target.value);
+                        if (!chosen) { updateDeal(activeDeal.id, { client_id: undefined }); return; }
+                        updateDeal(activeDeal.id, {
+                          client_id: chosen.id,
+                          client: `${chosen.first_name} ${chosen.last_name}`.replace(/\s+/g, ' ').trim(),
+                          client_email: chosen.email,
+                          client_phone: chosen.phone,
+                        });
+                        showToast(`Deal filed under ${chosen.first_name} ${chosen.last_name}`.replace(/\s+/g, ' '));
+                      }}>
+                      <option value="">— Not linked to a contact —</option>
+                      {clients.map(x => (
+                        <option key={x.id} value={x.id}>
+                          {`${x.first_name} ${x.last_name}`.replace(/\s+/g, ' ').trim()} · {x.type}{x.email ? ` · ${x.email}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {!activeDeal.client_id && (
+                      <div style={{ marginTop: 5, fontSize: 12, color: 'var(--k-c2410c)' }}>⚠️ Not linked — this deal won&apos;t appear on any contact card.</div>
+                    )}
+                  </div>
+                  <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Client Name</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.client} onBlur={e => updateDeal(activeDeal.id, { client: e.target.value })} /></div>
+                  <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Email</label><input className="crm-input" type="email" style={{ marginTop: 4 }} defaultValue={activeDeal.client_email} onBlur={e => updateDeal(activeDeal.id, { client_email: e.target.value })} /></div>
+                  <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Phone</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.client_phone} onBlur={e => updateDeal(activeDeal.id, { client_phone: e.target.value })} /></div>
+                  <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Deal Type</label>
+                    <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.type} onChange={e => updateDeal(activeDeal.id, { type: e.target.value })}>
+                      {DEAL_TYPES.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                </div>
                   {/* ── Agent Tags ── */}
                   <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--k-f0f0f0)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -12145,56 +12156,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {isSuperAdmin && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
                         <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Deal Owner</label>
-                        <select className="crm-input" style={{ maxWidth: 220 }} value={activeDeal.agent_id} onChange={e => updateDeal(activeDeal.id, { agent_id: e.target.value })}>
+                        <select className="crm-input" style={{ maxWidth: 220 }} value={activeDeal.agent_id} onChange={e => { const nid = e.target.value; const changed = nid !== activeDeal.agent_id; updateDeal(activeDeal.id, { agent_id: nid }); if (changed) notifyTeammatesApi('deal', activeDeal.id, [nid], 'assignment'); }}>
                           {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
                         </select>
                       </div>
                     )}
                   </div>
 
-                  <div style={{ marginTop: 16, fontSize: 12.5, color: 'var(--k-9ca3af)' }}>{(() => { const f = (iso?: string | null) => { const d = iso ? new Date(`${iso.slice(0, 10)}T12:00:00`) : null; return d && !isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'; }; return `Created ${f(activeDeal.created_at)} · last touch ${f(activeDeal.last_touch)}`; })()}</div>
-                  {isAdmin && <div style={{ marginTop: 22, paddingTop: 14, borderTop: '1px solid var(--k-f0f0f0)', textAlign: 'right' }}><button onClick={() => deleteDeal(activeDeal.id)} style={{ background: 'none', color: 'var(--k-991b1b)', border: '1px solid var(--k-fca5a5)', borderRadius: 6, padding: '5px 12px', fontSize: 12.5, cursor: 'pointer', minHeight: isMobile ? 40 : undefined }}>Delete deal</button></div>}
-                </div>
-              )}
-
-              {/* Client tab */}
-              {dealTab === 'client' && (
-                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
-                  {/* Linked contact — this is what files the deal on a contact card.
-                      Editing "Client Name" below only retitles the deal; re-point it here. */}
-                  <div style={{ gridColumn: '1/-1' }}>
-                    <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Linked Contact — shows this deal on their card</label>
-                    <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.client_id ?? ''}
-                      onChange={e => {
-                        const chosen = clients.find(x => x.id === e.target.value);
-                        if (!chosen) { updateDeal(activeDeal.id, { client_id: undefined }); return; }
-                        updateDeal(activeDeal.id, {
-                          client_id: chosen.id,
-                          client: `${chosen.first_name} ${chosen.last_name}`.replace(/\s+/g, ' ').trim(),
-                          client_email: chosen.email,
-                          client_phone: chosen.phone,
-                        });
-                        showToast(`Deal filed under ${chosen.first_name} ${chosen.last_name}`.replace(/\s+/g, ' '));
-                      }}>
-                      <option value="">— Not linked to a contact —</option>
-                      {clients.map(x => (
-                        <option key={x.id} value={x.id}>
-                          {`${x.first_name} ${x.last_name}`.replace(/\s+/g, ' ').trim()} · {x.type}{x.email ? ` · ${x.email}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {!activeDeal.client_id && (
-                      <div style={{ marginTop: 5, fontSize: 12, color: 'var(--k-c2410c)' }}>⚠️ Not linked — this deal won&apos;t appear on any contact card.</div>
-                    )}
-                  </div>
-                  <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Client Name</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.client} onBlur={e => updateDeal(activeDeal.id, { client: e.target.value })} /></div>
-                  <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Email</label><input className="crm-input" type="email" style={{ marginTop: 4 }} defaultValue={activeDeal.client_email} onBlur={e => updateDeal(activeDeal.id, { client_email: e.target.value })} /></div>
-                  <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Phone</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.client_phone} onBlur={e => updateDeal(activeDeal.id, { client_phone: e.target.value })} /></div>
-                  <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Deal Type</label>
-                    <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.type} onChange={e => updateDeal(activeDeal.id, { type: e.target.value })}>
-                      {DEAL_TYPES.map(t => <option key={t}>{t}</option>)}
-                    </select>
-                  </div>
                 </div>
               )}
 
@@ -12401,6 +12369,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Docs tab */}
               {dealTab === 'docs' && (
                 <div>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+                    <button className={`dc-chip${true ? ' on' : ''}`} onClick={() => setDealTab('docs')}>Documents &amp; forms</button>
+                    <button className={`dc-chip${false ? ' on' : ''}`} onClick={() => setDealTab('esign')}>✍️ E-Sign</button>
+                  </div>
                   {/* CRM Forms (Transaction Docs) tied to this deal */}
                   <div style={{ marginBottom: 22 }}>
                     <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 }}>CRM Forms{dealForms.length > 0 ? ` · ${dealForms.length}` : ''}</div>
@@ -12670,6 +12642,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* ── E-Sign tab ── */}
               {dealTab === 'esign' && (
                 <div style={{ padding: '4px 2px' }}>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+                    <button className={`dc-chip${false ? ' on' : ''}`} onClick={() => setDealTab('docs')}>Documents &amp; forms</button>
+                    <button className={`dc-chip${true ? ' on' : ''}`} onClick={() => setDealTab('esign')}>✍️ E-Sign</button>
+                  </div>
                   <EsignPanel
                     dealId={activeDeal.id}
                     isSuperAdmin={isSuperAdmin}
