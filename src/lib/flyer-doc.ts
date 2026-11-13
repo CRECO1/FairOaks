@@ -69,6 +69,9 @@ export interface FlyerInput {
   // Page-2 block headings, when the defaults don't describe the image (e.g. a site plan
   // supplied as the "floor plan", or a suite plan in the aerial slot).
   titles?: { photos?: string; floorPlan?: string; siteAerial?: string } | null;
+  // Opt-in: when there are photos AND a floor plan / map, give the photos a page-2 of their own
+  // (full page, bigger) and move the floor plan + map to a page 3. Absent = everything shares page 2.
+  splitPages?: boolean;
   // Property sub-brand (e.g. Elkhorn Point's campaign-email look): a two-tone wordmark
   // and headline over a darkened cover, in the brand's own gold. Absent = CRECO default.
   brand?: {
@@ -182,10 +185,12 @@ function drawMapLabels(page: PDFPage, r: Rect, img: PDFImage, labels: FlyerInput
  * 470pt, the map the remaining column); three put the gallery left and the plan + map stacked right. A hand-made
  * site aerial has its own aspect, so the default stands there.
  */
-export function areaMapAspect(o: { gallery: number; trade: boolean; floorAspect: number; siteAerial: boolean }): number {
+export function areaMapAspect(o: { gallery: number; trade: boolean; floorAspect: number; siteAerial: boolean; split?: boolean }): number {
   const DEFAULT = 540 / 700;
   if (o.siteAerial) return DEFAULT;
   const AW = W - 56, G = 16, CAP = 30, AH = 444, IH = AH - CAP;
+  // splitPages: the photos sit on their own page, so the map only shares its page with the floor plan.
+  if (o.split && o.gallery) o = { ...o, gallery: 0 };
   const n = (o.gallery ? 1 : 0) + (o.floorAspect > 0 ? 1 : 0) + 1;
   let wMap: number, hMap: number;
   if (n === 1) { wMap = AW; hMap = IH; }
@@ -406,29 +411,32 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     return r;
   } });
 
-  if (visuals.length) {
+  // splitPages: photos get their own page; the floor plan + map follow on the next one.
+  const splitOn = !!input.splitPages && gallery.length > 0 && visuals.length > 1;
+  const groups = splitOn ? [visuals.filter(v => v.kind === 'gallery'), visuals.filter(v => v.kind !== 'gallery')] : [visuals];
+  for (const group of groups) if (group.length) {
     p2 = pdf.addPage([W, H]);
     p2.drawRectangle({ x: 0, y: 0, width: W, height: H, color: WHITE });
-    drawHeader(p2, visuals.map(v => v.title).join(' · '));
+    drawHeader(p2, group.map(v => v.title).join(' · '));
     const top = H - HEAD_H - 16, areaH = top - (FOOT_H + 18), areaW = W - 2 * M, CAP = 30, G = 16;
     // Each visual is drawn in a box CAP shorter than its slot; the dark caption bar sits right under what was drawn.
-    const place = (v: (typeof visuals)[number], x: number, w: number, yTop: number, h: number) => {
+    const place = (v: (typeof group)[number], x: number, w: number, yTop: number, h: number) => {
       const r = v.draw(x, yTop - (h - CAP), w, h - CAP);
       if (r.w <= 0) return;
       p2!.drawRectangle({ x: r.x, y: r.y - CAP, width: r.w, height: CAP, color: BLACK });
       drawSpaced(p2!, sanitize(v.title).toUpperCase(), r.x + 14, r.y - CAP + 11, 10, body, gold, 2.6);
     };
-    if (visuals.length === 1) place(visuals[0], M, areaW, top, areaH);
-    else if (visuals.length === 2) {
+    if (group.length === 1) place(group[0], M, areaW, top, areaH);
+    else if (group.length === 2) {
       // A lone photo is a 4:3 that fills most of the page height at 470pt wide; the map takes the rest.
-      const leftW = visuals[0].kind === 'gallery' && gallery.length === 1 ? 470 : (areaW - G) / 2;
-      place(visuals[0], M, leftW, top, areaH);
-      place(visuals[1], M + leftW + G, areaW - G - leftW, top, areaH);
+      const leftW = group[0].kind === 'gallery' && gallery.length === 1 ? 470 : (areaW - G) / 2;
+      place(group[0], M, leftW, top, areaH);
+      place(group[1], M + leftW + G, areaW - G - leftW, top, areaH);
     } else {
       const leftW = (areaW - G) / 2, half = (areaH - G) / 2;
-      place(visuals[0], M, leftW, top, areaH);
-      place(visuals[1], M + leftW + G, areaW - G - leftW, top, half);
-      place(visuals[2], M + leftW + G, areaW - G - leftW, top - half - G, half);
+      place(group[0], M, leftW, top, areaH);
+      place(group[1], M + leftW + G, areaW - G - leftW, top, half);
+      place(group[2], M + leftW + G, areaW - G - leftW, top - half - G, half);
     }
     drawFooter(p2);
   }

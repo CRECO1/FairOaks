@@ -156,7 +156,7 @@ export async function buildFlyerBytes(supabase: SupabaseClient, id: string, L: R
   if (floorPlan) { try { const m = await sharp(Buffer.from(floorPlan.bytes)).metadata(); if (m.width && m.height) floorAspect = m.height / m.width; } catch { /* default */ } }
   const aerialH = Math.round(700 * areaMapAspect({
     gallery: galleryPhotos.length, trade: Array.isArray(L.trade_area?.tiles) && L.trade_area.tiles.length > 0,
-    floorAspect: floorPlan ? (floorAspect || 0.75) : 0, siteAerial: siteAerials.length > 0,
+    floorAspect: floorPlan ? (floorAspect || 0.75) : 0, siteAerial: siteAerials.length > 0, split: !!L.split_pages,
   }));
   const [mapBytes, aerialBytes, aerialLabels] = await Promise.all([
     googleStaticMap({ center: address, zoom: '13', size: (statLot || statZoning) ? '272x144' : '272x192', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` })
@@ -249,6 +249,7 @@ export async function buildFlyerBytes(supabase: SupabaseClient, id: string, L: R
     title: stripInlineTags(String(L.name ?? '')).trim() || null,
     subtitle: address,
     contacts,
+    splitPages: !!L.split_pages,
     hero, galleryPhotos, mapBytes, aerialBytes, aerialLabels, floorPlan, iabsPdf,
     fontBold: new Uint8Array(Buffer.from(OSWALD_BOLD_B64, 'base64')),
     logoPng: new Uint8Array(Buffer.from(CRECO_LOGO_PNG_B64, 'base64')),
