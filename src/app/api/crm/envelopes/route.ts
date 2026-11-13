@@ -340,7 +340,7 @@ export async function PATCH(req: NextRequest) {
   // Records the Resend id so a later "did it arrive?" can be answered.
   const invite = async (s: { id: string; name: string; email: string; access_token: string }) => {
     const { subject, html } = inviteEmail(env.business_unit, { signerName: s.name, docTitle: env.title, senderName, url: signUrl(s.access_token), message: env.message || undefined });
-    const sendRes = await sendEsignEmail(env.business_unit, s.email, subject, withSignature(html, await resolveSignature(supabase, { agentId: ctx.userId })));
+    const sendRes = await sendEsignEmail(env.business_unit, s.email, subject, withSignature(html, await resolveSignature(supabase, { agentId: env.created_by ?? ctx.userId })));
     if (sendRes.id) await supabase.from('crm_envelope_signers').update({ last_email_id: sendRes.id }).eq('id', s.id);
     return sendRes;
   };

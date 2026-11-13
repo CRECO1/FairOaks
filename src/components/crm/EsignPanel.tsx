@@ -41,7 +41,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
 }) {
   const [signers, setSigners] = useState<Draft[]>([{ role: 'client', name: dealClient?.name || '', email: dealClient?.email || '' }]);
   // Pre-filled note to signers (editable). The doc is known when this view opens.
-  const [message, setMessage] = useState(() => defaultEsignMessage(doc.title || doc.crm_forms?.name, agentName));
+  const [message, setMessage] = useState(() => defaultEsignMessage(doc.title || doc.crm_forms?.name));
   const [pick, setPick] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(false);

@@ -10,6 +10,7 @@
 import { randomBytes } from 'crypto';
 import { isBrokerFilled } from '@/lib/esign-fields';
 import { friendlyTitle } from '@/lib/esign-title';
+import { renderEsignMessage, firstNameOf, companyFor } from '@/lib/esign-message';
 import { PDFDocument, StandardFonts, rgb, PDFImage } from 'pdf-lib';
 import { embedFormFonts } from '@/lib/form-fonts';
 import { FORM_FONT_SIZE, FORM_INK_RGB } from '@/lib/rich-text';
@@ -75,9 +76,15 @@ function shell(brand: string, bodyHtml: string): string {
 const brandName = (unit: string) => (unit === 'residential' ? 'Fair Oaks Realty Group' : 'CRECO');
 
 export function inviteEmail(unit: string, opts: { signerName: string; docTitle: string; senderName: string; url: string; message?: string }) {
+  // The note is a template (lib/esign-message) shared by every signer on the
+  // envelope, so {{first_name}} is only resolvable here, per recipient. The sign-off
+  // comes from the sender the caller resolved from the CRM profile, never the browser.
+  const message = opts.message
+    ? renderEsignMessage(opts.message, { firstName: firstNameOf(opts.signerName), documentName: friendlyTitle(opts.docTitle), senderName: opts.senderName, company: companyFor(unit) })
+    : '';
   const body = `<p>Hi ${esc(opts.signerName)},</p>
     <p>${esc(opts.senderName)} has sent you <strong>${esc(friendlyTitle(opts.docTitle))}</strong> to review and sign.</p>
-    ${opts.message ? `<p style="background:#faf7ef;border-left:3px solid #c9922c;padding:10px 12px;border-radius:4px">${esc(opts.message)}</p>` : ''}
+    ${message ? `<p style="background:#faf7ef;border-left:3px solid #c9922c;padding:10px 12px;border-radius:4px;white-space:pre-line">${esc(message)}</p>` : ''}
     <p style="margin:22px 0"><a href="${esc(opts.url)}" style="background:#c9922c;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px;display:inline-block">Review &amp; Sign</a></p>
     <p style="font-size:12px;color:#6b7280">Or paste this link into your browser:<br>${esc(opts.url)}</p>`;
   return { subject: `Please sign: ${friendlyTitle(opts.docTitle)}`, html: shell(brandName(unit), body) };

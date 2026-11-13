@@ -93,7 +93,7 @@ export default function EsignComposer({
   // Pre-fill the note to signers once the document is in place. Seeded once (a ref)
   // so an agent who clears or edits it doesn't have it reappear.
   const msgSeeded = useRef(false);
-  useEffect(() => { if (doc && !msgSeeded.current) { msgSeeded.current = true; setMessage(defaultEsignMessage(doc.title, agentName)); } }, [doc, agentName]);
+  useEffect(() => { if (doc && !msgSeeded.current) { msgSeeded.current = true; setMessage(defaultEsignMessage(doc.title)); } }, [doc]);
 
   const [placed, setPlaced] = useState<EditorField[]>([]);
   const [review, setReview] = useState(false);
