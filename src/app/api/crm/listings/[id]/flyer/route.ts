@@ -26,8 +26,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       'Content-Disposition': `${asAttachment ? 'attachment' : 'inline'}; filename="${fileName}-flyer.pdf"`,
       // The stored copy is the flyer until someone rebuilds it, so let the browser
       // reuse it rather than re-downloading on every open.
-      'Cache-Control': 'private, max-age=300',
-      ...(generatedAt ? { 'X-Flyer-Generated-At': generatedAt } : {}),
+      // Revalidate on every open: the server decides whether the stored copy is still current (a listing edit or
+      // a new upload makes it stale and it rebuilds). The ETag lets an unchanged flyer come back as a 304 with no body.
+      // (A flat max-age=300 kept serving the previous build for 5 minutes after a change.)
+      'Cache-Control': 'private, no-cache',
+      ...(generatedAt ? { 'X-Flyer-Generated-At': generatedAt, ETag: `"flyer-${generatedAt}"` } : {}),
     },
   });
 
@@ -53,6 +56,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // after any edit would silently swap a curated flyer for the auto-built one.
     const handBuilt = !/\/flyer\/\d+\.pdf$/.test(L.flyer_path);
     if (changedAt <= builtAt || handBuilt) {
+      const etag = `"flyer-${L.flyer_generated_at}"`;
+      if (req.headers.get('if-none-match') === etag) {
+        return new NextResponse(null, { status: 304, headers: { ETag: etag, 'Cache-Control': 'private, no-cache', 'X-Flyer-Generated-At': L.flyer_generated_at } });
+      }
       const { data: cached } = await supabase.storage.from('listing-files').download(L.flyer_path);
       if (cached) return serve(Buffer.from(await cached.arrayBuffer()), L.flyer_generated_at);
       // Path recorded but the blob is gone — fall through and rebuild rather than 404.
