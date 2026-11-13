@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { listingTagLabel, listingTagToken, parseListingTagIds, searchListingsForTag, type TagListing } from '@/lib/listing-tags';
 
 interface Profile { id: string; first_name: string; last_name: string; role?: string; }
 // A CRM contact (client). Tagging one is silent — it records who is involved in the
@@ -14,6 +15,8 @@ interface Props {
   onMentionedContactIds?: (ids: string[]) => void;
   profiles: Profile[];
   contacts?: MentionContact[];
+  /** Properties that can be tagged with `#` (silent: records which property the note is about). Omit to turn `#` off. */
+  listings?: TagListing[];
   /**
    * Called when the typed name matches nobody and the user chooses to add them.
    * Should create the contact and resolve to it (or null on failure). Without this
@@ -110,15 +113,16 @@ export function parseMentionContactIds(text: string, contacts: MentionContact[],
   return [...out];
 }
 
-export default function MentionTextarea({ value, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts = [], onCreateContact, placeholder, className, style, id, rows, onBlur, onKeyDown, hideHint }: Props) {
+export default function MentionTextarea({ value, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts = [], listings = [], onCreateContact, placeholder, className, style, id, rows, onBlur, onKeyDown, hideHint }: Props) {
   const [creating, setCreating] = useState(false);
   const [search, setSearch]     = useState('');
   const [showDrop, setShowDrop] = useState(false);
   const [atPos, setAtPos]       = useState(-1);
+  const [mode, setMode]         = useState<'at' | 'hash'>('at');   // '@' = people, '#' = properties
   const [rect, setRect]         = useState<{ top: number; left: number; width: number } | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
-  const suggestions = search.length === 0
+  const suggestions = mode === 'hash' ? [] : search.length === 0
     ? profiles.slice(0, 6)
     : profiles.filter(p =>
         `${p.first_name} ${p.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
@@ -126,18 +130,23 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
       ).slice(0, 6);
   // Contacts only surface once there's something to match on, so the menu doesn't open
   // with hundreds of names.
-  const contactHits = search.length === 0 ? [] :
+  const contactHits = mode === 'hash' || search.length === 0 ? [] :
     contacts.filter(c => contactToken(c) && (contactLabel(c).toLowerCase().includes(search.toLowerCase()) || contactToken(c).toLowerCase().includes(search.toLowerCase()))).slice(0, 6);
+
+  const propertyHits = mode === 'hash' ? searchListingsForTag(listings, search) : [];
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val    = e.target.value;
     const cursor = e.target.selectionStart ?? val.length;
     const before = val.slice(0, cursor);
     const match  = before.match(/(?:^|[^\w.@])@(\w*)$/);
+    const hash   = !match && listings.length ? before.match(/(?:^|[^\w&])#([A-Za-z0-9]*)$/) : null;
 
-    if (match) {
-      setAtPos(cursor - match[1].length - 1);   // position of the @ itself
-      setSearch(match[1]);
+    if (match || hash) {
+      const m = (match ?? hash)!;
+      setMode(match ? 'at' : 'hash');
+      setAtPos(cursor - m[1].length - 1);   // position of the @ / # itself
+      setSearch(m[1]);
       setShowDrop(true);
       if (taRef.current) {
         const r = taRef.current.getBoundingClientRect();
@@ -151,7 +160,7 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
     onChange(val);
     if (onMentionedIds) onMentionedIds(parseMentionIds(val, profiles));
     if (onMentionedContactIds) onMentionedContactIds(parseMentionContactIds(val, contacts, profiles));
-  }, [onChange, onMentionedIds, onMentionedContactIds, profiles, contacts]);
+  }, [onChange, onMentionedIds, onMentionedContactIds, profiles, contacts, listings]);
 
   const insertMention = useCallback((token: string) => {
     const mention = `@${token} `;
@@ -171,10 +180,22 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
       }
     }, 0);
   }, [value, atPos, search, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts]);
+  // `#` property tag: replaces the typed `#query` with `#1222Chulie ` (street number + name).
+  const insertTag = useCallback((l: TagListing) => {
+    const tag = `#${listingTagToken(l)} `;
+    const before = value.slice(0, atPos);
+    const after  = value.slice(atPos + 1 + search.length);
+    onChange(before + tag + after);
+    setShowDrop(false);
+    setSearch('');
+    setTimeout(() => {
+      if (taRef.current) { const pos = before.length + tag.length; taRef.current.focus(); taRef.current.setSelectionRange(pos, pos); }
+    }, 0);
+  }, [value, atPos, search, onChange]);
   // Somebody from outside the CRM — the other side's broker, a lender, an attorney.
   // Offered only once the name looks like a name, so the row doesn't flash up on the
   // first keystroke of every mention.
-  const canCreate = !!onCreateContact && search.trim().length >= 2 && suggestions.length === 0 && contactHits.length === 0;
+  const canCreate = mode === 'at' && !!onCreateContact && search.trim().length >= 2 && suggestions.length === 0 && contactHits.length === 0;
   const createAndPick = useCallback(async () => {
     if (!onCreateContact) return;
     setCreating(true);
@@ -203,6 +224,12 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
           onBlur={e => { onBlur?.(e); setTimeout(() => setShowDrop(false), 150); }}
         />
 
+        {!hideHint && value.includes('#') && (() => {
+          const ids = parseListingTagIds(value, listings);
+          if (!ids.length) return null;
+          const labels = ids.map(i => listings.find(l => l.id === i)).filter(Boolean).map(l => listingTagLabel(l as TagListing));
+          return <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>Property tagged (not notified): {[...new Set(labels)].join(', ')}.</div>;
+        })()}
         {!hideHint && value.includes('@') && (() => {
           const team = parseMentionIds(value, profiles);
           const tagged = parseMentionContactIds(value, contacts, profiles);
@@ -221,7 +248,7 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
       </div>
 
       {/* Dropdown rendered fixed to viewport — bypasses all overflow clipping */}
-      {showDrop && (suggestions.length > 0 || contactHits.length > 0 || canCreate) && rect && (
+      {showDrop && (suggestions.length > 0 || contactHits.length > 0 || canCreate || propertyHits.length > 0) && rect && (
         <div style={{
           position: 'fixed',
           top: rect.top,
@@ -235,6 +262,27 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
           overflow: 'hidden',
           pointerEvents: 'auto',
         }}>
+          {propertyHits.length > 0 && (
+            <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
+              Property · not notified
+            </div>
+          )}
+          {propertyHits.map(l => (
+            <button
+              key={l.id}
+              onMouseDown={(e) => { e.preventDefault(); insertTag(l); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+            >
+              <span style={{ width: 28, height: 28, borderRadius: 8, background: '#f0fdfa', color: '#0f766e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🏢</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{listingTagLabel(l)}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>#{listingTagToken(l)}{l.name && l.name !== listingTagLabel(l) ? ` · ${l.name}` : ''}</div>
+              </div>
+            </button>
+          ))}
+
           {suggestions.length > 0 && (
             <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
               Team member · notified

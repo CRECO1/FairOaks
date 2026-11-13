@@ -100,6 +100,8 @@ interface Props {
   profiles: Profile[];
   clients: Contact[];
   onToast: (msg: string) => void;
+  // Opens a contact's card (used by the 'Asked about this property' list).
+  onOpenContact?: (contactId: string) => void;
   // Opens the envelope composer to import an outside PDF and send it for signature
   // on THIS property (the created document is linked to the listing). Without it the
   // property can only send documents that started as filled CRM forms / leases.
@@ -194,7 +196,7 @@ const fieldTypeLabel = (t: string) => t === 'signature' ? 'Signature' : t === 'i
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, clients, onToast, onAddDocument, onSignFile, reloadSignal, onMention }: Props) {
+export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, clients, onToast, onOpenContact, onAddDocument, onSignFile, reloadSignal, onMention }: Props) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -248,6 +250,19 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [contactRole, setContactRole] = useState('Landlord');
   const [addingContact, setAddingContact] = useState(false);
   const [flyerBusy, setFlyerBusy] = useState(false);
+  // Contacts whose notes / logged calls #-tagged the open property (read-only; GET /api/crm/listing-inquiries).
+  const [inquiries, setInquiries] = useState<Array<{ contact_id: string; name: string; type: string | null; via: string; last_at: string | null; snippet: string | null }>>([]);
+  const [inquiriesLoaded, setInquiriesLoaded] = useState(false);
+  useEffect(() => {
+    setInquiries([]); setInquiriesLoaded(false);
+    if (!active?.id || activeTab !== 'contacts' || !authToken) return;
+    let alive = true;
+    fetch(`/api/crm/listing-inquiries?listing_id=${active.id}`, { headers: { Authorization: `Bearer ${authToken}` } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (alive) { setInquiries(j?.items ?? []); setInquiriesLoaded(true); } })
+      .catch(() => { if (alive) setInquiriesLoaded(true); });
+    return () => { alive = false; };
+  }, [active?.id, activeTab, authToken]);
 
   // Deals-at-this-property tab
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -1893,6 +1908,33 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       })}
                     </div>
                   )}
+
+                  {/* People who asked about this property — #-tagged in a contact's notes or a logged call, no deal needed */}
+                  <div style={{ marginTop: 22 }}>
+                    <div title="Contacts whose notes or logged calls tagged this property with #" style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>🏠 Asked about this property</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginBottom: 8 }}>Anyone whose notes or logged calls tag this property (type # in a contact&apos;s note, e.g. #{(active?.address ?? active?.name ?? '').split(',')[0].trim().split(/\s+/).slice(0, 2).join('') || 'address'}). Read-only.</div>
+                    {!inquiriesLoaded ? (
+                      <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Loading…</div>
+                    ) : inquiries.length === 0 ? (
+                      <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>No one has been tagged on this property yet.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {inquiries.map(q => (
+                          <button key={q.contact_id} onClick={() => onOpenContact?.(q.contact_id)} disabled={!onOpenContact}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '9px 12px', cursor: onOpenContact ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{q.name}</span>
+                              {q.type && <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>{q.type}</span>}
+                              <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--k-0f766e)', fontWeight: 600 }}>
+                                {q.via === 'notes' ? 'In their notes' : `${q.via === 'call' ? 'Call' : q.via === 'meeting' ? 'Meeting' : q.via === 'email' ? 'Email' : 'Note'}${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}`}
+                              </span>
+                            </div>
+                            {q.snippet && <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.snippet}</div>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

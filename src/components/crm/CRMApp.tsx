@@ -58,6 +58,7 @@ import CampaignEngagedPanel from '@/components/crm/CampaignEngagedPanel';
 import CampaignPreflight from '@/components/crm/CampaignPreflight';
 import CallTapPrompt from '@/components/crm/CallTapPrompt';
 import MentionTextarea, { parseMentionContactIds, parseMentionIds } from '@/components/crm/MentionTextarea';
+import { parseListingTagIds, listingTagLabel, type TagListing } from '@/lib/listing-tags';
 import DealActivityTab from '@/components/crm/deal/DealActivityTab';
 import { DealHeader, DealCardStyles, StatTiles, STAGE_PALETTE, DealTile, TileStyles, Icon, daysAgo } from '@/components/crm/deal/dealUi';
 import Ico, { type IcoName } from '@/components/crm/Ico';
@@ -112,7 +113,7 @@ const supabase = createBrowserClient();
 type Role = 'agent' | 'admin' | 'super_admin';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; unit_locked?: boolean; email_signature?: string; daily_call_goal?: number | null; }
 
-interface Client { id: string; agent_id: string; business_unit?: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; lead_hold?: boolean | null; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null; }
+interface Client { id: string; agent_id: string; business_unit?: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; tagged_listing_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; lead_hold?: boolean | null; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null; }
 interface CallListPerson {
   clientId: string; reason: string; heat: 'hot' | 'warm' | 'cold'; askFor: string; lastCalled: string | null; rank: number;
   view: 'opened' | 'emailed' | 'cold';
@@ -140,7 +141,7 @@ interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; 
 interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; body_html?: string | null; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; gmail_message_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; bcc_emails?: string | null; email_at?: string | null; created_at?: string; attachments?: Array<{ name: string; size: number; mime: string; path: string | null }> | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
-interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
+interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; tagged_listing_ids?: string[]; }
 interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; has_body?: boolean; uses_market_report?: boolean; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; hold_risky_addresses?: boolean; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; engaged_count?: number; responded_count?: number; to_call_count?: number; scanner_clickers?: number; is_tenant_notice?: boolean; send_as_sender?: boolean | null; listing_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 /**
@@ -1690,6 +1691,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // (GET /api/crm/note-tags, access-checked per source). Loaded when a contact card opens; a contact's list is reused for 5 minutes.
   const [noteTags, setNoteTags] = useState<Record<string, Array<{ kind: 'property' | 'suite' | 'rentroll' | 'vendor'; listing_id: string | null; label: string; detail: string }>>>({});
   const noteTagsAt = useRef<Record<string, number>>({});
+  // Properties that can be #-tagged in contact notes (e.g. #1222Chulie). The listings API already hides Restricted folders from people who can't open them.
+  const [tagListings, setTagListings] = useState<TagListing[]>([]);
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!token) return;
+    fetch(`/api/crm/listings?business_unit=${businessUnit}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (j?.listings) setTagListings((j.listings as { id: string; name: string | null; address: string | null }[]).map(l => ({ id: l.id, name: l.name, address: l.address }))); })
+      .catch(() => { /* # simply isn't offered */ });
+  }, [session?.access_token, businessUnit]);
   const [linkedNoteIds, setLinkedNoteIds] = useState<Set<string>>(new Set()); // other contact IDs to receive same note
   const [dealNotesText, setDealNotesText] = useState(''); // controlled value for active deal notes
 
@@ -2877,6 +2888,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       business_unit: businessUnit,
       // Contacts @-tagged in the notes — who else was in the meeting.
       tagged_contact_ids: parseMentionContactIds(nc.notes, clients, profiles),
+      // Properties #-tagged in the notes (#1222Chulie): which properties this contact asked about.
+      tagged_listing_ids: parseListingTagIds(nc.notes, tagListings),
       // date columns reject empty strings — coerce to null
       lease_expiration_date: nc.lease_expiration_date || null,
       birthday: nc.birthday || null,
@@ -3061,6 +3074,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // Who else was in the meeting — parsed out of the notes, so the tag and the
       // sentence it appears in can never drift apart.
       tagged_contact_ids: parseMentionContactIds(ec.notes, clients, profiles).filter(id => id !== editClient.id),
+      tagged_listing_ids: parseListingTagIds(ec.notes, tagListings),
       first_name: ec.first_name,
       last_name: ec.last_name,
       business_name: ec.business_name,
@@ -4155,12 +4169,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     // Who else was on the call / in the meeting, parsed from the note itself so the
     // tag and the sentence can never drift apart.
     const tagged = parseMentionContactIds(note, clients, profiles).filter(id => id !== clientId);
+    // Properties #-tagged in the note ("called about #1222Chulie"): recorded on the touch itself, so the contact card
+    // and the property can show who asked about what, and when.
+    const taggedProps = parseListingTagIds(note, tagListings);
     const { error } = await supabase.from('crm_client_activities').insert([{
       client_id: clientId,
       agent_id: profile!.id,
       type,
       note,
       tagged_contact_ids: tagged,
+      tagged_listing_ids: taggedProps,
     }]);
     // Also roll them onto the contact, so the card's "Also in the room" list covers
     // people tagged in a touch as well as in the notes field.
@@ -8783,7 +8801,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </button>
                               ))}
                             </div>
-                            <MentionTextarea value={callNote} onChange={setCallNote} profiles={profiles} contacts={clients} onCreateContact={createContactFromMention}
+                            <MentionTextarea listings={tagListings} value={callNote} onChange={setCallNote} profiles={profiles} contacts={clients} onCreateContact={createContactFromMention}
                               placeholder="Quick note — saved to the timeline and the next follow-up… (@ to tag a teammate)"
                               style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: isMobile ? 16 : 13.5, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box', minHeight: 44, resize: 'vertical' }} />
                           </div>
@@ -8867,7 +8885,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               ))}
                             </div>
                             <div style={{ marginTop: 12 }}>
-                              <MentionTextarea value={callNote} onChange={setCallNote} profiles={profiles} contacts={clients} onCreateContact={createContactFromMention}
+                              <MentionTextarea listings={tagListings} value={callNote} onChange={setCallNote} profiles={profiles} contacts={clients} onCreateContact={createContactFromMention}
                                 placeholder="Quick note (optional) — type it, then tap what happened (@ to tag)"
                                 style={{ width: '100%', boxSizing: 'border-box', minHeight: 48, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--k-e5e7eb)', fontSize: 16, fontFamily: "'DM Sans',sans-serif", resize: 'none' }} />
                             </div>
@@ -11681,6 +11699,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   profiles={profiles}
                   clients={clients}
                   onToast={showToast}
+                  onOpenContact={id => { openEntity('contact', id); }}
                   onAddDocument={lid => setComposer({ file: null, doc: null, listingId: lid })}
                   onSignFile={(url, name, lid) => signUploadedFile(url, name, { listingId: lid })}
                   reloadSignal={esignFieldsVersion}
@@ -13290,7 +13309,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, whiteSpace: 'nowrap' }}>Notes</div>
                   <div style={{ flex: 1, height: 1, background: 'var(--k-f0f0f0)' }} />
                 </div>
-                <MentionTextarea
+                <MentionTextarea listings={tagListings}
                   className="crm-input"
                   style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
                   placeholder={nc.type === 'Agent' || nc.type === 'Broker' ? 'Co-op deals, referral history, who was in the meeting… (type @ to tag a teammate or a contact)' : 'Pre-approval status, timeline, who was in the meeting… (type @ to tag a teammate or a contact)'}
@@ -13752,7 +13771,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   {editingNotes ? (
                     <div>
-                      <MentionTextarea
+                      <MentionTextarea listings={tagListings}
                         profiles={profiles} contacts={clients} onCreateContact={createContactFromMention} value={notesDraft}
                         onChange={setNotesDraft}
                         placeholder="Who was in the meeting, what was agreed… (type @ to tag a teammate or a contact)"
@@ -13762,19 +13781,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <button className="crm-btn crm-btn-primary crm-btn-sm" disabled={saving}
                           onClick={async () => {
                             const tagged = parseMentionContactIds(notesDraft, clients, profiles).filter(id => id !== c.id);
+                            const taggedProps = parseListingTagIds(notesDraft, tagListings);
                             // The box says "@Brian will be notified on save" — so notify, once, only people newly @mentioned.
                             const hadTags = new Set(parseMentionIds(c.notes ?? '', profiles));
                             const freshTags = parseMentionIds(notesDraft, profiles).filter(id => !hadTags.has(id));
                             setSaving(true);
                             const { error } = await supabase.from('crm_clients')
-                              .update({ notes: notesDraft, tagged_contact_ids: tagged }).eq('id', c.id);
+                              .update({ notes: notesDraft, tagged_contact_ids: tagged, tagged_listing_ids: taggedProps }).eq('id', c.id);
                             setSaving(false);
                             if (error) { showToast('Could not save the note'); return; }
                             if (freshTags.length) createMentionNotifications(freshTags, `@${profile?.first_name} mentioned you in notes for ${`${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'a contact'}`, 'contact', c.id);
-                            setClients(prev => prev.map(x => x.id === c.id ? { ...x, notes: notesDraft, tagged_contact_ids: tagged } : x));
-                            setActiveClient(prev => prev ? { ...prev, notes: notesDraft, tagged_contact_ids: tagged } : prev);
+                            setClients(prev => prev.map(x => x.id === c.id ? { ...x, notes: notesDraft, tagged_contact_ids: tagged, tagged_listing_ids: taggedProps } : x));
+                            setActiveClient(prev => prev ? { ...prev, notes: notesDraft, tagged_contact_ids: tagged, tagged_listing_ids: taggedProps } : prev);
                             setEditingNotes(false);
-                            showToast(tagged.length ? `Saved · ${tagged.length} contact${tagged.length === 1 ? '' : 's'} tagged` : 'Note saved ✓');
+                            showToast(tagged.length || taggedProps.length ? `Saved${tagged.length ? ` · ${tagged.length} contact${tagged.length === 1 ? '' : 's'} tagged` : ''}${taggedProps.length ? ` · ${taggedProps.length} propert${taggedProps.length === 1 ? 'y' : 'ies'} tagged` : ''}` : 'Note saved ✓');
                           }}>{saving ? 'Saving…' : 'Save'}</button>
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setEditingNotes(false)}>Cancel</button>
                       </div>
@@ -13974,7 +13994,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                     {/* Logging a touch is exactly when you record who else was on the
                         call or in the meeting, so it needs the same @ picker. */}
-                    <MentionTextarea
+                    <MentionTextarea listings={tagListings}
                       className="crm-input"
                       style={{ minHeight: 54, resize: 'vertical', fontSize: 13, marginBottom: 8, width: '100%' }}
                       placeholder={newActivity.type === 'call' ? 'Notes from the call… (@ to tag who was on it)' : newActivity.type === 'email' ? 'Subject / summary… (@ to tag who was copied)' : newActivity.type === 'meeting' ? 'Meeting outcome… (@ to tag who was there)' : 'Add a note… (@ to tag a teammate or contact)'}
@@ -14059,6 +14079,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               }}
                               style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-0f766e)', background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 20, padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                               {it.label} <span style={{ fontWeight: 500, color: '#5eaaa3' }}>· {it.detail}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Properties this contact asked about (no deal needed): #-tagged in their notes or in a logged call / note, e.g. #1222Chulie */}
+                  {(() => {
+                    const found = new Map<string, string>();   // listing id -> where / when it was last mentioned
+                    for (const a of clientActivities) {
+                      if (a.client_id !== c.id) continue;
+                      for (const id of (a.tagged_listing_ids ?? [])) if (!found.has(id)) found.set(id, `${a.type === 'call' ? 'Call' : a.type === 'meeting' ? 'Meeting' : a.type === 'email' ? 'Email' : 'Note'} · ${new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`);
+                    }
+                    for (const id of (c.tagged_listing_ids ?? [])) if (!found.has(id)) found.set(id, 'In their notes');
+                    const chips = [...found.entries()].map(([id, when]) => ({ id, when, l: tagListings.find(x => x.id === id) })).filter((x): x is { id: string; when: string; l: TagListing } => !!x.l);
+                    if (!chips.length) return <div style={{ marginTop: 10, fontSize: 12, color: 'var(--k-9ca3af)' }}>🏠 Properties of interest: none yet. Type <b>#</b> in a note to tag one (e.g. #1222Chulie).</div>;
+                    return (
+                      <div style={{ marginTop: 10 }}>
+                        <div title="Properties tagged with # in this contact's notes or logged calls — whether or not there is a deal" style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 6 }}>🏠 Properties of interest</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {chips.map(({ id, when, l }) => (
+                            <button key={id} title={`${listingTagLabel(l)} — open the property`}
+                              onClick={() => { setActiveClient(null); openEntity('listing', id); }}
+                              style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-0f766e)', background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 20, padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                              {listingTagLabel(l)} <span style={{ fontWeight: 500, color: '#5eaaa3' }}>· {when}</span>
                             </button>
                           ))}
                         </div>
@@ -14779,7 +14825,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, whiteSpace: 'nowrap' }}>Notes</div>
                   <div style={{ flex: 1, height: 1, background: 'var(--k-f0f0f0)' }} />
                 </div>
-                <MentionTextarea
+                <MentionTextarea listings={tagListings}
                   className="crm-input"
                   style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
                   placeholder={ec.type === 'Agent' || ec.type === 'Broker' ? 'Co-op deals, referral history, who was in the meeting… (type @ to tag a teammate or a contact)' : 'Pre-approval status, timeline, who was in the meeting… (type @ to tag a teammate or a contact)'}
