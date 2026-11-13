@@ -4,7 +4,7 @@ import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { cleanIdList } from '@/lib/clean-id-list';
 
-const ALLOWED = ['name','address','city','state','zip','type','status','asking_price','sq_ft','lot_size','year_built','description','notes','highlights','flyer_headline','flyer_split_pages','zoning','elevator','grade_level_doors','dock_high_doors','flyer_type','co_agent_id','latitude','longitude','listing_agent_id','assigned_agent_ids','is_restricted'];
+const ALLOWED = ['name','address','city','state','zip','type','status','asking_price','sq_ft','lot_size','year_built','description','notes','highlights','flyer_headline','zoning','elevator','grade_level_doors','dock_high_doors','flyer_type','co_agent_id','latitude','longitude','listing_agent_id','assigned_agent_ids','is_restricted'];
 
 // Ownership / visibility fields: only an admin or the listing's own agent may change who a listing
 // belongs to, who it is shared with, or whether it is Restricted.

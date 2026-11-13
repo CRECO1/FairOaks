@@ -43,7 +43,6 @@ interface Listing {
   notes?: string;
   highlights?: string | null;
   flyer_headline?: string | null;
-  flyer_split_pages?: boolean | null;
   zoning?: string | null;
   elevator?: boolean | null;
   grade_level_doors?: boolean | null;
@@ -184,7 +183,7 @@ function fmtBytes(n?: number | null) {
 const BLANK_FORM = {
   name: '', address: '', city: '', state: 'TX', zip: '',
   type: 'Retail', status: 'active', asking_price: '', sq_ft: '',
-  lot_size: '', year_built: '', description: '', notes: '', highlights: '', flyer_headline: '', flyer_split_pages: '', listing_agent_id: '', co_agent_id: '', flyer_type: '', map_pin: '',
+  lot_size: '', year_built: '', description: '', notes: '', highlights: '', flyer_headline: '', listing_agent_id: '', co_agent_id: '', flyer_type: '', map_pin: '',
   zoning: '', elevator: '', grade_level_doors: '', dock_high_doors: '',
 };
 
@@ -462,7 +461,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       status: l.status ?? 'active', asking_price: l.asking_price != null ? String(l.asking_price) : '',
       sq_ft: l.sq_ft != null ? String(l.sq_ft) : '',
       lot_size: l.lot_size ?? '', year_built: l.year_built ?? '',
-      description: l.description ?? '', notes: l.notes ?? '', highlights: l.highlights ?? '', flyer_headline: l.flyer_headline ?? '', flyer_split_pages: l.flyer_split_pages ? 'true' : '',
+      description: l.description ?? '', notes: l.notes ?? '', highlights: l.highlights ?? '', flyer_headline: l.flyer_headline ?? '',
       co_agent_id: l.co_agent_id ?? '', flyer_type: l.flyer_type ?? '',
       zoning: l.zoning ?? '',
       elevator: l.elevator == null ? '' : String(l.elevator),
@@ -502,7 +501,6 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     { const m = String(editForm.map_pin || '').match(/(-?\d{1,3}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)/);
       body.latitude = m ? Number(m[1]) : null; body.longitude = m ? Number(m[2]) : null;
       delete (body as Record<string, unknown>).map_pin; }
-    body.flyer_split_pages = editForm.flyer_split_pages === 'true';
     body.sq_ft        = editForm.sq_ft !== '' ? Number(editForm.sq_ft) : null;
     // Contacts @-tagged in the Internal Notes (silent): derived from the text, so the tag and the sentence can't drift apart.
     body.tagged_contact_ids = parseMentionContactIds(String(editForm.notes ?? ''), clients, profiles);
@@ -800,17 +798,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     onToast('Copy created ✓');
   }
 
-  // Generate a branded one-page PDF flyer from this property's data + photos.
-  // Open, save, or rebuild the property's flyer. The server keeps the generated PDF
-  // and only rebuilds when the listing has changed since — `force` is the agent
-  // saying "I changed something, make me a new one" regardless.
-  async function generateFlyer(opts?: { force?: boolean; download?: boolean }) {
+  // Open or download the property's STORED flyer. The CRM never builds or replaces a flyer.
+  async function openFlyer(opts?: { download?: boolean }) {
     if (!active) return;
     setFlyerBusy(true);
     try {
-      const qs = [opts?.force ? 'force=1' : '', opts?.download ? 'download=1' : ''].filter(Boolean).join('&');
-      const res = await fetch(`/api/crm/listings/${active.id}/flyer${qs ? `?${qs}` : ''}`, { headers: authHeaders });
-      if (!res.ok) { onToast(opts?.force ? 'Could not rebuild the flyer' : 'Could not open the flyer'); return; }
+      const res = await fetch(`/api/crm/listings/${active.id}/flyer${opts?.download ? '?download=1' : ''}`, { headers: authHeaders });
+      if (res.status === 404) { onToast('No flyer on file for this property'); return; }
+      if (!res.ok) { onToast('Could not open the flyer'); return; }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       if (opts?.download) {
@@ -823,13 +818,6 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         window.open(url, '_blank');
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-      // Pick up flyer_generated_at so the header stops saying it's out of date.
-      const built = res.headers.get('X-Flyer-Generated-At');
-      if (built) {
-        setActive(a => a && a.id === active.id ? { ...a, flyer_generated_at: built } : a);
-        setListings(ls => ls.map(l => l.id === active.id ? { ...l, flyer_generated_at: built } : l));
-      }
-      if (opts?.force) onToast('Updated flyer created ✓');
     } catch { onToast('Could not open the flyer'); }
     finally { setFlyerBusy(false); }
   }
@@ -1068,9 +1056,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // As a nested COMPONENT it got a new identity every render, so React remounted
   // its inputs on each keystroke and stole focus. Called as a plain function, the
   // returned elements reconcile in place and the field keeps focus.
-  function renderForm({ form, onChange, flyerPath }: { form: typeof BLANK_FORM; onChange: (f: typeof BLANK_FORM) => void; flyerPath?: string | null }) {
-    // A flyer that was uploaded or built by hand is never rebuilt automatically, so a flyer setting can't change it.
-    const customFlyer = !!flyerPath && !/\/flyer\/\d+\.pdf$/.test(flyerPath);
+  function renderForm({ form, onChange }: { form: typeof BLANK_FORM; onChange: (f: typeof BLANK_FORM) => void }) {
     const set = (k: keyof typeof BLANK_FORM, v: string) => onChange({ ...form, [k]: v });
     // One heading per group, so a long form reads as a few short sections instead of one wall of fields.
     const SEC = (title: string, hint?: string) => (
@@ -1142,7 +1128,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             </select>
           </div>
           <div>
-            {LBL('Co-listing Agent (flyer)')}
+            {LBL('Co-listing Agent')}
             <select style={INP} value={form.co_agent_id} onChange={e => set('co_agent_id', e.target.value)}>
               <option value="">— None —</option>
               {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
@@ -1150,16 +1136,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           </div>
         </div>
 
-        {SEC('Marketing flyer', 'what the property flyer shows')}
+        {SEC('Marketing', 'description, highlights and map pin')}
         <div style={grid()}>
-          <div>
-            {LBL('Flyer Heading')}
-            <select style={INP} value={form.flyer_type} onChange={e => set('flyer_type', e.target.value)}>
-              <option value="">Auto (from price)</option>
-              <option value="lease">For Lease</option>
-              <option value="sale">For Sale</option>
-            </select>
-          </div>
           <div>
             {LBL('Map Pin')}
             <input style={INP} value={form.map_pin} onChange={e => set('map_pin', e.target.value)} placeholder="29.7255, -98.6526" />
@@ -1167,29 +1145,16 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: -6 }}>Map pin: right-click the spot in Google Maps → click the coordinates to copy → paste here. Leave blank to auto-locate from the address.</div>
         <div>
-          {LBL('Flyer Headline (optional)')}
-          <input style={INP} value={form.flyer_headline} onChange={e => set('flyer_headline', e.target.value)} maxLength={90} placeholder="Built-to-suit retail in the heart of Fair Oaks Ranch" />
-          <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 3 }}>One line printed over the cover photo of the flyer. Leave blank for none.</div>
-        </div>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
-          <input type="checkbox" checked={form.flyer_split_pages === 'true'} onChange={e => set('flyer_split_pages', e.target.checked ? 'true' : '')} style={{ marginTop: 3 }} />
-          <span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-111)' }}>Photos on their own page</span>
-            <span style={{ display: 'block', fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>Page 2 shows just the photos, larger; the floor plan and map move to page 3. Only applies when the property has photos plus a floor plan or map. The flyer rebuilds with the next open after you save.</span>
-            {customFlyer && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--k-92400e)', background: 'var(--k-fef3c7)', borderRadius: 6, padding: '5px 8px', marginTop: 6 }}>This property&apos;s flyer was uploaded or built by hand, so it won&apos;t change on its own. Press “Update flyer” to replace it with an auto-built one that follows this setting (the current file is overwritten).</span>}
-          </span>
-        </label>
-        <div>
-          {LBL('Flyer Description')}
+          {LBL('Description')}
           <textarea style={{ ...INP, minHeight: 90, resize: 'vertical' }} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Property highlights, features, zoning…" />
         </div>
         <div>
-          {LBL('Flyer Highlights (one per line)')}
+          {LBL('Highlights (one per line)')}
           <textarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} value={form.highlights} onChange={e => set('highlights', e.target.value)} placeholder={'Move-in ready medical building\nHigh visibility\nAmple parking'} />
-          <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 3 }}>Bulleted list on the property flyer — one highlight per line.</div>
+          <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 3 }}>One highlight per line.</div>
         </div>
 
-        {SEC('Internal', 'never shown on the flyer')}
+        {SEC('Internal', 'for the team only')}
         <div>
           {LBL('Internal Notes')}
           <MentionTextarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} profiles={profiles} contacts={clients} value={form.notes} onChange={v => set('notes', v)} placeholder="Showing instructions, landlord contact, commission notes… (@ to tag a teammate or a contact)" />
@@ -1372,35 +1337,19 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                 })()}
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {(() => {
+                    const hasFlyer = !!active.flyer_path;
                     const built = active.flyer_generated_at ? new Date(active.flyer_generated_at) : null;
-                    // Same test the server makes, so the header agrees with what an open
-                    // would actually do: the flyer is out of date once the listing or any
-                    // of its uploads is newer than the flyer.
-                    const newestFile = files.reduce((m, f) => Math.max(m, f.created_at ? new Date(f.created_at).getTime() : 0), 0);
-                    const changedAt = Math.max(active.updated_at ? new Date(active.updated_at).getTime() : 0, newestFile);
-                    const stale = !!built && changedAt > built.getTime();
                     const bs: React.CSSProperties = { padding: '6px 11px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: flyerBusy ? 'default' : 'pointer', opacity: flyerBusy ? 0.6 : 1, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
+                    if (!hasFlyer) return <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>No flyer on file</span>;
                     return (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {built && (
-                          <span title={`Flyer built ${built.toLocaleString('en-US')}`} style={{ fontSize: 11.5, color: stale ? 'var(--k-b45309)' : 'var(--k-9ca3af)', fontWeight: stale ? 700 : 400, whiteSpace: 'nowrap' }}>
-                            {stale ? '⚠ out of date' : `Flyer · ${built.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
-                          </span>
-                        )}
-                        <button onClick={() => generateFlyer()} disabled={flyerBusy} title={built ? 'Open the saved flyer' : 'Create a branded PDF flyer'}
+                        {built && <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{`Flyer · ${built.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}</span>}
+                        <button onClick={() => openFlyer()} disabled={flyerBusy} title="Open the flyer"
                           style={{ ...bs, border: '1px solid var(--k-f0e2c4)', background: 'var(--k-fdf6e9)', color: 'var(--k-a06a12)' }}>
-                          {flyerBusy ? '…' : built ? '📄 View flyer' : '📄 Create flyer'}
+                          {flyerBusy ? '…' : '📄 View flyer'}
                         </button>
-                        {built && (
-                          <>
-                            <button onClick={() => generateFlyer({ download: true })} disabled={flyerBusy} title="Download the flyer as a PDF"
-                              style={{ ...bs, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)' }}>⬇</button>
-                            <button onClick={() => generateFlyer({ force: true })} disabled={flyerBusy} title="Rebuild the flyer from the current photos and details"
-                              style={{ ...bs, border: stale ? 'none' : '1px solid var(--k-e5e7eb)', background: stale ? '#c9922c' : 'var(--k-fff)', color: stale ? '#fff' : 'var(--k-6b7280)' }}>
-                              ↻ Update flyer
-                            </button>
-                          </>
-                        )}
+                        <button onClick={() => openFlyer({ download: true })} disabled={flyerBusy} title="Download the flyer as a PDF"
+                          style={{ ...bs, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-6b7280)' }}>⬇</button>
                       </div>
                     );
                   })()}
@@ -1432,7 +1381,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             <div style={{ flex: 1, padding: '20px 24px', overflowY: 'auto' }}>
 
               {/* ── Info tab ── */}
-              {activeTab === 'info' && renderForm({ form: editForm, onChange: f => { setEditForm(f); setDirty(true); }, flyerPath: active?.flyer_path })}
+              {activeTab === 'info' && renderForm({ form: editForm, onChange: f => { setEditForm(f); setDirty(true); } })}
 
               {/* ── Documents tab (fillable forms + uploaded files) ── */}
               {activeTab === 'documents' && (
@@ -1824,7 +1773,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             {photoBusy ? 'Working…' : '＋ Add photos'}
                           </button>
                           <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>
-                            {photos.length} photo{photos.length === 1 ? '' : 's'} · drag to reorder — the first one is the flyer cover
+                            {photos.length} photo{photos.length === 1 ? '' : 's'} · drag to reorder — the first one is the cover photo
                           </span>
                         </div>
 
@@ -1866,7 +1815,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                 )}
                                 <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', gap: 4, justifyContent: 'center', padding: 5, background: 'linear-gradient(transparent, rgba(0,0,0,.6))',
                                   opacity: hoverPhoto === f.id || dragPhoto === f.id ? 1 : 0, transition: 'opacity .12s', pointerEvents: hoverPhoto === f.id || dragPhoto === f.id ? 'auto' : 'none' }}>
-                                  {i !== 0 && <button onClick={() => makeCover(photos, f.id)} title="Use as the flyer cover" style={{ ...act, background: 'rgba(255,255,255,.92)', color: 'var(--k-a06a12)' }}>★ Cover</button>}
+                                  {i !== 0 && <button onClick={() => makeCover(photos, f.id)} title="Use as the cover photo" style={{ ...act, background: 'rgba(255,255,255,.92)', color: 'var(--k-a06a12)' }}>★ Cover</button>}
                                   <button onClick={() => { replacingRef.current = f; replaceRef.current?.click(); }} disabled={photoBusy} title="Swap this photo, keeping its position" style={{ ...act, background: 'rgba(255,255,255,.92)', color: 'var(--k-374151)' }}>⇄ Replace</button>
                                   <button onClick={() => deleteFile(f.id, f.name)} title="Remove this photo" style={{ ...act, background: 'rgba(255,255,255,.92)', color: 'var(--k-b91c1c)' }}>✕</button>
                                 </div>
