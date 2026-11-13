@@ -15,6 +15,15 @@ const b64 = (s: string) => {
 const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 const SNOOZE = 'crm-alerts-prompt-snoozed';
+// Remembered on this device (not just this sign-in): sessionStorage is wiped every time an installed phone app is reopened, which made the card come back on every launch.
+const ASKED = 'crm-alerts-prompt-handled';   // alerts were turned on from here at least once
+const LATER = 'crm-alerts-prompt-later';      // "Not now": hidden for a week
+const WEEK = 7 * 24 * 3600 * 1000;
+const ls = {
+  get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
+};
+const quiet = () => !!ls.get(ASKED) || Date.now() - Number(ls.get(LATER) || 0) < WEEK;
 
 export default function AlertsPrompt({ token, isMobile }: { token?: string; isMobile: boolean }) {
   const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -39,13 +48,13 @@ export default function AlertsPrompt({ token, isMobile }: { token?: string; isMo
     let cancelled = false;
     (async () => {
       try {
-        if (isIos() && !isStandalone()) { if (!sessionStorage.getItem(SNOOZE)) setShow('install'); return; }
+        if (isIos() && !isStandalone()) { if (!sessionStorage.getItem(SNOOZE) && !quiet()) setShow('install'); return; }
         if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
         if (Notification.permission === 'denied') return;
-        if (Notification.permission === 'granted') { await subscribe(); return; }   // already allowed: turn it on quietly
+        if (Notification.permission === 'granted') { await subscribe(); ls.set(ASKED, '1'); return; }   // already allowed: turn it on quietly
         const reg = await navigator.serviceWorker.getRegistration('/crm');
-        if (await reg?.pushManager.getSubscription()) return;
-        if (!cancelled && !sessionStorage.getItem(SNOOZE)) setShow('ask');
+        if (await reg?.pushManager.getSubscription()) { ls.set(ASKED, '1'); return; }
+        if (!cancelled && !sessionStorage.getItem(SNOOZE) && !quiet()) setShow('ask');
       } catch { /* never get in the way of the CRM */ }
     })();
     return () => { cancelled = true; };
@@ -53,13 +62,14 @@ export default function AlertsPrompt({ token, isMobile }: { token?: string; isMo
   }, [vapid, token]);
 
   if (!show) return null;
-  const snooze = () => { try { sessionStorage.setItem(SNOOZE, '1'); } catch { /* ignore */ } setShow(null); };
+  const snooze = () => { try { sessionStorage.setItem(SNOOZE, '1'); } catch { /* ignore */ } ls.set(LATER, String(Date.now())); setShow(null); };
   const turnOn = async () => {
     setBusy(true); setErr('');
     try {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') { if (perm === 'denied') setShow(null); else setErr('Notifications were not allowed — you can try again.'); return; }
       await subscribe();
+      ls.set(ASKED, '1');
       void fetch('/api/crm/push', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: 'test' }) });
       setDone(true); setTimeout(() => setShow(null), 2500);
     } catch { setErr('Could not turn alerts on. Try again in a moment.'); } finally { setBusy(false); }
