@@ -9,7 +9,7 @@
  * Secured with CRON_SECRET (same pattern as every other cron route).
  *
  * Optional query params (for manual runs):
- *   ?window=newer_than:8d   Gmail recency filter (default newer_than:8d)
+ *   ?window=newer_than:8d   Gmail recency filter (default: none, scans the whole curated label)
  *   ?query=...              override the base Gmail query
  *   ?limit=40               max messages to scan
  */
@@ -27,9 +27,10 @@ import { linkBrokerContacts } from '@/lib/broker-ingest/link-brokers';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-// Default recency window: the weekend cadence is the longest gap (Fri 5pm → Mon 9am), so 5 days
-// covers a missed run too; dedup makes the overlap free. ?window= (even empty) overrides it.
-const DEFAULT_WINDOW = 'newer_than:5d';
+// Default recency window: none — the curated label is small and dedup makes a full re-scan idempotent, so an
+// outage of any length (Gmail disconnected, API credits out) is caught up on the next run. (A 5-day window,
+// 'newer_than:5d', would be faster but would never recover mail older than that.) ?window= overrides it.
+const DEFAULT_WINDOW = '';
 
 /** Write a status row and SAY so when it fails — a swallowed error here is what made a good run look like "never ran". */
 async function writeStatus(id: string, status: 'ok' | 'partial' | 'error'): Promise<void> {
