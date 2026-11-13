@@ -10,7 +10,7 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(d.title || 'CRM', {
     body: d.body || '',
     icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    badge: '/crm-badge.png',
     tag: d.tag || undefined,
     data: { url: d.url || '/crm' },
   }));
