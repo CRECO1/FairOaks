@@ -43,6 +43,7 @@ interface Listing {
   notes?: string;
   highlights?: string | null;
   flyer_headline?: string | null;
+  flyer_split_pages?: boolean | null;
   zoning?: string | null;
   elevator?: boolean | null;
   grade_level_doors?: boolean | null;
@@ -183,7 +184,7 @@ function fmtBytes(n?: number | null) {
 const BLANK_FORM = {
   name: '', address: '', city: '', state: 'TX', zip: '',
   type: 'Retail', status: 'active', asking_price: '', sq_ft: '',
-  lot_size: '', year_built: '', description: '', notes: '', highlights: '', flyer_headline: '', listing_agent_id: '', co_agent_id: '', flyer_type: '', map_pin: '',
+  lot_size: '', year_built: '', description: '', notes: '', highlights: '', flyer_headline: '', flyer_split_pages: '', listing_agent_id: '', co_agent_id: '', flyer_type: '', map_pin: '',
   zoning: '', elevator: '', grade_level_doors: '', dock_high_doors: '',
 };
 
@@ -461,7 +462,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       status: l.status ?? 'active', asking_price: l.asking_price != null ? String(l.asking_price) : '',
       sq_ft: l.sq_ft != null ? String(l.sq_ft) : '',
       lot_size: l.lot_size ?? '', year_built: l.year_built ?? '',
-      description: l.description ?? '', notes: l.notes ?? '', highlights: l.highlights ?? '', flyer_headline: l.flyer_headline ?? '',
+      description: l.description ?? '', notes: l.notes ?? '', highlights: l.highlights ?? '', flyer_headline: l.flyer_headline ?? '', flyer_split_pages: l.flyer_split_pages ? 'true' : '',
       co_agent_id: l.co_agent_id ?? '', flyer_type: l.flyer_type ?? '',
       zoning: l.zoning ?? '',
       elevator: l.elevator == null ? '' : String(l.elevator),
@@ -501,6 +502,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     { const m = String(editForm.map_pin || '').match(/(-?\d{1,3}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)/);
       body.latitude = m ? Number(m[1]) : null; body.longitude = m ? Number(m[2]) : null;
       delete (body as Record<string, unknown>).map_pin; }
+    body.flyer_split_pages = editForm.flyer_split_pages === 'true';
     body.sq_ft        = editForm.sq_ft !== '' ? Number(editForm.sq_ft) : null;
     // Contacts @-tagged in the Internal Notes (silent): derived from the text, so the tag and the sentence can't drift apart.
     body.tagged_contact_ids = parseMentionContactIds(String(editForm.notes ?? ''), clients, profiles);
@@ -1167,6 +1169,13 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           <input style={INP} value={form.flyer_headline} onChange={e => set('flyer_headline', e.target.value)} maxLength={90} placeholder="Built-to-suit retail in the heart of Fair Oaks Ranch" />
           <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 3 }}>One line printed over the cover photo of the flyer. Leave blank for none.</div>
         </div>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.flyer_split_pages === 'true'} onChange={e => set('flyer_split_pages', e.target.checked ? 'true' : '')} style={{ marginTop: 3 }} />
+          <span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-111)' }}>Photos on their own page</span>
+            <span style={{ display: 'block', fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>Page 2 shows just the photos, larger; the floor plan and map move to page 3. Only applies when the property has photos plus a floor plan or map. The flyer rebuilds with the next open after you save.</span>
+          </span>
+        </label>
         <div>
           {LBL('Flyer Description')}
           <textarea style={{ ...INP, minHeight: 90, resize: 'vertical' }} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Property highlights, features, zoning…" />
