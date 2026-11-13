@@ -52,9 +52,19 @@ export async function GET(req: NextRequest) {
     actor_id: s.changed_by, meta: { from: s.from_stage, to: s.to_stage },
   });
   for (const n of notes.data ?? []) items.push({ id: `note:${n.id}`, kind: 'note', at: n.created_at, title: 'Note', detail: n.body, actor_id: n.author_id });
-  for (const t of tags.data ?? []) items.push({
+  // Collapse repeats: the same sender tagging the same person with the same message inside a
+  // 10-minute window is one entry (older data holds hundreds of identical bell rows per deal).
+  const tagGroups = new Map<string, { first: any; count: number }>();
+  for (const t of tags.data ?? []) {
+    const bucket = Math.floor(new Date(t.created_at).getTime() / 600_000);
+    const key = [t.sender_id, t.recipient_id, t.type, t.message, bucket].join('|');
+    const g = tagGroups.get(key);
+    if (g) g.count++; else tagGroups.set(key, { first: t, count: 1 });
+  }
+  for (const { first: t, count } of tagGroups.values()) items.push({
     id: `tag:${t.id}`, kind: 'tag', at: t.created_at,
-    title: t.type === 'assignment' ? 'Teammate assigned' : 'Teammate mentioned', detail: t.message, actor_id: t.sender_id, meta: { recipient_id: t.recipient_id },
+    title: t.type === 'assignment' ? 'Teammate assigned' : 'Teammate mentioned',
+    detail: count > 1 ? `${t.message} (×${count})` : t.message, actor_id: t.sender_id, meta: { recipient_id: t.recipient_id },
   });
   for (const t of tasks.data ?? []) items.push({
     id: `task:${t.id}`, kind: 'task', at: t.created_at,
