@@ -202,7 +202,7 @@ export function areaMapAspect(o: { gallery: number; trade: boolean; floorAspect:
   return Math.max(0.3, Math.min(1.5, hMap / wMap));
 }
 // Lay pre-cropped (~4:3) photos into a grid filling the box.
-function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w: number, h: number, line: RGB): Rect {
+function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w: number, h: number, line: RGB, centerLast = false): Rect {
   const n = imgs.length; if (!n) return { x, y: y + h, w: 0, h: 0 };
   const cols = n <= 2 ? 1 : 2;
   const rows = Math.ceil(n / cols);
@@ -217,7 +217,10 @@ function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w:
   const x0 = x + (w - gridW) / 2, top = y + h;   // top-aligned: slack falls below, not under the heading
   imgs.forEach((img, i) => {
     const r = Math.floor(i / cols), col = i % cols;
-    const cx = x0 + col * (cw + g), cy = top - (r + 1) * ch - r * g;
+    // A partial last row (5 photos in 2 columns): centre it instead of leaving one photo hanging at the left.
+    const inRow = Math.min(cols, n - r * cols);
+    const rowX0 = centerLast && inRow < cols ? x0 + ((cols - inRow) * (cw + g)) / 2 : x0;
+    const cx = rowX0 + col * (cw + g), cy = top - (r + 1) * ch - r * g;
     drawContain(page, img, cx, cy, cw, ch);
     page.drawRectangle({ x: cx, y: cy, width: cw, height: ch, borderColor: line, borderWidth: 0.75 });
   });
@@ -400,7 +403,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   const siteAerial = (await Promise.all((input.siteAerials || []).slice(0, 1).map(embed))).find((g): g is PDFImage => !!g);
   let p2: PDFPage | null = null;
   const visuals: Array<{ title: string; kind: 'gallery' | 'floor' | 'map'; draw: (x: number, y: number, w: number, h: number) => Rect }> = [];
-  if (gallery.length) visuals.push({ title: input.titles?.photos || 'PHOTOS', kind: 'gallery', draw: (x, y, w, h) => drawPhotoGrid(p2!, gallery, x, y, w, h, HAIR) });
+  if (gallery.length) visuals.push({ title: input.titles?.photos || 'PHOTOS', kind: 'gallery', draw: (x, y, w, h) => drawPhotoGrid(p2!, gallery, x, y, w, h, HAIR, !!input.splitPages) });
   if (floor) visuals.push({ title: input.titles?.floorPlan || 'FLOOR PLAN', kind: 'floor', draw: (x, y, w, h) => drawContainTop(p2!, floor, x, y, w, h) });
   // Where it sits. A hand-made aerial (lot outlined) wins over the generated one, and there is only ever one.
   if (siteAerial) visuals.push({ title: input.titles?.siteAerial || 'SITE AERIAL', kind: 'map', draw: (x, y, w, h) => drawContainTop(p2!, siteAerial, x, y, w, h) });

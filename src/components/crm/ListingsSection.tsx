@@ -1068,7 +1068,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // As a nested COMPONENT it got a new identity every render, so React remounted
   // its inputs on each keystroke and stole focus. Called as a plain function, the
   // returned elements reconcile in place and the field keeps focus.
-  function renderForm({ form, onChange }: { form: typeof BLANK_FORM; onChange: (f: typeof BLANK_FORM) => void }) {
+  function renderForm({ form, onChange, flyerPath }: { form: typeof BLANK_FORM; onChange: (f: typeof BLANK_FORM) => void; flyerPath?: string | null }) {
+    // A flyer that was uploaded or built by hand is never rebuilt automatically, so a flyer setting can't change it.
+    const customFlyer = !!flyerPath && !/\/flyer\/\d+\.pdf$/.test(flyerPath);
     const set = (k: keyof typeof BLANK_FORM, v: string) => onChange({ ...form, [k]: v });
     // One heading per group, so a long form reads as a few short sections instead of one wall of fields.
     const SEC = (title: string, hint?: string) => (
@@ -1174,6 +1176,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           <span>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--k-111)' }}>Photos on their own page</span>
             <span style={{ display: 'block', fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 2 }}>Page 2 shows just the photos, larger; the floor plan and map move to page 3. Only applies when the property has photos plus a floor plan or map. The flyer rebuilds with the next open after you save.</span>
+            {customFlyer && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--k-92400e)', background: 'var(--k-fef3c7)', borderRadius: 6, padding: '5px 8px', marginTop: 6 }}>This property&apos;s flyer was uploaded or built by hand, so it won&apos;t change on its own. Press “Update flyer” to replace it with an auto-built one that follows this setting (the current file is overwritten).</span>}
           </span>
         </label>
         <div>
@@ -1429,7 +1432,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             <div style={{ flex: 1, padding: '20px 24px', overflowY: 'auto' }}>
 
               {/* ── Info tab ── */}
-              {activeTab === 'info' && renderForm({ form: editForm, onChange: f => { setEditForm(f); setDirty(true); } })}
+              {activeTab === 'info' && renderForm({ form: editForm, onChange: f => { setEditForm(f); setDirty(true); }, flyerPath: active?.flyer_path })}
 
               {/* ── Documents tab (fillable forms + uploaded files) ── */}
               {activeTab === 'documents' && (

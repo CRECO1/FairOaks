@@ -387,6 +387,8 @@ export default function TransactionDocEditor({
         label: tool === 'insert' ? 'Inserted text' : tool === 'note' ? 'Comment' : undefined }]);
       setSelected(id);
       setTool('select');
+      // Typing marks (insert / margin note): put the cursor straight in the new box so the agent can just type.
+      if (tool === 'insert' || tool === 'note') setTimeout(() => (document.getElementById(`rl-${id}`) as HTMLElement | null)?.focus(), 60);
       return;
     }
     // Assign to the active recipient when composing an envelope (recipients present):
@@ -1112,13 +1114,13 @@ export default function TransactionDocEditor({
                       outline: isSel ? `1.5px solid ${RED}` : 'none', touchAction: isSel ? 'none' : undefined, cursor: 'move' }}>
                     {isStrike && <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', borderTop: `2px solid ${f.color === 'black' ? '#111' : RED}`, pointerEvents: 'none' }} />}
                     {f.type === 'insert' && (
-                      <input value={f.value} onChange={e => updateVal(f.id, e.target.value)} placeholder="Inserted text"
+                      <input id={`rl-${f.id}`} value={f.value} onChange={e => updateVal(f.id, e.target.value)} placeholder="Inserted text"
                         onFocus={() => setSelected(f.id)} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
                         style={{ width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent', padding: '0 2px', margin: 0, boxSizing: 'border-box',
                           color: RED, textDecoration: 'underline', fontSize: cqw(em), fontFamily: 'Helvetica, Arial, sans-serif' }} />
                     )}
                     {isNote && (
-                      <textarea value={f.value} onChange={e => updateVal(f.id, e.target.value)} placeholder="Comment…" rows={rows}
+                      <textarea id={`rl-${f.id}`} value={f.value} onChange={e => updateVal(f.id, e.target.value)} placeholder="Comment…" rows={rows}
                         onFocus={() => setSelected(f.id)} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
                         style={{ display: 'block', width: '100%', resize: 'none', border: 'none', outline: 'none', background: 'transparent', padding: 0, margin: 0, boxSizing: 'border-box',
                           color: '#3a2a00', fontSize: cqw(em), lineHeight: 1.2, fontFamily: 'Helvetica, Arial, sans-serif' }} />
