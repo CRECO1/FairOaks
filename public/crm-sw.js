@@ -9,8 +9,8 @@ self.addEventListener('push', (event) => {
   try { d = event.data ? event.data.json() : {}; } catch (e) { d = { title: 'CRM', body: event.data ? event.data.text() : '' }; }
   event.waitUntil(self.registration.showNotification(d.title || 'CRM', {
     body: d.body || '',
-    icon: '/icon-192.png',
-    badge: '/crm-badge.png',
+    icon: '/icon-192.png?v=2',
+    badge: '/crm-badge.png?v=2',
     tag: d.tag || undefined,
     data: { url: d.url || '/crm' },
   }));
