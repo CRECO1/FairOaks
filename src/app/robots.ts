@@ -16,7 +16,7 @@ import { SITE_URL } from '@/lib/site-identity';
  * allows the public site and the /llms.txt reference files. A crawler that matches a
  * named group ignores the `*` group, so the private disallows are repeated there.
  */
-const PRIVATE_PATHS = ['/admin', '/crm', '/manage', '/api/', '/sign/', '/signup', '/billing', '/client/'];
+const PRIVATE_PATHS = ['/admin', '/crm', '/manage', '/api/', '/sign/', '/secure/', '/signup', '/billing', '/client/'];
 
 const AI_CRAWLERS = [
   // OpenAI

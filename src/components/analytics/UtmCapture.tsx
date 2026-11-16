@@ -22,7 +22,7 @@ import { useEffect } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { captureAttribution, sendPageviewBeacon } from '@/lib/attribution';
 
-const EXCLUDED_PREFIXES = ['/crm', '/manage'];
+const EXCLUDED_PREFIXES = ['/crm', '/manage', '/secure'];
 
 export default function UtmCapture() {
   const pathname = usePathname();

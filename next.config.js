@@ -160,6 +160,8 @@ const nextConfig = {
       { source: '/crm', headers: NOINDEX },
       { source: '/crm/:path*', headers: NOINDEX },
       { source: '/sign/:path*', headers: NOINDEX },
+      { source: '/secure/:path*', headers: [...NOINDEX, { key: 'Cache-Control', value: 'private, no-store' }] },
+      { source: '/api/secure-upload/:path*', headers: [{ key: 'Cache-Control', value: 'private, no-store' }] },
       { source: '/signup', headers: NOINDEX },
       { source: '/signup/:path*', headers: NOINDEX },
       { source: '/admin', headers: NOINDEX },

@@ -31,7 +31,7 @@ import { contactClickWasManual } from '@/lib/analytics';
  */
 // The CRM and the e-sign manager are internal: an agent tapping a client's phone number there is not
 // a marketing conversion, and it queued a request to /api/track/event + a site_events row per click.
-const INTERNAL_PREFIXES = ['/crm', '/manage'];
+const INTERNAL_PREFIXES = ['/crm', '/manage', '/secure'];
 
 export default function ContactLinkTracker() {
   const pathname = usePathname();
