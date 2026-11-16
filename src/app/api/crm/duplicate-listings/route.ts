@@ -29,7 +29,8 @@ export async function GET(req: NextRequest) {
   const { data: ls } = await db.from('crm_listings').select('id, name, address, status, created_at, listing_agent_id').eq('business_unit', ctx.businessUnit ?? 'commercial').or('status.is.null,status.neq.merged').limit(1000);
   const groups = new Map<string, NonNullable<typeof ls>>();
   for (const l of ls ?? []) {
-    const key = normalizeAddress(String(l.address ?? '').split(',')[0]);
+    // Some rows (older lease imports) have no address saved and carry it in the name instead.
+    const key = normalizeAddress(String(l.address || l.name || '').split(',')[0]);
     if (!key || !/^\d/.test(key)) continue;
     groups.set(key, [...(groups.get(key) ?? []), l]);
   }
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
   const asked = ids.length ? await people('tagged_listing_ids') : new Map<string, number>();
   const targeted = ids.length ? await people('targeted_listing_ids') : new Map<string, number>();
   const result = dupGroups.map(g => {
-    const rows: Row[] = g.map(l => { const m = refs.get(l.id as string) ?? {}; return { id: l.id as string, name: String(l.name ?? ''), address: String(l.address ?? '').split(',')[0].trim(), status: String(l.status ?? 'active'), created_at: String(l.created_at ?? ''), agent_id: (l.listing_agent_id as string | null) ?? null, refs: m, refTotal: Object.values(m).reduce((a, b) => a + b, 0), askedPeople: asked.get(l.id as string) ?? 0, targetedPeople: targeted.get(l.id as string) ?? 0 }; });
+    const rows: Row[] = g.map(l => { const m = refs.get(l.id as string) ?? {}; return { id: l.id as string, name: String(l.name ?? ''), address: String(l.address || l.name || '').split(',')[0].trim(), status: String(l.status ?? 'active'), created_at: String(l.created_at ?? ''), agent_id: (l.listing_agent_id as string | null) ?? null, refs: m, refTotal: Object.values(m).reduce((a, b) => a + b, 0), askedPeople: asked.get(l.id as string) ?? 0, targetedPeople: targeted.get(l.id as string) ?? 0 }; });
     const score = (r: Row) => r.refTotal * 10 + (r.status === 'active' ? 5 : 0) + (r.address.includes(',') ? 0 : 1);
     const keeper = [...rows].sort((a, b) => score(b) - score(a))[0].id;
     return { address: rows[0].address.trim(), keeper, rows };
@@ -78,9 +79,10 @@ export async function POST(req: NextRequest) {
   }
   const keeper = String(b?.keeper ?? ''); const dup = String(b?.dup ?? '');
   if (!UUID.test(keeper) || !UUID.test(dup) || keeper === dup) return NextResponse.json({ error: 'keeper and dup required' }, { status: 400 });
-  const { data: both } = await db.from('crm_listings').select('id, business_unit, address, status').in('id', [keeper, dup]);
+  const { data: both } = await db.from('crm_listings').select('id, business_unit, address, name, status').in('id', [keeper, dup]);
   if ((both ?? []).length !== 2 || (both ?? []).some(r => r.business_unit !== (ctx.businessUnit ?? 'commercial') || r.status === 'merged')) return NextResponse.json({ error: 'Both rows must be unmerged properties in your workspace' }, { status: 409 });
-  const ka = normalizeAddress(String((both ?? []).find(r => r.id === keeper)?.address ?? '').split(',')[0]); const da = normalizeAddress(String((both ?? []).find(r => r.id === dup)?.address ?? '').split(',')[0]);
+  const addrOf = (id: string) => { const r = (both ?? []).find(x => x.id === id); return normalizeAddress(String(r?.address || r?.name || '').split(',')[0]); };
+  const ka = addrOf(keeper); const da = addrOf(dup);
   if (!ka || ka !== da) return NextResponse.json({ error: 'These two rows do not have the same street address' }, { status: 409 });
   const { data, error } = await db.rpc('crm_merge_listings', { p_keeper: keeper, p_dup: dup, p_by: ctx.userId });
   if (error) return NextResponse.json({ error: error.message }, { status: 409 });
