@@ -42,6 +42,16 @@ function Edit({ value, onSave, type = 'text', width, placeholder }: { value: str
 export default function LeasingActivity({ listingId, authToken, isAdmin, onToast }: { listingId: string; authToken?: string; isAdmin?: boolean; onToast?: (m: string) => void }) {
   const [header, setHeader] = useState<Header | null>(null);
   const [sections, setSections] = useState<ReportSection[]>([]);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const draftUpdate = async () => {
+    setDraftBusy(true);
+    const r = await fetch('/api/crm/owner-update', { method: 'POST', headers: { ...authOf(authToken), 'Content-Type': 'application/json' }, body: JSON.stringify({ listing_id: listingId }) }).catch(() => null);
+    const j = r?.ok ? await r.json().catch(() => null) : null;
+    setDraftBusy(false);
+    if (!j) { onToast?.('Could not make the draft'); return; }
+    if (j.ok === false) { onToast?.('Nothing to report yet for this property'); return; }
+    onToast?.(j.recipients ? `Owner update saved to your Drafts (Emails → Drafts) for ${j.to}. Nothing was sent.` : 'Owner update saved to your Drafts, but this property has no landlord email on file. Nothing was sent.');
+  };
   const [mk, setMk] = useState<Mk | null>(null);
   const [interest, setInterest] = useState<{ asked: number; askedWeek: number; followedUp: number; targeted: number; deals: number } | null>(null);
   const [ind, setInd] = useState<Ind | null>(null);
@@ -168,7 +178,8 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
           <input defaultValue={header.fund} onBlur={e => { if (e.target.value !== header.fund) saveFund(e.target.value); }}
             style={{ display: 'block', marginTop: 2, width: 130, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, color: '#fff', padding: '4px 7px', fontSize: 12.5 }} /></label>
         <div style={{ fontSize: 11, color: GOLD, fontWeight: 800 }}>LEASING AGENT<div style={{ color: '#fff', fontWeight: 600, fontSize: 12.5, marginTop: 4 }}>{header.agent || '—'}</div></div>
-        <button onClick={download} disabled={busy} style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 800, color: GREEN, background: 'var(--k-fff)', border: 'none', borderRadius: 8, padding: '9px 13px', cursor: 'pointer' }}>
+        <button onClick={draftUpdate} disabled={draftBusy} title="Writes this week's owner update (counts only) into your Drafts for you to review. Nothing is sent." style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 800, color: '#fff', background: 'transparent', border: '1px solid rgba(255,255,255,.5)', borderRadius: 8, padding: '9px 13px', cursor: 'pointer' }}>{draftBusy ? 'Writing…' : '✉ Draft owner update'}</button>
+        <button onClick={download} disabled={busy} style={{ marginLeft: 8, fontSize: 12.5, fontWeight: 800, color: GREEN, background: 'var(--k-fff)', border: 'none', borderRadius: 8, padding: '9px 13px', cursor: 'pointer' }}>
           {busy ? 'Building…' : '⬇ Download report (.xlsx)'}
         </button>
       </div>

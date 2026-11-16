@@ -1,4 +1,5 @@
-import { autoTagIdsForText } from '@/lib/lead-listing-tag';
+import { autoTagIdsForText, listingLabels } from '@/lib/lead-listing-tag';
+import { recordJobRun } from '@/lib/job-runs';
 import { NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { twiml, twilioConfigured, twilioParams, verifyTwilioSignature } from '@/lib/twilio';
@@ -91,7 +92,7 @@ export async function POST(req: Request) {
   }
   // The call is about one of our properties (the AI's extracted property, or an address in the summary): tag it so it counts on that property.
   const autoTags = await autoTagIdsForText(db, String(call.business_unit ?? 'commercial'), String(patch.summary ?? ''), [(patch.ai_meta as Record<string, unknown>)?.property as string | null]);
-  if (autoTags.length) patch.tagged_listing_ids = autoTags;
+  if (autoTags.length) { patch.tagged_listing_ids = autoTags; await recordJobRun(db, 'call-auto-tag', true, `Phone bot call tagged to ${await listingLabels(db, autoTags)}`, { source: 'voicebot', call: call.id, listings: autoTags }); }
   await db.from('crm_call_log').update(patch).eq('id', call.id);
   // Owner + due time for a real call-back; links the caller to a contact if one exists.
   try { await tidyCallLog(db, { callIds: [call.id], days: 2 }); } catch (e) { console.warn('[voice/status] tidy', e); }

@@ -50,3 +50,12 @@ export async function autoTagIdsForText(db: SupabaseClient, unit: string, text: 
     return [];
   }
 }
+
+/** "1222 Chulie Dr, 8000 Fair Oaks Pkwy" for a list of listing ids (for the job log). Never throws. */
+export async function listingLabels(db: SupabaseClient, ids: string[]): Promise<string> {
+  try {
+    if (!ids.length) return '';
+    const { data } = await db.from('crm_listings').select('id, name, address').in('id', ids);
+    return (data ?? []).map(l => String(l.address ?? '').split(',')[0].trim() || String(l.name ?? 'a property')).join(', ');
+  } catch { return ''; }
+}

@@ -10,6 +10,15 @@ export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?
   const [jobs, setJobs] = useState<{ key: string; label: string; when: string; runs: { ran_at: string; ok: boolean; summary: string | null }[] }[] | null>(null);
   const [showJobs, setShowJobs] = useState(false);
   const [preview, setPreview] = useState<{ listings: number; messages: { to: string; title: string; body: string }[] } | null | 'loading'>(null);
+  const [testText, setTestText] = useState('');
+  const [testOut, setTestOut] = useState<{ listing: string; how: string }[] | null | 'loading'>(null);
+  const runTest = async () => {
+    if (!testText.trim()) return;
+    setTestOut('loading');
+    const r = await fetch('/api/crm/tag-test', { method: 'POST', headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ text: testText }) }).catch(() => null);
+    const j = r?.ok ? await r.json() : null;
+    setTestOut(j ? j.matches : null);
+  };
   const loadPreview = async () => {
     setPreview('loading');
     const r = await fetch('/api/crm/inquiry-digest-preview', { headers: { Authorization: `Bearer ${authToken}` } }).catch(() => null);
@@ -54,6 +63,15 @@ export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?
                 );
               })}
               <button onClick={loadPreview} disabled={preview === 'loading'} style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer' }}>{preview === 'loading' ? 'Looking…' : 'Preview today’s alert (sends nothing)'}</button>
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-374151, #374151)', marginBottom: 3 }}>Test the tagger (nothing is saved)</div>
+                <textarea value={testText} onChange={e => setTestText(e.target.value)} placeholder="Paste a note or call summary, e.g. “caller asked about 1222 Chulie Dr”" rows={2}
+                  style={{ width: '100%', boxSizing: 'border-box', fontSize: 12.5, padding: '6px 8px', border: '1px solid var(--k-e5e7eb, #e5e7eb)', borderRadius: 8, fontFamily: 'inherit' }} />
+                <button onClick={runTest} disabled={testOut === 'loading' || !testText.trim()} style={{ marginTop: 4, fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer' }}>{testOut === 'loading' ? 'Testing…' : 'What would it tag?'}</button>
+                {testOut && testOut !== 'loading' && (testOut.length === 0
+                  ? <div style={{ marginTop: 4, fontSize: 12.5 }}>No property found in that text.</div>
+                  : testOut.map((m, i) => <div key={i} style={{ marginTop: 4, fontSize: 12.5 }}>🏠 <b>{m.listing}</b> <span style={{ color: 'var(--k-9ca3af, #9ca3af)' }}>· via {m.how}</span></div>))}
+              </div>
               {preview && preview !== 'loading' && (
                 <div style={{ marginTop: 6, fontSize: 12.5 }}>
                   {preview.messages.length === 0 ? 'Nothing to send right now: no new tagged inquiries since the last run.' : preview.messages.map((m, i) => (

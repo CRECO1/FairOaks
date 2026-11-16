@@ -3,6 +3,7 @@
 import TagSuggestions from '@/components/crm/TagSuggestions';
 import InquiryAlertPrompt from '@/components/crm/InquiryAlertPrompt';
 import LeadTagHealth from '@/components/crm/LeadTagHealth';
+import InterestOverview from '@/components/crm/InterestOverview';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
@@ -256,7 +257,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [addingContact, setAddingContact] = useState(false);
   const [flyerBusy, setFlyerBusy] = useState(false);
   // Contacts whose notes / logged calls #-tagged the open property (read-only; GET /api/crm/listing-inquiries).
-  const [inquiries, setInquiries] = useState<Array<{ key: string; contact_id: string | null; deal_id?: string | null; name: string; type: string | null; via: string; last_at: string | null; snippet: string | null; needs_follow_up?: boolean }>>([]);
+  const [inquiries, setInquiries] = useState<Array<{ key: string; contact_id: string | null; deal_id?: string | null; name: string; type: string | null; via: string; last_at: string | null; snippet: string | null; needs_follow_up?: boolean; last_email?: { dir: 'sent' | 'received'; at: string } }>>([]);
   const [inquiriesLoaded, setInquiriesLoaded] = useState(false);
   const [targeted, setTargeted] = useState<{ total: number; items: Array<{ contact_id: string; name: string; type: string | null }> }>({ total: 0, items: [] });
   const [funnel, setFunnel] = useState<{ targeted: number; asked: number; followedUp: number; deals: number } | null>(null);
@@ -373,6 +374,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [askedOnly, setAskedOnly] = useState(false);
   const [targetedCounts, setTargetedCounts] = useState<Record<string, number>>({});
   const [showTagReview, setShowTagReview] = useState(false);
+  const [showOverview, setShowOverview] = useState(false);
   const [countsKey, setCountsKey] = useState(0);
   const [pendingTags, setPendingTags] = useState<number | null>(null);
   useEffect(() => {
@@ -1216,7 +1218,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
-      {showTagReview && <TagSuggestions authToken={authToken} onClose={() => { setShowTagReview(false); setCountsKey(k => k + 1); }} onToast={onToast} onChanged={() => setCountsKey(k => k + 1)} />}
+      {showOverview && <InterestOverview authToken={authToken} onClose={() => setShowOverview(false)} onOpen={id => { const l = listings.find(x => x.id === id); if (l) openListing(l); }} />}
+      {showTagReview && <TagSuggestions onOpenContact={onOpenContact} authToken={authToken} onClose={() => { setShowTagReview(false); setCountsKey(k => k + 1); }} onToast={onToast} onChanged={() => setCountsKey(k => k + 1)} />}
 
       <InquiryAlertPrompt authToken={authToken} onToast={onToast} />
       {isAdmin && <LeadTagHealth authToken={authToken} onOpenContact={onOpenContact} />}
@@ -1240,6 +1243,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             style={{ ...INP, width: 'auto', flex: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--k-6b7280)' }}>
             🏠 Tag old notes{pendingTags ? ` (${pendingTags})` : ''}
           </button>
+        )}
+        {(Object.keys(askCounts).length > 0 || Object.keys(targetedCounts).length > 0) && (
+          <button type="button" onClick={() => setShowOverview(true)} title="Every property's interest side by side: asked, reached out, followed up, deals"
+            style={{ ...INP, width: 'auto', flex: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--k-6b7280)' }}>📊 Interest</button>
         )}
         {Object.keys(askCounts).length > 0 && (
           <button type="button" onClick={() => setAskedOnly(v => !v)} title="Only properties people asked about (# tags in notes and calls), most asked first"
@@ -2020,6 +2027,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                               </span>
                             </div>
                             {q.snippet && <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.snippet}</div>}
+                            {q.last_email && <div style={{ fontSize: 11.5, color: q.last_email.dir === 'sent' ? 'var(--k-6b7280)' : 'var(--k-0f766e)', marginTop: 2 }}>✉ {q.last_email.dir === 'sent' ? 'You emailed' : 'They emailed'} {new Date(q.last_email.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{q.last_email.dir === 'sent' ? ' · no reply yet' : ''}</div>}
                           </button>
                           {q.contact_id && !q.deal_id && (
                             <button type="button" title="Open the new-deal form on this property with this person filled in (nothing is created until you press Create)"

@@ -1,0 +1,71 @@
+'use client';
+import React, { useEffect, useState } from 'react';
+
+type Row = { listing_id: string; listing: string; asked: number; targeted: number; followedUp: number; deals: number; needsFollowUp: number; avgReplyDays: number | null };
+type SortKey = 'asked' | 'targeted' | 'followedUp' | 'deals' | 'needsFollowUp' | 'avgReplyDays';
+
+/** Every property with tagged interest or outreach side by side, so you can see where to push: who is getting asks, who is getting follow-up, where people stall. */
+export default function InterestOverview({ authToken, onClose, onOpen }: { authToken?: string; onClose: () => void; onOpen: (listingId: string) => void }) {
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [sort, setSort] = useState<SortKey>('asked');
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/crm/interest-overview', { headers: { Authorization: `Bearer ${authToken}` } }).then(r => (r.ok ? r.json() : null)).then(j => { if (alive) setRows(j?.rows ?? []); }).catch(() => { if (alive) setRows([]); });
+    return () => { alive = false; };
+  }, [authToken]);
+  const val = (r: Row) => (sort === 'avgReplyDays' ? (r.avgReplyDays ?? -1) : r[sort]);
+  const sorted = [...(rows ?? [])].sort((a, b) => val(b) - val(a));
+  const tot = (k: SortKey) => (rows ?? []).reduce((a, r) => a + (k === 'avgReplyDays' ? 0 : r[k]), 0);
+  const th = (k: SortKey, label: string, title: string) => (
+    <th title={title} onClick={() => setSort(k)} style={{ textAlign: 'right', padding: '6px 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', color: sort === k ? 'var(--k-0f766e, #0f766e)' : 'var(--k-6b7280, #6b7280)' }}>{label}{sort === k ? ' ↓' : ''}</th>
+  );
+  return (
+    <div role="dialog" aria-label="Interest by property" onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--k-fff, #fff)', width: 'min(860px, 100%)', maxHeight: '88vh', overflowY: 'auto', borderRadius: '16px 16px 0 0', padding: '18px 18px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, flex: 1 }}>📊 Interest by property</div>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)', marginBottom: 10 }}>Asked = tagged inquiries. Reached out = outreach lists. Followed up = an email sent or a touch logged after the ask. Tap a column to sort, a row to open the property.</div>
+        {rows === null ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af, #9ca3af)' }}>Adding it up…</div>
+          : rows.length === 0 ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af, #9ca3af)' }}>No property has tagged interest yet.</div>
+          : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #eef0f2' }}>
+                    <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: 11.5, color: 'var(--k-6b7280, #6b7280)' }}>Property</th>
+                    {th('asked', '🏠 Asked', 'People who asked about it')}
+                    {th('targeted', '🎯 Reached out', 'People on an outreach list for it')}
+                    {th('followedUp', '✅ Followed up', 'Asks with an email sent or a touch logged afterwards')}
+                    {th('needsFollowUp', '⏳ Waiting', 'Asked a week or more ago, nothing since')}
+                    {th('avgReplyDays', 'Days to reply', 'Average days from an ask to our first email')}
+                    {th('deals', '💼 Deals', 'Deals on this property')}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map(r => (
+                    <tr key={r.listing_id} onClick={() => { onOpen(r.listing_id); onClose(); }} style={{ borderBottom: '1px solid #f1f3f5', cursor: 'pointer' }}>
+                      <td style={{ padding: '8px', fontWeight: 600 }}>{r.listing}</td>
+                      <td style={{ padding: '8px', textAlign: 'right' }}>{r.asked}</td>
+                      <td style={{ padding: '8px', textAlign: 'right' }}>{r.targeted}</td>
+                      <td style={{ padding: '8px', textAlign: 'right' }}>{r.followedUp}</td>
+                      <td style={{ padding: '8px', textAlign: 'right', color: r.needsFollowUp ? '#b45309' : undefined, fontWeight: r.needsFollowUp ? 700 : 400 }}>{r.needsFollowUp}</td>
+                      <td style={{ padding: '8px', textAlign: 'right' }}>{r.avgReplyDays === null ? '—' : r.avgReplyDays}</td>
+                      <td style={{ padding: '8px', textAlign: 'right' }}>{r.deals}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ fontWeight: 700, background: 'var(--k-f9fafb, #f9fafb)' }}>
+                    <td style={{ padding: '8px' }}>Total</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>{tot('asked')}</td><td style={{ padding: '8px', textAlign: 'right' }}>{tot('targeted')}</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>{tot('followedUp')}</td><td style={{ padding: '8px', textAlign: 'right' }}>{tot('needsFollowUp')}</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>—</td><td style={{ padding: '8px', textAlign: 'right' }}>{tot('deals')}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+      </div>
+    </div>
+  );
+}

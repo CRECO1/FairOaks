@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 type Source = 'contact' | 'activity' | 'call' | 'callsummary';
-type Item = { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach?: boolean; safe?: boolean; verdict?: string; hint?: string };
+type Item = { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach?: boolean; safe?: boolean; verdict?: string; hint?: string; text?: string };
 type Group = { listing_id: string; listing: string; n: number; outreach?: number; bySource: Partial<Record<Source, number>> };
 type Undo = { source: Source; row_id: string; listing_id: string; before: string; after: string; tags_before: string[] };
 const SRC = { contact: 'Contact notes', activity: 'Logged note', call: 'Call note', callsummary: 'Call summary' } as const;
@@ -12,11 +12,13 @@ const SRC = { contact: 'Contact notes', activity: 'Logged note', call: 'Call not
  * property (with a before/after preview first). "Not it" hides a row on this device. After a batch, "Undo" puts the old text back (only on
  * notes nobody has edited since). Admins only (the API refuses everyone else).
  */
-export default function TagSuggestions({ authToken, onClose, onToast, onChanged }: { authToken?: string; onClose: () => void; onToast: (m: string) => void; onChanged?: () => void }) {
+export default function TagSuggestions({ authToken, onClose, onToast, onChanged, onOpenContact }: { authToken?: string; onClose: () => void; onToast: (m: string) => void; onChanged?: () => void; onOpenContact?: (id: string) => void }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [total, setTotal] = useState(0);
   const [tenantsOut, setTenantsOut] = useState(0);
+  const [cardMode, setCardMode] = useState(false);
+  const [cardPos, setCardPos] = useState(0);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ label: string; rows: Undo[]; targeted?: { row_id: string; listing_id: string }[]; skipped?: { source: string; row_id: string; listing_id: string }[] } | null>(null);
@@ -92,6 +94,28 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged 
     onChanged?.();
     onToast(`Marked ${j.done} as targeted for ${listing}`);
   };
+  // One card at a time: the whole note, who it is about, and big buttons (keys A / T / N / S, ← →). Inquiry-looking notes first.
+  const queue = useMemo(() => [...live].sort((a, b) => ({ inquiry: 0, two: 1, general: 2 } as Record<string, number>)[a.verdict ?? 'general'] - ({ inquiry: 0, two: 1, general: 2 } as Record<string, number>)[b.verdict ?? 'general']), [live]);
+  const cur = queue[Math.min(cardPos, Math.max(0, queue.length - 1))];
+  const act = async (kind: 'tag' | 'target' | 'skip' | 'later') => {
+    if (!cur || busy !== null) return;
+    if (kind === 'later') { setCardPos(p => Math.min(p + 1, Math.max(0, queue.length - 1))); return; }
+    if (kind === 'tag') await applyRows(cur.listing_id, [cur], cur.listing);
+    else if (kind === 'target') { if (cur.source !== 'contact') return; await markTargeted(cur.listing_id, cur.listing, [cur], false); }
+    else await skip(cur);
+  };
+  useEffect(() => {
+    if (!cardMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === 'a') { e.preventDefault(); void act('tag'); } else if (k === 't') { e.preventDefault(); void act('target'); } else if (k === 'n') { e.preventDefault(); void act('skip'); }
+      else if (k === 's' || k === 'arrowright') { e.preventDefault(); void act('later'); } else if (k === 'arrowleft') { e.preventDefault(); setCardPos(p => Math.max(0, p - 1)); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }); // eslint-disable-line
   const doUndo = async () => {
     if (!undo) return;
     let restored = 0, skipped = 0, ok = true;
@@ -135,13 +159,48 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged 
             <button onClick={doUndo} style={{ fontSize: 12.5, fontWeight: 700, padding: '5px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer' }}>Undo</button>
           </div>
         )}
+        {items && live.length > 0 && !cardMode && (
+          <button onClick={() => { setCardMode(true); setCardPos(0); }} style={{ fontSize: 12.5, fontWeight: 700, padding: '7px 14px', borderRadius: 16, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer', marginBottom: 10 }}>⚡ Review one at a time ({live.length})</button>
+        )}
+        {cardMode && (() => {
+          const matchRe = cur ? new RegExp(`${cur.listing.split(/\s+/).slice(0, 2).map(w => w.replace(/[.*+?^${}()[\]\\|]/g, '\\$&')).join('\\s+')}`, 'i') : null;
+          const t = cur?.text ?? cur?.before ?? '';
+          const m = matchRe ? matchRe.exec(t) : null;
+          return (
+            <div style={{ border: '1px solid #eef0f2', borderRadius: 14, padding: '14px 16px', marginBottom: 12, background: 'var(--k-fafafa, #fafafa)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--k-6b7280, #6b7280)', flex: 1 }}>{queue.length === 0 ? 'All done' : `${Math.min(cardPos, queue.length - 1) + 1} of ${queue.length}`} · keys: <b>A</b> asked · <b>T</b> targeted · <b>N</b> not it · <b>S</b> skip · ← →</span>
+                <button onClick={() => setCardMode(false)} style={{ fontSize: 12.5, padding: '4px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer' }}>Back to groups</button>
+              </div>
+              {!cur ? <div style={{ fontSize: 13.5, padding: '10px 0' }}>Nothing left to review. 🎉</div> : (
+                <>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline', marginBottom: 6 }}>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>{cur.contact_id && onOpenContact ? <button onClick={() => onOpenContact(cur.contact_id as string)} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}>{cur.contact}</button> : cur.contact}</span>
+                    <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af, #9ca3af)' }}>{SRC[cur.source]}{cur.at ? ` · ${new Date(cur.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, color: 'var(--k-0f766e, #0f766e)' }}>→ {cur.listing}</span>
+                  </div>
+                  {cur.hint && <div style={{ fontSize: 11.5, color: 'var(--k-6b7280, #6b7280)', marginBottom: 6 }}>{cur.hint}{cur.outreach ? ' · looks like an outreach list entry' : ''}</div>}
+                  <div style={{ fontSize: 14, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: 'var(--k-fff, #fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
+                    {m ? <>{t.slice(0, m.index)}<mark style={{ background: '#fef08a', padding: '0 2px', borderRadius: 3 }}>{m[0]}</mark>{t.slice(m.index + m[0].length)}</> : t}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button disabled={busy !== null} onClick={() => act('tag')} style={{ fontSize: 14, fontWeight: 700, padding: '10px 18px', borderRadius: 20, border: '1px solid var(--k-99f6e4, #99f6e4)', background: 'var(--k-f0fdfa, #f0fdfa)', color: 'var(--k-0f766e, #0f766e)', cursor: 'pointer' }}>🏠 Asked (A)</button>
+                    {cur.source === 'contact' && <button disabled={busy !== null} onClick={() => act('target')} style={{ fontSize: 14, fontWeight: 700, padding: '10px 18px', borderRadius: 20, border: '1px solid #fde68a', background: '#fffbeb', color: '#b45309', cursor: 'pointer' }}>🎯 Targeted (T)</button>}
+                    <button disabled={busy !== null} onClick={() => act('skip')} style={{ fontSize: 14, padding: '10px 18px', borderRadius: 20, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', color: 'var(--k-6b7280, #6b7280)', cursor: 'pointer' }}>Not it (N)</button>
+                    <button disabled={busy !== null} onClick={() => act('later')} style={{ fontSize: 14, padding: '10px 18px', borderRadius: 20, border: 'none', background: 'none', color: 'var(--k-6b7280, #6b7280)', cursor: 'pointer' }}>Skip for now (S)</button>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
         {items && safeRows.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--k-f9fafb, #f9fafb)', border: '1px solid var(--k-e5e7eb, #e5e7eb)', borderRadius: 12, padding: '10px 12px', marginBottom: 12 }}>
             <div style={{ flex: '1 1 220px', fontSize: 13 }}><b>{safeRows.length} note{safeRows.length === 1 ? '' : 's'} look{safeRows.length === 1 ? 's' : ''} safe</b> across {safeProps} propert{safeProps === 1 ? 'y' : 'ies'}: they say “Engaged:”, “Crexi lead” or “asked about”, and outreach lists are left out.</div>
             <button disabled={busy !== null} onClick={applySafe} style={{ fontSize: 13, fontWeight: 700, padding: '8px 16px', borderRadius: 18, border: '1px solid var(--k-99f6e4, #99f6e4)', background: 'var(--k-f0fdfa, #f0fdfa)', color: 'var(--k-0f766e, #0f766e)', cursor: 'pointer' }}>{busy === 'safe' ? 'Tagging…' : `Apply the ${safeRows.length} safe ones`}</button>
           </div>
         )}
-        {items === null ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af, #9ca3af)' }}>Looking through old notes…</div>
+        {cardMode ? null : items === null ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af, #9ca3af)' }}>Looking through old notes…</div>
           : live.length === 0 ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af, #9ca3af)' }}>Nothing left to review.</div>
           : groups.filter(g => byGroup.get(g.listing_id)?.length).map(g => {
             const rows = byGroup.get(g.listing_id) ?? [];

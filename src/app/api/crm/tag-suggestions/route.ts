@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
   const db = adminClient();
   const listings = await listingsFor(db, ctx);
   const lc = new Map(listings.map(l => [l.id, l]));
-  const out: { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach: boolean; safe: boolean; verdict: string; hint: string }[] = [];
+  const out: { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach: boolean; safe: boolean; verdict: string; hint: string; text: string }[] = [];
 
   const hold = (c: { lead_hold: boolean | null }) => !!c.lead_hold && ctx.role !== 'super_admin';
   const [clients, acts, calls] = await Promise.all([
@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
     if (looksLikeTenant(text)) { tenantsLeftOut++; return; }
     if (targeted.includes(sg.listing.id) && looksLikeOutreach(text)) return;   // already marked as targeted: done
     const l = lc.get(sg.listing.id)!;
-    out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at, outreach: looksLikeOutreach(text), safe: INQUIRY.test(text) && !looksLikeOutreach(text), ...verdictFor(text, suggestAllListingTags(text, listings).length) });
+    out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at, outreach: looksLikeOutreach(text), safe: INQUIRY.test(text) && !looksLikeOutreach(text), text: text.length > 700 ? text.slice(0, 700) + '…' : text, ...verdictFor(text, suggestAllListingTags(text, listings).length) });
   }
   for (const c of clients.data ?? []) {
     cmap.set(c.id as string, { name: nameOf(c as never), hold: hold(c as never) });
@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
     const l = lc.get(hit.listing.id); if (!l) continue;
     const snippet = (text.length > 150 ? text.slice(0, 150) + '…' : text).replace(/\s+/g, ' ');
     out.push({ source: 'callsummary', row_id: k.id as string, contact_id: (k.contact_id as string | null) ?? null, contact: c?.name ?? (k.caller_name as string | null) ?? 'Unknown caller', listing_id: l.id, listing: listingTagLabel(l),
-      before: snippet, after: `${snippet}  → counts on ${listingTagLabel(l)}`, at: k.started_at as string, outreach: false, safe: ASKISH.test(text) || INQUIRY.test(text), verdict: 'inquiry', hint: 'Phone call summary' });
+      before: snippet, after: `${snippet}  → counts on ${listingTagLabel(l)}`, at: k.started_at as string, outreach: false, safe: ASKISH.test(text) || INQUIRY.test(text), verdict: 'inquiry', hint: 'Phone call summary', text: text.length > 700 ? text.slice(0, 700) + '…' : text });
   }
   if (req.nextUrl.searchParams.get('summary') === '1') return NextResponse.json({ total: out.length });   // just the badge number
   // Per-property summary, biggest first, so a whole property can be approved in one go.

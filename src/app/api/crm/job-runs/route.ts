@@ -7,6 +7,8 @@ export const dynamic = 'force-dynamic';
 const JOBS: { key: string; label: string; when: string }[] = [
   { key: 'property-inquiry-digest', label: 'Morning inquiry alert', when: 'weekdays about 9 AM Central' },
   { key: 'targeted-replies', label: 'Outreach reply conversion', when: 'daily about 9:20 AM Central' },
+  { key: 'owner-update-drafts', label: 'Weekly owner update drafts', when: 'Mondays about 9:40 AM Central (drafts only, never sent)' },
+  { key: 'call-auto-tag', label: 'Phone bot & voicemail tagging', when: 'each time a call summary is saved' },
 ];
 
 /** GET /api/crm/job-runs — admins: the last runs of the scheduled tagging jobs (what each did, or the error), newest first. Empty until the log table exists. */

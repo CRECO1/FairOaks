@@ -1,4 +1,5 @@
-import { autoTagIdsForText } from '@/lib/lead-listing-tag';
+import { autoTagIdsForText, listingLabels } from '@/lib/lead-listing-tag';
+import { recordJobRun } from '@/lib/job-runs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { callerNumberOrNull, flattenTranscript, loadSettings, matchContact, notifyCallSummary, summarizeCall, type Turn } from '@/lib/voicebot';
 import { junkKind, tidyCallLog } from '@/lib/call-routing';
@@ -89,7 +90,7 @@ export async function processVoicemails(
       if (s.caller_name) patch.caller_name = s.caller_name;
       if (s.callback_at) patch.follow_up_due = s.callback_at;
       const autoTags = await autoTagIdsForText(db, String((row as { business_unit?: string | null }).business_unit ?? 'commercial'), s.summary, [s.property]);
-      if (autoTags.length) patch.tagged_listing_ids = autoTags;
+      if (autoTags.length) { patch.tagged_listing_ids = autoTags; await recordJobRun(db, 'call-auto-tag', true, `Voicemail tagged to ${await listingLabels(db, autoTags)}`, { source: 'voicemail', call: row.id, listings: autoTags }); }
       await db.from('crm_call_log').update(patch).eq('id', row.id);
       out.summarized++;
 

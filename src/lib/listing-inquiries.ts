@@ -15,6 +15,10 @@ export type InquiryItem = {
   needs_follow_up?: boolean;
   /** Contacts only: something was logged on them after they asked (their last touch is more than a day past the ask). */
   followed_up?: boolean;
+  /** Contacts only: the latest email either way on their card (Gmail sync), so a row can say 'emailed Nov 12, no reply'. */
+  last_email?: { dir: 'sent' | 'received'; at: string };
+  /** Contacts only: whole days from their ask to the first email we sent them after it (null when none yet). */
+  responded_days?: number;
 };
 
 const prettyPhone = (n: string | null | undefined) => { const d = String(n ?? '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : (n ?? '') || 'Unknown caller'; };
@@ -136,14 +140,33 @@ export async function buildInquiries(ctx: CrmContext, listingId: string): Promis
     }
   }
 
-  // "Needs follow-up": they asked a week or more ago and nothing has been logged on them since (their last touch is no later than the ask).
+  // Emails count as touches: the latest sent / received email per contact (from the Gmail sync), so "emailed them last week" is a follow-up.
+  const mailIds = [...new Set([...items.values()].filter(i => i.contact_id && i.last_at && i.via !== 'deal' && i.via !== 'task').map(i => i.contact_id as string))];
+  const mail = new Map<string, { sent: number; received: number; lastDir: 'sent' | 'received'; lastMs: number; sentTimes: number[] }>();
+  for (let i = 0; i < mailIds.length; i += 200) {
+    const { data: em } = await db.from('crm_deal_emails').select('client_id, direction, email_at, email_date').in('client_id', mailIds.slice(i, i + 200)).order('email_date', { ascending: false }).limit(1000);
+    for (const e of em ?? []) {
+      const ms = Date.parse(String(e.email_at ?? e.email_date ?? '')); if (!Number.isFinite(ms)) continue;
+      const dir = e.direction === 'received' ? 'received' : 'sent';
+      const cur = mail.get(e.client_id as string) ?? { sent: 0, received: 0, lastDir: dir as 'sent' | 'received', lastMs: 0, sentTimes: [] };
+      if (dir === 'sent') cur.sentTimes.push(ms);
+      if (dir === 'sent') cur.sent = Math.max(cur.sent, ms); else cur.received = Math.max(cur.received, ms);
+      if (ms >= cur.lastMs) { cur.lastMs = ms; cur.lastDir = dir; }
+      mail.set(e.client_id as string, cur);
+    }
+  }
+  // "Needs follow-up": they asked a week or more ago and nothing has been logged OR emailed to them since (their last touch is no later than the ask).
   const nowMs = Date.now();
   for (const it of items.values()) {
     if (!it.contact_id || !it.last_at || it.via === 'deal' || it.via === 'task') continue;
     const c = contacts.get(it.contact_id);
     const askedMs = Date.parse(it.last_at);
     if (!c || !Number.isFinite(askedMs)) continue;
-    const touched = c.last_touched_at ? Date.parse(c.last_touched_at) : 0;
+    const m = mail.get(it.contact_id);
+    if (m && m.lastMs) it.last_email = { dir: m.lastDir, at: new Date(m.lastMs).toISOString() };
+    const firstAfter = (m?.sentTimes ?? []).filter(t => t > askedMs).sort((a, b) => a - b)[0];
+    if (firstAfter) it.responded_days = Math.floor((firstAfter - askedMs) / 86_400_000);
+    const touched = Math.max(c.last_touched_at ? Date.parse(c.last_touched_at) : 0, m?.sent ?? 0);
     if (touched > askedMs + 86_400_000) it.followed_up = true;
     if (nowMs - askedMs >= 7 * 86_400_000 && (!touched || touched <= askedMs + 86_400_000)) it.needs_follow_up = true;
   }
@@ -266,4 +289,29 @@ export async function buildFunnel(ctx: CrmContext, listingId: string, items: Inq
     ids.add(d.id as string);
   }
   return { targeted: targetedTotal, asked: people.length, followedUp: people.filter(i => i.followed_up).length, deals: ids.size };
+}
+
+export type OverviewRow = { listing_id: string; listing: string; asked: number; targeted: number; followedUp: number; deals: number; needsFollowUp: number; avgReplyDays: number | null };
+
+/** One row per property the caller can see that has any tagged interest or outreach: the numbers behind each property's funnel, side by side. */
+export async function buildOverview(ctx: CrmContext): Promise<OverviewRow[]> {
+  const db = adminClient();
+  const tcounts = await targetedCounts(ctx);
+  const ids = [...new Set([...(await taggedListingIds(120)), ...Object.keys(tcounts)])].slice(0, 80);
+  if (!ids.length) return [];
+  const { data: lst } = await db.from('crm_listings').select('id, name, address, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').in('id', ids);
+  const rows: OverviewRow[] = [];
+  await Promise.all((lst ?? []).filter(l => listingAccessible(l as Record<string, unknown>, ctx)).map(async l => {
+    const r = await buildInquiries(ctx, l.id as string);
+    if (!r.ok) return;
+    const f = await buildFunnel(ctx, l.id as string, r.items, tcounts[l.id as string] ?? 0);
+    const people = r.items.filter(i => i.via !== 'deal' && i.via !== 'task');
+    const days = people.map(i => i.responded_days).filter((x): x is number => typeof x === 'number');
+    rows.push({
+      listing_id: l.id as string, listing: String(l.address ?? '').split(',')[0].trim() || String(l.name ?? 'Property'),
+      asked: f.asked, targeted: f.targeted, followedUp: f.followedUp, deals: f.deals, needsFollowUp: people.filter(i => i.needs_follow_up).length,
+      avgReplyDays: days.length ? Math.round((days.reduce((a, b) => a + b, 0) / days.length) * 10) / 10 : null,
+    });
+  }));
+  return rows.filter(r => r.asked + r.targeted + r.deals > 0).sort((a, b) => b.asked - a.asked || b.targeted - a.targeted);
 }
