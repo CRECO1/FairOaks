@@ -1119,6 +1119,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
   const [activeClient, setActiveClient] = useState<Client | null>(null);
+  const [secureAutoOpen, setSecureAutoOpen] = useState<string | null>(null);   // contact id whose card should open with the secure-request form ready
   const [activityMore, setActivityMore] = useState(false); // phones: the contact card's activity log shows the latest few until you ask for the rest
   useEffect(() => { setActivityMore(false); }, [activeClient?.id]);
   const [docsMore, setDocsMore] = useState(false); // phones: the contact card's Documents list shows the first few until you ask for the rest
@@ -7599,6 +7600,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     selected={selectedClientIds} setSelected={setSelectedClientIds}
                     onOpen={c => setActiveClient(c as unknown as Client)}
                     onAddTask={c => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
+                    onSecure={c => { setSecureAutoOpen(c.id); setActiveClient(c as unknown as Client); }}
                     onOpenDeal={id => { const d = deals.find(x => x.id === id); if (d) openDeal(d); }}
                     canChangeOwner={isSuperAdmin} onChangeOwner={(c, id) => reassignContactOwner(c as unknown as Client, id)}
                     onChangeType={async (c, t) => { const nt = t as Client['type']; await supabase.from('crm_clients').update({ type: nt }).eq('id', c.id); setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: nt } : x)); }}
@@ -13776,7 +13778,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 )}
 
                 {/* Files — anything uploaded onto this person, plus the files on their deals' Docs tabs. */}
-                <ContactFiles clientId={c.id} authToken={session?.access_token} userId={profile?.id}
+                <ContactFiles clientId={c.id} authToken={session?.access_token} userId={profile?.id} autoOpenSecure={secureAutoOpen === c.id} onSecureAutoOpened={() => setSecureAutoOpen(null)}
                   isAdmin={isSuperAdmin || profile?.role === 'admin'} role={profile?.role} showToast={showToast} onPreview={setPreviewFile}
                   userName={`${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim()} profiles={profiles} isMobile={isMobile} onSignDoc={signLiveDoc} />
 

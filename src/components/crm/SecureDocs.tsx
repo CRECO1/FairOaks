@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { DrivePerson } from '@/components/crm/drive/DocsDrive';
 import QuickText from '@/components/crm/QuickText';
 
@@ -45,9 +45,11 @@ function statusOf(r: Req): { text: string; color: string; bg: string } {
   return { text: r.sent_at ? 'Waiting for them' : 'Link not sent', color: '#6b7280', bg: '#f3f4f6' };
 }
 
-export default function SecureDocs({ clientId, dealId, authToken, userId, role, showToast, profiles, onPreview }: {
+export default function SecureDocs({ clientId, dealId, autoOpen, onAutoOpened, authToken, userId, role, showToast, profiles, onPreview }: {
   /** A contact card passes clientId; a deal card passes dealId (the request then goes to the deal's contact). */
-  clientId?: string; dealId?: string; authToken?: string; userId?: string; role?: string | null; showToast: (m: string) => void; profiles?: DrivePerson[];
+  clientId?: string; dealId?: string;
+  /** Open the request form and scroll it into view (set by the contacts list's 🔒 button). */
+  autoOpen?: boolean; onAutoOpened?: () => void; authToken?: string; userId?: string; role?: string | null; showToast: (m: string) => void; profiles?: DrivePerson[];
   onPreview?: (f: { url: string; name: string; type?: string | null }) => void;
 }) {
   const [reqs, setReqs] = useState<Req[] | null>(null);
@@ -75,6 +77,15 @@ export default function SecureDocs({ clientId, dealId, authToken, userId, role, 
     } catch { setReqs([]); }
   }, [clientId, dealId, auth]);
   useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); setTextFor(null); load(); }, [load]);
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!autoOpen || reqs === null) return;   // wait until the list has loaded so the form does not jump
+    setCreating(true);
+    const t = setTimeout(() => rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+    onAutoOpened?.();
+    return () => clearTimeout(t);
+  }, [autoOpen, reqs, onAutoOpened]);
 
   const pick = (k: string) => { setPreset(k); setItems(PRESETS[k].items); };
   const toggle = (i: Item) => setItems(cur => (cur.some(x => x.key === i.key) ? cur.filter(x => x.key !== i.key) : [...cur, i]));
@@ -188,7 +199,7 @@ export default function SecureDocs({ clientId, dealId, authToken, userId, role, 
   const mayShare = (r: Req) => role === 'super_admin' || r.created_by === userId;
 
   return (
-    <div style={{ marginBottom: 22 }}>
+    <div ref={rootRef} style={{ marginBottom: 22 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={label}>🔒 Secure documents{list.length ? ` (${list.length})` : ''}</div>
         <button type="button" onClick={() => setCreating(c => !c)}

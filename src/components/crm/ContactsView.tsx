@@ -47,6 +47,8 @@ export interface ContactsViewProps {
   selected: Set<string>; setSelected: (s: Set<string>) => void;
   onOpen: (c: ContactRow) => void;
   onAddTask: (c: ContactRow) => void;
+  /** 🔒 Ask this person for sensitive documents through a private upload link (opens their card with the request form ready). */
+  onSecure?: (c: ContactRow) => void;
   onOpenDeal: (dealId: string) => void;
   onChangeType: (c: ContactRow, t: string) => void;
   /** Account owner only: the Owner column becomes a dropdown that reassigns the contact (and moves its open tasks / Prospect deal). */
@@ -183,7 +185,7 @@ export default function ContactsView(p: ContactsViewProps) {
   const toggleOne = (id: string, on: boolean) => { const next = new Set(p.selected); if (on) next.add(id); else next.delete(id); p.setSelected(next); };
   const allSelected = filtered.length > 0 && p.selected.size >= filtered.length && filtered.every(c => p.selected.has(c.id));
 
-  const cols = `${isAdmin ? '28px ' : ''}minmax(190px,2fr) 108px minmax(140px,1.5fr) 124px ${isAdmin ? (p.canChangeOwner ? '124px ' : '78px ') : ''}84px 78px 100px`;
+  const cols = `${isAdmin ? '28px ' : ''}minmax(190px,2fr) 108px minmax(140px,1.5fr) 124px ${isAdmin ? (p.canChangeOwner ? '124px ' : '78px ') : ''}84px 78px ${p.onSecure ? '142px' : '100px'}`;
   const sortHeader = (label: string, a: ContactSort, b?: ContactSort) => {
     const on = p.sort === a || p.sort === b;
     return (
@@ -202,6 +204,7 @@ export default function ContactsView(p: ContactsViewProps) {
       <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
         {phone ? <a href={`tel:${phone}`} title={`Call ${p.phoneDisp(phone)}`} aria-label="Call" style={actionBtn}>☎</a> : <span title="No phone on file" style={{ ...actionBtn, opacity: 0.35, cursor: 'default' }}>☎</span>}
         {c.email ? <a href={`mailto:${c.email}`} title={`Email ${c.email}`} aria-label="Email" style={actionBtn} onClick={e => { if (p.onEmail) { e.preventDefault(); p.onEmail(c); } }}>✉</a> : <span title="No email on file" style={{ ...actionBtn, opacity: 0.35, cursor: 'default' }}>✉</span>}
+        {p.onSecure && <button onClick={() => p.onSecure?.(c)} title="Request documents securely (application, ID, bank statements…)" aria-label="Request secure documents" style={actionBtn}>🔒</button>}
         <button onClick={() => p.onAddTask(c)} title={pending > 0 ? `${pending} open task${pending === 1 ? '' : 's'} — add another` : 'Add a task'} aria-label="Add a task"
           style={{ ...actionBtn, ...(pending > 0 ? { background: 'var(--k-fdf6e8)', borderColor: '#f0e2c4', color: '#a06a12', fontWeight: 700 } : {}) }}>{pending > 0 ? pending : '✓'}</button>
       </div>
