@@ -300,7 +300,7 @@ export default function SecureDocs({ clientId, dealId, authToken, userId, role, 
                   )}
                   {sharing === r.id && (
                     <div style={{ marginTop: 8, background: 'var(--k-f9fafb, #f9fafb)', borderRadius: 8, padding: 10 }}>
-                      <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginBottom: 6 }}>The broker, the contact’s owner and whoever made the request always see this. Tick anyone else who should.</div>
+                      <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginBottom: 6 }}>The broker, the contact’s owner, whoever made the request{dealId || r.deal_id ? ' and everyone on the deal' : ''} always see this. Tick anyone else who should.</div>
                       {(profiles ?? []).filter(p => p.id !== r.created_by && p.role !== 'super_admin').map(p => (
                         <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, padding: touch ? '7px 0' : '2px 0' }}>
                           <input type="checkbox" checked={(r.shared_with ?? []).includes(p.id)}

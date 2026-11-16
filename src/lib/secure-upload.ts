@@ -120,11 +120,11 @@ export async function canSeeRequest(db: SupabaseClient, ctx: CrmContext, r: Secu
   if (r.created_by === ctx.userId || (r.shared_with ?? []).includes(ctx.userId)) return true;
   const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
   if (c && c.agent_id === ctx.userId) return true;
-  // A request made on a deal is also visible to that deal's owner. Agents merely added to the deal are NOT included —
-  // the creator adds them under "Who can see", like anyone else who should see sensitive financials.
+  // A request made on a deal is also visible to everyone on that deal: its owner and the agents added to it
+  // (the same people who can open the deal itself). Agents NOT on the deal still need the creator to add them.
   if (r.deal_id) {
-    const { data: d } = await db.from('crm_deals').select('agent_id').eq('id', r.deal_id).maybeSingle();
-    if (d && d.agent_id === ctx.userId) return true;
+    const { data: d } = await db.from('crm_deals').select('agent_id, assigned_agent_ids').eq('id', r.deal_id).maybeSingle();
+    if (d && (d.agent_id === ctx.userId || ((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId))) return true;
   }
   return false;
 }
