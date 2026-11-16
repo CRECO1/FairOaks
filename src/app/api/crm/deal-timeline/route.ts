@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
   const db = adminClient();
 
-  const [emails, calls, meetings, stages, notes, tags, tasks] = await Promise.all([
+  const [emails, calls, meetings, stages, notes, tags, tasks, dealRow, tagCalls] = await Promise.all([
     db.from('crm_deal_emails').select('id, direction, from_email, to_email, subject, email_date, opened_at').eq('deal_id', dealId).order('email_date', { ascending: false }).limit(200),
     db.from('crm_call_log').select('id, direction, result, caller_name, started_at, duration_sec, summary, notes, handled_by').eq('deal_id', dealId).order('started_at', { ascending: false }).limit(200),
     db.from('crm_deal_meetings').select('id, agent_id, meeting_date, title, note, created_at').eq('deal_id', dealId).order('meeting_date', { ascending: false }).limit(200),
@@ -28,6 +28,9 @@ export async function GET(req: NextRequest) {
     db.from('crm_deal_notes').select('id, author_id, body, created_at').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(300),
     db.from('crm_notifications').select('id, sender_id, type, message, created_at, recipient_id').eq('entity_type', 'deal').eq('entity_id', dealId).order('created_at', { ascending: false }).limit(200),
     db.from('crm_tasks').select('id, title, due_date, status, created_by, created_at, type').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(100),
+    // Properties #-tagged anywhere in this deal's notes: the summary notes, dated notes, meeting notes and logged calls.
+    db.from('crm_deals').select('tagged_listing_ids').eq('id', dealId).maybeSingle(),
+    db.from('crm_call_log').select('tagged_listing_ids').eq('deal_id', dealId).neq('tagged_listing_ids', '{}').limit(200),
   ]);
 
   const items: TimelineItem[] = [];
@@ -73,11 +76,18 @@ export async function GET(req: NextRequest) {
   });
   items.sort((a, b) => (a.at < b.at ? 1 : -1));
 
+  const listingIds = Array.from(new Set<string>([
+    ...((dealRow.data?.tagged_listing_ids as string[] | null) ?? []),
+    ...((await db.from('crm_deal_notes').select('tagged_listing_ids').eq('deal_id', dealId).neq('tagged_listing_ids', '{}').limit(300)).data ?? []).flatMap(r => (r.tagged_listing_ids as string[] | null) ?? []),
+    ...((await db.from('crm_deal_meetings').select('tagged_listing_ids').eq('deal_id', dealId).neq('tagged_listing_ids', '{}').limit(300)).data ?? []).flatMap(r => (r.tagged_listing_ids as string[] | null) ?? []),
+    ...((tagCalls.data ?? []) as { tagged_listing_ids: string[] | null }[]).flatMap(r => r.tagged_listing_ids ?? []),
+  ]));
+
   const actorIds = Array.from(new Set(items.flatMap(i => [i.actor_id, i.meta?.recipient_id as string | undefined]).filter(Boolean))) as string[];
   const names: Record<string, string> = {};
   if (actorIds.length) {
     const { data: profs } = await db.from('crm_profiles').select('id, first_name, last_name').in('id', actorIds);
     for (const p of profs ?? []) names[p.id] = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim();
   }
-  return NextResponse.json({ items, names });
+  return NextResponse.json({ items, names, listing_ids: listingIds });
 }

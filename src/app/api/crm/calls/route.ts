@@ -197,7 +197,8 @@ export async function POST(req: NextRequest) {
   // the reminder moves onto that call-back instead (below).
   const queued = !!b.needs_follow_up || (!!retry && !resolves && (result === 'no_answer' || result === 'left_voicemail'));
   // Properties #-tagged in the note (#1222Chulie): which property the caller asked about.
-  const taggedListings = await listingTagIdsForText(supabase, ctx, unit, b.notes);
+  // (The deal Activity tab's "Log a call" sends what was discussed as `summary`, the Calling Log as `notes`: read both.)
+  const taggedListings = await listingTagIdsForText(supabase, ctx, unit, [b.notes, b.summary].filter(x => typeof x === 'string' && x).join('\n'));
   const { data, error } = await supabase.from('crm_call_log').insert({
     business_unit: unit, source: 'manual', kind: 'call', direction: outbound ? 'outbound' : 'inbound',
     result, from_number: outbound ? null : number, to_number: outbound ? number : null,

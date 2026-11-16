@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, notFound, isAdminRole, hiddenDealIds } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { canAccessLinked } from '@/lib/crm-linked-access';
 import { adminClient } from '@/lib/supabase-admin';
@@ -10,17 +10,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * GET /api/crm/listing-inquiries?listing_id=… — who asked about this property: contacts whose notes (or a logged call / meeting /
- * note) #-tagged it, e.g. "#1222Chulie", plus calls whose note tagged it from a caller who is not a contact yet.
+ * note) #-tagged it, e.g. "#1222Chulie", calls whose note tagged it from a caller who is not a contact yet, and deals whose
+ * notes (summary, dated notes, meetings) tagged it.
  * Answers "who asked about this building?" even when no deal exists.
  *
  * Access: the caller must be able to open the listing, and a contact only appears if the caller could open that contact
  * (new-lead holds are the broker's alone; otherwise same workspace, admins see all) — the same rule as assertOwnsResource.
  */
 export type InquiryItem = {
-  key: string;                    // contact id, or `call:<id>` for a caller who is not a contact
-  contact_id: string | null;      // null = unknown caller (not openable)
+  key: string;                    // contact id, `call:<id>` for a caller who is not a contact, or `deal:<id>`
+  contact_id: string | null;      // null = unknown caller or a deal
+  deal_id?: string | null;        // set for a deal entry (openable)
   name: string; type: string | null;
-  via: 'notes' | 'call' | 'meeting' | 'email' | 'note';
+  via: 'notes' | 'call' | 'meeting' | 'email' | 'note' | 'deal';
   last_at: string | null; snippet: string | null;
 };
 
@@ -91,6 +93,37 @@ export async function GET(req: NextRequest) {
     } else {
       const num = call.direction === 'outbound' ? call.to_number : call.from_number;
       items.set(`call:${call.id}`, { key: `call:${call.id}`, contact_id: null, name: (call.caller_name as string | null) || prettyPhone(num as string | null), type: null, via: 'call', last_at: call.started_at as string, snippet });
+    }
+  }
+
+  // Deals whose notes tagged this property. A deal is visible only if the caller could open it (agents: only deals they are on;
+  // Restricted deals: owner / assigned / super_admin) and it is in their workspace.
+  const [dealsTagged, dealNotes, dealMeets] = await Promise.all([
+    db.from('crm_deals').select('id, client, property, business_unit, notes').contains('tagged_listing_ids', tag).limit(100),
+    db.from('crm_deal_notes').select('deal_id, body, created_at').contains('tagged_listing_ids', tag).order('created_at', { ascending: false }).limit(200),
+    db.from('crm_deal_meetings').select('deal_id, note, meeting_date, created_at').contains('tagged_listing_ids', tag).order('created_at', { ascending: false }).limit(200),
+  ]);
+  if (!dealsTagged.error && !dealNotes.error && !dealMeets.error) {
+    const hidden = new Set(await hiddenDealIds(ctx));
+    type DealRow = { id: string; client: string | null; property: string | null; business_unit: string | null };
+    const deals = new Map<string, DealRow>();
+    for (const d of (dealsTagged.data ?? []) as DealRow[]) deals.set(d.id, d);
+    const missingDeals = [...new Set([...(dealNotes.data ?? []).map(n => n.deal_id as string), ...(dealMeets.data ?? []).map(m => m.deal_id as string)])].filter(id => !deals.has(id));
+    if (missingDeals.length) {
+      const { data } = await db.from('crm_deals').select('id, client, property, business_unit').in('id', missingDeals);
+      for (const d of (data ?? []) as DealRow[]) deals.set(d.id, d);
+    }
+    const latest = new Map<string, { at: string | null; snippet: string | null }>();
+    for (const n of dealNotes.data ?? []) if (!latest.has(n.deal_id as string)) latest.set(n.deal_id as string, { at: n.created_at as string, snippet: String(n.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 160) || null });
+    for (const m of dealMeets.data ?? []) {
+      const at = (m.created_at as string) ?? null; const cur = latest.get(m.deal_id as string);
+      if (!cur || (at ?? '') > (cur.at ?? '')) latest.set(m.deal_id as string, { at, snippet: String(m.note ?? '').replace(/\s+/g, ' ').trim().slice(0, 160) || null });
+    }
+    for (const d of deals.values()) {
+      if (hidden.has(d.id)) continue;
+      if (!isAdminRole(ctx.role) && d.business_unit !== ctx.businessUnit) continue;
+      const l = latest.get(d.id);
+      items.set(`deal:${d.id}`, { key: `deal:${d.id}`, contact_id: null, deal_id: d.id, name: [d.client, d.property].filter(Boolean).join(' — ') || 'Deal', type: 'Deal', via: 'deal', last_at: l?.at ?? null, snippet: l?.snippet ?? null });
     }
   }
 

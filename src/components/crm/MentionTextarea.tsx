@@ -27,6 +27,7 @@ interface Props {
   className?: string;
   style?: React.CSSProperties;
   id?: string;
+  autoFocus?: boolean;
   /** For use inside a table cell / inline editor. */
   rows?: number;
   onBlur?: React.FocusEventHandler<HTMLTextAreaElement>;
@@ -113,7 +114,7 @@ export function parseMentionContactIds(text: string, contacts: MentionContact[],
   return [...out];
 }
 
-export default function MentionTextarea({ value, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts = [], listings = [], onCreateContact, placeholder, className, style, id, rows, onBlur, onKeyDown, hideHint }: Props) {
+export default function MentionTextarea({ value, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts = [], listings = [], onCreateContact, placeholder, className, style, id, autoFocus, rows, onBlur, onKeyDown, hideHint }: Props) {
   const [creating, setCreating] = useState(false);
   const [search, setSearch]     = useState('');
   const [showDrop, setShowDrop] = useState(false);
@@ -214,6 +215,7 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
         <textarea
           ref={taRef}
           id={id}
+          autoFocus={autoFocus}
           className={className}
           style={style}
           placeholder={placeholder}

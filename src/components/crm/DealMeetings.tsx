@@ -6,6 +6,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import Skeleton from '@/components/crm/Skeleton';
+import MentionTextarea from '@/components/crm/MentionTextarea';
+import type { TagListing } from '@/lib/listing-tags';
 
 interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; type?: string }
 interface Attendee { id: string; name: string }
@@ -18,6 +20,8 @@ interface Props {
   dealId?: string;
   clientId?: string;
   clients?: PickContact[];
+  /** Properties for the # picker in the meeting note (silent tag). */
+  listings?: TagListing[];
   authToken?: string;
   businessUnit?: string;
   showToast?: (m: string) => void;
@@ -30,7 +34,7 @@ const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${Stri
 
 const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', color: 'var(--k-7a5410)', borderRadius: 20, padding: '3px 9px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' };
 
-export default function DealMeetings({ dealId, clientId, clients = [], authToken, businessUnit, showToast }: Props) {
+export default function DealMeetings({ dealId, clientId, clients = [], listings, authToken, businessUnit, showToast }: Props) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<'new' | string | null>(null);
@@ -192,7 +196,7 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
       {!readOnly && editing !== null && (
         <div style={{ border: '1px solid #eef0f2', borderRadius: 12, padding: 14, marginBottom: 14, background: 'var(--k-fcfcfb)' }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-6b7280)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Note</label>
-          <textarea className="crm-input" autoFocus style={{ marginTop: 3, width: '100%', minHeight: 78, resize: 'vertical' }} value={note} onChange={e => setNote(e.target.value)} placeholder="What happened, what was decided, next steps…" />
+          <MentionTextarea autoFocus className="crm-input" style={{ marginTop: 3, width: '100%', minHeight: 78, resize: 'vertical' }} profiles={[]} listings={listings} value={note} onChange={setNote} placeholder="What happened, what was decided, next steps… (# to tag a property)" />
 
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-6b7280)', textTransform: 'uppercase', letterSpacing: 0.4, display: 'block', marginTop: 10 }}>Tag contacts in this deal</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '5px 0' }}>

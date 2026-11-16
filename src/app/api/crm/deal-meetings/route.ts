@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { chicagoToday } from '@/lib/chicago-time';
+import { listingTagIdsForText } from '@/lib/listing-tags-server';
 
 // Logged meetings on a deal, each with tagged attendee CONTACTS (crm_clients). Purely
 // internal record-keeping — contacts are never notified. Access is gated by the parent
@@ -70,8 +71,11 @@ export async function POST(req: NextRequest) {
   if (!deal) return notFound('Deal not found');
   const unit = isAdminRole(ctx.role) ? ((deal.business_unit as string) || ctx.businessUnit || 'commercial') : (ctx.businessUnit ?? 'commercial');
   const supabase = adminClient();
+  // Properties #-tagged in the meeting note (#1222Chulie).
+  const taggedListings = await listingTagIdsForText(supabase, ctx, unit, note);
   const { data, error } = await supabase.from('crm_deal_meetings').insert({
     deal_id,
+    tagged_listing_ids: taggedListings,
     agent_id: ctx.userId,
     business_unit: unit,
     meeting_date: meeting_date || chicagoToday(),
@@ -96,7 +100,11 @@ export async function PATCH(req: NextRequest) {
   const patch: Record<string, unknown> = {};
   if (b.meeting_date !== undefined) patch.meeting_date = b.meeting_date;
   if (b.title !== undefined) patch.title = b.title || null;
-  if (b.note !== undefined) patch.note = b.note || null;
+  if (b.note !== undefined) {
+    patch.note = b.note || null;
+    const { data: dl } = await supabase.from('crm_deals').select('business_unit').eq('id', existing.deal_id).maybeSingle();
+    patch.tagged_listing_ids = await listingTagIdsForText(supabase, ctx, String(dl?.business_unit ?? ctx.businessUnit ?? 'commercial'), b.note);
+  }
   if (b.attendee_ids !== undefined) patch.attendee_ids = Array.isArray(b.attendee_ids) ? b.attendee_ids.filter((x: unknown) => typeof x === 'string') : [];
   const { data, error } = await supabase.from('crm_deal_meetings').update(patch).eq('id', id).select('*').single();
   if (error) { console.error('[deal-meetings] PATCH', error); return NextResponse.json({ error: 'Could not update' }, { status: 500 }); }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { notifyTeammates } from '@/lib/teammate-notify';
+import { listingTagIdsForText } from '@/lib/listing-tags-server';
 
 // Dated, authored deal notes (crm_deal_notes, append-only). Gated by the parent deal —
 // restricted deals 404 for non-owners. Posting a note that @mentions a teammate emails
@@ -32,8 +33,10 @@ export async function POST(req: NextRequest) {
   if (!deal) return notFound('Deal not found');
 
   const db = adminClient();
+  // Properties #-tagged in the note (#1222Chulie), in the deal's workspace.
+  const taggedListings = await listingTagIdsForText(db, ctx, String(deal.business_unit ?? ctx.businessUnit ?? 'commercial'), text);
   const { data, error } = await db.from('crm_deal_notes')
-    .insert({ deal_id: dealId, author_id: ctx.userId, body: text }).select('id, deal_id, author_id, body, created_at').single();
+    .insert({ deal_id: dealId, author_id: ctx.userId, body: text, tagged_listing_ids: taggedListings }).select('id, deal_id, author_id, body, created_at').single();
   if (error) return dbError('api/crm/deal-notes POST', error);
   await db.from('crm_deals').update({ last_touch: new Date().toISOString().slice(0, 10) }).eq('id', dealId);
 

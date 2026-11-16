@@ -137,7 +137,7 @@ interface SmartList { id: string; created_by: string; name: string; filters: Rec
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; audience?: string | null; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; send_count?: number; open_count?: number; open_rate?: number | null; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
-interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; representation_side?: string | null; is_restricted?: boolean; created_at: string; last_touch: string; emails?: DealEmail[]; }
+interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tagged_listing_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; representation_side?: string | null; is_restricted?: boolean; created_at: string; last_touch: string; emails?: DealEmail[]; }
 interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; body_html?: string | null; email_date: string; tracking_id?: string; opened_at?: string | null; last_opened_at?: string | null; open_count?: number; tracked?: boolean; gmail_thread_id?: string | null; gmail_message_id?: string | null; rfc_message_id?: string | null; cc_emails?: string | null; bcc_emails?: string | null; email_at?: string | null; created_at?: string; attachments?: Array<{ name: string; size: number; mime: string; path: string | null }> | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
@@ -4480,6 +4480,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       property: nd.property,
       value: nd.value,
       notes: nd.notes,
+      tagged_listing_ids: parseListingTagIds(nd.notes, tagListings),
       agent_id: profile!.id,
       stage: 'Prospect',
       last_touch: today(),
@@ -11700,6 +11701,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   clients={clients}
                   onToast={showToast}
                   onOpenContact={id => { openEntity('contact', id); }}
+                  onOpenDeal={id => { openEntity('deal', id); }}
                   onAddDocument={lid => setComposer({ file: null, doc: null, listingId: lid })}
                   onSignFile={(url, name, lid) => signUploadedFile(url, name, { listingId: lid })}
                   reloadSignal={esignFieldsVersion}
@@ -11942,6 +11944,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   deal={activeDeal} token={session?.access_token} profiles={profiles} clients={clients}
                   composerRef={dealComposerRef} createContactFromMention={createContactFromMention} showToast={showToast}
                   onTouched={() => updateDeal(activeDeal.id, {})} refreshKey={dealActivityKey}
+                  listings={tagListings} summaryListingIds={activeDeal.tagged_listing_ids}
+                  onOpenListing={id => { setActiveDeal(null); openEntity('listing', id); }}
                 />
               )}
 
@@ -12025,9 +12029,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <MentionTextarea
                           className="crm-input"
                           style={{ minHeight: 80, resize: 'vertical', width: '100%' }}
-                          placeholder="Deal notes… (type @ to tag a teammate or a contact)"
+                          placeholder="Deal notes… (@ teammate or contact · # property)"
                           profiles={profiles}
                           contacts={clients}
+                          listings={tagListings}
                           onCreateContact={createContactFromMention}
                           value={dealNotesText}
                           onChange={v => setDealNotesText(v)}
@@ -12043,9 +12048,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             const already = new Set(parseMentionIds(activeDeal.notes ?? '', profiles));
                             const fresh = parseMentionIds(dealNotesText, profiles).filter(id => !already.has(id));
                             if (fresh.length) notifyTeammatesApi('deal', activeDeal.id, fresh, 'mention', dealNotesText);
-                            updateDeal(activeDeal.id, { notes: dealNotesText, tagged_contact_ids: tagged });
-                            setActiveDeal(prev => prev ? { ...prev, notes: dealNotesText, tagged_contact_ids: tagged } : prev);
-                            showToast(tagged.length ? `Notes saved ✓ · ${tagged.length} contact${tagged.length > 1 ? 's' : ''} tagged` : 'Notes saved ✓');
+                            // Properties #-tagged in the notes (#1222Chulie): re-derived from the text so tag and sentence stay in step.
+                            const taggedProps = parseListingTagIds(dealNotesText, tagListings);
+                            updateDeal(activeDeal.id, { notes: dealNotesText, tagged_contact_ids: tagged, tagged_listing_ids: taggedProps });
+                            setActiveDeal(prev => prev ? { ...prev, notes: dealNotesText, tagged_contact_ids: tagged, tagged_listing_ids: taggedProps } : prev);
+                            showToast(tagged.length || taggedProps.length ? `Notes saved ✓${tagged.length ? ` · ${tagged.length} contact${tagged.length > 1 ? 's' : ''} tagged` : ''}${taggedProps.length ? ` · ${taggedProps.length} propert${taggedProps.length === 1 ? 'y' : 'ies'} tagged` : ''}` : 'Notes saved ✓');
                           }}
                             style={{ marginTop: 6, padding: '4px 14px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                             Save Notes
@@ -12057,7 +12064,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* ── Meetings — log meetings + tag attendee contacts (silent) ── */}
                   <div style={{ marginTop: 18 }}>
-                    <DealMeetings dealId={activeDeal.id} clients={clients} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} />
+                    <DealMeetings dealId={activeDeal.id} clients={clients} listings={tagListings} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} />
                   </div>
 
                   {/* ── Loss Reason Banner ── */}
@@ -12989,7 +12996,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Notes</label>
-                  <textarea className="crm-input" style={{ marginTop: 4, minHeight: 70, resize: 'vertical' }} value={nd.notes} onChange={e => setNd({ ...nd, notes: e.target.value })} placeholder="Initial notes…" />
+                  <MentionTextarea className="crm-input" style={{ marginTop: 4, minHeight: 70, resize: 'vertical' }} profiles={[]} listings={tagListings} value={nd.notes} onChange={v => setNd({ ...nd, notes: v })} placeholder="Initial notes… (# to tag a property)" />
                 </div>
               </div>
               {isSuperAdmin && (

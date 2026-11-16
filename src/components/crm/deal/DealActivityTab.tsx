@@ -6,6 +6,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import MentionTextarea from '../MentionTextarea';
+import { listingTagLabel, type TagListing } from '@/lib/listing-tags';
 import { Icon } from './dealUi';
 
 type Kind = 'email' | 'call' | 'meeting' | 'stage' | 'note' | 'tag' | 'task';
@@ -44,11 +45,17 @@ export interface DealActivityTabProps {
   onTouched: () => void;
   /** Bump to force a timeline refetch (e.g. after a stage change from the header). */
   refreshKey?: number;
+  /** Properties for the # picker, and a way to open one from the 'Properties mentioned' chips. */
+  listings?: TagListing[];
+  onOpenListing?: (listingId: string) => void;
+  /** Properties #-tagged in the deal's summary notes (they join the ones found in dated notes, meetings and calls). */
+  summaryListingIds?: string[];
 }
 
 export default function DealActivityTab(p: DealActivityTabProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
+  const [mentioned, setMentioned] = useState<string[]>([]);   // properties #-tagged anywhere in this deal's notes
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [filter, setFilter] = useState<Set<Kind>>(new Set());
@@ -64,7 +71,7 @@ export default function DealActivityTab(p: DealActivityTabProps) {
       const r = await fetch(`/api/crm/deal-timeline?deal_id=${p.deal.id}`, { headers: auth });
       if (!r.ok) throw new Error(String(r.status));
       const j = await r.json();
-      setItems(j.items ?? []); setNames(j.names ?? {});
+      setItems(j.items ?? []); setNames(j.names ?? {}); setMentioned(j.listing_ids ?? []);
     } catch { setErr('Could not load activity.'); }
     setLoading(false);
   }, [p.deal.id, auth]);
@@ -97,8 +104,8 @@ export default function DealActivityTab(p: DealActivityTabProps) {
       <div className="dc-card" ref={p.composerRef} style={{ marginBottom: 14 }}>
         <MentionTextarea
           className="crm-input" style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
-          placeholder="Add a note… (@ to tag — teammates get emailed)"
-          profiles={p.profiles} contacts={p.clients} onCreateContact={p.createContactFromMention}
+          placeholder="Add a note… (@ teammate gets emailed · # property)"
+          profiles={p.profiles} contacts={p.clients} listings={p.listings} onCreateContact={p.createContactFromMention}
           value={note} onChange={setNote}
         />
         <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -108,6 +115,22 @@ export default function DealActivityTab(p: DealActivityTabProps) {
           <button className={`dc-chip${panel === 'next' ? ' on' : ''}`} onClick={() => setPanel(panel === 'next' ? null : 'next')}><Icon name="task" size={14} />Next step</button>
         </div>
       </div>
+
+      {/* Properties tagged with # anywhere in this deal's notes, meetings and calls */}
+      {(() => {
+        const ids = Array.from(new Set([...(p.summaryListingIds ?? []), ...mentioned]));
+        const chips = ids.map(id => (p.listings ?? []).find(l => l.id === id)).filter((l): l is TagListing => !!l);
+        if (!chips.length) return null;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '0 0 12px' }}>
+            <span title="Properties tagged with # in this deal's notes, meetings and calls" style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c-ink-2,#374151)' }}>🏠 Properties mentioned</span>
+            {chips.map(l => (
+              <button key={l.id} onClick={() => p.onOpenListing?.(l.id)} disabled={!p.onOpenListing} title={`${listingTagLabel(l)} — open the property`}
+                style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-0f766e,#0f766e)', background: 'var(--k-f0fdfa,#f0fdfa)', border: '1px solid var(--k-99f6e4,#99f6e4)', borderRadius: 20, padding: '3px 10px', cursor: p.onOpenListing ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>{listingTagLabel(l)}</button>
+            ))}
+          </div>
+        );
+      })()}
 
       {panel === 'call' && <LogCall {...p} auth={auth} onDone={() => { setPanel(null); p.onTouched(); load(); }} />}
       {panel === 'next' && <NextStep {...p} auth={auth} onDone={() => { setPanel(null); p.onTouched(); load(); }} />}
@@ -154,7 +177,7 @@ export default function DealActivityTab(p: DealActivityTabProps) {
 }
 
 /* ── Log a call → crm_call_log via /api/crm/calls ──────────────────────────── */
-function LogCall({ deal, auth, showToast, onDone }: DealActivityTabProps & { auth: Record<string, string>; onDone: () => void }) {
+function LogCall({ deal, auth, showToast, onDone, listings }: DealActivityTabProps & { auth: Record<string, string>; onDone: () => void }) {
   const [result, setResult] = useState('answered');
   const [direction, setDirection] = useState('outbound');
   const [mins, setMins] = useState('');
@@ -185,7 +208,9 @@ function LogCall({ deal, auth, showToast, onDone }: DealActivityTabProps & { aut
         </select>
         <input className="crm-input" type="number" min="0" placeholder="Minutes (optional)" value={mins} onChange={e => setMins(e.target.value)} />
       </div>
-      <textarea className="crm-input" style={{ marginTop: 10, width: '100%', minHeight: 60 }} placeholder="What was discussed?" value={notes} onChange={e => setNotes(e.target.value)} />
+      <div style={{ marginTop: 10 }}>
+        <MentionTextarea className="crm-input" style={{ width: '100%', minHeight: 60 }} placeholder="What was discussed? (# to tag a property)" profiles={[]} listings={listings} value={notes} onChange={setNotes} />
+      </div>
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginTop: 8, color: 'var(--c-ink-2,#4b5563)' }}>
         <input type="checkbox" checked={followUp} onChange={e => setFollowUp(e.target.checked)} />Needs a follow-up call
       </label>
