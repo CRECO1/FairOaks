@@ -47,6 +47,8 @@ interface Props {
   /** Open a contact / deal card on its Secure documents section (from the Secure documents index). */
   onOpenSecureContact?: (clientId: string) => void;
   onOpenSecureDeal?: (dealId: string) => void;
+  /** The signed-in person's CRM role (decides who may set a secure folder's password / access list). */
+  userRole?: string | null;
 }
 
 type View = 'folder' | 'recent' | 'shared' | 'trash' | 'search' | 'templates' | 'starred' | 'forms' | 'secure';
@@ -88,7 +90,7 @@ function fmtWhen(iso: string) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
 }
 
-export default function DocsDrive({ deals = [], contacts = [], onSignDoc, businessUnit, authToken, currentUser, profiles, isAdmin, isMobile, onToast, onOpenSecureContact, onOpenSecureDeal }: Props) {
+export default function DocsDrive({ deals = [], contacts = [], onSignDoc, businessUnit, authToken, currentUser, profiles, isAdmin, isMobile, onToast, onOpenSecureContact, onOpenSecureDeal, userRole }: Props) {
   const [view, setView] = useState<View>('folder');
   const [folderId, setFolderId] = useState<string | null>(() => (typeof window === 'undefined' ? null : recallView(`${businessUnit}:drive-folder`)));
   const [q, setQ] = useState('');
@@ -98,6 +100,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [dlg, setDlg] = useState<Dlg | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  const [secureCreate, setSecureCreate] = useState(0);   // bumped to open the Secure documents 'new folder' form
   const [newFromLeft, setNewFromLeft] = useState(false);   // the New button wrapped to the left edge: open its menu rightward so it stays on screen
   const [openDocId, setOpenDocId] = useState<string | null>(null);
   const [quickDocId, setQuickDocId] = useState<string | null>(null);   // the quick-look side panel
@@ -734,7 +737,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
       )}
 
       <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
-        {view === 'forms' ? <FormLibrary api={api} businessUnit={businessUnit} isMobile={isMobile} onPick={id => void createForm(id)} /> : view === 'secure' ? <SecureIndex authToken={authToken} businessUnit={businessUnit} isMobile={isMobile} onOpenContact={onOpenSecureContact} onOpenDeal={onOpenSecureDeal} /> : (<>
+        {view === 'forms' ? <FormLibrary api={api} businessUnit={businessUnit} isMobile={isMobile} onPick={id => void createForm(id)} /> : view === 'secure' ? <SecureIndex authToken={authToken} businessUnit={businessUnit} isMobile={isMobile} onOpenContact={onOpenSecureContact} onOpenDeal={onOpenSecureDeal} userId={currentUser.id} role={userRole} profiles={profiles} onToast={onToast} createSignal={secureCreate} /> : (<>
         {/* Header: breadcrumb + search + New */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <div style={{ flex: '1 1 220px', minWidth: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, fontSize: isMobile ? 16 : 17, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>
@@ -766,6 +769,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                     <MenuBtn onClick={() => void createDoc()} icon="📄" label="Document" isMobile={isMobile} />
                     <MenuBtn onClick={() => void createDoc('sheet')} icon="▦" label="Spreadsheet" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'newFolder' }); }} icon="📁" label="Folder" isMobile={isMobile} />
+                    <MenuBtn onClick={() => { setNewOpen(false); setQ(''); setView('secure'); setSecureCreate(n => n + 1); }} icon="🔒" label="Secure folder" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); if (!canAddForm) { onToast('Forms can only be added to team folders (not private ones)'); return; } setDlg({ t: 'form' }); }} icon="📝" label="Form…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); fileInput.current?.click(); }} icon="⬆" label="Upload files" isMobile={isMobile} />
                     <MenuGroup label="Start from a template" />
@@ -1026,7 +1030,7 @@ function MidText({ text, style }: { text: string; style?: React.CSSProperties })
 }
 const crumb = (current: boolean): React.CSSProperties => ({ background: 'none', border: 'none', padding: '6px 6px', borderRadius: 6, cursor: current ? 'default' : 'pointer', fontSize: 'inherit', fontWeight: current ? 700 : 600, color: current ? 'var(--k-1a1a1a)' : 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif", maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 
-const MENU_ICON: Record<string, DIName> = { '▦': 'sheet', '📄': 'doc', '📋': 'template', '📁': 'folder', '📝': 'form', '⬆': 'upload', '↩': 'restore', '🗑': 'trash', '↗': 'open', '👁': 'eye', '⬇': 'download', '↓': 'download', '💼': 'briefcase', '👤': 'user', '✎': 'pen', '👥': 'users', '⭐': 'star' };
+const MENU_ICON: Record<string, DIName> = { '🔒': 'lock', '▦': 'sheet', '📄': 'doc', '📋': 'template', '📁': 'folder', '📝': 'form', '⬆': 'upload', '↩': 'restore', '🗑': 'trash', '↗': 'open', '👁': 'eye', '⬇': 'download', '↓': 'download', '💼': 'briefcase', '👤': 'user', '✎': 'pen', '👥': 'users', '⭐': 'star' };
 function MenuBtn({ icon, label, onClick, danger, isMobile }: { icon: string; label: string; onClick: () => void; danger?: boolean; isMobile: boolean }) {
   return (
     <button type="button" role="menuitem" onClick={onClick}

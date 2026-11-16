@@ -11787,6 +11787,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {page === 'transaction-docs' && (
             <TransactionDocsSection
+              userRole={profile.role}
               onOpenSecureContact={id => {
                 const show = (c: Client) => { setSecureScroll({ kind: 'contact', id }); setActiveClient(c); };
                 const c = clients.find(x => x.id === id);

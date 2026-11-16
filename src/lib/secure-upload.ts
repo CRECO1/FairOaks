@@ -1,10 +1,11 @@
 // Secure document requests — server helpers shared by the agent routes (/api/crm/secure-requests), the tenant's token
 // route (/api/secure-upload/[token]) and the cron. See supabase/secure-upload-2026-11.sql.
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { randomBytes } from 'crypto';
+import { randomBytes, scryptSync, timingSafeEqual, createHmac } from 'crypto';
 import { APP_ORIGIN, esc, resendConfig } from '@/lib/esign';
 import type { CrmContext } from '@/lib/crm-auth';
 import { Resend } from 'resend';
+import { scanFile, SCAN_VERSION } from '@/lib/file-scan';
 import { sendPushToProfiles, crmLink } from '@/lib/push';
 
 export const SECURE_BUCKET = 'secure-intake';
@@ -103,7 +104,11 @@ export function cleanItems(input: unknown): ChecklistItem[] {
 }
 
 export interface SecureRequestRow {
-  id: string; client_id: string; deal_id: string | null; business_unit: string; created_by: string | null; shared_with: string[] | null;
+  id: string; client_id: string | null; deal_id: string | null; business_unit: string; created_by: string | null; shared_with: string[] | null;
+  /** 'request' = a checklist sent to a contact; 'folder' = a folder an agent made in My Drive (no contact needed). */
+  kind: 'request' | 'folder'; name: string | null;
+  /** scrypt hash of the link password — NEVER send this to a browser (see publicShape in the route). */
+  pass_hash: string | null; guest_view: boolean; failed_attempts: number; locked_until: string | null;
   recipient_name: string | null; recipient_email: string | null; note: string | null; items: ChecklistItem[]; token: string;
   status: 'open' | 'revoked'; expires_at: string; purge_after: string; keep_files: boolean; purged_at: string | null;
   sent_at: string | null; reminded_at: string | null; reminder_count: number; first_viewed_at: string | null; view_count: number;
@@ -134,10 +139,12 @@ export function canSeeGiven(
  * see hides its folder, and then the folder's own access rule.
  */
 export function indexVisible(
-  ctx: Pick<CrmContext, 'userId' | 'role'>, unit: string, r: Pick<SecureRequestRow, 'created_by' | 'shared_with' | 'deal_id'>,
+  ctx: Pick<CrmContext, 'userId' | 'role'>, unit: string, r: Pick<SecureRequestRow, 'created_by' | 'shared_with' | 'deal_id'> & Partial<Pick<SecureRequestRow, 'client_id' | 'business_unit'>>,
   contact: { agent_id?: string | null; lead_hold?: boolean | null; business_unit?: string | null } | null | undefined,
   deal: { agent_id?: string | null; assigned_agent_ids?: string[] | null } | null | undefined, hiddenDeals: Set<string>,
 ): boolean {
+  // A stand-alone folder (no contact): this workspace only, then the broker, its creator and the people added to it.
+  if (r.client_id === null) return r.business_unit === unit && !r.deal_id && canSeeGiven(ctx, r, null, null);
   if (!contact || contact.business_unit !== unit) return false;
   if (contact.lead_hold && ctx.role !== 'super_admin') return false;
   if (r.deal_id && (hiddenDeals.has(r.deal_id) || !deal)) return false;
@@ -145,7 +152,7 @@ export function indexVisible(
 }
 export async function canSeeRequest(db: SupabaseClient, ctx: CrmContext, r: SecureRequestRow): Promise<boolean> {
   if (canSeeGiven(ctx, r, null, null)) return true;
-  const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
+  const { data: c } = r.client_id ? await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle() : { data: null };
   const { data: d } = r.deal_id ? await db.from('crm_deals').select('agent_id, assigned_agent_ids').eq('id', r.deal_id).maybeSingle() : { data: null };
   return canSeeGiven(ctx, r, c?.agent_id as string | null | undefined, d as { agent_id?: string | null; assigned_agent_ids?: string[] | null } | null);
 }
@@ -176,7 +183,7 @@ function shell(brand: string, bodyHtml: string): string {
 }
 const brandName = (unit: string) => (unit === 'residential' ? 'Fair Oaks Realty Group' : 'CRECO');
 
-export function requestEmail(unit: string, o: { name: string; senderName: string; url: string; items: ChecklistItem[]; note?: string | null; expiresAt: string; reminder?: boolean }) {
+export function requestEmail(unit: string, o: { name: string; senderName: string; url: string; items: ChecklistItem[]; note?: string | null; expiresAt: string; reminder?: boolean; needsPassword?: boolean }) {
   const first = (o.name || '').trim().split(/\s+/)[0] || 'there';
   const exp = new Date(o.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'America/Chicago' });
   const list = o.items.length ? `<ul style="margin:8px 0 14px;padding-left:20px">${o.items.map(i => `<li>${esc(i.label)}</li>`).join('')}</ul>` : '';
@@ -185,9 +192,24 @@ export function requestEmail(unit: string, o: { name: string; senderName: string
     ${list}
     ${o.note ? `<p style="background:#faf7ef;border-left:3px solid #c9922c;padding:10px 12px;border-radius:4px;white-space:pre-line">${esc(o.note)}</p>` : ''}
     <p style="margin:22px 0"><a href="${esc(o.url)}" style="background:#c9922c;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px;display:inline-block">🔒 Upload securely</a></p>
+    ${o.needsPassword ? PASSWORD_NOTE(o.senderName) : ''}
     <p style="font-size:12px;color:#6b7280">Only your CRECO broker can see what you upload. The link works until ${esc(exp)}. Or paste this into your browser:<br>${esc(o.url)}</p>
     <p style="font-size:12px;color:#6b7280">Questions? Call us at ${OFFICE_PHONE}.</p>`;
   return { subject: o.reminder ? 'Reminder — your secure document upload' : 'Your secure document upload', html: shell(brandName(unit), body) };
+}
+// The password itself is NEVER put in an email: it travels separately (a call or a text), so a forwarded or intercepted email is not enough.
+const PASSWORD_NOTE = (sender: string) => `<p style="background:#faf7ef;border-left:3px solid #c9922c;padding:10px 12px;border-radius:4px">🔑 This link needs a <strong>password</strong>. ${esc(sender)} will give it to you separately — by phone or text, not by email.</p>`;
+
+/** The link to a folder an agent made (no checklist): what it is, that a password is needed, and nothing more. */
+export function folderEmail(unit: string, o: { folderName: string; senderName: string; url: string; expiresAt: string; needsPassword: boolean; canView: boolean }) {
+  const exp = new Date(o.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'America/Chicago' });
+  const body = `<p>Hello,</p>
+    <p>${esc(o.senderName)} set up a private folder for you: <strong>${esc(o.folderName)}</strong>. Use it to ${o.canView ? 'see the documents shared with you and add your own' : 'send your documents'} — <strong>please don’t email them</strong>, since email isn’t a safe place for financial documents or IDs.</p>
+    ${o.needsPassword ? PASSWORD_NOTE(o.senderName) : ''}
+    <p style="margin:22px 0"><a href="${esc(o.url)}" style="background:#c9922c;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px;display:inline-block">🔒 Open the secure folder</a></p>
+    <p style="font-size:12px;color:#6b7280">The link works until ${esc(exp)}. Or paste this into your browser:<br>${esc(o.url)}</p>
+    <p style="font-size:12px;color:#6b7280">Questions? Call us at ${OFFICE_PHONE}.</p>`;
+  return { subject: `Your secure folder: ${o.folderName}`, html: shell(brandName(unit), body) };
 }
 
 export function uploadedEmail(unit: string, o: { agentName: string; recipientName: string; count: number; contactUrl: string; submitted: boolean }) {
@@ -208,13 +230,17 @@ export async function sendSecureEmail(unit: string, to: string, subject: string,
 }
 
 // ── Telling the agent ────────────────────────────────────────────────────────
+/** Who an alert is about, and where tapping it lands: the contact card, or My Drive for a folder with no contact. */
+const whoOf = (r: SecureRequestRow) => r.recipient_name || (r.kind === 'folder' ? `Someone with the link to “${r.name ?? 'a secure folder'}”` : 'A contact');
+const crmPlace = (r: SecureRequestRow) => (r.client_id ? crmLink('contacts', { type: 'contact', id: r.client_id }) : crmLink('transaction-docs'));
+
 /**
  * Who gets a PHONE alert about a request: its creator, the contact's owner, and — for a request made on a deal — the deal's
  * owner and every agent added to that deal (the same people who can open the folder). Emails still go only to the creator
  * and the contact's owner.
  */
 export async function pushRecipients(db: SupabaseClient, r: SecureRequestRow): Promise<string[]> {
-  const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
+  const { data: c } = r.client_id ? await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle() : { data: null };
   const { data: d } = r.deal_id ? await db.from('crm_deals').select('agent_id, assigned_agent_ids').eq('id', r.deal_id).maybeSingle() : { data: null };
   const ids = [r.created_by, c?.agent_id as string | null | undefined, d?.agent_id as string | null | undefined, ...(((d?.assigned_agent_ids as string[] | null) ?? []))];
   return [...new Set(ids.filter((x): x is string => !!x))];
@@ -229,15 +255,15 @@ export async function notifyUploads(db: SupabaseClient, r: SecureRequestRow, sub
     const { count } = await db.from('crm_secure_files').select('id', { count: 'exact', head: true }).eq('request_id', r.id);
     const n = count ?? 0;
     if (!n) return;
-    const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
+    const { data: c } = r.client_id ? await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle() : { data: null };
     const ids = [...new Set([r.created_by, c?.agent_id as string | null | undefined].filter((x): x is string => !!x))];
     const { data: profs } = ids.length ? await db.from('crm_profiles').select('id, first_name, email').in('id', ids) : { data: [] };
-    const who = r.recipient_name || 'A contact';
-    const link = `${APP_ORIGIN}${crmLink('contacts', { type: 'contact', id: r.client_id })}`;
+    const who = whoOf(r);
+    const link = `${APP_ORIGIN}${crmPlace(r)}`;
     await sendPushToProfiles(await pushRecipients(db, r), {
       title: submitted ? `${who} finished their secure upload` : `${who} uploaded secure files`,
       body: `${n} file${n === 1 ? '' : 's'} waiting in Secure documents`,
-      url: crmLink('contacts', { type: 'contact', id: r.client_id }), tag: `secure-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
+      url: crmPlace(r), tag: `secure-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
     }, { db });
     for (const p of profs ?? []) {
       if (!p.email) continue;
@@ -252,8 +278,8 @@ export async function notifyUploads(db: SupabaseClient, r: SecureRequestRow, sub
 export async function notifyOpened(db: SupabaseClient, r: SecureRequestRow): Promise<void> {
   try {
     await sendPushToProfiles(await pushRecipients(db, r), {
-      title: `${r.recipient_name || 'A contact'} opened their secure upload link`,
-      body: 'They haven’t uploaded anything yet', url: crmLink('contacts', { type: 'contact', id: r.client_id }),
+      title: `${whoOf(r)} opened their secure ${r.kind === 'folder' ? 'folder' : 'upload'} link`,
+      body: r.kind === 'folder' ? 'They got in with the link' : 'They haven’t uploaded anything yet', url: crmPlace(r),
       tag: `secure-open-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
     }, { db });
   } catch (e) { console.error('[secure-upload] opened alert failed', e); }
@@ -267,9 +293,112 @@ export async function notifyBlocked(db: SupabaseClient, r: SecureRequestRow, fil
   try {
     const name = filename.length > 50 ? `${filename.slice(0, 47)}…` : filename;
     await sendPushToProfiles(await pushRecipients(db, r), {
-      title: `⚠️ A file from ${r.recipient_name || 'a contact'} was blocked`,
+      title: `⚠️ A file from ${r.recipient_name || (r.kind === 'folder' ? `“${r.name ?? 'a secure folder'}”` : 'a contact')} was blocked`,
       body: `${name} — looks like ${reason}. It was not saved.`,
-      url: crmLink('contacts', { type: 'contact', id: r.client_id }), tag: `secure-blocked-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
+      url: crmPlace(r), tag: `secure-blocked-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
     }, { db });
   } catch (e) { console.error('[secure-upload] blocked alert failed', e); }
 }
+
+/** Too many wrong passwords closed the link: tell the people responsible (phone alert only). */
+export async function notifyLocked(db: SupabaseClient, r: SecureRequestRow): Promise<void> {
+  try {
+    const what = r.kind === 'folder' ? `“${r.name ?? 'a secure folder'}”` : `${r.recipient_name || 'a contact'}’s secure link`;
+    await sendPushToProfiles(await pushRecipients(db, r), {
+      title: `🔒 Link to ${what} was closed`,
+      body: 'Too many wrong passwords. Nothing was opened. Reopen the link when you’re ready, and consider a new password.',
+      url: crmPlace(r), tag: `secure-locked-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
+    }, { db });
+  } catch (e) { console.error('[secure-upload] locked alert failed', e); }
+}
+
+// ── Link passwords ───────────────────────────────────────────────────────────
+// A folder (or request) can require a password on top of its link. Stored as a salted scrypt hash; the plain password is never
+// kept, logged or sent back. Wrong guesses are counted on the row: a short lock after a few, the link closed after many.
+export const PASSWORD_MIN = 8;
+export const LOCK_AFTER = 5;          // consecutive wrong passwords → a 15-minute lock
+export const LOCK_MINUTES = 15;
+export const CLOSE_AFTER = 15;        // …and at this many the link is closed and the agent told
+const SCRYPT = { N: 16384, r: 8, p: 1, len: 32 };
+
+export function hashPassword(plain: string): string {
+  const salt = randomBytes(16);
+  const hash = scryptSync(plain.normalize('NFKC'), salt, SCRYPT.len, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
+  return `scrypt$${SCRYPT.N}$${salt.toString('base64url')}$${hash.toString('base64url')}`;
+}
+export function verifyPassword(plain: string, stored: string | null | undefined): boolean {
+  try {
+    const [algo, n, salt, hash] = (stored ?? '').split('$');
+    if (algo !== 'scrypt' || !salt || !hash) return false;
+    const want = Buffer.from(hash, 'base64url');
+    const got = scryptSync(String(plain).normalize('NFKC'), Buffer.from(salt, 'base64url'), want.length, { N: Number(n) || SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
+    return got.length === want.length && timingSafeEqual(got, want);
+  } catch { return false; }
+}
+/** A friendly problem with a proposed password, or null when it is acceptable. */
+export function passwordProblem(plain: unknown): string | null {
+  if (typeof plain !== 'string' || plain.length < PASSWORD_MIN) return `Use a password of at least ${PASSWORD_MIN} characters.`;
+  if (plain.length > 128) return 'That password is too long.';
+  if (/^(.)\1+$/.test(plain) || /^(password|12345678|123456789|qwertyui|letmein1)$/i.test(plain)) return 'That password is too easy to guess — pick something else.';
+  return null;
+}
+
+// After the right password the guest gets a short-lived pass (not a cookie: it rides in a header, so no other site can use it).
+// It is tied to this folder AND to the current password, so changing or removing the password ends every open session.
+export const GUEST_SESSION_MINUTES = 30;
+const sessionKey = () => createHmac('sha256', process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'dev-only').update('secure-folder-guest-session-v1').digest();
+const sessionSig = (r: Pick<SecureRequestRow, 'id' | 'pass_hash'>, exp: number) =>
+  createHmac('sha256', sessionKey()).update(`${r.id}.${exp}.${r.pass_hash ?? ''}`).digest('base64url');
+export function makeGuestSession(r: Pick<SecureRequestRow, 'id' | 'pass_hash'>, now = Date.now()): string {
+  const exp = now + GUEST_SESSION_MINUTES * 60_000;
+  return `${exp}.${sessionSig(r, exp)}`;
+}
+export function checkGuestSession(r: Pick<SecureRequestRow, 'id' | 'pass_hash'>, token: string | null | undefined, now = Date.now()): boolean {
+  if (!r.pass_hash || !token) return false;
+  const [expStr, sig] = token.split('.');
+  const exp = Number(expStr);
+  if (!sig || !Number.isFinite(exp) || exp <= now || exp > now + GUEST_SESSION_MINUTES * 60_000 + 5000) return false;
+  const want = Buffer.from(sessionSig(r, exp)); const got = Buffer.from(sig);
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+// ── One upload check for both doors ──────────────────────────────────────────
+// A file is accepted the same way whether a guest sent it through the link or an agent added it in the CRM: it must sit directly
+// in this folder's storage path, be an allowed type and size, START like the type it claims, and pass the in-house safety scan.
+// Anything that fails is removed from storage before the answer goes back.
+export type StoredUploadResult =
+  | { ok: true; size: number | null; type: string }
+  | { ok: false; status: number; error: string; blocked?: { reason: string; code: string } };
+export async function verifyStoredUpload(db: SupabaseClient, requestId: string, storagePath: string, filename: string): Promise<StoredUploadResult> {
+  const folder = `req-${requestId}/`;
+  const objectName = storagePath.startsWith(folder) ? storagePath.slice(folder.length) : '';
+  if (!objectName || objectName.includes('/') || objectName.includes('..') || !filename) return { ok: false, status: 400, error: 'Bad upload reference' };
+  const ext = extOf(filename);
+  if (!CONTENT_TYPES[ext]) return { ok: false, status: 400, error: 'That file type is not allowed.' };
+  const drop = () => db.storage.from(SECURE_BUCKET).remove([storagePath]);
+  // Size and type come from what actually landed in storage, not from the request.
+  const { data: listed, error: listError } = await db.storage.from(SECURE_BUCKET).list(folder.slice(0, -1), { search: objectName, limit: 5 });
+  const obj = listed?.find(o => o.name === objectName);
+  if (listError || !obj) return { ok: false, status: 400, error: 'The file didn’t finish uploading — please try again.' };
+  const meta = (obj.metadata ?? {}) as { size?: number; mimetype?: string };
+  if ((meta.size ?? 0) > MAX_FILE_SIZE) { await drop(); return { ok: false, status: 400, error: 'That file is too big.' }; }
+  if (!(await sniffStored(db, storagePath, ext))) {
+    await drop();
+    return { ok: false, status: 400, error: `“${filename}” doesn’t look like a real ${ext.toUpperCase()} file. Please try again, or send a PDF or photo.` };
+  }
+  let scan: Awaited<ReturnType<typeof scanFile>>;
+  try {
+    const { data: blob, error: dlError } = await db.storage.from(SECURE_BUCKET).download(storagePath);
+    if (dlError || !blob) throw new Error(dlError?.message ?? 'download failed');
+    scan = await scanFile(ext, new Uint8Array(await blob.arrayBuffer()));
+  } catch (e) {
+    console.error('[secure-upload] scan failed', e);
+    await drop();
+    return { ok: false, status: 503, error: `We couldn’t check “${filename}” for safety just now. Please try again in a moment.` };
+  }
+  if (!scan.ok) {
+    await drop();
+    return { ok: false, status: 400, error: `“${filename}” was stopped by our security check. Please send a plain PDF or photo instead, or call us at ${OFFICE_PHONE}.`, blocked: { reason: scan.reason, code: scan.code } };
+  }
+  return { ok: true, size: meta.size ?? null, type: meta.mimetype || CONTENT_TYPES[ext] };
+}
+export const SCAN_STAMP = () => ({ scan_status: 'clean', scan_version: SCAN_VERSION, scanned_at: new Date().toISOString() });

@@ -10,12 +10,13 @@ import { secureState } from '@/lib/secure-status';
 // request, the contact's owner, and agents added here. Every download is a 5-minute link and is logged.
 
 interface Item { key: string; label: string }
-interface SFile { id: string; item_key: string | null; name: string; file_size: number | null; created_at: string; scan_status?: string | null }
+interface SFile { id: string; item_key: string | null; name: string; file_size: number | null; created_at: string; scan_status?: string | null; uploaded_by?: string | null }
 interface Req {
   id: string; status: 'open' | 'revoked'; recipient_name: string | null; recipient_email: string | null; note: string | null; items: Item[];
   expires_at: string; purge_after: string; keep_files: boolean; purged_at: string | null; sent_at: string | null; first_viewed_at: string | null;
   view_count: number; last_upload_at: string | null; submitted_at: string | null; created_at: string; created_by: string | null;
   shared_with: string[] | null; link: string | null; files: SFile[]; deal_id?: string | null; deal_label?: string | null;
+  client_id?: string | null; kind?: 'request' | 'folder'; name?: string | null; has_password?: boolean; guest_view?: boolean;
 }
 interface TextContact { id: string; name: string; first_name: string; phone: string | null; business_unit: string }
 interface LogRow { id: number; actor_label: string; action: string; detail: string | null; created_at: string }
@@ -37,10 +38,19 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'sh
 const nameOf = (p: DrivePerson) => [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Agent';
 
 const statusOf = (r: Req) => secureState({ ...r, fileCount: r.files.length });
+const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv';
+// A password that is easy to read out over the phone and hard to guess: two plain words and four digits.
+const WORDS = ['Maple', 'River', 'Cedar', 'Stone', 'Amber', 'Field', 'Harbor', 'Canyon', 'Meadow', 'Summit', 'Prairie', 'Juniper', 'Copper', 'Willow', 'Falcon', 'Garnet', 'Lantern', 'Orchard', 'Pebble', 'Quartz', 'Ranch', 'Saddle', 'Timber', 'Valley', 'Wagon', 'Yarrow', 'Bluff', 'Creek', 'Dune', 'Ember', 'Grove', 'Mesa'];
+function makePassword(): string {
+  const n = new Uint32Array(3); crypto.getRandomValues(n);
+  return `${WORDS[n[0] % WORDS.length]}-${WORDS[n[1] % WORDS.length]}-${String(1000 + (n[2] % 9000))}`;
+}
 
-export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onAutoOpened, authToken, userId, role, showToast, profiles, onPreview }: {
+export default function SecureDocs({ clientId, dealId, requestId, onChanged, autoOpen, autoScroll, onAutoOpened, authToken, userId, role, showToast, profiles, onPreview }: {
   /** A contact card passes clientId; a deal card passes dealId (the request then goes to the deal's contact). */
   clientId?: string; dealId?: string;
+  /** My Drive opens ONE folder: just that folder's card, with no heading and no request form. */
+  requestId?: string; onChanged?: () => void;
   /** Open the request form and scroll it into view (set by the contacts list's 🔒 button). */
   autoOpen?: boolean; onAutoOpened?: () => void;
   /** Just bring this section into view (opened from the My Drive index) — no form. */
@@ -60,19 +70,30 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
   const [saving, setSaving] = useState(false);
   const [logs, setLogs] = useState<Record<string, LogRow[] | null>>({});
   const [sharing, setSharing] = useState<string | null>(null);
+  // Password on the link: for a new request (reqPw) and for an existing folder (pwFor = its id).
+  const [reqPw, setReqPw] = useState('');
+  const [reqView, setReqView] = useState(false);
+  const [pwFor, setPwFor] = useState<string | null>(null);
+  const [pwText, setPwText] = useState('');
+  const [pwView, setPwView] = useState(true);
+  // An agent adding their own files to a folder.
+  const [adding, setAdding] = useState<Record<string, string>>({});
+  const [dropOn, setDropOn] = useState<string | null>(null);
+  const addInput = useRef<HTMLInputElement>(null);
+  const addTarget = useRef<Req | null>(null);
   const auth = useCallback((): Record<string, string> => (authToken ? { Authorization: `Bearer ${authToken}` } : {}), [authToken]);
   const json = useCallback((): Record<string, string> => ({ 'Content-Type': 'application/json', ...auth() }), [auth]);
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/crm/secure-requests?${dealId ? `dealId=${dealId}` : `clientId=${clientId}`}`, { headers: auth() });
+      const r = await fetch(`/api/crm/secure-requests?${requestId ? `id=${requestId}` : dealId ? `dealId=${dealId}` : `clientId=${clientId}`}`, { headers: auth() });
       const j = await r.json().catch(() => ({}));
       setReqs(r.ok ? (j.requests ?? []) : []);
       setContact(r.ok ? (j.contact ?? null) : null);
     } catch { setReqs([]); }
-  }, [clientId, dealId, auth]);
+  }, [clientId, dealId, requestId, auth]);
   // Reset only when the card is for a DIFFERENT contact/deal. (A login-token refresh changes `load` too — that must reload the list, never close a form someone is filling in.)
-  useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); setTextFor(null); }, [clientId, dealId]);
+  useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); setTextFor(null); setPwFor(null); }, [clientId, dealId, requestId]);
   useEffect(() => { load(); }, [load]);
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -110,12 +131,14 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
     if (!items.length) { showToast('Pick at least one document to ask for.'); return; }
     setSaving(true);
     try {
-      const r = await fetch('/api/crm/secure-requests', { method: 'POST', headers: json(), body: JSON.stringify({ ...(dealId ? { dealId } : { clientId }), items, note, email: email || undefined, send: sendMail }) });
+      const r = await fetch('/api/crm/secure-requests', { method: 'POST', headers: json(), body: JSON.stringify({ ...(dealId ? { dealId } : { clientId }), items, note, email: email || undefined, send: sendMail, ...(reqPw ? { password: reqPw, guestView: reqView } : {}) }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { showToast(j.error || 'Could not create the request'); return; }
-      setCreating(false); setNote(''); setEmail('');
+      const hadPw = !!reqPw;
+      setCreating(false); setNote(''); setEmail(''); setReqPw(''); setReqView(false);
       if (j.request?.link) { try { await navigator.clipboard.writeText(j.request.link); } catch { /* clipboard may be blocked */ } }
-      showToast(j.emailed ? 'Secure link emailed — and copied to your clipboard' : sendMail ? `Request saved, but the email failed${j.emailError ? ` (${j.emailError})` : ''}. Link copied — send it yourself.` : 'Secure link copied to your clipboard');
+      if (hadPw) showToast('Created. Give them the password by phone or text — never by email.');
+      else showToast(j.emailed ? 'Secure link emailed — and copied to your clipboard' : sendMail ? `Request saved, but the email failed${j.emailError ? ` (${j.emailError})` : ''}. Link copied — send it yourself.` : 'Secure link copied to your clipboard');
       await load();
     } finally { setSaving(false); }
   };
@@ -123,10 +146,47 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
   const patch = async (r: Req, body: Record<string, unknown>, ok?: string) => {
     const res = await fetch('/api/crm/secure-requests', { method: 'PATCH', headers: json(), body: JSON.stringify({ id: r.id, ...body }) });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok) { showToast(j.error || 'That did not work'); return; }
+    if (!res.ok) { showToast(j.error || 'That did not work'); return false; }
     if (ok) showToast(ok);
-    await load();
+    await load(); onChanged?.();
     if (logs[r.id]) void showLog(r, true);
+    return true;
+  };
+
+  // Add files of your own: straight to storage, then the server runs the same type + safety checks a visitor's upload gets.
+  const addFiles = async (r: Req, picked: FileList | File[] | null) => {
+    const filesToSend = picked ? Array.from(picked) : [];
+    if (!filesToSend.length) return;
+    let added = 0;
+    for (const file of filesToSend) {
+      setAdding(a => ({ ...a, [r.id]: `Uploading ${file.name}…` }));
+      try {
+        const pre = await fetch('/api/crm/secure-requests', { method: 'POST', headers: json(), body: JSON.stringify({ action: 'presign', id: r.id, filename: file.name, file_size: file.size }) });
+        const pj = await pre.json().catch(() => ({}));
+        if (!pre.ok) { showToast(pj.error || `Could not start ${file.name}`); continue; }
+        const sent = await new Promise<boolean>(resolve => {
+          const x = new XMLHttpRequest();
+          x.open('PUT', pj.uploadUrl);
+          x.setRequestHeader('Content-Type', pj.contentType);
+          x.upload.onprogress = e => { if (e.lengthComputable) setAdding(a => ({ ...a, [r.id]: `Uploading ${file.name}… ${Math.round((e.loaded / e.total) * 100)}%` })); };
+          x.onload = () => resolve(x.status >= 200 && x.status < 300);
+          x.onerror = () => resolve(false);
+          x.send(file);
+        });
+        if (!sent) { showToast(`Could not upload ${file.name} — check your connection`); continue; }
+        setAdding(a => ({ ...a, [r.id]: `Checking ${file.name}…` }));
+        const conf = await fetch('/api/crm/secure-requests', { method: 'POST', headers: json(), body: JSON.stringify({ action: 'confirm', id: r.id, storagePath: pj.storagePath, filename: file.name }) });
+        const cj = await conf.json().catch(() => ({}));
+        if (!conf.ok) { showToast(cj.error || `Could not save ${file.name}`); continue; }
+        added++;
+      } catch { showToast(`Could not upload ${file.name}`); }
+    }
+    setAdding(a => { const n = { ...a }; delete n[r.id]; return n; });
+    if (added) { showToast(`${added} file${added === 1 ? '' : 's'} added to the secure folder`); await load(); onChanged?.(); if (logs[r.id]) void showLog(r, true); }
+  };
+
+  const savePassword = async (r: Req) => {
+    if (await patch(r, { action: 'set_password', password: pwText, guestView: pwView }, 'Password saved. Give it to them by phone or text — never by email.')) { setPwFor(null); setPwText(''); }
   };
 
   const openFile = async (f: SFile, preview: boolean) => {
@@ -145,13 +205,13 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
     if (!confirm(`Delete "${f.name}"? This cannot be undone.`)) return;
     const res = await fetch('/api/crm/secure-requests', { method: 'DELETE', headers: json(), body: JSON.stringify({ fileId: f.id }) });
     if (!res.ok) { showToast((await res.json().catch(() => ({})))?.error || 'Could not delete'); return; }
-    showToast(`${f.name} deleted`); await load();
+    showToast(`${f.name} deleted`); await load(); onChanged?.();
   };
   const delAll = async (r: Req) => {
     if (!confirm(`Delete this whole secure folder${r.files.length ? ` and its ${r.files.length} file${r.files.length === 1 ? '' : 's'}` : ''}? The link stops working and this cannot be undone.`)) return;
     const res = await fetch('/api/crm/secure-requests', { method: 'DELETE', headers: json(), body: JSON.stringify({ id: r.id }) });
     if (!res.ok) { showToast((await res.json().catch(() => ({})))?.error || 'Could not delete'); return; }
-    showToast('Secure folder deleted'); await load();
+    showToast('Secure folder deleted'); await load(); onChanged?.();
   };
 
   const showLog = async (r: Req, force = false) => {
@@ -181,7 +241,7 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
       const out = await zip.generateAsync({ type: 'blob' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(out);
-      a.download = `${(r.recipient_name || 'secure-documents').replace(/[^\w .-]/g, '_')} - documents.zip`;
+      a.download = `${(r.name || r.recipient_name || 'secure-documents').replace(/[^\w .-]/g, '_')} - documents.zip`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
     } catch { showToast('Could not build the zip — try opening files one at a time.'); }
@@ -193,7 +253,7 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
     const me = (profiles ?? []).find(p => p.id === userId)?.first_name?.trim();
     const exp = new Date(r.expires_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'America/Chicago' });
     const first = contact?.first_name?.trim();
-    return `${first ? `Hi ${first}, ` : 'Hi, '}${me ? `${me} with ` : ''}CRECO here. Please upload your documents through this private link (please don’t email them): ${r.link} — it works until ${exp}. Questions? Call (210) 817-3443.`;
+    return `${first ? `Hi ${first}, ` : 'Hi, '}${me ? `${me} with ` : ''}CRECO here. Please upload your documents through this private link (please don’t email them): ${r.link} — it works until ${exp}.${r.has_password ? ' It needs a password — I’ll give you that by phone.' : ''} Questions? Call (210) 817-3443.`;
   };
   const markTexted = async (r: Req, how: 'office-line' | 'own-phone') => {
     try { await fetch('/api/crm/secure-requests', { method: 'PATCH', headers: json(), body: JSON.stringify({ id: r.id, action: 'texted', how }) }); await load(); } catch { /* the log entry is a nicety */ }
@@ -212,15 +272,16 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
 
   return (
     <div ref={rootRef} style={{ marginBottom: 22, scrollMarginTop: 68 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <input ref={addInput} type="file" multiple accept={ACCEPT} hidden onChange={e => { const t = addTarget.current; const fl = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; if (t) void addFiles(t, fl); }} />
+      {!requestId && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={label}>🔒 Secure documents{list.length ? ` (${list.length})` : ''}</div>
         <button type="button" onClick={() => setCreating(c => !c)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c9922c', fontSize: 12, fontWeight: 700, padding: touch ? '0 10px' : 0, minHeight: touch ? 40 : undefined }}>
           {creating ? 'Cancel' : '＋ Request documents'}
         </button>
-      </div>
+      </div>}
 
-      {creating && (
+      {creating && !requestId && (
         <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: 14, marginBottom: 10 }}>
           <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 10, lineHeight: 1.5 }}>
             They get a private link to upload applications, IDs, pay stubs or bank statements — no login, nothing by email.{dealId ? ' Files stay on this deal and also show on the contact’s card.' : ''} Only you, the contact’s owner and agents you add can open the files. Link works 14 days; files auto-delete after 90.
@@ -243,6 +304,18 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
             <input type="checkbox" checked={sendMail} onChange={e => setSendMail(e.target.checked)} /> Email the link to them now
           </label>
           {sendMail && <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Their email (leave blank to use the one on the card)" style={{ width: '100%', padding: 9, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: 14, marginBottom: 8, boxSizing: 'border-box' }} />}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <input value={reqPw} onChange={e => setReqPw(e.target.value)} type="text" autoComplete="off" placeholder="Password on the link (optional, 8+ characters)" style={{ flex: 1, minWidth: 0, padding: 9, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: 14, boxSizing: 'border-box' }} />
+            <button type="button" onClick={() => setReqPw(makePassword())} style={btn}>Suggest</button>
+          </div>
+          {reqPw && (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, marginBottom: 4 }}>
+                <input type="checkbox" checked={reqView} onChange={e => setReqView(e.target.checked)} /> With the password they can also open the files in this folder
+              </label>
+              <div style={{ fontSize: 12, color: 'var(--k-a06a12)', marginBottom: 8 }}>🔑 Give them the password by phone or text — it is never put in the email. It can’t be shown again after this, only replaced.</div>
+            </>
+          )}
           <button type="button" disabled={saving} onClick={create} style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: touch ? '12px 18px' : '8px 16px', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>
             {saving ? 'Creating…' : sendMail ? 'Create & email link' : 'Create link'}
           </button>
@@ -250,21 +323,25 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
       )}
 
       {reqs === null ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>Loading…</div>
-        : list.length === 0 ? (!creating && <div style={{ fontSize: 13, color: '#d1d5db' }}>Nothing requested yet. Ask for a rental application, ID or bank statements through a private upload link.</div>)
+        : list.length === 0 ? (!creating && <div style={{ fontSize: 13, color: '#d1d5db' }}>{requestId ? 'This folder isn’t available to you.' : 'Nothing requested yet. Ask for a rental application, ID or bank statements through a private upload link.'}</div>)
         : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {list.map(r => {
               const st = statusOf(r);
               const live = r.status === 'open' && !r.purged_at && Date.parse(r.expires_at) > Date.now();
               const byItem = (k: string) => r.files.filter(f => (f.item_key ?? 'other') === k);
-              const groups: { key: string; label: string }[] = [...r.items, { key: 'other', label: 'Other' }];
+              const isFolder = r.kind === 'folder';
+              const groups: { key: string; label: string }[] = [...r.items, { key: 'other', label: r.items.length ? 'Other' : 'Files' }];
               const log = logs[r.id];
+              const whoAdded = (f: SFile) => (f.uploaded_by ? (f.uploaded_by === userId ? 'added by you' : `added by ${nameOf((profiles ?? []).find(p => p.id === f.uploaded_by) ?? { id: '' })}`) : isFolder ? 'through the link' : '');
               return (
-                <div key={r.id} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: 12 }}>
+                <div key={r.id} onDragOver={e => { if (!r.purged_at && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDropOn(r.id); } }} onDragLeave={() => setDropOn(d => (d === r.id ? null : d))}
+                  onDrop={e => { if (r.purged_at || !e.dataTransfer.files.length) return; e.preventDefault(); setDropOn(null); void addFiles(r, Array.from(e.dataTransfer.files)); }}
+                  style={{ background: 'var(--k-fff)', border: `1px solid ${dropOn === r.id ? '#c9922c' : 'var(--k-e5e7eb)'}`, outline: dropOn === r.id ? '2px dashed #c9922c' : 'none', outlineOffset: 2, borderRadius: 10, padding: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 11.5, fontWeight: 700, color: st.color, background: st.bg, borderRadius: 999, padding: '3px 9px' }}>{st.text}</span>
                     <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>
-                      {r.deal_label && !dealId ? `${r.deal_label} · ` : ''}Asked {day(r.created_at)}{r.recipient_name ? ` · ${r.recipient_name}` : ''}{r.recipient_email ? ` · ${r.recipient_email}` : ''}
+                      {isFolder ? `${r.name ?? 'Secure folder'} · Created ${day(r.created_at)}` : <>{r.deal_label && !dealId ? `${r.deal_label} · ` : ''}Asked {day(r.created_at)}{r.recipient_name ? ` · ${r.recipient_name}` : ''}{r.recipient_email ? ` · ${r.recipient_email}` : ''}</>}
                     </span>
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 4 }}>
@@ -273,6 +350,11 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
                     {r.view_count > 0 && ` Opened ${r.view_count}×.`}
                     {(r.shared_with?.length ?? 0) > 0 && ` Shared with ${r.shared_with!.length} other agent${r.shared_with!.length === 1 ? '' : 's'}.`}
                   </div>
+                  {!r.purged_at && (live || r.has_password) && (
+                    <div style={{ fontSize: 11.5, marginTop: 3, color: r.has_password ? '#15803d' : 'var(--k-a06a12)' }}>
+                      {r.has_password ? `🔑 Password required to get in · with it they can ${r.guest_view ? 'open the files and add their own' : 'only add files'}` : '🔓 No password — the link can only add files, never open them'}
+                    </div>
+                  )}
 
                   {!r.purged_at && groups.map(g => {
                     const fs = byItem(g.key);
@@ -282,7 +364,7 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
                         <div style={{ fontSize: 12.5, fontWeight: 600, color: fs.length ? '#15803d' : 'var(--k-9ca3af)' }}>{fs.length ? '✓' : '○'} {g.label}</div>
                         {fs.map(f => (
                           <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0 0 16px' }}>
-                            <span style={{ flex: '1 1 140px', minWidth: 0, fontSize: 13, overflowWrap: 'anywhere' }}>📄 {f.name} <span style={{ color: 'var(--k-9ca3af)' }}>{kb(f.file_size)} · {day(f.created_at)}</span>{f.scan_status === 'clean' && <span title="Passed the in-house safety scan when it was uploaded" style={{ color: '#15803d', fontWeight: 600, marginLeft: 6, fontSize: 12 }}>✓ scanned</span>}</span>
+                            <span style={{ flex: '1 1 140px', minWidth: 0, fontSize: 13, overflowWrap: 'anywhere' }}>📄 {f.name} <span style={{ color: 'var(--k-9ca3af)' }}>{[kb(f.file_size), day(f.created_at), whoAdded(f)].filter(Boolean).join(' · ')}</span>{f.scan_status === 'clean' && <span title="Passed the in-house safety scan when it was uploaded" style={{ color: '#15803d', fontWeight: 600, marginLeft: 6, fontSize: 12 }}>✓ scanned</span>}</span>
                             {onPreview && /\.(pdf|png|jpe?g|webp)$/i.test(f.name) && <button type="button" style={btn} onClick={() => openFile(f, true)}>👁 View</button>}
                             <button type="button" style={{ ...btn, background: '#111', color: '#fff', border: 'none' }} onClick={() => openFile(f, false)}>↓ Open</button>
                             <button type="button" aria-label={`Delete ${f.name}`} onClick={() => delFile(f)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 15, padding: '4px 2px' }}>🗑</button>
@@ -292,23 +374,52 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
                     );
                   })}
 
+                  {!r.purged_at && isFolder && r.files.length === 0 && !adding[r.id] && <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', marginTop: 8 }}>No files yet. Add your own, or drop them onto this card.</div>}
+                  {adding[r.id] && <div style={{ fontSize: 12.5, color: '#a06a12', marginTop: 8 }}>{adding[r.id]}</div>}
                   {!r.purged_at && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                      <button type="button" style={{ ...btn, color: '#a06a12', borderColor: '#f0e2c4', background: 'var(--k-fdf6e9)' }} disabled={!!adding[r.id]} onClick={() => { addTarget.current = r; addInput.current?.click(); }}>＋ Add files</button>
                       {r.files.length > 1 && <button type="button" style={btn} disabled={zipping === r.id} onClick={() => downloadAll(r)}>{zipping === r.id ? 'Preparing…' : `↓ Download all (${r.files.length})`}</button>}
                       {live && <button type="button" style={btn} onClick={() => copy(r.link)}>Copy link</button>}
-                      {live && <button type="button" style={btn} onClick={() => patch(r, { action: 'resend' }, 'Link emailed')}>{r.sent_at ? 'Resend email' : 'Email link'}</button>}
-                      {live && <button type="button" style={btn} onClick={() => setTextFor(t => (t === r.id ? null : r.id))}>💬 Text link</button>}
+                      {live && <button type="button" style={btn} onClick={() => {
+                        if (r.client_id) { void patch(r, { action: 'resend' }, 'Link emailed'); return; }
+                        const to = window.prompt('Email address to send this folder’s link to:');
+                        if (to && to.trim()) void patch(r, { action: 'resend', email: to.trim() }, r.has_password ? 'Link emailed — give them the password by phone or text' : 'Link emailed');
+                      }}>{r.sent_at ? 'Resend email' : 'Email link'}</button>}
+                      {live && contact && <button type="button" style={btn} onClick={() => setTextFor(t => (t === r.id ? null : r.id))}>💬 Text link</button>}
                       {live ? <button type="button" style={btn} onClick={() => patch(r, { action: 'revoke' }, 'Link closed')}>Close link</button>
-                        : <button type="button" style={btn} onClick={() => patch(r, { action: 'extend' }, 'Link reopened for 14 days')}>Reopen link</button>}
+                        : <button type="button" style={btn} onClick={() => patch(r, { action: 'extend' }, isFolder && !r.sent_at && !r.view_count ? 'Link created — it works for 14 days' : 'Link reopened for 14 days')}>{isFolder && !r.sent_at && !r.view_count ? 'Create a link' : 'Reopen link'}</button>}
+                      {mayShare(r) && <button type="button" style={btn} onClick={() => { setPwFor(p => (p === r.id ? null : r.id)); setPwText(''); setPwView(r.has_password ? !!r.guest_view : true); }}>{r.has_password ? '🔑 Change password' : '🔑 Set a password'}</button>}
                       {live && <button type="button" style={btn} onClick={() => patch(r, { action: 'extend' }, 'Link extended 14 days')}>Extend</button>}
                       <button type="button" style={btn} onClick={() => patch(r, { action: r.keep_files ? 'unkeep' : 'keep' }, r.keep_files ? 'Auto-delete back on' : 'Files will be kept')}>{r.keep_files ? 'Turn auto-delete on' : 'Keep files'}</button>
                       {mayShare(r) && <button type="button" style={btn} onClick={() => setSharing(s => (s === r.id ? null : r.id))}>Who can see</button>}
+                      {isFolder && mayShare(r) && <button type="button" style={btn} onClick={() => { const n = window.prompt('Folder name:', r.name ?? ''); if (n && n.trim() && n.trim() !== r.name) void patch(r, { action: 'rename', name: n.trim() }, 'Renamed'); }}>Rename</button>}
                       <button type="button" style={btn} onClick={() => showLog(r)}>{log ? 'Hide activity' : 'Activity'}</button>
                       <button type="button" style={{ ...btn, color: '#b91c1c' }} onClick={() => delAll(r)}>Delete folder</button>
                     </div>
                   )}
                   {r.purged_at && <div style={{ marginTop: 8 }}><button type="button" style={btn} onClick={() => showLog(r)}>{log ? 'Hide activity' : 'Activity'}</button></div>}
 
+                  {pwFor === r.id && !r.purged_at && (
+                    <div style={{ marginTop: 8, background: 'var(--k-f9fafb, #f9fafb)', borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginBottom: 6, lineHeight: 1.5 }}>
+                        Anyone outside the team needs the link <strong>and</strong> this password. After 5 wrong tries the link locks for 15 minutes; after 15 it closes and you’re alerted. {r.has_password ? 'Saving a new one signs out anyone who is in.' : ''}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                        <input value={pwText} onChange={e => setPwText(e.target.value)} type="text" autoComplete="off" placeholder="New password (8+ characters)" style={{ flex: 1, minWidth: 0, padding: 9, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: 14, boxSizing: 'border-box' }} />
+                        <button type="button" onClick={() => setPwText(makePassword())} style={btn}>Suggest</button>
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, marginBottom: 8 }}>
+                        <input type="checkbox" checked={pwView} onChange={e => setPwView(e.target.checked)} /> With the password they can also open the files in this folder
+                      </label>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <button type="button" disabled={pwText.length < 8} onClick={() => void savePassword(r)} style={{ ...btn, background: pwText.length >= 8 ? '#111' : 'var(--k-e5e7eb)', color: pwText.length >= 8 ? '#fff' : 'var(--k-9ca3af)', border: 'none' }}>Save password</button>
+                        {pwText && <button type="button" style={btn} onClick={async () => { try { await navigator.clipboard.writeText(pwText); showToast('Password copied'); } catch { showToast('Could not copy — select it and copy'); } }}>Copy it</button>}
+                        {r.has_password && <button type="button" style={{ ...btn, color: '#b91c1c' }} onClick={async () => { if (confirm('Remove the password? The link goes back to upload-only and nobody outside the team can open files.')) { if (await patch(r, { action: 'clear_password' }, 'Password removed')) setPwFor(null); } }}>Remove password</button>}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--k-a06a12)', marginTop: 8 }}>Copy it now — it can’t be shown again, only replaced. Give it to them by phone or text, never by email.</div>
+                    </div>
+                  )}
                   {textFor === r.id && live && r.link && (
                     <div style={{ marginTop: 8 }}>
                       {contact?.phone ? (
@@ -323,7 +434,7 @@ export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onA
                   )}
                   {sharing === r.id && (
                     <div style={{ marginTop: 8, background: 'var(--k-f9fafb, #f9fafb)', borderRadius: 8, padding: 10 }}>
-                      <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginBottom: 6 }}>The broker, the contact’s owner, whoever made the request{dealId || r.deal_id ? ' and everyone on the deal' : ''} always see this. Tick anyone else who should.</div>
+                      <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginBottom: 6 }}>{isFolder && !r.client_id ? 'The broker and whoever made this folder always see it.' : <>The broker, the contact’s owner, whoever made the request{dealId || r.deal_id ? ' and everyone on the deal' : ''} always see this.</>} Tick anyone else who should.</div>
                       {(profiles ?? []).filter(p => p.id !== r.created_by && p.role !== 'super_admin').map(p => (
                         <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, padding: touch ? '7px 0' : '2px 0' }}>
                           <input type="checkbox" checked={(r.shared_with ?? []).includes(p.id)}

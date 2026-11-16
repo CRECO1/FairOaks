@@ -43,13 +43,13 @@ export async function GET(req: NextRequest) {
     }
     // 3 — nothing uploaded yet: chase the tenant
     const live = r.status === 'open' && Date.parse(r.expires_at) > now;
-    if (live && r.sent_at && r.recipient_email && !r.last_upload_at && r.reminder_count < MAX_REMINDERS) {
+    if (live && r.kind !== 'folder' && r.sent_at && r.recipient_email && !r.last_upload_at && r.reminder_count < MAX_REMINDERS) {
       const since = Date.parse(r.reminded_at ?? r.sent_at);
       if (now - since >= (r.reminded_at ? GAP_DAYS : FIRST_AFTER_DAYS) * DAY) {
         if (!dry) {
           const { data: p } = r.created_by ? await db.from('crm_profiles').select('first_name, last_name').eq('id', r.created_by).maybeSingle() : { data: null };
           const sender = [p?.first_name, p?.last_name].filter(Boolean).join(' ') || 'your CRECO broker';
-          const { subject, html } = requestEmail(r.business_unit, { name: r.recipient_name ?? '', senderName: sender, url: secureUrl(r.token), items: r.items, note: r.note, expiresAt: r.expires_at, reminder: true });
+          const { subject, html } = requestEmail(r.business_unit, { name: r.recipient_name ?? '', senderName: sender, url: secureUrl(r.token), items: r.items, note: r.note, expiresAt: r.expires_at, reminder: true, needsPassword: !!r.pass_hash });
           const res = await sendSecureEmail(r.business_unit, r.recipient_email, subject, withSignature(html, await resolveSignature(db, { agentId: r.created_by })));
           if (!res.ok) { console.error('[cron/secure-upload] reminder failed', res.error); continue; }
           await db.from('crm_secure_requests').update({ reminded_at: new Date().toISOString(), reminder_count: r.reminder_count + 1 }).eq('id', r.id);
