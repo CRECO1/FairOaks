@@ -13,7 +13,7 @@ export async function tagLeadNotes(db: SupabaseClient, unit: string, notes: stri
   const plain = { notes, tagged_listing_ids: [] as string[] };
   try {
     if (!notes || !/\d/.test(notes + hints.join(' '))) return plain;
-    const { data } = await db.from('crm_listings').select('id, name, address, is_restricted').eq('business_unit', unit);
+    const { data } = await db.from('crm_listings').select('id, name, address, is_restricted').eq('business_unit', unit).or('status.is.null,status.neq.merged');
     const listings = (data ?? []).filter(l => !l.is_restricted) as (ListingLite & { is_restricted?: boolean })[];
     if (!listings.length) return plain;
     const hint = hints.filter(Boolean).join('\n');
@@ -38,7 +38,7 @@ export async function tagLeadNotes(db: SupabaseClient, unit: string, notes: stri
 export async function autoTagIdsForText(db: SupabaseClient, unit: string, text: string, hints: (string | null | undefined)[] = []): Promise<string[]> {
   try {
     if (!/\d/.test(text + hints.join(' '))) return [];
-    const { data } = await db.from('crm_listings').select('id, name, address, is_restricted').eq('business_unit', unit);
+    const { data } = await db.from('crm_listings').select('id, name, address, is_restricted').eq('business_unit', unit).or('status.is.null,status.neq.merged');
     const listings = (data ?? []).filter(l => !l.is_restricted) as (ListingLite & { is_restricted?: boolean })[];
     if (!listings.length) return [];
     const hint = hints.filter(Boolean).join('\n');

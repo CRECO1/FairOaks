@@ -18,6 +18,8 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
   const [total, setTotal] = useState(0);
   const [tenantsOut, setTenantsOut] = useState(0);
   const [cardMode, setCardMode] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => { const f = () => setNarrow(window.innerWidth < 640); f(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   const [cardPos, setCardPos] = useState(0);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -163,13 +165,13 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
           <button onClick={() => { setCardMode(true); setCardPos(0); }} style={{ fontSize: 12.5, fontWeight: 700, padding: '7px 14px', borderRadius: 16, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer', marginBottom: 10 }}>⚡ Review one at a time ({live.length})</button>
         )}
         {cardMode && (() => {
-          const matchRe = cur ? new RegExp(`${cur.listing.split(/\s+/).slice(0, 2).map(w => w.replace(/[.*+?^${}()[\]\\|]/g, '\\$&')).join('\\s+')}`, 'i') : null;
+          const matchRe = cur ? new RegExp(`${cur.listing.split(/\s+/).slice(0, 3).map(w => w.replace(/[.*+?^${}()[\]\\|]/g, '\\$&')).join('\\s+')}`, 'i') : null;
           const t = cur?.text ?? cur?.before ?? '';
           const m = matchRe ? matchRe.exec(t) : null;
           return (
             <div style={{ border: '1px solid #eef0f2', borderRadius: 14, padding: '14px 16px', marginBottom: 12, background: 'var(--k-fafafa, #fafafa)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--k-6b7280, #6b7280)', flex: 1 }}>{queue.length === 0 ? 'All done' : `${Math.min(cardPos, queue.length - 1) + 1} of ${queue.length}`} · keys: <b>A</b> asked · <b>T</b> targeted · <b>N</b> not it · <b>S</b> skip · ← →</span>
+                <span style={{ fontSize: 12, color: 'var(--k-6b7280, #6b7280)', flex: 1 }}>{queue.length === 0 ? 'All done' : `${Math.min(cardPos, queue.length - 1) + 1} of ${queue.length}`}{!narrow && <> · keys: <b>A</b> asked · <b>T</b> targeted · <b>N</b> not it · <b>S</b> skip · ← →</>}</span>
                 <button onClick={() => setCardMode(false)} style={{ fontSize: 12.5, padding: '4px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer' }}>Back to groups</button>
               </div>
               {!cur ? <div style={{ fontSize: 13.5, padding: '10px 0' }}>Nothing left to review. 🎉</div> : (

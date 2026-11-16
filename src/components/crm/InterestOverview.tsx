@@ -8,6 +8,8 @@ type SortKey = 'asked' | 'targeted' | 'followedUp' | 'deals' | 'needsFollowUp' |
 export default function InterestOverview({ authToken, onClose, onOpen }: { authToken?: string; onClose: () => void; onOpen: (listingId: string) => void }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [sort, setSort] = useState<SortKey>('asked');
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => { const f = () => setNarrow(window.innerWidth < 640); f(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   useEffect(() => {
     let alive = true;
     fetch('/api/crm/interest-overview', { headers: { Authorization: `Bearer ${authToken}` } }).then(r => (r.ok ? r.json() : null)).then(j => { if (alive) setRows(j?.rows ?? []); }).catch(() => { if (alive) setRows([]); });
@@ -30,6 +32,29 @@ export default function InterestOverview({ authToken, onClose, onOpen }: { authT
         {rows === null ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af, #9ca3af)' }}>Adding it up…</div>
           : rows.length === 0 ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af, #9ca3af)' }}>No property has tagged interest yet.</div>
           : (
+            narrow ? (
+              <div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {([['asked', '🏠 Asked'], ['targeted', '🎯 Reached out'], ['needsFollowUp', '⏳ Waiting'], ['deals', '💼 Deals']] as [SortKey, string][]).map(([k, l]) => (
+                    <button key={k} onClick={() => setSort(k)} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: sort === k ? 'var(--k-f0fdfa, #f0fdfa)' : 'var(--k-fff, #fff)', color: sort === k ? 'var(--k-0f766e, #0f766e)' : 'var(--k-374151, #374151)', cursor: 'pointer' }}>{l}{sort === k ? ' ↓' : ''}</button>
+                  ))}
+                </div>
+                {sorted.map(r => (
+                  <button key={r.listing_id} onClick={() => { onOpen(r.listing_id); onClose(); }} style={{ display: 'block', width: '100%', textAlign: 'left', border: '1px solid #eef0f2', borderRadius: 12, padding: '10px 12px', marginBottom: 8, background: 'var(--k-fff, #fff)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>{r.listing}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px 8px', fontSize: 12, color: 'var(--k-6b7280, #6b7280)' }}>
+                      <div><b style={{ fontSize: 15, color: 'var(--k-111, #111)' }}>{r.asked}</b><br />asked</div>
+                      <div><b style={{ fontSize: 15, color: 'var(--k-111, #111)' }}>{r.targeted}</b><br />reached out</div>
+                      <div><b style={{ fontSize: 15, color: 'var(--k-111, #111)' }}>{r.followedUp}</b><br />followed up</div>
+                      <div><b style={{ fontSize: 15, color: r.needsFollowUp ? '#b45309' : 'var(--k-111, #111)' }}>{r.needsFollowUp}</b><br />waiting</div>
+                      <div><b style={{ fontSize: 15, color: 'var(--k-111, #111)' }}>{r.avgReplyDays === null ? '—' : r.avgReplyDays}</b><br />days to reply</div>
+                      <div><b style={{ fontSize: 15, color: 'var(--k-111, #111)' }}>{r.deals}</b><br />deals</div>
+                    </div>
+                  </button>
+                ))}
+                <div style={{ fontSize: 12.5, fontWeight: 700, padding: '6px 2px' }}>Total: {tot('asked')} asked · {tot('targeted')} reached out · {tot('followedUp')} followed up · {tot('needsFollowUp')} waiting · {tot('deals')} deals</div>
+              </div>
+            ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                 <thead>
@@ -64,6 +89,7 @@ export default function InterestOverview({ authToken, onClose, onOpen }: { authT
                 </tbody>
               </table>
             </div>
+            )
           )}
       </div>
     </div>

@@ -4,6 +4,7 @@ import TagSuggestions from '@/components/crm/TagSuggestions';
 import InquiryAlertPrompt from '@/components/crm/InquiryAlertPrompt';
 import LeadTagHealth from '@/components/crm/LeadTagHealth';
 import InterestOverview from '@/components/crm/InterestOverview';
+import DuplicateListings from '@/components/crm/DuplicateListings';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
@@ -252,6 +253,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   // Contacts linked to the open listing.
   const [listingContacts, setListingContacts] = useState<ListingContact[]>([]);
+  const [ownerSug, setOwnerSug] = useState<{ contact_id: string; name: string; email: string | null; ownerName: string; via: string }[]>([]);
   const [contactSearch, setContactSearch] = useState('');
   const [contactRole, setContactRole] = useState('Landlord');
   const [addingContact, setAddingContact] = useState(false);
@@ -375,6 +377,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [targetedCounts, setTargetedCounts] = useState<Record<string, number>>({});
   const [showTagReview, setShowTagReview] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
+  const [showDupes, setShowDupes] = useState(false);
   const [countsKey, setCountsKey] = useState(0);
   const [pendingTags, setPendingTags] = useState<number | null>(null);
   useEffect(() => {
@@ -593,6 +596,22 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     onToast('Sharing saved ✓');
   }
 
+  // Suggested landlord (from the Property DB owner for this address) when none is linked yet; one tap links it.
+  useEffect(() => {
+    setOwnerSug([]);
+    if (!active?.id || activeTab !== 'contacts' || !authToken) return;
+    let live = true;
+    fetch(`/api/crm/owner-suggestions?listing_id=${active.id}`, { headers: { Authorization: `Bearer ${authToken}` } }).then(r => (r.ok ? r.json() : null)).then(j => { if (live) setOwnerSug(j?.candidates ?? []); }).catch(() => {});
+    return () => { live = false; };
+  }, [active?.id, activeTab, authToken, listingContacts.length]);
+  async function linkOwner(clientId: string) {
+    if (!active) return;
+    const res = await fetch('/api/crm/listing-contacts', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders }, body: JSON.stringify({ listing_id: active.id, client_id: clientId, role: 'Landlord' }) });
+    if (!res.ok) { onToast('Could not link the landlord'); return; }
+    const { contact } = await res.json();
+    setListingContacts(prev => [...prev.filter(c => c.id !== contact.id), contact]);
+    onToast('Linked as Landlord ✓ (the weekly owner update will be addressed to them)');
+  }
   async function addContact(clientId: string) {
     if (!active) return;
     setAddingContact(true);
@@ -1218,6 +1237,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
+      {showDupes && <DuplicateListings authToken={authToken} onClose={() => setShowDupes(false)} onToast={onToast} onChanged={() => { void loadListings(); setCountsKey(k => k + 1); }} />}
       {showOverview && <InterestOverview authToken={authToken} onClose={() => setShowOverview(false)} onOpen={id => { const l = listings.find(x => x.id === id); if (l) openListing(l); }} />}
       {showTagReview && <TagSuggestions onOpenContact={onOpenContact} authToken={authToken} onClose={() => { setShowTagReview(false); setCountsKey(k => k + 1); }} onToast={onToast} onChanged={() => setCountsKey(k => k + 1)} />}
 
@@ -1243,6 +1263,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             style={{ ...INP, width: 'auto', flex: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--k-6b7280)' }}>
             🏠 Tag old notes{pendingTags ? ` (${pendingTags})` : ''}
           </button>
+        )}
+        {isAdmin && (
+          <button type="button" onClick={() => setShowDupes(true)} title="Find the same address saved twice and merge the copies (nothing is deleted, and it can be undone)"
+            style={{ ...INP, width: 'auto', flex: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--k-6b7280)' }}>🧹 Duplicates</button>
         )}
         {(Object.keys(askCounts).length > 0 || Object.keys(targetedCounts).length > 0) && (
           <button type="button" onClick={() => setShowOverview(true)} title="Every property's interest side by side: asked, reached out, followed up, deals"
@@ -1941,6 +1965,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               {/* ── Contacts tab ── */}
               {activeTab === 'contacts' && (
                 <div>
+                  {ownerSug.length > 0 && !listingContacts.some(c => /landlord|owner/i.test(c.role || '')) && (
+                    <div style={{ background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>💡 Who owns this? Suggested from the Property DB</div>
+                      {ownerSug.map(o => (
+                        <div key={o.contact_id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
+                          <div style={{ flex: '1 1 200px', minWidth: 0 }}><b>{o.name}</b>{o.email ? <span style={{ color: 'var(--k-6b7280)' }}> · {o.email}</span> : <span style={{ color: '#b45309' }}> · no email on file</span>}<div style={{ fontSize: 11.5, color: 'var(--k-6b7280)' }}>County owner “{o.ownerName}” · {o.via}</div></div>
+                          <button onClick={() => linkOwner(o.contact_id)} style={{ fontSize: 12.5, fontWeight: 700, padding: '5px 12px', borderRadius: 14, border: '1px solid var(--k-99f6e4)', background: 'var(--k-fff)', color: 'var(--k-0f766e)', cursor: 'pointer' }}>Link as Landlord</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {/* Add a contact */}
                   <div style={{ background: 'var(--k-f8fafc)', border: '1px solid #eef0f2', borderRadius: 10, padding: '14px 16px', marginBottom: 18 }}>
                     <div style={{ display: 'flex', gap: 8, marginBottom: contactSearch.trim() ? 10 : 0, flexWrap: 'wrap' }}>

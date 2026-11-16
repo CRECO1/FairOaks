@@ -39,7 +39,7 @@ const looksLikeTenant = (t: string) => TENANT.test(t) && !INQUIRY.test(t);
  * tagging (new-lead holds are the broker's alone).
  */
 async function listingsFor(db: Db, ctx: CrmContext) {
-  const { data } = await db.from('crm_listings').select('id, name, address, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').eq('business_unit', ctx.businessUnit);
+  const { data } = await db.from('crm_listings').select('id, name, address, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').eq('business_unit', ctx.businessUnit).or('status.is.null,status.neq.merged');
   return (data ?? []).filter(l => listingAccessible(l as Record<string, unknown>, ctx)) as (TagListing & Record<string, unknown>)[];
 }
 

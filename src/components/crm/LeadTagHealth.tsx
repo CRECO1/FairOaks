@@ -66,7 +66,7 @@ export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--k-374151, #374151)', marginBottom: 3 }}>Test the tagger (nothing is saved)</div>
                 <textarea value={testText} onChange={e => setTestText(e.target.value)} placeholder="Paste a note or call summary, e.g. “caller asked about 1222 Chulie Dr”" rows={2}
-                  style={{ width: '100%', boxSizing: 'border-box', fontSize: 12.5, padding: '6px 8px', border: '1px solid var(--k-e5e7eb, #e5e7eb)', borderRadius: 8, fontFamily: 'inherit' }} />
+                  style={{ width: '100%', boxSizing: 'border-box', fontSize: 16, padding: '6px 8px', border: '1px solid var(--k-e5e7eb, #e5e7eb)', borderRadius: 8, fontFamily: 'inherit' }} />
                 <button onClick={runTest} disabled={testOut === 'loading' || !testText.trim()} style={{ marginTop: 4, fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer' }}>{testOut === 'loading' ? 'Testing…' : 'What would it tag?'}</button>
                 {testOut && testOut !== 'loading' && (testOut.length === 0
                   ? <div style={{ marginTop: 4, fontSize: 12.5 }}>No property found in that text.</div>

@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     .from('crm_listings')
     .select('*')
     .eq('business_unit', unit)
+    .or('status.is.null,status.neq.merged')      // a row merged into another (Duplicate properties tool) is hidden
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) { console.error('[api] db error:', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }

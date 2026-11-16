@@ -56,6 +56,10 @@
       "schedule": "40 14 * * 1"
     },
     {
+      "path": "/api/cron/tagging-selfcheck",
+      "schedule": "15 10 * * *"
+    },
+    {
       "path": "/api/cron/targeted-replies",
       "schedule": "20 14 * * *"
     },

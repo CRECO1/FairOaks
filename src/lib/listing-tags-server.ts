@@ -13,7 +13,7 @@ export async function listingTagIdsForText(db: SupabaseClient, ctx: CrmContext, 
   const t = typeof text === 'string' ? text : '';
   if (!t.includes('#')) return [];
   const { data } = await db.from('crm_listings')
-    .select('id, name, address, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').eq('business_unit', unit);
+    .select('id, name, address, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').eq('business_unit', unit).or('status.is.null,status.neq.merged');
   const visible = (data ?? []).filter(l => listingAccessible(l as Record<string, unknown>, ctx));
   return parseListingTagIds(t, visible as { id: string; name: string | null; address: string | null }[]);
 }

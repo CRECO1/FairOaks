@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => null);
   const text = typeof b?.text === 'string' ? b.text.slice(0, 4000) : '';
   if (!text.trim()) return NextResponse.json({ error: 'text required' }, { status: 400 });
-  const { data } = await adminClient().from('crm_listings').select('id, name, address, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').eq('business_unit', ctx.businessUnit ?? 'commercial');
+  const { data } = await adminClient().from('crm_listings').select('id, name, address, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').eq('business_unit', ctx.businessUnit ?? 'commercial').or('status.is.null,status.neq.merged');
   const listings = (data ?? []).filter(l => listingAccessible(l as Record<string, unknown>, ctx)) as (TagListing & Record<string, unknown>)[];
   const byId = new Map(listings.map(l => [l.id, l]));
   const out: { listing: string; how: string }[] = [];
