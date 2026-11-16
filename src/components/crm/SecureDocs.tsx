@@ -13,7 +13,7 @@ interface Req {
   id: string; status: 'open' | 'revoked'; recipient_name: string | null; recipient_email: string | null; note: string | null; items: Item[];
   expires_at: string; purge_after: string; keep_files: boolean; purged_at: string | null; sent_at: string | null; first_viewed_at: string | null;
   view_count: number; last_upload_at: string | null; submitted_at: string | null; created_at: string; created_by: string | null;
-  shared_with: string[] | null; link: string | null; files: SFile[];
+  shared_with: string[] | null; link: string | null; files: SFile[]; deal_id?: string | null; deal_label?: string | null;
 }
 interface LogRow { id: number; actor_label: string; action: string; detail: string | null; created_at: string }
 
@@ -43,8 +43,9 @@ function statusOf(r: Req): { text: string; color: string; bg: string } {
   return { text: r.sent_at ? 'Waiting for them' : 'Link not sent', color: '#6b7280', bg: '#f3f4f6' };
 }
 
-export default function SecureDocs({ clientId, authToken, userId, role, showToast, profiles, onPreview }: {
-  clientId: string; authToken?: string; userId?: string; role?: string | null; showToast: (m: string) => void; profiles?: DrivePerson[];
+export default function SecureDocs({ clientId, dealId, authToken, userId, role, showToast, profiles, onPreview }: {
+  /** A contact card passes clientId; a deal card passes dealId (the request then goes to the deal's contact). */
+  clientId?: string; dealId?: string; authToken?: string; userId?: string; role?: string | null; showToast: (m: string) => void; profiles?: DrivePerson[];
   onPreview?: (f: { url: string; name: string; type?: string | null }) => void;
 }) {
   const [reqs, setReqs] = useState<Req[] | null>(null);
@@ -63,11 +64,11 @@ export default function SecureDocs({ clientId, authToken, userId, role, showToas
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/crm/secure-requests?clientId=${clientId}`, { headers: auth() });
+      const r = await fetch(`/api/crm/secure-requests?${dealId ? `dealId=${dealId}` : `clientId=${clientId}`}`, { headers: auth() });
       const j = await r.json().catch(() => ({}));
       setReqs(r.ok ? (j.requests ?? []) : []);
     } catch { setReqs([]); }
-  }, [clientId, auth]);
+  }, [clientId, dealId, auth]);
   useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); load(); }, [load]);
 
   const pick = (k: string) => { setPreset(k); setItems(PRESETS[k].items); };
@@ -81,7 +82,7 @@ export default function SecureDocs({ clientId, authToken, userId, role, showToas
     if (!items.length) { showToast('Pick at least one document to ask for.'); return; }
     setSaving(true);
     try {
-      const r = await fetch('/api/crm/secure-requests', { method: 'POST', headers: json(), body: JSON.stringify({ clientId, items, note, email: email || undefined, send: sendMail }) });
+      const r = await fetch('/api/crm/secure-requests', { method: 'POST', headers: json(), body: JSON.stringify({ ...(dealId ? { dealId } : { clientId }), items, note, email: email || undefined, send: sendMail }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { showToast(j.error || 'Could not create the request'); return; }
       setCreating(false); setNote(''); setEmail('');
@@ -183,7 +184,7 @@ export default function SecureDocs({ clientId, authToken, userId, role, showToas
       {creating && (
         <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: 14, marginBottom: 10 }}>
           <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginBottom: 10, lineHeight: 1.5 }}>
-            They get a private link to upload applications, IDs, pay stubs or bank statements — no login, nothing by email. Only you, the contact’s owner and agents you add can open the files. Link works 14 days; files auto-delete after 90.
+            They get a private link to upload applications, IDs, pay stubs or bank statements — no login, nothing by email.{dealId ? ' Files stay on this deal and also show on the contact’s card.' : ''} Only you, the contact’s owner and agents you add can open the files. Link works 14 days; files auto-delete after 90.
           </div>
           <select value={preset} onChange={e => pick(e.target.value)} style={{ width: '100%', padding: 9, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', marginBottom: 8, fontSize: 14 }}>
             {Object.entries(PRESETS).map(([k, p]) => <option key={k} value={k}>{p.label}</option>)}
@@ -224,7 +225,7 @@ export default function SecureDocs({ clientId, authToken, userId, role, showToas
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 11.5, fontWeight: 700, color: st.color, background: st.bg, borderRadius: 999, padding: '3px 9px' }}>{st.text}</span>
                     <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>
-                      Asked {day(r.created_at)}{r.recipient_name ? ` · ${r.recipient_name}` : ''}{r.recipient_email ? ` · ${r.recipient_email}` : ''}
+                      {r.deal_label && !dealId ? `${r.deal_label} · ` : ''}Asked {day(r.created_at)}{r.recipient_name ? ` · ${r.recipient_name}` : ''}{r.recipient_email ? ` · ${r.recipient_email}` : ''}
                     </span>
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginTop: 4 }}>

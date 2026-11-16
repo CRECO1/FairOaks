@@ -44,6 +44,7 @@ import { useBackToClose } from '@/lib/use-back-to-close';
 import { chicagoFormat, chicagoToday } from '@/lib/chicago-time';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import ContactFiles from '@/components/crm/ContactFiles';
+import SecureDocs from '@/components/crm/SecureDocs';
 import LinkedDocs from '@/components/crm/drive/LinkedDocs';
 import { canEditCardFile, editCardFile } from '@/components/crm/drive/card-edit';
 import ContactJumpBar from '@/components/crm/ContactJumpBar';
@@ -12576,6 +12577,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     })()}
                   </div>
                   <LinkedDocs dealId={activeDeal.id} authToken={session?.access_token} currentUser={{ id: profile.id, name: `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() }} profiles={profiles} isAdmin={isAdmin} isMobile={isMobile} onToast={showToast} onSignDoc={signLiveDoc} />
+                  <SecureDocs dealId={activeDeal.id} authToken={session?.access_token} userId={profile.id} role={profile.role} showToast={showToast} profiles={profiles} onPreview={setPreviewFile} />
                   <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 10 }}>Uploaded Files{dealDocs.length > 0 ? ` · ${dealDocs.length}` : ''}</div>
                   {/* Straight to storage — see DealDocUpload for why the file never goes through the API */}
                   <DealDocUpload compact={dealDocs.length > 0} dealId={activeDeal.id} authToken={session?.access_token} showToast={showToast} onUploaded={() => loadDealDocs(activeDeal.id)} />

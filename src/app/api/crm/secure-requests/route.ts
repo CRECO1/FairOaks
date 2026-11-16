@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, hiddenDealIds, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import {
@@ -28,6 +28,8 @@ async function loadRequest(id: string, ctx: Ctx): Promise<SecureRequestRow | nul
   const r = data as SecureRequestRow | null;
   if (!r) return null;
   if (!(await assertOwnsResource('crm_clients', r.client_id, ctx))) return null;
+  // A request on a deal also obeys the deal's own walls (a private deal stays private).
+  if (r.deal_id && !(await assertOwnsResource('crm_deals', r.deal_id, ctx))) return null;
   return (await canSeeRequest(db, ctx, r)) ? r : null;
 }
 
@@ -81,19 +83,44 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ log: data ?? [] });
   }
 
-  const clientId = sp.get('clientId') ?? '';
-  if (!UUID_RE.test(clientId)) return NextResponse.json({ error: 'clientId required' }, { status: 400 });
-  if (!(await assertOwnsResource('crm_clients', clientId, ctx))) return notFound('Contact not found');
-  const { data: rows, error } = await db.from('crm_secure_requests').select('*').eq('client_id', clientId).order('created_at', { ascending: false });
+  // List: a contact's requests (?clientId) or one deal's (?dealId). Either way, only ones the caller may see.
+  const dealIdParam = sp.get('dealId') ?? '';
+  const clientIdParam = sp.get('clientId') ?? '';
+  let rowsQ = db.from('crm_secure_requests').select('*').order('created_at', { ascending: false });
+  if (dealIdParam) {
+    if (!UUID_RE.test(dealIdParam)) return NextResponse.json({ error: 'invalid dealId' }, { status: 400 });
+    if (!(await assertOwnsResource('crm_deals', dealIdParam, ctx))) return notFound('Deal not found');
+    rowsQ = rowsQ.eq('deal_id', dealIdParam);
+  } else {
+    if (!UUID_RE.test(clientIdParam)) return NextResponse.json({ error: 'clientId or dealId required' }, { status: 400 });
+    if (!(await assertOwnsResource('crm_clients', clientIdParam, ctx))) return notFound('Contact not found');
+    rowsQ = rowsQ.eq('client_id', clientIdParam);
+  }
+  const { data: rows, error } = await rowsQ;
   if (error) { console.error('[secure-requests] list', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
+  const hidden = new Set(await hiddenDealIds(ctx));
   const visible: SecureRequestRow[] = [];
-  for (const r of (rows ?? []) as SecureRequestRow[]) if (await canSeeRequest(db, ctx, r)) visible.push(r);
+  for (const r of (rows ?? []) as SecureRequestRow[]) {
+    if (r.deal_id && hidden.has(r.deal_id)) continue;   // a deal the caller may not see keeps its secure folder hidden too
+    if (await canSeeRequest(db, ctx, r)) visible.push(r);
+  }
   const ids = visible.map(r => r.id);
   const { data: files } = ids.length
     ? await db.from('crm_secure_files').select('id, request_id, item_key, name, file_size, file_type, created_at').in('request_id', ids).order('created_at')
     : { data: [] };
+  // On a contact card, say which deal a request belongs to.
+  const dealIds = [...new Set(visible.map(r => r.deal_id).filter((x): x is string => !!x))];
+  const dealLabel = new Map<string, string>();
+  if (dealIds.length) {
+    const { data: ds } = await db.from('crm_deals').select('id, crm_listings(address)').in('id', dealIds);
+    for (const d of ds ?? []) {
+      const l = d.crm_listings as unknown as { address?: string } | { address?: string }[] | null;
+      const address = Array.isArray(l) ? l[0]?.address : l?.address;
+      dealLabel.set(d.id as string, address ? `Deal · ${address}` : 'Deal');
+    }
+  }
   return NextResponse.json({
-    requests: visible.map(r => ({ ...publicShape(r), files: (files ?? []).filter(f => f.request_id === r.id) })),
+    requests: visible.map(r => ({ ...publicShape(r), deal_label: r.deal_id ? dealLabel.get(r.deal_id) ?? 'Deal' : null, files: (files ?? []).filter(f => f.request_id === r.id) })),
   });
 }
 
@@ -102,11 +129,19 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const body = await req.json().catch(() => ({}));
-  const clientId = typeof body.clientId === 'string' ? body.clientId : '';
+  const db = adminClient();
+  const dealId = typeof body.dealId === 'string' && UUID_RE.test(body.dealId) ? body.dealId : null;
+  let clientId = typeof body.clientId === 'string' ? body.clientId : '';
+  if (dealId) {
+    // From a deal: the deal must be visible to the caller, and the request belongs to the deal's contact.
+    if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
+    const { data: d } = await db.from('crm_deals').select('client_id').eq('id', dealId).maybeSingle();
+    if (!d?.client_id) return NextResponse.json({ error: 'Link this deal to a contact first — the request needs a name and email to go to.' }, { status: 400 });
+    clientId = d.client_id as string;
+  }
   if (!UUID_RE.test(clientId)) return NextResponse.json({ error: 'clientId required' }, { status: 400 });
   const client = await assertOwnsResource('crm_clients', clientId, ctx, { ownerColumns: ['agent_id'] });
   if (!client) return notFound('Contact not found');
-  const db = adminClient();
 
   let items = cleanItems(body.items);
   if (!items.length && typeof body.preset === 'string' && PRESETS[body.preset]) items = PRESETS[body.preset].items;
@@ -118,7 +153,6 @@ export async function POST(req: NextRequest) {
   const send = body.send !== false;
   if (send && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: 'Add a valid email address for this contact (or choose "just give me the link").' }, { status: 400 });
   const note = typeof body.note === 'string' ? body.note.trim().slice(0, 600) || null : null;
-  const dealId = typeof body.dealId === 'string' && UUID_RE.test(body.dealId) ? body.dealId : null;
   const unit = (c?.business_unit as string | undefined) ?? ctx.businessUnit ?? 'commercial';
 
   const { data: row, error } = await db.from('crm_secure_requests').insert({

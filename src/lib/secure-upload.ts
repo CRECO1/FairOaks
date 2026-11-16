@@ -119,7 +119,14 @@ export async function canSeeRequest(db: SupabaseClient, ctx: CrmContext, r: Secu
   if (ctx.role === 'super_admin') return true;
   if (r.created_by === ctx.userId || (r.shared_with ?? []).includes(ctx.userId)) return true;
   const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
-  return !!c && c.agent_id === ctx.userId;
+  if (c && c.agent_id === ctx.userId) return true;
+  // A request made on a deal is also visible to that deal's owner. Agents merely added to the deal are NOT included —
+  // the creator adds them under "Who can see", like anyone else who should see sensitive financials.
+  if (r.deal_id) {
+    const { data: d } = await db.from('crm_deals').select('agent_id').eq('id', r.deal_id).maybeSingle();
+    if (d && d.agent_id === ctx.userId) return true;
+  }
+  return false;
 }
 
 export async function logSecure(db: SupabaseClient, requestId: string, actor: { id?: string | null; label: string }, action: string, detail?: string | null, ip?: string | null) {
