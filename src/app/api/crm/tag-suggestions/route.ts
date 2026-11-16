@@ -14,15 +14,25 @@ type Db = ReturnType<typeof adminClient>;
 const MAX_BATCH = 500;
 /** Notes that are OUTREACH LISTS ("Auto Brite – French Pl (1353 W French Pl) lease prospect — Roofing"), not someone asking about the property.
  *  Tagging those would make "asked about" mean "we targeted them", so the one-tap "Tag all" leaves them out (each can still be tagged by hand). */
-const OUTREACH = /\blease prospect\b|\bsale prospect\b|outbound prospect|\bprospect\s*[—–-]|\bprospect for\b|\bprospect list\b|\boutreach\b|\bhit list\b|\benriched \d{4}-\d{2}-\d{2}/i;
+const OUTREACH = /\blease prospect\b|\bsale prospect\b|outbound prospect|\bprospect\s*[—–-]|\bprospect for\b|\bprospect list\b|\boutreach\b|\bhit list\b|\benriched \d{4}-\d{2}-\d{2}|\bask for:|\btop target\b/i;
 /** Notes that are a CURRENT TENANT's rent-roll line ("… | Unit: 3100 | Rent: $615/mo | Lease …"): they already lease from us, so they are neither inquiries nor outreach targets. Left out of the review altogether. */
-const TENANT = /\|\s*unit:\s*\S[^|]*\|\s*rent:\s*\$/i;
+const TENANT = /\|\s*unit:\s*\S/i;
 const INQUIRY = /engaged:|crexi lead|loopnet lead|inquir|asked about|called about|requested info|viewed space/i;
 const looksLikeOutreach = (t: string) => OUTREACH.test(t) && !INQUIRY.test(t);
 /** A suggested answer for notes that are neither clearly safe nor outreach: the review shows it as a hint, a person still decides. */
-const ASKISH = /\b(asked|asking|interested|wants?|wanted|looking (for|at)|inquir|requested?|available|availability|tour|showing|lease rate|how much|call(ed)? (me|back)|returned (a )?call|follow(ed)? up)\b/i;
-function verdictFor(text: string, namedCount: number): { verdict: 'inquiry' | 'two' | 'general'; hint: string } {
+const ASKISH = /\b(asked|asking|interested|wants?|wanted|looking (for|at|to)|inquir|requested?|available|availability|tour|toured|showing|lease rate|how much|call(ed)? (me|back)|returned (a )?call|follow(ed)? up|looked at|visited|came on the tour|found your listing|brochure|flyer|asking price|proposal|loi)\b/i;
+/** Notes that are research about who owns the property (county records), a system message, or about the property's own landlord / owner: not someone asking about it. */
+const RESEARCH = /\bowner of record\b|\bper bexar cad\b|\bcounty owner\b|\bprop(erty)? id\b\s*\d|\bmailing address\b.*\bsos file\b/i;
+const SYSTEM = /^\s*✅?\s*task completed:/i;
+const OWNERISH = /\blandlord contact\b|\bproperty manager\b|\bhandles (the )?[^.]{0,40}tenants\b|\bowner of the\b|\bowns\b/i;
+type Verdict = 'inquiry' | 'two' | 'general' | 'owner' | 'research' | 'system';
+function verdictFor(text: string, namedCount: number, ownerLinked = false): { verdict: Verdict; hint: string } {
   if (namedCount >= 2) return { verdict: 'two', hint: 'Names more than one property' };
+  if (SYSTEM.test(text)) return { verdict: 'system', hint: 'System note (a completed task), not a person asking' };
+  if (INQUIRY.test(text) && !RESEARCH.test(text)) return { verdict: 'inquiry', hint: 'Looks like an inquiry' };
+  if (ownerLinked) return { verdict: 'owner', hint: "Linked to this property as its landlord / owner, so not an inquiry" };
+  if (RESEARCH.test(text)) return { verdict: 'research', hint: 'Looks like owner research (county records)' };
+  if (OWNERISH.test(text) && !ASKISH.test(text)) return { verdict: 'owner', hint: 'Looks like a landlord / owner / property contact' };
   if (ASKISH.test(text)) return { verdict: 'inquiry', hint: 'Looks like an inquiry' };
   return { verdict: 'general', hint: 'Looks like a general note' };
 }
@@ -79,6 +89,12 @@ export async function GET(req: NextRequest) {
     for (const x of sk ?? []) skipped.add(`${x.source}:${x.row_id}:${x.listing_id}`);
     if ((sk?.length ?? 0) < 1000) break;
   }
+  // Contacts linked to a property as its landlord / owner / seller / property manager: a note about them is not "someone asked about it".
+  const ownerLinks = new Set<string>();
+  {
+    const { data: lcs } = await db.from('crm_listing_contacts').select('listing_id, client_id, role').in('listing_id', listings.map(l => l.id)).limit(5000);
+    for (const r of lcs ?? []) if (/landlord|owner|seller|property mgr|property manager/i.test(String(r.role ?? ''))) ownerLinks.add(`${r.listing_id}:${r.client_id}`);
+  }
   let tenantsLeftOut = 0;
   const nameOf = (c: { first_name: string | null; last_name: string | null; business_name: string | null }) => c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
   const cmap = new Map<string, { name: string; hold: boolean }>();
@@ -89,7 +105,7 @@ export async function GET(req: NextRequest) {
     if (looksLikeTenant(text)) { tenantsLeftOut++; return; }
     if (targeted.includes(sg.listing.id) && looksLikeOutreach(text)) return;   // already marked as targeted: done
     const l = lc.get(sg.listing.id)!;
-    out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at, outreach: looksLikeOutreach(text), safe: INQUIRY.test(text) && !looksLikeOutreach(text), text: text.length > 700 ? text.slice(0, 700) + '…' : text, ...verdictFor(text, suggestAllListingTags(text, listings).length) });
+    out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at, outreach: looksLikeOutreach(text), safe: INQUIRY.test(text) && !looksLikeOutreach(text), text: text.length > 700 ? text.slice(0, 700) + '…' : text, ...verdictFor(text, suggestAllListingTags(text, listings).length, !!contactId && ownerLinks.has(`${sg.listing.id}:${contactId}`)) });
   }
   for (const c of clients.data ?? []) {
     cmap.set(c.id as string, { name: nameOf(c as never), hold: hold(c as never) });

@@ -5,6 +5,8 @@ type Source = 'contact' | 'activity' | 'call' | 'callsummary';
 type Item = { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach?: boolean; safe?: boolean; verdict?: string; hint?: string; text?: string };
 type Group = { listing_id: string; listing: string; n: number; outreach?: number; bySource: Partial<Record<Source, number>> };
 type Undo = { source: Source; row_id: string; listing_id: string; before: string; after: string; tags_before: string[] };
+const VRANK: Record<string, number> = { inquiry: 0, two: 1, general: 2, owner: 3, research: 3, system: 3 };
+const vrank = (v?: string) => VRANK[v ?? 'general'] ?? 2;
 const SRC = { contact: 'Contact notes', activity: 'Logged note', call: 'Call note', callsummary: 'Call summary' } as const;
 
 /**
@@ -97,7 +99,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
     onToast(`Marked ${j.done} as targeted for ${listing}`);
   };
   // One card at a time: the whole note, who it is about, and big buttons (keys A / T / N / S, ← →). Inquiry-looking notes first.
-  const queue = useMemo(() => [...live].sort((a, b) => ({ inquiry: 0, two: 1, general: 2 } as Record<string, number>)[a.verdict ?? 'general'] - ({ inquiry: 0, two: 1, general: 2 } as Record<string, number>)[b.verdict ?? 'general']), [live]);
+  const queue = useMemo(() => [...live].sort((a, b) => vrank(a.verdict) - vrank(b.verdict)), [live]);
   const cur = queue[Math.min(cardPos, Math.max(0, queue.length - 1))];
   const act = async (kind: 'tag' | 'target' | 'skip' | 'later') => {
     if (!cur || busy !== null) return;
@@ -122,6 +124,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
   // whole team). Outreach lists and phone-call summaries are left out (those have their own buttons / are reviewed by hand). Preview first, one Undo.
   const bulkInq = useMemo(() => live.filter(i => i.source !== 'callsummary' && !i.outreach && i.verdict === 'inquiry'), [live]);
   const bulkGen = useMemo(() => live.filter(i => i.source !== 'callsummary' && !i.outreach && i.verdict === 'general'), [live]);
+  const bulkOther = useMemo(() => live.filter(i => i.source !== 'callsummary' && !i.outreach && (i.verdict === 'owner' || i.verdict === 'research' || i.verdict === 'system')), [live]);
   const sample = (rows: Item[], tagged: boolean) => rows.slice(0, 3).map(r => `• ${r.contact}: …${(tagged ? r.after : r.before).replace(/\s+/g, ' ').slice(0, 110)}…`).join('\n');
   const applyInquiries = async () => {
     if (!bulkInq.length || !window.confirm(`Tag ${bulkInq.length} notes that look like inquiries? Only the address in each note changes, and one Undo puts them all back.\n\nExamples:\n${sample(bulkInq, true)}`)) return;
@@ -140,11 +143,11 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
     onChanged?.();
     onToast(`Tagged ${all.length} note${all.length === 1 ? '' : 's'}${failed ? ` (${failed} had changed and were skipped)` : ''}`);
   };
-  const hideGeneral = async () => {
-    if (!bulkGen.length || !window.confirm(`Hide ${bulkGen.length} notes that look like general notes (Not it, for the whole team)? Their text is not changed, and one Undo brings them all back.\n\nExamples:\n${sample(bulkGen, false)}`)) return;
+  const hideRows = async (rows0: Item[], what: string) => {
+    if (!rows0.length || !window.confirm(`Hide ${rows0.length} notes that look like ${what} (Not it, for the whole team)? Their text is not changed, and one Undo brings them all back.\n\nExamples:\n${sample(rows0, false)}`)) return;
     setBusy('bulk');
     const hidden: { source: string; row_id: string; listing_id: string }[] = [];
-    const byL = new Map<string, Item[]>(); for (const r of bulkGen) byL.set(r.listing_id, [...(byL.get(r.listing_id) ?? []), r]);
+    const byL = new Map<string, Item[]>(); for (const r of rows0) byL.set(r.listing_id, [...(byL.get(r.listing_id) ?? []), r]);
     for (const [lid, rows] of byL) for (let i = 0; i < rows.length; i += 500) {
       const r = await fetch('/api/crm/tag-suggestions', { method: 'POST', headers: h, body: JSON.stringify({ mode: 'skip', listing_id: lid, items: rows.slice(i, i + 500).map(x => ({ source: x.source, row_id: x.row_id })) }) }).catch(() => null);
       const j = r?.ok ? await r.json() : null;
@@ -153,10 +156,12 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
     setBusy(null);
     const gone = new Set(hidden.map(x => `${x.source}:${x.row_id}`));
     setItems(cur => (cur ?? []).filter(x => !gone.has(key(x))));
-    setUndo({ label: 'the general notes', rows: [], skipped: hidden });
+    setUndo({ label: `the ${what.replace(/^an? /, '')}`, rows: [], skipped: hidden });
     onChanged?.();
-    onToast(`Hid ${hidden.length} general note${hidden.length === 1 ? '' : 's'}`);
+    onToast(`Hid ${hidden.length} note${hidden.length === 1 ? '' : 's'}`);
   };
+  const hideGeneral = () => hideRows(bulkGen, 'general notes');
+  const hideOther = () => hideRows(bulkOther, 'owner research, landlord / owner contacts or system messages');
   const doUndo = async () => {
     if (!undo) return;
     let restored = 0, skipped = 0, ok = true;
@@ -200,11 +205,12 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
             <button onClick={doUndo} style={{ fontSize: 12.5, fontWeight: 700, padding: '5px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer' }}>Undo</button>
           </div>
         )}
-        {items && !cardMode && (bulkInq.length > 0 || bulkGen.length > 0) && (
+        {items && !cardMode && (bulkInq.length > 0 || bulkGen.length > 0 || bulkOther.length > 0) && (
           <div style={{ border: '1px solid var(--k-e5e7eb, #e5e7eb)', borderRadius: 12, padding: '10px 12px', marginBottom: 12, background: 'var(--k-f9fafb, #f9fafb)' }}>
             <div style={{ fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)', marginBottom: 8 }}>Bulk by the suggested answer (you see examples first, and one Undo reverses it):</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {bulkInq.length > 0 && <button disabled={busy !== null} onClick={applyInquiries} style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 18, border: '1px solid var(--k-99f6e4, #99f6e4)', background: 'var(--k-f0fdfa, #f0fdfa)', color: 'var(--k-0f766e, #0f766e)', cursor: 'pointer' }}>{busy === 'bulk' ? 'Working…' : `🏠 Tag the ${bulkInq.length} that look like inquiries`}</button>}
+              {bulkOther.length > 0 && <button disabled={busy !== null} onClick={hideOther} title="Owner research from county records, landlord / owner contacts of the property, and system messages: none of them is someone asking about it" style={{ fontSize: 13, padding: '8px 14px', borderRadius: 18, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', color: 'var(--k-374151, #374151)', cursor: 'pointer' }}>{busy === 'bulk' ? 'Working…' : `Hide the ${bulkOther.length} owner / research / system notes`}</button>}
               {bulkGen.length > 0 && <button disabled={busy !== null} onClick={hideGeneral} style={{ fontSize: 13, padding: '8px 14px', borderRadius: 18, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', color: 'var(--k-374151, #374151)', cursor: 'pointer' }}>{busy === 'bulk' ? 'Working…' : `Hide the ${bulkGen.length} general notes`}</button>}
             </div>
           </div>
@@ -293,7 +299,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
                 )}
                 {isOpen && (
                   <div style={{ padding: '0 12px 12px' }}>
-                    {[...rows].sort((a, b) => ({ inquiry: 0, two: 1, general: 2 } as Record<string, number>)[a.verdict ?? 'general'] - ({ inquiry: 0, two: 1, general: 2 } as Record<string, number>)[b.verdict ?? 'general']).slice(0, 100).map(i => (
+                    {[...rows].sort((a, b) => vrank(a.verdict) - vrank(b.verdict)).slice(0, 100).map(i => (
                       <div key={key(i)} style={{ borderTop: '1px solid #f1f3f5', padding: '8px 0' }}>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
                           <span style={{ fontSize: 13.5, fontWeight: 600 }}>{i.contact}</span>
