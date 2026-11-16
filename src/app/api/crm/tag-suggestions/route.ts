@@ -12,6 +12,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Source = 'contact' | 'activity' | 'call';
 type Db = ReturnType<typeof adminClient>;
 const MAX_BATCH = 500;
+/** Notes that are OUTREACH LISTS ("Auto Brite – French Pl (1353 W French Pl) lease prospect — Roofing"), not someone asking about the property.
+ *  Tagging those would make "asked about" mean "we targeted them", so the one-tap "Tag all" leaves them out (each can still be tagged by hand). */
+const OUTREACH = /\blease prospect\b|\bsale prospect\b|outbound prospect|\bprospect\s*[—–-]|\bprospect list\b|\boutreach\b|\bhit list\b/i;
+const INQUIRY = /engaged:|crexi lead|loopnet lead|inquir|asked about|called about|requested info|viewed space/i;
+const looksLikeOutreach = (t: string) => OUTREACH.test(t) && !INQUIRY.test(t);
 
 /**
  * Old notes that name one of our properties without a '#' ("called about 1222 Chulie Dr").
@@ -48,7 +53,7 @@ export async function GET(req: NextRequest) {
   const db = adminClient();
   const listings = await listingsFor(db, ctx);
   const lc = new Map(listings.map(l => [l.id, l]));
-  const out: { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null }[] = [];
+  const out: { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach: boolean }[] = [];
 
   const hold = (c: { lead_hold: boolean | null }) => !!c.lead_hold && ctx.role !== 'super_admin';
   const [clients, acts, calls] = await Promise.all([
@@ -62,7 +67,7 @@ export async function GET(req: NextRequest) {
     const sg = suggestListingTag(text, listings);
     if (!sg) return;
     const l = lc.get(sg.listing.id)!;
-    out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at });
+    out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at, outreach: looksLikeOutreach(text) });
   }
   for (const c of clients.data ?? []) {
     cmap.set(c.id as string, { name: nameOf(c as never), hold: hold(c as never) });
@@ -80,12 +85,12 @@ export async function GET(req: NextRequest) {
     pushRow('call', k.id as string, (k.contact_id as string | null) ?? null, c?.name ?? (k.caller_name as string | null) ?? 'Unknown caller', k.notes as string, k.started_at as string);
   }
   // Per-property summary, biggest first, so a whole property can be approved in one go.
-  const groups = new Map<string, { listing_id: string; listing: string; n: number; bySource: Record<Source, number> }>();
+  const groups = new Map<string, { listing_id: string; listing: string; n: number; outreach: number; bySource: Record<Source, number> }>();
   for (const i of out) {
-    const g = groups.get(i.listing_id) ?? { listing_id: i.listing_id, listing: i.listing, n: 0, bySource: { contact: 0, activity: 0, call: 0 } };
-    g.n++; g.bySource[i.source]++; groups.set(i.listing_id, g);
+    const g = groups.get(i.listing_id) ?? { listing_id: i.listing_id, listing: i.listing, n: 0, outreach: 0, bySource: { contact: 0, activity: 0, call: 0 } };
+    g.n++; if (i.outreach) g.outreach++; g.bySource[i.source]++; groups.set(i.listing_id, g);
   }
-  return NextResponse.json({ items: out.slice(0, 1500), total: out.length, groups: [...groups.values()].sort((a, b) => b.n - a.n) });
+  return NextResponse.json({ items: out.slice(0, 1500), total: out.length, groups: [...groups.values()].sort((a, b) => (b.n - b.outreach) - (a.n - a.outreach) || b.n - a.n) });
 }
 
 type Applied = { source: Source; row_id: string; listing_id: string; ok: boolean; reason?: string; before?: string; after?: string; tags_before?: string[] };

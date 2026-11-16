@@ -2,8 +2,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 type Source = 'contact' | 'activity' | 'call';
-type Item = { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null };
-type Group = { listing_id: string; listing: string; n: number; bySource: Record<Source, number> };
+type Item = { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach?: boolean };
+type Group = { listing_id: string; listing: string; n: number; outreach?: number; bySource: Record<Source, number> };
 type Undo = { source: Source; row_id: string; listing_id: string; before: string; after: string; tags_before: string[] };
 const SRC = { contact: 'Contact notes', activity: 'Logged note', call: 'Call note' } as const;
 const SKIP_KEY = 'crm:tag-suggestion-skips';
@@ -76,6 +76,8 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged 
           : live.length === 0 ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af, #9ca3af)' }}>Nothing left to review.</div>
           : groups.filter(g => byGroup.get(g.listing_id)?.length).map(g => {
             const rows = byGroup.get(g.listing_id) ?? [];
+            const inquiryRows = rows.filter(r => !r.outreach);
+            const outreachN = rows.length - inquiryRows.length;
             const isOpen = open === g.listing_id;
             const parts = (['contact', 'activity', 'call'] as Source[]).map(s => ({ s, n: rows.filter(r => r.source === s).length })).filter(x => x.n).map(x => `${x.n} ${SRC[x.s].toLowerCase()}`).join(' · ');
             return (
@@ -84,16 +86,19 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged 
                   <button onClick={() => setOpen(isOpen ? null : g.listing_id)} style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', flex: '1 1 200px', padding: 0, fontFamily: 'inherit' }}>
                     <div style={{ fontSize: 14.5, fontWeight: 700 }}>{isOpen ? '▾' : '▸'} {g.listing}</div>
                     <div style={{ fontSize: 12, color: 'var(--k-6b7280, #6b7280)' }}>{rows.length} note{rows.length === 1 ? '' : 's'} · {parts}</div>
+                    {outreachN > 0 && <div style={{ fontSize: 12, color: '#b45309' }}>{outreachN} look like outreach lists (we contacted them), not inquiries, so “Tag all” leaves them out</div>}
                   </button>
-                  <button disabled={busy !== null} onClick={() => { if (window.confirm(`Tag ${rows.length} note${rows.length === 1 ? '' : 's'} as ${g.listing}? Only that address in each note changes, and you can undo.`)) applyRows(g.listing_id, rows.slice(0, 500), g.listing); }}
-                    style={{ fontSize: 12.5, fontWeight: 700, padding: '7px 14px', borderRadius: 16, border: '1px solid var(--k-99f6e4, #99f6e4)', background: 'var(--k-f0fdfa, #f0fdfa)', color: 'var(--k-0f766e, #0f766e)', cursor: 'pointer' }}>
-                    {busy === g.listing_id + rows.length ? 'Tagging…' : `Tag all ${Math.min(rows.length, 500)}`}
-                  </button>
+                  {inquiryRows.length > 0 && (
+                    <button disabled={busy !== null} onClick={() => { if (window.confirm(`Tag ${Math.min(inquiryRows.length, 500)} note${inquiryRows.length === 1 ? '' : 's'} as ${g.listing}? Only that address in each note changes, and you can undo.`)) applyRows(g.listing_id, inquiryRows.slice(0, 500), g.listing); }}
+                      style={{ fontSize: 12.5, fontWeight: 700, padding: '7px 14px', borderRadius: 16, border: '1px solid var(--k-99f6e4, #99f6e4)', background: 'var(--k-f0fdfa, #f0fdfa)', color: 'var(--k-0f766e, #0f766e)', cursor: 'pointer' }}>
+                      {busy === g.listing_id + inquiryRows.length ? 'Tagging…' : `Tag all ${Math.min(inquiryRows.length, 500)}`}
+                    </button>
+                  )}
                 </div>
                 {/* Preview: three sample before → after lines, so you can see exactly what "Tag all" will do */}
                 {!isOpen && (
                   <div style={{ padding: '0 12px 10px' }}>
-                    {rows.slice(0, 3).map(r => (
+                    {(inquiryRows.length ? inquiryRows : rows).slice(0, 3).map(r => (
                       <div key={key(r)} style={{ fontSize: 12, color: 'var(--k-6b7280, #6b7280)', marginTop: 4, wordBreak: 'break-word' }}>
                         <span style={{ color: 'var(--k-9ca3af, #9ca3af)' }}>…{r.before.replace(/\s+/g, ' ')}…</span><br />
                         <span style={{ color: 'var(--k-0f766e, #0f766e)', fontWeight: 600 }}>→ …{r.after.replace(/\s+/g, ' ')}…</span>
@@ -106,7 +111,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged 
                     {rows.slice(0, 100).map(i => (
                       <div key={key(i)} style={{ borderTop: '1px solid #f1f3f5', padding: '8px 0' }}>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                          <span style={{ fontSize: 13.5, fontWeight: 600 }}>{i.contact}</span>
+                          <span style={{ fontSize: 13.5, fontWeight: 600 }}>{i.contact}</span>{i.outreach && <span title="Looks like an outreach list entry, not an inquiry" style={{ fontSize: 10.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 20, padding: '1px 7px' }}>outreach list</span>}
                           <span style={{ fontSize: 11, color: 'var(--k-9ca3af, #9ca3af)' }}>{SRC[i.source]}{i.at ? ` · ${new Date(i.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}</span>
                         </div>
                         <div style={{ fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)', margin: '4px 0 6px', wordBreak: 'break-word' }}>…{i.before.replace(/\s+/g, ' ')}…</div>
