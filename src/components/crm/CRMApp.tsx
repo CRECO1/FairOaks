@@ -1120,6 +1120,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
   const [activeClient, setActiveClient] = useState<Client | null>(null);
   const [secureAutoOpen, setSecureAutoOpen] = useState<string | null>(null);   // contact id whose card should open with the secure-request form ready
+  useEffect(() => { if (!activeClient) setSecureAutoOpen(null); }, [activeClient]);   // closing the card drops a request nobody used
   const [activityMore, setActivityMore] = useState(false); // phones: the contact card's activity log shows the latest few until you ask for the rest
   useEffect(() => { setActivityMore(false); }, [activeClient?.id]);
   const [docsMore, setDocsMore] = useState(false); // phones: the contact card's Documents list shows the first few until you ask for the rest

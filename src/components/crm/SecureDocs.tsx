@@ -82,9 +82,12 @@ export default function SecureDocs({ clientId, dealId, autoOpen, onAutoOpened, a
 
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const consumed = useRef(onAutoOpened);
+  consumed.current = onAutoOpened;   // latest callback without re-running the effect below on every parent render
+  const loaded = reqs !== null;
   useEffect(() => () => { scrollTimers.current.forEach(clearTimeout); }, []);   // only when the section goes away
   useEffect(() => {
-    if (!autoOpen || reqs === null) return;   // wait until the list has loaded so the form does not jump
+    if (!autoOpen || !loaded) return;   // wait until the list has loaded so the form does not jump
     setCreating(true);
     // The card is still laying out (sections above fill in), so look again a couple of times; a retry only scrolls if the form is still out of view.
     scrollTimers.current.forEach(clearTimeout);
@@ -93,8 +96,9 @@ export default function SecureDocs({ clientId, dealId, autoOpen, onAutoOpened, a
       const top = el.getBoundingClientRect().top;
       if (top < 60 || top > window.innerHeight * 0.5) el.scrollIntoView({ behavior: 'auto', block: 'start' });
     }, ms));
-    onAutoOpened?.();
-  }, [autoOpen, reqs, onAutoOpened]);
+    // Only now — after it has opened and settled — tell the list the request is handled (a remount before this point simply opens it again).
+    scrollTimers.current.push(setTimeout(() => consumed.current?.(), 1500));
+  }, [autoOpen, loaded]);
 
   const pick = (k: string) => { setPreset(k); setItems(PRESETS[k].items); };
   const toggle = (i: Item) => setItems(cur => (cur.some(x => x.key === i.key) ? cur.filter(x => x.key !== i.key) : [...cur, i]));
