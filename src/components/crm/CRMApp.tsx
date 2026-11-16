@@ -11786,7 +11786,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {page === 'transaction-docs' && (
             <TransactionDocsSection
-              onOpenSecureContact={id => { const c = clients.find(x => x.id === id); if (c) { setSecureScroll({ kind: 'contact', id }); setActiveClient(c); } else showToast('That contact isn’t loaded yet — try again in a moment'); }}
+              onOpenSecureContact={id => {
+                const show = (c: Client) => { setSecureScroll({ kind: 'contact', id }); setActiveClient(c); };
+                const c = clients.find(x => x.id === id);
+                if (c) { show(c); return; }
+                // Landing straight on My Drive leaves the contacts list unloaded: fetch just this one (the database still decides whether you may see it).
+                void supabase.from('crm_clients').select('*').eq('id', id).maybeSingle().then(({ data }) => { if (data) show(data as Client); else showToast('That contact isn’t available to you'); });
+              }}
               onOpenSecureDeal={id => { const d = deals.find(x => x.id === id); if (d) { setSecureScroll({ kind: 'deal', id }); openDeal(d); setDealTab('docs'); loadDealDocs(d.id); } else showToast('That deal isn’t available to you'); }}
               businessUnit={businessUnit}
               isAdmin={isAdmin}
