@@ -195,3 +195,52 @@ export async function buildMentions(ctx: CrmContext, listingId: string): Promise
   }
   return out;
 }
+
+/** Every listing id that has at least one tagged note / call / task / deal anywhere (cheap pre-filter so callers only build lists for properties that have any).
+ *  Read in pages: the database returns at most 1,000 rows per request, and a bulk tagging run can put well over that on one table. */
+export async function taggedListingIds(limit = 120): Promise<string[]> {
+  const db = adminClient();
+  const tables = ['crm_clients', 'crm_client_activities', 'crm_call_log', 'crm_deals', 'crm_deal_notes', 'crm_deal_meetings', 'crm_tasks'];
+  const ids = new Set<string>();
+  for (const t of tables) {
+    for (let from = 0; from < 20000; from += 1000) {
+      const { data, error } = await db.from(t).select('tagged_listing_ids').not('tagged_listing_ids', 'eq', '{}').order('id').range(from, from + 999);
+      if (error) return [];
+      for (const x of data ?? []) for (const id of ((x as { tagged_listing_ids: string[] | null }).tagged_listing_ids ?? [])) ids.add(id);
+      if ((data?.length ?? 0) < 1000) break;
+    }
+  }
+  return [...ids].slice(0, limit);
+}
+
+export type TargetedItem = { contact_id: string; name: string; type: string | null };
+
+/** People we reached out to about this property (an outreach list), kept apart from inquiries so "asked" stays honest. Same contact visibility as the asked list. */
+export async function buildTargeted(ctx: CrmContext, listingId: string): Promise<{ total: number; items: TargetedItem[] }> {
+  const db = adminClient();
+  const rows: Record<string, unknown>[] = [];
+  for (let from = 0; from < 5000; from += 1000) {
+    const { data, error } = await db.from('crm_clients').select('id, first_name, last_name, business_name, type, business_unit, lead_hold').contains('targeted_listing_ids', [listingId]).order('id').range(from, from + 999);
+    if (error) return { total: 0, items: [] };
+    rows.push(...(data ?? []));
+    if ((data?.length ?? 0) < 1000) break;
+  }
+  const vis = rows.filter(c => !(c.lead_hold && ctx.role !== 'super_admin') && (isAdminRole(ctx.role) || c.business_unit === ctx.businessUnit));
+  return { total: vis.length, items: vis.slice(0, 25).map(c => ({ contact_id: c.id as string, name: (c.business_name as string) || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact', type: (c.type as string | null) ?? null })) };
+}
+
+/** { listingId: how many contacts are marked as targeted for it } for the caller (card badges). */
+export async function targetedCounts(ctx: CrmContext): Promise<Record<string, number>> {
+  const db = adminClient();
+  const out: Record<string, number> = {};
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await db.from('crm_clients').select('targeted_listing_ids, business_unit, lead_hold').not('targeted_listing_ids', 'eq', '{}').order('id').range(from, from + 999);
+    if (error) return out;
+    for (const c of data ?? []) {
+      if ((c.lead_hold && ctx.role !== 'super_admin') || !(isAdminRole(ctx.role) || c.business_unit === ctx.businessUnit)) continue;
+      for (const id of ((c.targeted_listing_ids as string[] | null) ?? [])) out[id] = (out[id] ?? 0) + 1;
+    }
+    if ((data?.length ?? 0) < 1000) break;
+  }
+  return out;
+}

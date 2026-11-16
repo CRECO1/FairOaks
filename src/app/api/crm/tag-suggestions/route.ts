@@ -37,7 +37,7 @@ async function listingsFor(db: Db, ctx: CrmContext) {
 async function allClients(db: Db, unit: string | null) {
   const rows: Record<string, unknown>[] = [];
   for (let from = 0; from < 20000; from += 1000) {
-    const { data, error } = await db.from('crm_clients').select('id, first_name, last_name, business_name, notes, tagged_listing_ids, lead_hold')
+    const { data, error } = await db.from('crm_clients').select('id, first_name, last_name, business_name, notes, tagged_listing_ids, targeted_listing_ids, lead_hold')
       .eq('business_unit', unit).not('notes', 'is', null).order('id').range(from, from + 999);
     if (error) return { data: rows, error };
     rows.push(...(data ?? []));
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
   const db = adminClient();
   const listings = await listingsFor(db, ctx);
   const lc = new Map(listings.map(l => [l.id, l]));
-  const out: { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach: boolean }[] = [];
+  const out: { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach: boolean; safe: boolean }[] = [];
 
   const hold = (c: { lead_hold: boolean | null }) => !!c.lead_hold && ctx.role !== 'super_admin';
   const [clients, acts, calls] = await Promise.all([
@@ -63,16 +63,17 @@ export async function GET(req: NextRequest) {
   ]);
   const nameOf = (c: { first_name: string | null; last_name: string | null; business_name: string | null }) => c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
   const cmap = new Map<string, { name: string; hold: boolean }>();
-  function pushRow(source: Source, rowId: string, contactId: string | null, who: string, text: string, at: string | null) {
+  function pushRow(source: Source, rowId: string, contactId: string | null, who: string, text: string, at: string | null, targeted: string[] = []) {
     const sg = suggestListingTag(text, listings);
     if (!sg) return;
+    if (targeted.includes(sg.listing.id) && looksLikeOutreach(text)) return;   // already marked as targeted: done
     const l = lc.get(sg.listing.id)!;
-    out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at, outreach: looksLikeOutreach(text) });
+    out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at, outreach: looksLikeOutreach(text), safe: INQUIRY.test(text) && !looksLikeOutreach(text) });
   }
   for (const c of clients.data ?? []) {
     cmap.set(c.id as string, { name: nameOf(c as never), hold: hold(c as never) });
     if (hold(c as never)) continue;
-    pushRow('contact', c.id as string, c.id as string, nameOf(c as never), c.notes as string, null);
+    pushRow('contact', c.id as string, c.id as string, nameOf(c as never), c.notes as string, null, (c.targeted_listing_ids as string[] | null) ?? []);
   }
   for (const a of acts.data ?? []) {
     const c = cmap.get(a.client_id as string);
@@ -132,6 +133,20 @@ export async function POST(req: NextRequest) {
   const db = adminClient();
   const listings = await listingsFor(db, ctx);
   if (!listings.some(l => l.id === listingId)) return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
+  // Outreach lists: record "we targeted these people for this property" WITHOUT touching their notes and without counting them as inquiries.
+  if (b?.mode === 'targeted') {
+    const ids = items.filter(i => i.source === 'contact').map(i => i.row_id);
+    const { data: rows } = ids.length ? await db.from('crm_clients').select('id, business_unit, lead_hold, targeted_listing_ids').in('id', ids) : { data: [] };
+    const added: { row_id: string; listing_id: string }[] = [];
+    for (const r of rows ?? []) {
+      if (r.business_unit !== ctx.businessUnit || (r.lead_hold && ctx.role !== 'super_admin')) continue;
+      const cur = (r.targeted_listing_ids as string[] | null) ?? [];
+      if (cur.includes(listingId)) continue;
+      const { error } = await db.from('crm_clients').update({ targeted_listing_ids: [...cur, listingId] }).eq('id', r.id as string);
+      if (!error) added.push({ row_id: r.id as string, listing_id: listingId });
+    }
+    return NextResponse.json({ ok: true, done: added.length, failed: ids.length - added.length, added });
+  }
   const results: Applied[] = [];
   for (const i of items) results.push(await applyOne(db, ctx, listings, i.source, i.row_id, listingId));
   const done = results.filter(r => r.ok);
@@ -148,6 +163,17 @@ export async function PUT(req: NextRequest) {
   const b = await req.json().catch(() => null);
   const undo: Applied[] = Array.isArray(b?.undo) ? b.undo.slice(0, MAX_BATCH) : [];
   const db = adminClient();
+  if (Array.isArray(b?.untarget)) {       // undo of "mark as targeted": take that property back off those contacts
+    let restored = 0;
+    for (const u of (b.untarget as { row_id: string; listing_id: string }[]).slice(0, MAX_BATCH)) {
+      if (!UUID.test(String(u?.row_id ?? '')) || !UUID.test(String(u?.listing_id ?? ''))) continue;
+      const { data: r } = await db.from('crm_clients').select('id, business_unit, targeted_listing_ids').eq('id', u.row_id).maybeSingle();
+      if (!r || r.business_unit !== ctx.businessUnit) continue;
+      const { error } = await db.from('crm_clients').update({ targeted_listing_ids: ((r.targeted_listing_ids as string[] | null) ?? []).filter(x => x !== u.listing_id) }).eq('id', u.row_id);
+      if (!error) restored++;
+    }
+    return NextResponse.json({ ok: true, restored, skipped: 0 });
+  }
   let restored = 0, skipped = 0;
   for (const u of undo) {
     if (!['contact', 'activity', 'call'].includes(u?.source) || !UUID.test(String(u?.row_id ?? '')) || typeof u.before !== 'string' || typeof u.after !== 'string') { skipped++; continue; }

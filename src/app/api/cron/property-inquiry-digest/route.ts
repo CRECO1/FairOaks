@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { sendPushToProfiles, crmLink } from '@/lib/push';
+import { buildInquiries } from '@/lib/listing-inquiries';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,13 +57,25 @@ export async function GET(req: NextRequest) {
     const shown = r.who.slice(0, 2).join(' and ');
     return `${shown}${r.who.length > 2 ? ` +${r.who.length - 2}` : ''} on ${r.label}`;
   };
+  // Also say how many people still haven't been called back on their listings (asked a week or more ago, nothing logged since).
+  const { data: profs } = await db.from('crm_profiles').select('id, role, business_unit').in('id', [...byAgent.keys()]);
+  const prof = new Map((profs ?? []).map(p => [p.id as string, p]));
+  const allIds = [...new Set((lst ?? []).map(l => l.id as string))];
+  const waiting = new Map<string, number>();
+  for (const [pid, rows] of byAgent) {
+    const me = prof.get(pid); if (!me) continue;
+    const ctx = { userId: pid, role: (me.role as string | null) ?? null, businessUnit: (me.business_unit as string | null) ?? null };
+    let n = 0;
+    for (const id of allIds.filter(i => rows.some(r => r.id === i))) { const r = await buildInquiries(ctx, id).catch(() => null); if (r?.ok) n += r.items.filter(i => i.needs_follow_up).length; }
+    if (n) waiting.set(pid, n);
+  }
   let sent = 0;
   for (const [pid, rows] of byAgent) {
     const total = rows.reduce((a, r) => a + r.n, 0);
     const body = rows.sort((a, b) => b.n - a.n).slice(0, 3).map(describe).join('; ') + (rows.length > 3 ? ` +${rows.length - 3} more` : '');
     const r = await sendPushToProfiles([pid], {
       title: `${total} new ${total === 1 ? 'inquiry' : 'inquiries'} on your listings`,
-      body, url: rows.length === 1 ? crmLink('properties', { type: 'listing', id: rows[0].id }) : crmLink('properties'),
+      body: body + (waiting.get(pid) ? ` · ${waiting.get(pid)} still waiting on a call-back` : ''), url: rows.length === 1 ? crmLink('properties', { type: 'listing', id: rows[0].id }) : crmLink('properties'),
       tag: 'property-inquiries', category: 'inquiries',
     }, { db });
     sent += r.sent;

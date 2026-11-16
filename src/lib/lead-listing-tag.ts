@@ -29,3 +29,24 @@ export async function tagLeadNotes(db: SupabaseClient, unit: string, notes: stri
     return plain;
   }
 }
+
+/**
+ * Listings a call SUMMARY (the phone bot's or a voicemail's AI write-up) is about, found from the property the AI extracted and from any address
+ * named in the summary. Same rules as lead imports: restricted listings are never auto-tagged, failures are silent and return [].
+ * The summary text itself is left alone (it is AI-written); only the stored tag is added, so the call counts on the property's list.
+ */
+export async function autoTagIdsForText(db: SupabaseClient, unit: string, text: string, hints: (string | null | undefined)[] = []): Promise<string[]> {
+  try {
+    if (!/\d/.test(text + hints.join(' '))) return [];
+    const { data } = await db.from('crm_listings').select('id, name, address, is_restricted').eq('business_unit', unit);
+    const listings = (data ?? []).filter(l => !l.is_restricted) as (ListingLite & { is_restricted?: boolean })[];
+    if (!listings.length) return [];
+    const hint = hints.filter(Boolean).join('\n');
+    const hit = (hint && matchListing(hint, listings)) || matchListing(text, listings);
+    if (!hit) return [];
+    return parseListingTagIds(`#${listingTagToken(hit)}`, listings);
+  } catch (e) {
+    console.error('[lead-listing-tag] auto-tag skipped:', e);
+    return [];
+  }
+}

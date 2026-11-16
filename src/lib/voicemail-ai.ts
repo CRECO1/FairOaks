@@ -1,3 +1,4 @@
+import { autoTagIdsForText } from '@/lib/lead-listing-tag';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { callerNumberOrNull, flattenTranscript, loadSettings, matchContact, notifyCallSummary, summarizeCall, type Turn } from '@/lib/voicebot';
 import { junkKind, tidyCallLog } from '@/lib/call-routing';
@@ -87,6 +88,8 @@ export async function processVoicemails(
       // A name the caller SAID beats the Talkroute caller-ID label; the label is kept in ai_meta.caller_id_name.
       if (s.caller_name) patch.caller_name = s.caller_name;
       if (s.callback_at) patch.follow_up_due = s.callback_at;
+      const autoTags = await autoTagIdsForText(db, String((row as { business_unit?: string | null }).business_unit ?? 'commercial'), s.summary, [s.property]);
+      if (autoTags.length) patch.tagged_listing_ids = autoTags;
       await db.from('crm_call_log').update(patch).eq('id', row.id);
       out.summarized++;
 

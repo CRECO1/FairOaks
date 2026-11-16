@@ -1,3 +1,4 @@
+import { autoTagIdsForText } from '@/lib/lead-listing-tag';
 import { NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { twiml, twilioConfigured, twilioParams, verifyTwilioSignature } from '@/lib/twilio';
@@ -88,6 +89,9 @@ export async function POST(req: Request) {
     try { (patch.ai_meta as Record<string, unknown>).auto_block = await autoBlockSpammer(db, call, realFrom, s, tr); }
     catch (e) { console.warn('[voice/status] auto-block', e); }
   }
+  // The call is about one of our properties (the AI's extracted property, or an address in the summary): tag it so it counts on that property.
+  const autoTags = await autoTagIdsForText(db, String(call.business_unit ?? 'commercial'), String(patch.summary ?? ''), [(patch.ai_meta as Record<string, unknown>)?.property as string | null]);
+  if (autoTags.length) patch.tagged_listing_ids = autoTags;
   await db.from('crm_call_log').update(patch).eq('id', call.id);
   // Owner + due time for a real call-back; links the caller to a contact if one exists.
   try { await tidyCallLog(db, { callIds: [call.id], days: 2 }); } catch (e) { console.warn('[voice/status] tidy', e); }

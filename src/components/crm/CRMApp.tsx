@@ -60,6 +60,7 @@ import CallTapPrompt from '@/components/crm/CallTapPrompt';
 import MentionTextarea, { parseMentionContactIds, parseMentionIds } from '@/components/crm/MentionTextarea';
 import { parseListingTagIds, listingTagLabel, type TagListing } from '@/lib/listing-tags';
 import TaggedText from '@/components/crm/TaggedText';
+import ListingFollowUps from '@/components/crm/ListingFollowUps';
 import DealActivityTab from '@/components/crm/deal/DealActivityTab';
 import { DealHeader, DealCardStyles, StatTiles, STAGE_PALETTE, DealTile, TileStyles, Icon, daysAgo } from '@/components/crm/deal/dealUi';
 import Ico, { type IcoName } from '@/components/crm/Ico';
@@ -6711,6 +6712,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
             <div>
+              <ListingFollowUps authToken={session?.access_token} userId={profile?.id} onToast={showToast}
+                onOpenContact={id => { let n = 0; const go = () => { if (openEntityRef.current?.('contact', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }} />
               {/* ── Action center: what needs YOU today / this week (your own open
                      tasks + follow-ups + deals). Leads the dashboard; the charts
                      sit in the collapsed "Numbers" section below. ── */}

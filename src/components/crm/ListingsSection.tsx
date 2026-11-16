@@ -2,6 +2,7 @@
 
 import TagSuggestions from '@/components/crm/TagSuggestions';
 import InquiryAlertPrompt from '@/components/crm/InquiryAlertPrompt';
+import LeadTagHealth from '@/components/crm/LeadTagHealth';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
@@ -257,14 +258,15 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // Contacts whose notes / logged calls #-tagged the open property (read-only; GET /api/crm/listing-inquiries).
   const [inquiries, setInquiries] = useState<Array<{ key: string; contact_id: string | null; deal_id?: string | null; name: string; type: string | null; via: string; last_at: string | null; snippet: string | null; needs_follow_up?: boolean }>>([]);
   const [inquiriesLoaded, setInquiriesLoaded] = useState(false);
+  const [targeted, setTargeted] = useState<{ total: number; items: Array<{ contact_id: string; name: string; type: string | null }> }>({ total: 0, items: [] });
   const [mentions, setMentions] = useState<Array<{ key: string; kind: string; listing_id: string | null; label: string; detail: string | null; snippet: string | null }>>([]);
   useEffect(() => {
-    setInquiries([]); setMentions([]); setInquiriesLoaded(false);
+    setInquiries([]); setMentions([]); setTargeted({ total: 0, items: [] }); setInquiriesLoaded(false);
     if (!active?.id || !authToken) return;
     let alive = true;
     fetch(`/api/crm/listing-inquiries?listing_id=${active.id}`, { headers: { Authorization: `Bearer ${authToken}` } })
       .then(r => (r.ok ? r.json() : null))
-      .then(j => { if (alive) { setInquiries(j?.items ?? []); setMentions(j?.mentions ?? []); setInquiriesLoaded(true); } })
+      .then(j => { if (alive) { setInquiries(j?.items ?? []); setMentions(j?.mentions ?? []); setTargeted(j?.targeted ?? { total: 0, items: [] }); setInquiriesLoaded(true); } })
       .catch(() => { if (alive) setInquiriesLoaded(true); });
     return () => { alive = false; };
   }, [active?.id, authToken]);
@@ -368,6 +370,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // How many contacts / callers / deals asked about each property (#-tagged in notes). Same access rules as the 'Asked about' list.
   const [askCounts, setAskCounts] = useState<Record<string, number>>({});
   const [askedOnly, setAskedOnly] = useState(false);
+  const [targetedCounts, setTargetedCounts] = useState<Record<string, number>>({});
   const [showTagReview, setShowTagReview] = useState(false);
   const [countsKey, setCountsKey] = useState(0);
   useEffect(() => {
@@ -375,7 +378,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     let live = true;
     fetch('/api/crm/listing-inquiry-counts', { headers: authHeaders })
       .then(r => (r.ok ? r.json() : null))
-      .then(j => { if (live && j?.counts) setAskCounts(j.counts as Record<string, number>); })
+      .then(j => { if (live && j?.counts) setAskCounts(j.counts as Record<string, number>); if (live && j?.targeted) setTargetedCounts(j.targeted as Record<string, number>); })
       .catch(() => {});
     return () => { live = false; };
   }, [listings.length, authToken, countsKey]); // eslint-disable-line
@@ -1206,6 +1209,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {showTagReview && <TagSuggestions authToken={authToken} onClose={() => { setShowTagReview(false); setCountsKey(k => k + 1); }} onToast={onToast} onChanged={() => setCountsKey(k => k + 1)} />}
 
       <InquiryAlertPrompt authToken={authToken} onToast={onToast} />
+      {isAdmin && <LeadTagHealth authToken={authToken} onOpenContact={onOpenContact} />}
 
       {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -1299,6 +1303,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                     <span style={{ ...tc, padding: '2px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700 } as React.CSSProperties}>{l.type}</span>
                     {l.sq_ft && <span style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>{fmtSqFt(l.sq_ft)}</span>}
+                    {targetedCounts[l.id] > 0 && <span title="People we reached out to about this property (outreach lists). Not inquiries, so not counted as asked." style={{ fontSize: 11, fontWeight: 700, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '1px 8px' }}>🎯 {targetedCounts[l.id]} targeted</span>}
                     {askCounts[l.id] > 0 && <span title="People who asked about this property (# tags in notes and calls)" style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-0f766e)', background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 10, padding: '1px 8px' }}>🏠 {askCounts[l.id]} asked</span>}
                     {l.asking_price && (
                       <span style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 700, color: '#c9922c' }}>{fmt$(l.asking_price)}</span>
@@ -1408,7 +1413,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                 </div>
               </div>
               {/* How many people asked about this property + when last (#-tags), one tap to the list */}
-              {inquiries.length > 0 && (() => {
+              {(inquiries.length > 0 || targeted.total > 0) && (() => {
                 const dated = inquiries.filter(q => q.last_at).sort((a, b) => String(b.last_at).localeCompare(String(a.last_at)));
                 const last = dated[0];
                 const days = last?.last_at ? Math.floor((Date.now() - Date.parse(last.last_at)) / 86_400_000) : null;
@@ -1418,7 +1423,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                 return (
                   <button type="button" onClick={() => setActiveTab('contacts')} title="See who asked about this property"
                     style={{ margin: '4px 0 10px', fontSize: 12.5, fontWeight: 700, color: 'var(--k-0f766e)', background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 20, padding: '5px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textAlign: 'left' }}>
-                    🏠 {inquiries.length} asked{last && when ? ` · ${who ? `${who}, ` : ''}${when}` : ''}
+                    🏠 {inquiries.length} asked{last && when ? ` · ${who ? `${who}, ` : ''}${when}` : ''}{targeted.total > 0 && <span style={{ color: '#b45309', marginLeft: 6 }}>· 🎯 {targeted.total} targeted</span>}
                     {need > 0 && <span style={{ color: '#b45309', marginLeft: 6 }}>· {need} need{need === 1 ? 's' : ''} follow-up</span>} →
                   </button>
                 );
@@ -1991,6 +1996,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       </div>
                     )}
                   </div>
+                  {targeted.total > 0 && (
+                    <div style={{ marginTop: 22 }}>
+                      <div title="People on an outreach list for this property: we contacted them, they did not ask" style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>🎯 Targeted ({targeted.total}) · we reached out</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginBottom: 8 }}>On an outreach list for this property. Not inquiries, so they are not counted as asked.{targeted.total > targeted.items.length ? ` Showing the first ${targeted.items.length}.` : ''}</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {targeted.items.map(t => (
+                          <button key={t.contact_id} onClick={() => onOpenContact?.(t.contact_id)} style={{ fontSize: 12.5, padding: '4px 11px', borderRadius: 16, border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e', cursor: onOpenContact ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>{t.name}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {mentions.length > 0 && (
                     <div style={{ marginTop: 22 }}>
                       <div title="Notes on other properties that #-tag this one. Not inquiries, so they are not counted above." style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>🔗 Mentioned in notes on other properties</div>
