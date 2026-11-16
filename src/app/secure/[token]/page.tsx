@@ -56,8 +56,16 @@ export default function SecureUploadPage() {
       try {
         const pre = await post({ action: 'presign', filename: file.name, file_size: file.size });
         if (!pre.ok) { setErr(pre.j.error || 'Could not start the upload.'); break; }
-        const put = await fetch(pre.j.uploadUrl, { method: 'PUT', headers: { 'Content-Type': pre.j.contentType }, body: file });
-        if (!put.ok) { setErr(`We couldn’t upload ${file.name}. Please try again.`); break; }
+        const sent = await new Promise<boolean>(resolve => {
+          const x = new XMLHttpRequest();
+          x.open('PUT', pre.j.uploadUrl);
+          x.setRequestHeader('Content-Type', pre.j.contentType);
+          x.upload.onprogress = e => { if (e.lengthComputable) setBusy(b => ({ ...b, [itemKey]: `Uploading ${file.name}… ${Math.round((e.loaded / e.total) * 100)}%` })); };
+          x.onload = () => resolve(x.status >= 200 && x.status < 300);
+          x.onerror = () => resolve(false);
+          x.send(file);
+        });
+        if (!sent) { setErr(`We couldn’t upload ${file.name}. Please check your connection and try again.`); break; }
         const conf = await post({ action: 'confirm', storagePath: pre.j.storagePath, filename: file.name, itemKey });
         if (!conf.ok) { setErr(conf.j.error || `Couldn’t save ${file.name}.`); break; }
         setFiles(fs => [...fs, conf.j.file as UFile]);
@@ -104,6 +112,7 @@ export default function SecureUploadPage() {
 
   const items = data.items ?? [];
   const byItem = (k: string) => files.filter(f => (f.item_key ?? OTHER) === k);
+  const doneItems = items.filter(i => byItem(i.key).length > 0).length;
   const exp = data.expiresAt ? new Date(data.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : '';
 
   const slot = (k: string, label: string, optional?: boolean) => {
@@ -137,6 +146,7 @@ export default function SecureUploadPage() {
       <p style={{ margin: '0 0 14px', color: '#4b5563', lineHeight: 1.5 }}>
         {data.agentName} asked for the items below. This page is private: only your CRECO broker can see what you upload, and files are encrypted while stored. Please don’t email these documents.
       </p>
+      {items.length > 0 && <div style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 600, color: doneItems === items.length ? '#15803d' : '#6b7280' }}>{doneItems === items.length ? '✓ Everything on the list is uploaded' : `${doneItems} of ${items.length} items uploaded`}</div>}
       {data.note && <div style={{ ...card, background: '#faf7ef', borderLeft: `3px solid ${GOLD}`, whiteSpace: 'pre-line' }}>{data.note}</div>}
       {err && <div role="alert" style={{ ...card, color: '#b91c1c', borderColor: '#fecaca', background: '#fef2f2' }}>{err}</div>}
       {items.map(i => slot(i.key, i.label))}

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
+import { after } from 'next/server';
 import { rateLimit, rateLimitFailOpen } from '@/lib/ratelimit';
 import { isAutomationUA } from '@/lib/automation-ua';
 import { adminClient } from '@/lib/supabase-admin';
 import {
-  SECURE_BUCKET, CONTENT_TYPES, MAX_FILE_SIZE, MAX_FILES_PER_REQUEST, UUID_RE, extOf, logSecure, notifyUploads, type SecureRequestRow,
+  SECURE_BUCKET, CONTENT_TYPES, MAX_FILE_SIZE, MAX_FILES_PER_REQUEST, UUID_RE, extOf, logSecure, notifyUploads, notifyOpened, sniffStored, type SecureRequestRow,
 } from '@/lib/secure-upload';
 
 // PUBLIC, token-gated — intentionally NOT in middleware.ts's matcher, so a tenant (no login) reaches it.
@@ -47,7 +48,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   // A real person opening the page — not a mail scanner pre-fetching the link.
   if (!isAutomationUA(req.headers.get('user-agent'))) {
     await db.from('crm_secure_requests').update({ view_count: r.view_count + 1, ...(r.first_viewed_at ? {} : { first_viewed_at: new Date().toISOString() }) }).eq('id', r.id);
-    if (!r.first_viewed_at) await logSecure(db, r.id, { label: 'tenant' }, 'viewed', 'opened the link', ipOf(req));
+    if (!r.first_viewed_at) {
+      await logSecure(db, r.id, { label: 'tenant' }, 'viewed', 'opened the link', ipOf(req));
+      after(() => notifyOpened(db, r));   // after the page has loaded — never slows the tenant
+    }
   }
   const { data: files } = await db.from('crm_secure_files').select('id, item_key, name, file_size, created_at').eq('request_id', r.id).order('created_at');
   return NextResponse.json({
@@ -105,6 +109,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (listError || !obj) return NextResponse.json({ error: 'The file didn’t finish uploading — please try again.' }, { status: 400 });
     const meta = (obj.metadata ?? {}) as { size?: number; mimetype?: string };
     if ((meta.size ?? 0) > MAX_FILE_SIZE) { await db.storage.from(SECURE_BUCKET).remove([storagePath]); return NextResponse.json({ error: 'That file is too big.' }, { status: 400 }); }
+    // The first bytes must match the extension: a renamed program or a half-uploaded file is refused and removed.
+    if (!(await sniffStored(db, storagePath, extOf(filename)))) {
+      await db.storage.from(SECURE_BUCKET).remove([storagePath]);
+      return NextResponse.json({ error: `“${filename}” doesn’t look like a real ${extOf(filename).toUpperCase()} file. Please try again, or send a PDF or photo.` }, { status: 400 });
+    }
     const { data: file, error } = await db.from('crm_secure_files')
       .insert({ request_id: r.id, item_key: itemKey, name: filename, storage_path: storagePath, file_size: meta.size ?? null, file_type: meta.mimetype || CONTENT_TYPES[extOf(filename)] })
       .select('id, item_key, name, file_size, created_at').single();
@@ -135,7 +144,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     const now = new Date().toISOString();
     await db.from('crm_secure_requests').update({ submitted_at: now }).eq('id', r.id);
     await logSecure(db, r.id, { label: 'tenant' }, 'submitted', `${count} file${count === 1 ? '' : 's'}`, ip);
-    await notifyUploads(db, { ...r, submitted_at: now }, true);
+    after(() => notifyUploads(db, { ...r, submitted_at: now }, true));   // emails + phone alert go out after the tenant already sees "sent"
     return NextResponse.json({ success: true });
   }
 

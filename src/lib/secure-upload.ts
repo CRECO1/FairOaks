@@ -26,6 +26,32 @@ export const CONTENT_TYPES: Record<string, string> = {
 export const extOf = (name: string) => (name.split('.').pop() ?? '').toLowerCase();
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Does the start of the file look like what its extension claims? Catches a renamed .exe/.html and a corrupt upload. */
+export function signatureMatches(ext: string, b: Uint8Array): boolean {
+  const is = (...sig: number[]) => sig.every((v, i) => b[i] === v);
+  switch (ext) {
+    case 'pdf': return is(0x25, 0x50, 0x44, 0x46);                                  // %PDF
+    case 'png': return is(0x89, 0x50, 0x4e, 0x47);
+    case 'jpg': case 'jpeg': return is(0xff, 0xd8, 0xff);
+    case 'webp': return is(0x52, 0x49, 0x46, 0x46) && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50;   // RIFF....WEBP
+    case 'docx': case 'xlsx': return is(0x50, 0x4b, 0x03, 0x04);                    // zip container
+    case 'doc': case 'xls': return is(0xd0, 0xcf, 0x11, 0xe0);                      // OLE2
+    case 'csv': return b.length > 0 && !b.includes(0);                              // text: no NUL bytes
+    default: return false;
+  }
+}
+
+/** Reads the first bytes of a stored object (a 32-byte ranged GET on a short signed link) — never the whole file. */
+export async function sniffStored(db: SupabaseClient, path: string, ext: string): Promise<boolean> {
+  try {
+    const { data } = await db.storage.from(SECURE_BUCKET).createSignedUrl(path, 60);
+    if (!data?.signedUrl) return false;
+    const r = await fetch(data.signedUrl, { headers: { Range: 'bytes=0-31' } });
+    if (!r.ok && r.status !== 206) return false;
+    return signatureMatches(ext, new Uint8Array((await r.arrayBuffer()).slice(0, 32)));
+  } catch { return false; }
+}
+
 export interface ChecklistItem { key: string; label: string }
 
 /** Checklists an agent can start from; the agent can tick items off or add their own. */
@@ -180,4 +206,17 @@ export async function notifyUploads(db: SupabaseClient, r: SecureRequestRow, sub
     }
     await db.from('crm_secure_requests').update({ notified_at: new Date().toISOString() }).eq('id', r.id);
   } catch (e) { console.error('[secure-upload] notify failed', e); }
+}
+
+/** First time a real person opens the link: a quiet phone alert to the creator + contact owner (no email). */
+export async function notifyOpened(db: SupabaseClient, r: SecureRequestRow): Promise<void> {
+  try {
+    const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
+    const ids = [...new Set([r.created_by, c?.agent_id as string | null | undefined].filter((x): x is string => !!x))];
+    await sendPushToProfiles(ids, {
+      title: `${r.recipient_name || 'A contact'} opened their secure upload link`,
+      body: 'They haven’t uploaded anything yet', url: crmLink('contacts', { type: 'contact', id: r.client_id }),
+      tag: `secure-open-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
+    }, { db });
+  } catch (e) { console.error('[secure-upload] opened alert failed', e); }
 }

@@ -57,6 +57,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ url: data.signedUrl });
   }
 
+  // GET ?zipFor=<request> → a short-lived link per file; the browser zips them (no big body through the server).
+  const zipFor = sp.get('zipFor');
+  if (zipFor) {
+    const r = await loadRequest(zipFor, ctx);
+    if (!r) return notFound('Request not found');
+    const { data: fs } = await db.from('crm_secure_files').select('name, storage_path').eq('request_id', r.id).order('created_at');
+    const out: { name: string; url: string }[] = [];
+    for (const f of fs ?? []) {
+      const { data } = await db.storage.from(SECURE_BUCKET).createSignedUrl(f.storage_path as string, DOWNLOAD_TTL_SECONDS);
+      if (data?.signedUrl) out.push({ name: f.name as string, url: data.signedUrl });
+    }
+    if (!out.length) return NextResponse.json({ error: 'No files to download.' }, { status: 404 });
+    await logSecure(db, r.id, { id: ctx.userId, label: await actorName(ctx) }, 'downloaded', `all ${out.length} files (zip)`, ipOf(req));
+    return NextResponse.json({ files: out });
+  }
+
   const logFor = sp.get('logFor');
   if (logFor) {
     const r = await loadRequest(logFor, ctx);

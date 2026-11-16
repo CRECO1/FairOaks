@@ -133,6 +133,32 @@ export default function SecureDocs({ clientId, authToken, userId, role, showToas
     setLogs(l => ({ ...l, [r.id]: res.ok ? (j.log ?? []) : [] }));
   };
 
+  const [zipping, setZipping] = useState<string | null>(null);
+  const downloadAll = async (r: Req) => {
+    setZipping(r.id);
+    try {
+      const res = await fetch(`/api/crm/secure-requests?zipFor=${r.id}`, { headers: auth() });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(j.error || 'Could not prepare the download'); return; }
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+      const used = new Set<string>();
+      for (const f of j.files as { name: string; url: string }[]) {
+        const blob = await (await fetch(f.url)).blob();
+        let n = f.name; let k = 1;
+        while (used.has(n)) { const dot = f.name.lastIndexOf('.'); n = dot > 0 ? `${f.name.slice(0, dot)} (${++k})${f.name.slice(dot)}` : `${f.name} (${++k})`; }
+        used.add(n); zip.file(n, blob);
+      }
+      const out = await zip.generateAsync({ type: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(out);
+      a.download = `${(r.recipient_name || 'secure-documents').replace(/[^\w .-]/g, '_')} - documents.zip`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+    } catch { showToast('Could not build the zip — try opening files one at a time.'); }
+    finally { setZipping(null); }
+  };
+
   const copy = async (link: string | null) => {
     if (!link) return;
     try { await navigator.clipboard.writeText(link); showToast('Secure link copied'); } catch { showToast(link); }
@@ -228,6 +254,7 @@ export default function SecureDocs({ clientId, authToken, userId, role, showToas
 
                   {!r.purged_at && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                      {r.files.length > 1 && <button type="button" style={btn} disabled={zipping === r.id} onClick={() => downloadAll(r)}>{zipping === r.id ? 'Preparing…' : `↓ Download all (${r.files.length})`}</button>}
                       {live && <button type="button" style={btn} onClick={() => copy(r.link)}>Copy link</button>}
                       {live && <button type="button" style={btn} onClick={() => patch(r, { action: 'resend' }, 'Link emailed')}>{r.sent_at ? 'Resend email' : 'Email link'}</button>}
                       {live ? <button type="button" style={btn} onClick={() => patch(r, { action: 'revoke' }, 'Link closed')}>Close link</button>
