@@ -1121,6 +1121,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [activeClient, setActiveClient] = useState<Client | null>(null);
   const [secureAutoOpen, setSecureAutoOpen] = useState<string | null>(null);   // contact id whose card should open with the secure-request form ready
   useEffect(() => { if (!activeClient) setSecureAutoOpen(null); }, [activeClient]);   // closing the card drops a request nobody used
+  const [secureScroll, setSecureScroll] = useState<{ kind: 'contact' | 'deal'; id: string } | null>(null);   // My Drive index → open this card scrolled to its Secure documents
+  useEffect(() => { if (!activeClient && !activeDeal) setSecureScroll(null); }, [activeClient, activeDeal]);   // card closed before it settled: don't scroll the next card someone opens
   const [activityMore, setActivityMore] = useState(false); // phones: the contact card's activity log shows the latest few until you ask for the rest
   useEffect(() => { setActivityMore(false); }, [activeClient?.id]);
   const [docsMore, setDocsMore] = useState(false); // phones: the contact card's Documents list shows the first few until you ask for the rest
@@ -11784,6 +11786,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {page === 'transaction-docs' && (
             <TransactionDocsSection
+              onOpenSecureContact={id => { const c = clients.find(x => x.id === id); if (c) { setSecureScroll({ kind: 'contact', id }); setActiveClient(c); } else showToast('That contact isn’t loaded yet — try again in a moment'); }}
+              onOpenSecureDeal={id => { const d = deals.find(x => x.id === id); if (d) { setSecureScroll({ kind: 'deal', id }); openDeal(d); setDealTab('docs'); loadDealDocs(d.id); } else showToast('That deal isn’t available to you'); }}
               businessUnit={businessUnit}
               isAdmin={isAdmin}
               authToken={session?.access_token}
@@ -12617,7 +12621,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     })()}
                   </div>
                   <LinkedDocs dealId={activeDeal.id} authToken={session?.access_token} currentUser={{ id: profile.id, name: `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() }} profiles={profiles} isAdmin={isAdmin} isMobile={isMobile} onToast={showToast} onSignDoc={signLiveDoc} />
-                  <SecureDocs dealId={activeDeal.id} authToken={session?.access_token} userId={profile.id} role={profile.role} showToast={showToast} profiles={profiles} onPreview={setPreviewFile} />
+                  <SecureDocs dealId={activeDeal.id} autoScroll={secureScroll?.kind === 'deal' && secureScroll.id === activeDeal.id} onAutoOpened={() => setSecureScroll(null)} authToken={session?.access_token} userId={profile.id} role={profile.role} showToast={showToast} profiles={profiles} onPreview={setPreviewFile} />
                   <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 10 }}>Uploaded Files{dealDocs.length > 0 ? ` · ${dealDocs.length}` : ''}</div>
                   {/* Straight to storage — see DealDocUpload for why the file never goes through the API */}
                   <DealDocUpload compact={dealDocs.length > 0} dealId={activeDeal.id} authToken={session?.access_token} showToast={showToast} onUploaded={() => loadDealDocs(activeDeal.id)} />
@@ -13779,7 +13783,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 )}
 
                 {/* Files — anything uploaded onto this person, plus the files on their deals' Docs tabs. */}
-                <ContactFiles clientId={c.id} authToken={session?.access_token} userId={profile?.id} autoOpenSecure={secureAutoOpen === c.id} onSecureAutoOpened={() => setSecureAutoOpen(null)}
+                <ContactFiles clientId={c.id} authToken={session?.access_token} userId={profile?.id} autoOpenSecure={secureAutoOpen === c.id} autoScrollSecure={secureScroll?.kind === 'contact' && secureScroll.id === c.id} onSecureAutoOpened={() => { setSecureAutoOpen(null); setSecureScroll(null); }}
                   isAdmin={isSuperAdmin || profile?.role === 'admin'} role={profile?.role} showToast={showToast} onPreview={setPreviewFile}
                   userName={`${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim()} profiles={profiles} isMobile={isMobile} onSignDoc={signLiveDoc} />
 

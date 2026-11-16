@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, hiddenDealIds, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, hiddenDealIds, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import {
-  SECURE_BUCKET, LINK_DAYS, KEEP_DAYS, UUID_RE, genToken, secureUrl, addDays, cleanItems, canSeeRequest, logSecure, removeRequestFiles,
+  SECURE_BUCKET, LINK_DAYS, KEEP_DAYS, UUID_RE, genToken, secureUrl, addDays, cleanItems, canSeeRequest, indexVisible, logSecure, removeRequestFiles,
   requestEmail, sendSecureEmail, PRESETS, type SecureRequestRow,
 } from '@/lib/secure-upload';
 
@@ -81,6 +81,47 @@ export async function GET(req: NextRequest) {
     if (!r) return notFound('Request not found');
     const { data } = await db.from('crm_secure_log').select('id, actor_label, action, detail, created_at').eq('request_id', r.id).order('created_at', { ascending: false }).limit(200);
     return NextResponse.json({ log: data ?? [] });
+  }
+
+  // GET ?all=1[&business_unit=] → the My Drive index: every request the caller may see, as a status line each.
+  // Read-only by design: no token, no link, no file names — the files themselves are only reachable from the contact or deal.
+  if (sp.get('all') === '1') {
+    const unit = isAdminRole(ctx.role) ? (sp.get('business_unit') ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial');
+    const { data: all, error: allErr } = await db.from('crm_secure_requests').select('*').eq('business_unit', unit).order('created_at', { ascending: false }).limit(500);
+    if (allErr) { console.error('[secure-requests] index', allErr); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
+    const reqRows = (all ?? []) as SecureRequestRow[];
+    const clientIds = [...new Set(reqRows.map(r => r.client_id))];
+    const dealIdsAll = [...new Set(reqRows.map(r => r.deal_id).filter((x): x is string => !!x))];
+    const { data: cs } = clientIds.length ? await db.from('crm_clients').select('id, first_name, last_name, business_name, agent_id, lead_hold, business_unit').in('id', clientIds) : { data: [] };
+    const { data: dsAll } = dealIdsAll.length ? await db.from('crm_deals').select('id, agent_id, assigned_agent_ids, crm_listings(address)').in('id', dealIdsAll) : { data: [] };
+    const cBy = new Map((cs ?? []).map(c => [c.id as string, c]));
+    const dBy = new Map((dsAll ?? []).map(d => [d.id as string, d]));
+    const hiddenDeals = new Set(await hiddenDealIds(ctx));
+    const seen = reqRows.filter(r => indexVisible(ctx, unit, r, cBy.get(r.client_id) as { agent_id?: string | null; lead_hold?: boolean | null; business_unit?: string | null } | undefined,
+      (r.deal_id ? dBy.get(r.deal_id) : null) as { agent_id?: string | null; assigned_agent_ids?: string[] | null } | null | undefined, hiddenDeals));
+    const seenIds = seen.map(r => r.id);
+    const { data: fs } = seenIds.length ? await db.from('crm_secure_files').select('request_id, item_key').in('request_id', seenIds) : { data: [] };
+    const { data: makers } = seen.length ? await db.from('crm_profiles').select('id, first_name, last_name').in('id', [...new Set(seen.map(r => r.created_by).filter((x): x is string => !!x))]) : { data: [] };
+    const makerBy = new Map((makers ?? []).map(m => [m.id as string, [m.first_name, m.last_name].filter(Boolean).join(' ')]));
+    return NextResponse.json({
+      requests: seen.map(r => {
+        const c = cBy.get(r.client_id)!;
+        const d = r.deal_id ? dBy.get(r.deal_id) : null;
+        const l = d?.crm_listings as unknown as { address?: string } | { address?: string }[] | null | undefined;
+        const address = Array.isArray(l) ? l[0]?.address : l?.address;
+        const mine = (fs ?? []).filter(f => f.request_id === r.id);
+        const keys = new Set(mine.map(f => f.item_key as string | null));
+        return {
+          id: r.id, client_id: r.client_id, deal_id: r.deal_id,
+          contact_name: [c.first_name, c.last_name].filter(Boolean).join(' ') || (c.business_name as string | null) || 'Contact',
+          deal_label: r.deal_id ? (address ? `Deal · ${address}` : 'Deal') : null,
+          status: r.status, purged_at: r.purged_at, expires_at: r.expires_at, submitted_at: r.submitted_at, first_viewed_at: r.first_viewed_at, sent_at: r.sent_at,
+          created_at: r.created_at, last_upload_at: r.last_upload_at, purge_after: r.purge_after, keep_files: r.keep_files,
+          requested_by: r.created_by ? makerBy.get(r.created_by) ?? null : null,
+          file_count: mine.length, items_total: r.items.length, items_done: r.items.filter(i => keys.has(i.key)).length,
+        };
+      }),
+    });
   }
 
   // List: a contact's requests (?clientId) or one deal's (?dealId). Either way, only ones the caller may see.

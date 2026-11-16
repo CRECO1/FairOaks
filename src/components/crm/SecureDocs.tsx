@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { DrivePerson } from '@/components/crm/drive/DocsDrive';
 import QuickText from '@/components/crm/QuickText';
+import { secureState } from '@/lib/secure-status';
 
 // "Secure documents" on a contact card: ask a tenant for an application / ID / pay stubs / bank statements through a
 // private expiring upload link. Files live in their own private bucket and are shown only to the broker, whoever made the
@@ -35,21 +36,15 @@ const day = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 
 const when = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const nameOf = (p: DrivePerson) => [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Agent';
 
-function statusOf(r: Req): { text: string; color: string; bg: string } {
-  if (r.purged_at) return { text: 'Deleted', color: '#6b7280', bg: '#f3f4f6' };
-  if (r.status === 'revoked') return { text: 'Link closed', color: '#6b7280', bg: '#f3f4f6' };
-  if (Date.parse(r.expires_at) <= Date.now()) return { text: 'Link expired', color: '#b45309', bg: '#fef3c7' };
-  if (r.submitted_at) return { text: 'Received', color: '#15803d', bg: '#dcfce7' };
-  if (r.files.length) return { text: 'Uploading', color: '#1d4ed8', bg: '#dbeafe' };
-  if (r.first_viewed_at) return { text: 'Opened — nothing yet', color: '#a06a12', bg: '#fdf6e9' };
-  return { text: r.sent_at ? 'Waiting for them' : 'Link not sent', color: '#6b7280', bg: '#f3f4f6' };
-}
+const statusOf = (r: Req) => secureState({ ...r, fileCount: r.files.length });
 
-export default function SecureDocs({ clientId, dealId, autoOpen, onAutoOpened, authToken, userId, role, showToast, profiles, onPreview }: {
+export default function SecureDocs({ clientId, dealId, autoOpen, autoScroll, onAutoOpened, authToken, userId, role, showToast, profiles, onPreview }: {
   /** A contact card passes clientId; a deal card passes dealId (the request then goes to the deal's contact). */
   clientId?: string; dealId?: string;
   /** Open the request form and scroll it into view (set by the contacts list's 🔒 button). */
-  autoOpen?: boolean; onAutoOpened?: () => void; authToken?: string; userId?: string; role?: string | null; showToast: (m: string) => void; profiles?: DrivePerson[];
+  autoOpen?: boolean; onAutoOpened?: () => void;
+  /** Just bring this section into view (opened from the My Drive index) — no form. */
+  autoScroll?: boolean; authToken?: string; userId?: string; role?: string | null; showToast: (m: string) => void; profiles?: DrivePerson[];
   onPreview?: (f: { url: string; name: string; type?: string | null }) => void;
 }) {
   const [reqs, setReqs] = useState<Req[] | null>(null);
@@ -87,17 +82,17 @@ export default function SecureDocs({ clientId, dealId, autoOpen, onAutoOpened, a
   const openedByList = useRef(false);
   useEffect(() => () => { scrollTimers.current.forEach(clearTimeout); }, []);   // only when the section goes away
   useEffect(() => {
-    if (!autoOpen) return;
-    openedByList.current = true;
-    setCreating(true);   // at once — never wait on the list of earlier requests (that fetch can take seconds on a cold start)
-    // The card is still laying out (sections above fill in and push this down), so look again a few times; a retry only scrolls if the form has drifted out of view.
+    if (!autoOpen && !autoScroll) return;
+    if (autoOpen) { openedByList.current = true; setCreating(true); }   // at once — never wait on the list of earlier requests (that fetch can take seconds on a cold start)
+    // The card is still laying out (sections above fill in and push this down), so look again a few times; a retry only scrolls if the section has drifted out of view.
     scrollTimers.current.forEach(clearTimeout);
     scrollTimers.current = [60, 400, 1000, 2500].map(ms => setTimeout(() => {
       const el = rootRef.current; if (!el) return;
       const top = el.getBoundingClientRect().top;
       if (top < 60 || top > window.innerHeight * 0.5) el.scrollIntoView({ behavior: 'auto', block: 'start' });
     }, ms));
-  }, [autoOpen]);
+    if (!autoOpen) scrollTimers.current.push(setTimeout(() => consumed.current?.(), 2800));   // scroll-only: done once it has settled
+  }, [autoOpen, autoScroll]);
   // The list's request stays alive until the person closes the form (Cancel, or after creating one). If the card is rebuilt in the
   // meantime — which happens in the first seconds after the page loads — the new copy simply opens the form again.
   useEffect(() => {

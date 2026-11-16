@@ -7,6 +7,7 @@
  * Visibility is enforced in the database (supabase/drive-docs-2026-11.sql) — this component only asks and shows.
  */
 
+import SecureIndex from '@/components/crm/drive/SecureIndex';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DI, { toneFor, type DIName } from './DriveIcons';
 import dynamic from 'next/dynamic';
@@ -43,9 +44,12 @@ interface Props {
   isAdmin: boolean;
   isMobile: boolean;
   onToast: (msg: string) => void;
+  /** Open a contact / deal card on its Secure documents section (from the Secure documents index). */
+  onOpenSecureContact?: (clientId: string) => void;
+  onOpenSecureDeal?: (dealId: string) => void;
 }
 
-type View = 'folder' | 'recent' | 'shared' | 'trash' | 'search' | 'templates' | 'starred' | 'forms';
+type View = 'folder' | 'recent' | 'shared' | 'trash' | 'search' | 'templates' | 'starred' | 'forms' | 'secure';
 type Chip = 'all' | 'doc' | 'sheet' | 'pdf' | 'image' | 'form' | 'folder';
 const CHIPS: Array<[Chip, string]> = [['doc', 'Documents'], ['sheet', 'Spreadsheets'], ['pdf', 'PDFs'], ['image', 'Images'], ['form', 'Forms'], ['folder', 'Folders']];
 type Kind = 'folder' | 'doc' | 'file' | 'form';
@@ -84,7 +88,7 @@ function fmtWhen(iso: string) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
 }
 
-export default function DocsDrive({ deals = [], contacts = [], onSignDoc, businessUnit, authToken, currentUser, profiles, isAdmin, isMobile, onToast }: Props) {
+export default function DocsDrive({ deals = [], contacts = [], onSignDoc, businessUnit, authToken, currentUser, profiles, isAdmin, isMobile, onToast, onOpenSecureContact, onOpenSecureDeal }: Props) {
   const [view, setView] = useState<View>('folder');
   const [folderId, setFolderId] = useState<string | null>(() => (typeof window === 'undefined' ? null : recallView(`${businessUnit}:drive-folder`)));
   const [q, setQ] = useState('');
@@ -94,6 +98,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [dlg, setDlg] = useState<Dlg | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  const [newFromLeft, setNewFromLeft] = useState(false);   // the New button wrapped to the left edge: open its menu rightward so it stays on screen
   const [openDocId, setOpenDocId] = useState<string | null>(null);
   const [quickDocId, setQuickDocId] = useState<string | null>(null);   // the quick-look side panel
   const [preview, setPreview] = useState<{ url: string; name: string; type?: string | null } | null>(null);
@@ -157,7 +162,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   }, [headers]);
 
   const load = useCallback(async (silent = false) => {   // silent = a background refresh: keep what is on screen instead of flashing the loading state
-    if (view === 'forms') { setLoading(false); return; }
+    if (view === 'forms' || view === 'secure') { setLoading(false); return; }
     if (!silent) setLoading(true);
     try {
       const qs = view === 'starred' ? `view=starred&ids=${encodeURIComponent([...starsRef.current].join(','))}` : view === 'folder' ? `view=folder&folder=${folderId ?? 'root'}` : view === 'search' ? `view=search&q=${encodeURIComponent(q)}` : `view=${view}`;
@@ -709,7 +714,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
       {/* Sidebar (desktop) / quick switch (phone) */}
       {isMobile ? (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', width: '100%', paddingBottom: 2 }}>
-          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Starred', view === 'starred', () => { setQ(''); setView('starred'); }], ['Shared', view === 'shared', () => { setQ(''); setView('shared'); }], ['Forms', view === 'forms', () => { setQ(''); setView('forms'); }], ['Templates', view === 'templates', () => { setQ(''); setView('templates'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
+          {([['Files', view === 'folder', () => go(null)], ['Recent', view === 'recent', () => { setQ(''); setView('recent'); }], ['Starred', view === 'starred', () => { setQ(''); setView('starred'); }], ['Shared', view === 'shared', () => { setQ(''); setView('shared'); }], ['Forms', view === 'forms', () => { setQ(''); setView('forms'); }], ['Templates', view === 'templates', () => { setQ(''); setView('templates'); }], ['🔒 Secure', view === 'secure', () => { setQ(''); setView('secure'); }], ['Trash', view === 'trash', () => { setQ(''); setView('trash'); }]] as Array<[string, boolean, () => void]>).map(([l, on, fn]) => (
             <button key={l} type="button" onClick={fn} style={{ minHeight: 40, padding: '0 16px', borderRadius: 20, border: `1px solid ${on ? GOLD : 'var(--k-e5e7eb)'}`, background: on ? 'var(--k-fdf6e9)' : 'var(--k-fff)', color: on ? 'var(--k-a06a12)' : 'var(--k-374151)', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>{l}</button>
           ))}
         </div>
@@ -721,6 +726,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           {navBtn('Shared with me', view === 'shared', () => { setQ(''); setView('shared'); }, 'users')}
           {navBtn('Forms', view === 'forms', () => { setQ(''); setView('forms'); }, 'form')}
           {navBtn('Templates', view === 'templates', () => { setQ(''); setView('templates'); }, 'template')}
+          {navBtn('Secure documents', view === 'secure', () => { setQ(''); setView('secure'); }, 'lock')}
           {navBtn('Trash', view === 'trash', () => { setQ(''); setView('trash'); }, 'trash')}
           <div style={{ fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, padding: '14px 10px 6px' }}>Folders</div>
           {tree.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', padding: '4px 10px' }}>No folders yet</div> : renderTree(null, 0)}
@@ -728,7 +734,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
       )}
 
       <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
-        {view === 'forms' ? <FormLibrary api={api} businessUnit={businessUnit} isMobile={isMobile} onPick={id => void createForm(id)} /> : (<>
+        {view === 'forms' ? <FormLibrary api={api} businessUnit={businessUnit} isMobile={isMobile} onPick={id => void createForm(id)} /> : view === 'secure' ? <SecureIndex authToken={authToken} businessUnit={businessUnit} isMobile={isMobile} onOpenContact={onOpenSecureContact} onOpenDeal={onOpenSecureDeal} /> : (<>
         {/* Header: breadcrumb + search + New */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <div style={{ flex: '1 1 220px', minWidth: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, fontSize: isMobile ? 16 : 17, fontWeight: 700, color: 'var(--k-1a1a1a)' }}>
@@ -751,22 +757,24 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           </div>
           {!inTrash && view !== 'templates' && view !== 'shared' && (
             <div style={{ position: 'relative' }}>
-              <button type="button" onClick={() => setNewOpen(o => !o)} aria-haspopup="menu" aria-expanded={newOpen}
+              <button type="button" onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setNewFromLeft(r.left + r.width / 2 < window.innerWidth / 2); setNewOpen(o => !o); }} aria-haspopup="menu" aria-expanded={newOpen}
                 style={{ height: isMobile ? 44 : 38, padding: '0 16px 0 13px', border: 'none', borderRadius: 10, background: GOLD, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 7, boxShadow: '0 1px 2px rgba(0,0,0,.12)' }}><DI n="plus" size={16} />New</button>
               {newOpen && (
                 <>
                   <div onClick={() => setNewOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                  <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 41, minWidth: 190, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.14)', padding: 6 }}>
+                  <div role="menu" style={{ position: 'absolute', ...(newFromLeft ? { left: 0 } : { right: 0 }), top: 'calc(100% + 6px)', zIndex: 41, width: 'max-content', minWidth: 236, maxWidth: 'calc(100vw - 24px)', maxHeight: 'min(82vh, 660px)', overflowY: 'auto', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,.14)', padding: 6 }}>
                     <MenuBtn onClick={() => void createDoc()} icon="📄" label="Document" isMobile={isMobile} />
                     <MenuBtn onClick={() => void createDoc('sheet')} icon="▦" label="Spreadsheet" isMobile={isMobile} />
-                    <MenuBtn onClick={() => void createDoc('sheet', ['elkhorn_tenants', 'elkhorn_calls'])} icon="▦" label="Elkhorn call tracker (live)" isMobile={isMobile} />
-                    <MenuBtn onClick={() => void createDoc('sheet', ['robert_emails', 'robert_summary'], 'Robert’s outreach emails')} icon="▦" label="Robert’s email tracker (live)" isMobile={isMobile} />
-                    <MenuBtn onClick={() => void createDoc('sheet', ['brian_emails', 'brian_summary'], 'Brian’s outreach emails')} icon="▦" label="Brian’s email tracker (live)" isMobile={isMobile} />
-                    <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'gallery' }); }} icon="📋" label="Template gallery…" isMobile={isMobile} />
-                    <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'template' }); }} icon="📋" label="Your team’s templates…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'newFolder' }); }} icon="📁" label="Folder" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); if (!canAddForm) { onToast('Forms can only be added to team folders (not private ones)'); return; } setDlg({ t: 'form' }); }} icon="📝" label="Form…" isMobile={isMobile} />
                     <MenuBtn onClick={() => { setNewOpen(false); fileInput.current?.click(); }} icon="⬆" label="Upload files" isMobile={isMobile} />
+                    <MenuGroup label="Start from a template" />
+                    <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'gallery' }); }} icon="📋" label="Template gallery…" isMobile={isMobile} />
+                    <MenuBtn onClick={() => { setNewOpen(false); setDlg({ t: 'template' }); }} icon="📋" label="Your team’s templates…" isMobile={isMobile} />
+                    <MenuGroup label="Live trackers" />
+                    <MenuBtn onClick={() => void createDoc('sheet', ['elkhorn_tenants', 'elkhorn_calls'])} icon="▦" label="Elkhorn call tracker" isMobile={isMobile} />
+                    <MenuBtn onClick={() => void createDoc('sheet', ['robert_emails', 'robert_summary'], 'Robert’s outreach emails')} icon="▦" label="Robert’s email tracker" isMobile={isMobile} />
+                    <MenuBtn onClick={() => void createDoc('sheet', ['brian_emails', 'brian_summary'], 'Brian’s outreach emails')} icon="▦" label="Brian’s email tracker" isMobile={isMobile} />
                   </div>
                 </>
               )}
@@ -1022,10 +1030,17 @@ const MENU_ICON: Record<string, DIName> = { '▦': 'sheet', '📄': 'doc', '📋
 function MenuBtn({ icon, label, onClick, danger, isMobile }: { icon: string; label: string; onClick: () => void; danger?: boolean; isMobile: boolean }) {
   return (
     <button type="button" role="menuitem" onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', minHeight: isMobile ? 48 : 38, padding: '0 12px', border: 'none', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 14.5, fontWeight: 600, color: danger ? 'var(--k-dc2626)' : 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', minHeight: isMobile ? 48 : 38, padding: '0 12px', border: 'none', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 14.5, fontWeight: 600, whiteSpace: 'nowrap', color: danger ? 'var(--k-dc2626)' : 'var(--k-1a1a1a)', fontFamily: "'DM Sans',sans-serif" }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--k-fbf8f1)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-      <span style={{ width: 22, display: 'inline-flex', justifyContent: 'center', color: danger ? 'var(--k-dc2626)' : 'var(--k-6b7280)' }}>{MENU_ICON[icon] ? <DI n={MENU_ICON[icon]} size={17} /> : icon}</span>{label}
+      <span style={{ width: 22, flexShrink: 0, display: 'inline-flex', justifyContent: 'center', color: danger ? 'var(--k-dc2626)' : 'var(--k-6b7280)' }}>{MENU_ICON[icon] ? <DI n={MENU_ICON[icon]} size={17} /> : icon}</span>{label}
     </button>
+  );
+}
+
+/** A thin rule and a small caption between groups of a menu. */
+function MenuGroup({ label }: { label: string }) {
+  return (
+    <div role="presentation" style={{ borderTop: '1px solid var(--k-eef0f2)', margin: '6px 0 2px', padding: '9px 12px 3px', fontSize: 10.5, letterSpacing: .9, textTransform: 'uppercase', fontWeight: 700, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{label}</div>
   );
 }
 

@@ -115,18 +115,39 @@ export interface SecureRequestRow {
  * whoever created the request, the contact's owner, and agents the creator added. An admin who is none of those
  * (Brian) does not see it unless added — the same stance as private deals and trackers.
  */
-export async function canSeeRequest(db: SupabaseClient, ctx: CrmContext, r: SecureRequestRow): Promise<boolean> {
+/** The rule itself, given the rows it depends on. `canSeeRequest` fetches them one request at a time; the My Drive index loads them in bulk. */
+export function canSeeGiven(
+  ctx: Pick<CrmContext, 'userId' | 'role'>, r: Pick<SecureRequestRow, 'created_by' | 'shared_with' | 'deal_id'>,
+  contactOwnerId: string | null | undefined, deal: { agent_id?: string | null; assigned_agent_ids?: string[] | null } | null | undefined,
+): boolean {
   if (ctx.role === 'super_admin') return true;
   if (r.created_by === ctx.userId || (r.shared_with ?? []).includes(ctx.userId)) return true;
-  const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
-  if (c && c.agent_id === ctx.userId) return true;
+  if (contactOwnerId && contactOwnerId === ctx.userId) return true;
   // A request made on a deal is also visible to everyone on that deal: its owner and the agents added to it
   // (the same people who can open the deal itself). Agents NOT on the deal still need the creator to add them.
-  if (r.deal_id) {
-    const { data: d } = await db.from('crm_deals').select('agent_id, assigned_agent_ids').eq('id', r.deal_id).maybeSingle();
-    if (d && (d.agent_id === ctx.userId || ((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId))) return true;
-  }
+  if (r.deal_id && deal && (deal.agent_id === ctx.userId || (deal.assigned_agent_ids ?? []).includes(ctx.userId))) return true;
   return false;
+}
+/**
+ * May this request appear in the caller's My Drive index? Everything `/api/crm/secure-requests` checks one row at a time, on rows
+ * loaded in bulk: the contact must exist in this workspace, a lead still on hold is the broker's alone, a deal the caller may not
+ * see hides its folder, and then the folder's own access rule.
+ */
+export function indexVisible(
+  ctx: Pick<CrmContext, 'userId' | 'role'>, unit: string, r: Pick<SecureRequestRow, 'created_by' | 'shared_with' | 'deal_id'>,
+  contact: { agent_id?: string | null; lead_hold?: boolean | null; business_unit?: string | null } | null | undefined,
+  deal: { agent_id?: string | null; assigned_agent_ids?: string[] | null } | null | undefined, hiddenDeals: Set<string>,
+): boolean {
+  if (!contact || contact.business_unit !== unit) return false;
+  if (contact.lead_hold && ctx.role !== 'super_admin') return false;
+  if (r.deal_id && (hiddenDeals.has(r.deal_id) || !deal)) return false;
+  return canSeeGiven(ctx, r, contact.agent_id, r.deal_id ? deal : null);
+}
+export async function canSeeRequest(db: SupabaseClient, ctx: CrmContext, r: SecureRequestRow): Promise<boolean> {
+  if (canSeeGiven(ctx, r, null, null)) return true;
+  const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
+  const { data: d } = r.deal_id ? await db.from('crm_deals').select('agent_id, assigned_agent_ids').eq('id', r.deal_id).maybeSingle() : { data: null };
+  return canSeeGiven(ctx, r, c?.agent_id as string | null | undefined, d as { agent_id?: string | null; assigned_agent_ids?: string[] | null } | null);
 }
 
 export async function logSecure(db: SupabaseClient, requestId: string, actor: { id?: string | null; label: string }, action: string, detail?: string | null, ip?: string | null) {
