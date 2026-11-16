@@ -188,6 +188,18 @@ export async function sendSecureEmail(unit: string, to: string, subject: string,
 
 // ── Telling the agent ────────────────────────────────────────────────────────
 /**
+ * Who gets a PHONE alert about a request: its creator, the contact's owner, and — for a request made on a deal — the deal's
+ * owner and every agent added to that deal (the same people who can open the folder). Emails still go only to the creator
+ * and the contact's owner.
+ */
+export async function pushRecipients(db: SupabaseClient, r: SecureRequestRow): Promise<string[]> {
+  const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
+  const { data: d } = r.deal_id ? await db.from('crm_deals').select('agent_id, assigned_agent_ids').eq('id', r.deal_id).maybeSingle() : { data: null };
+  const ids = [r.created_by, c?.agent_id as string | null | undefined, d?.agent_id as string | null | undefined, ...(((d?.assigned_agent_ids as string[] | null) ?? []))];
+  return [...new Set(ids.filter((x): x is string => !!x))];
+}
+
+/**
  * Tells the request's creator and the contact's owner that files arrived: a phone alert plus one email each.
  * Marks notified_at so the cron does not repeat it. `submitted` = the tenant pressed "I'm done".
  */
@@ -201,7 +213,7 @@ export async function notifyUploads(db: SupabaseClient, r: SecureRequestRow, sub
     const { data: profs } = ids.length ? await db.from('crm_profiles').select('id, first_name, email').in('id', ids) : { data: [] };
     const who = r.recipient_name || 'A contact';
     const link = `${APP_ORIGIN}${crmLink('contacts', { type: 'contact', id: r.client_id })}`;
-    await sendPushToProfiles(ids, {
+    await sendPushToProfiles(await pushRecipients(db, r), {
       title: submitted ? `${who} finished their secure upload` : `${who} uploaded secure files`,
       body: `${n} file${n === 1 ? '' : 's'} waiting in Secure documents`,
       url: crmLink('contacts', { type: 'contact', id: r.client_id }), tag: `secure-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
@@ -218,9 +230,7 @@ export async function notifyUploads(db: SupabaseClient, r: SecureRequestRow, sub
 /** First time a real person opens the link: a quiet phone alert to the creator + contact owner (no email). */
 export async function notifyOpened(db: SupabaseClient, r: SecureRequestRow): Promise<void> {
   try {
-    const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
-    const ids = [...new Set([r.created_by, c?.agent_id as string | null | undefined].filter((x): x is string => !!x))];
-    await sendPushToProfiles(ids, {
+    await sendPushToProfiles(await pushRecipients(db, r), {
       title: `${r.recipient_name || 'A contact'} opened their secure upload link`,
       body: 'They haven’t uploaded anything yet', url: crmLink('contacts', { type: 'contact', id: r.client_id }),
       tag: `secure-open-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
@@ -234,11 +244,8 @@ export async function notifyOpened(db: SupabaseClient, r: SecureRequestRow): Pro
  */
 export async function notifyBlocked(db: SupabaseClient, r: SecureRequestRow, filename: string, reason: string): Promise<void> {
   try {
-    const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
-    const { data: d } = r.deal_id ? await db.from('crm_deals').select('agent_id').eq('id', r.deal_id).maybeSingle() : { data: null };
-    const ids = [...new Set([r.created_by, c?.agent_id as string | null | undefined, d?.agent_id as string | null | undefined].filter((x): x is string => !!x))];
     const name = filename.length > 50 ? `${filename.slice(0, 47)}…` : filename;
-    await sendPushToProfiles(ids, {
+    await sendPushToProfiles(await pushRecipients(db, r), {
       title: `⚠️ A file from ${r.recipient_name || 'a contact'} was blocked`,
       body: `${name} — looks like ${reason}. It was not saved.`,
       url: crmLink('contacts', { type: 'contact', id: r.client_id }), tag: `secure-blocked-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
