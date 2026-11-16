@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
   }
   const ids = visible.map(r => r.id);
   const { data: files } = ids.length
-    ? await db.from('crm_secure_files').select('id, request_id, item_key, name, file_size, file_type, created_at').in('request_id', ids).order('created_at')
+    ? await db.from('crm_secure_files').select('id, request_id, item_key, name, file_size, file_type, created_at, scan_status').in('request_id', ids).order('created_at')
     : { data: [] };
   // On a contact card, say which deal a request belongs to.
   const dealIds = [...new Set(visible.map(r => r.deal_id).filter((x): x is string => !!x))];

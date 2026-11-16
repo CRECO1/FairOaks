@@ -4,6 +4,7 @@ import { after } from 'next/server';
 import { rateLimit, rateLimitFailOpen } from '@/lib/ratelimit';
 import { isAutomationUA } from '@/lib/automation-ua';
 import { adminClient } from '@/lib/supabase-admin';
+import { scanFile, SCAN_VERSION } from '@/lib/file-scan';
 import {
   SECURE_BUCKET, CONTENT_TYPES, MAX_FILE_SIZE, MAX_FILES_PER_REQUEST, UUID_RE, extOf, logSecure, notifyUploads, notifyOpened, sniffStored, type SecureRequestRow,
 } from '@/lib/secure-upload';
@@ -114,8 +115,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       await db.storage.from(SECURE_BUCKET).remove([storagePath]);
       return NextResponse.json({ error: `“${filename}” doesn’t look like a real ${extOf(filename).toUpperCase()} file. Please try again, or send a PDF or photo.` }, { status: 400 });
     }
+    // Full safety scan, inside our own server (the file goes nowhere else). Anything flagged — or anything we cannot check — is refused and removed.
+    let scan: Awaited<ReturnType<typeof scanFile>>;
+    try {
+      const { data: blob, error: dlError } = await db.storage.from(SECURE_BUCKET).download(storagePath);
+      if (dlError || !blob) throw new Error(dlError?.message ?? 'download failed');
+      scan = await scanFile(extOf(filename), new Uint8Array(await blob.arrayBuffer()));
+    } catch (e) {
+      console.error('[secure-upload] scan failed', e);
+      await db.storage.from(SECURE_BUCKET).remove([storagePath]);
+      return NextResponse.json({ error: `We couldn’t check “${filename}” for safety just now. Please try again in a moment.` }, { status: 503 });
+    }
+    if (!scan.ok) {
+      await db.storage.from(SECURE_BUCKET).remove([storagePath]);
+      await logSecure(db, r.id, { label: 'system' }, 'blocked', `${filename} — refused: looks like ${scan.reason} (${scan.code})`, ip);
+      return NextResponse.json({ error: `“${filename}” was stopped by our security check. Please send a plain PDF or photo instead, or call us at (210) 817-3443.` }, { status: 400 });
+    }
     const { data: file, error } = await db.from('crm_secure_files')
-      .insert({ request_id: r.id, item_key: itemKey, name: filename, storage_path: storagePath, file_size: meta.size ?? null, file_type: meta.mimetype || CONTENT_TYPES[extOf(filename)] })
+      .insert({ request_id: r.id, item_key: itemKey, name: filename, storage_path: storagePath, file_size: meta.size ?? null, file_type: meta.mimetype || CONTENT_TYPES[extOf(filename)], scan_status: 'clean', scan_version: SCAN_VERSION, scanned_at: new Date().toISOString() })
       .select('id, item_key, name, file_size, created_at').single();
     if (error || !file) {
       console.error('[secure-upload] insert', error);

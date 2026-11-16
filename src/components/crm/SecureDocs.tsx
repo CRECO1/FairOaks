@@ -9,7 +9,7 @@ import QuickText from '@/components/crm/QuickText';
 // request, the contact's owner, and agents added here. Every download is a 5-minute link and is logged.
 
 interface Item { key: string; label: string }
-interface SFile { id: string; item_key: string | null; name: string; file_size: number | null; created_at: string }
+interface SFile { id: string; item_key: string | null; name: string; file_size: number | null; created_at: string; scan_status?: string | null }
 interface Req {
   id: string; status: 'open' | 'revoked'; recipient_name: string | null; recipient_email: string | null; note: string | null; items: Item[];
   expires_at: string; purge_after: string; keep_files: boolean; purged_at: string | null; sent_at: string | null; first_viewed_at: string | null;
@@ -259,7 +259,7 @@ export default function SecureDocs({ clientId, dealId, authToken, userId, role, 
                         <div style={{ fontSize: 12.5, fontWeight: 600, color: fs.length ? '#15803d' : 'var(--k-9ca3af)' }}>{fs.length ? '✓' : '○'} {g.label}</div>
                         {fs.map(f => (
                           <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0 0 16px' }}>
-                            <span style={{ flex: '1 1 140px', minWidth: 0, fontSize: 13, overflowWrap: 'anywhere' }}>📄 {f.name} <span style={{ color: 'var(--k-9ca3af)' }}>{kb(f.file_size)} · {day(f.created_at)}</span></span>
+                            <span style={{ flex: '1 1 140px', minWidth: 0, fontSize: 13, overflowWrap: 'anywhere' }}>📄 {f.name} <span style={{ color: 'var(--k-9ca3af)' }}>{kb(f.file_size)} · {day(f.created_at)}</span>{f.scan_status === 'clean' && <span title="Passed the in-house safety scan when it was uploaded" style={{ color: '#15803d', fontWeight: 600, marginLeft: 6, fontSize: 12 }}>✓ scanned</span>}</span>
                             {onPreview && /\.(pdf|png|jpe?g|webp)$/i.test(f.name) && <button type="button" style={btn} onClick={() => openFile(f, true)}>👁 View</button>}
                             <button type="button" style={{ ...btn, background: '#111', color: '#fff', border: 'none' }} onClick={() => openFile(f, false)}>↓ Open</button>
                             <button type="button" aria-label={`Delete ${f.name}`} onClick={() => delFile(f)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 15, padding: '4px 2px' }}>🗑</button>
