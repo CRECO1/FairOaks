@@ -85,20 +85,19 @@ export default function SecureDocs({ clientId, dealId, autoOpen, onAutoOpened, a
   const consumed = useRef(onAutoOpened);
   consumed.current = onAutoOpened;   // latest callback without re-running the effects below on every parent render
   const openedByList = useRef(false);
-  const loaded = reqs !== null;
   useEffect(() => () => { scrollTimers.current.forEach(clearTimeout); }, []);   // only when the section goes away
   useEffect(() => {
-    if (!autoOpen || !loaded) return;   // wait until the list has loaded so the form does not jump
+    if (!autoOpen) return;
     openedByList.current = true;
-    setCreating(true);
-    // The card can still be laying out (sections above fill in), so look again a couple of times; a retry only scrolls if the form is still out of view.
+    setCreating(true);   // at once — never wait on the list of earlier requests (that fetch can take seconds on a cold start)
+    // The card is still laying out (sections above fill in and push this down), so look again a few times; a retry only scrolls if the form has drifted out of view.
     scrollTimers.current.forEach(clearTimeout);
-    scrollTimers.current = [150, 600, 1300].map(ms => setTimeout(() => {
+    scrollTimers.current = [60, 400, 1000, 2500].map(ms => setTimeout(() => {
       const el = rootRef.current; if (!el) return;
       const top = el.getBoundingClientRect().top;
       if (top < 60 || top > window.innerHeight * 0.5) el.scrollIntoView({ behavior: 'auto', block: 'start' });
     }, ms));
-  }, [autoOpen, loaded]);
+  }, [autoOpen]);
   // The list's request stays alive until the person closes the form (Cancel, or after creating one). If the card is rebuilt in the
   // meantime — which happens in the first seconds after the page loads — the new copy simply opens the form again.
   useEffect(() => {
@@ -217,7 +216,7 @@ export default function SecureDocs({ clientId, dealId, autoOpen, onAutoOpened, a
   const mayShare = (r: Req) => role === 'super_admin' || r.created_by === userId;
 
   return (
-    <div ref={rootRef} style={{ marginBottom: 22 }}>
+    <div ref={rootRef} style={{ marginBottom: 22, scrollMarginTop: 68 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={label}>🔒 Secure documents{list.length ? ` (${list.length})` : ''}</div>
         <button type="button" onClick={() => setCreating(c => !c)}
