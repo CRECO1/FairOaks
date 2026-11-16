@@ -362,6 +362,19 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     return () => { live = false; };
   }, [listings.length, authToken]); // eslint-disable-line
 
+  // How many contacts / callers / deals asked about each property (#-tagged in notes). Same access rules as the 'Asked about' list.
+  const [askCounts, setAskCounts] = useState<Record<string, number>>({});
+  const [askedOnly, setAskedOnly] = useState(false);
+  useEffect(() => {
+    if (!listings.length) return;
+    let live = true;
+    fetch('/api/crm/listing-inquiry-counts', { headers: authHeaders })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (live && j?.counts) setAskCounts(j.counts as Record<string, number>); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [listings.length, authToken]); // eslint-disable-line
+
   // Reopen the property you had open before a refresh, on the same tab (lib/view-memory).
   useRememberedSelection(`${businessUnit}:listing`, active?.id, !loading && listings.length > 0, id => {
     const l = listings.find(x => x.id === id);
@@ -1049,12 +1062,13 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const filtered = listings.filter(l => {
     if (typeFilter && l.type !== typeFilter) return false;
     if (statusFilter && l.status !== statusFilter) return false;
+    if (askedOnly && !askCounts[l.id]) return false;
     if (search) {
       const s = `${l.name} ${l.address ?? ''} ${l.city ?? ''}`.toLowerCase();
       if (!s.includes(search.toLowerCase())) return false;
     }
     return true;
-  });
+  }).sort((x, y) => (askedOnly ? (askCounts[y.id] ?? 0) - (askCounts[x.id] ?? 0) : 0));
 
   // ── Shared input style ──────────────────────────────────────────────────────
 
@@ -1199,6 +1213,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           <option value="">All Statuses</option>
           {STATUSES.map(s => <option key={s} value={s}>{STATUS_CFG[s]?.label}</option>)}
         </select>
+        {Object.keys(askCounts).length > 0 && (
+          <button type="button" onClick={() => setAskedOnly(v => !v)} title="Only properties people asked about (# tags in notes and calls), most asked first"
+            style={{ ...INP, width: 'auto', flex: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, ...(askedOnly ? { background: 'var(--k-f0fdfa)', borderColor: 'var(--k-99f6e4)', color: 'var(--k-0f766e)' } : { color: 'var(--k-6b7280)' }) }}>
+            🏠 Most asked about
+          </button>
+        )}
         <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>{filtered.length} listing{filtered.length !== 1 ? 's' : ''}</span>
           {isAdmin && (
@@ -1265,6 +1285,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                     <span style={{ ...tc, padding: '2px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700 } as React.CSSProperties}>{l.type}</span>
                     {l.sq_ft && <span style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>{fmtSqFt(l.sq_ft)}</span>}
+                    {askCounts[l.id] > 0 && <span title="People who asked about this property (# tags in notes and calls)" style={{ fontSize: 11, fontWeight: 700, color: 'var(--k-0f766e)', background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 10, padding: '1px 8px' }}>🏠 {askCounts[l.id]} asked</span>}
                     {l.asking_price && (
                       <span style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 700, color: '#c9922c' }}>{fmt$(l.asking_price)}</span>
                     )}
@@ -1616,7 +1637,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               )}
 
               {activeTab === 'rentroll' && canSeeRentRoll && (
-                <RentRoll listingId={active.id} listingName={active.name || active.address || ''} authToken={authToken} isAdmin={isAdmin} contacts={clients} onToast={onToast} profiles={profiles} onMention={onMention} />
+                <RentRoll listings={listings} listingId={active.id} listingName={active.name || active.address || ''} authToken={authToken} isAdmin={isAdmin} contacts={clients} onToast={onToast} profiles={profiles} onMention={onMention} />
               )}
 
               {activeTab === 'leasing' && canSeeRentRoll && (

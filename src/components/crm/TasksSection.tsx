@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
+import type { TagListing } from '@/lib/listing-tags';
 import Skeleton from './Skeleton';
 import {
   addDaysYmd, BUCKETS, bucketOf, compareFor, doneWithinDays, dueText, isDone, listName, matchesQuery, ownerId,
@@ -143,6 +144,8 @@ interface Props {
   onMention?: (ids: string[], message: string, taskId: string) => void;
   /** Jump to the full contact card. */
   onOpenContact?: (clientId: string) => void;
+  /** Properties for the # picker in task notes (e.g. #1222Chulie). */
+  listings?: TagListing[];
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -465,11 +468,12 @@ function ClientContactCard({ client, onOpen }: { client: Client; onOpen?: () => 
 
 // ── Task Detail Panel ────────────────────────────────────────────────────────
 function TaskDetailPanel({
-  task, profiles, clients, isAdmin, onClose, onSave, onDelete, onToggleDone, onOpenContact,
+  task, profiles, clients, isAdmin, onClose, onSave, onDelete, onToggleDone, onOpenContact, listings,
 }: {
   task: Task; profiles: Profile[]; clients: Client[]; isAdmin: boolean;
   onClose: () => void; onSave: (updates: Partial<Task>) => void; onDelete: () => void; onToggleDone: () => void;
   onOpenContact?: (clientId: string) => void;
+  listings?: TagListing[];
 }) {
   const done = isDone(task);
   const [form, setForm] = useState<Partial<Task>>({
@@ -547,8 +551,8 @@ function TaskDetailPanel({
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 6 }}>Notes</div>
             <MentionTextarea value={form.description ?? ''} onChange={v => setForm(f => ({ ...f, description: v }))}
-              profiles={profiles}
-              placeholder="Add notes… (@ to tag a teammate)"
+              profiles={profiles} listings={listings}
+              placeholder="Add notes… (@ teammate · # property)"
               style={{ padding: '10px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 13, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", width: '100%', minHeight: 120, resize: 'vertical', background: 'var(--k-fafafa)', boxSizing: 'border-box', lineHeight: 1.6 }} />
           </div>
         </div>
@@ -665,7 +669,7 @@ function TaskRow({ t, isMobile, selectMode, isSelected, showOwner, owner, contac
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function TasksSection({
   tasks, tasksLoading, profiles, clients, isAdmin, isMobile,
-  businessUnit, authHeaders, onTasksChange, showToast, onRefresh, currentUserId, onTaskComplete, onMention, onOpenContact,
+  businessUnit, authHeaders, onTasksChange, showToast, onRefresh, currentUserId, onTaskComplete, onMention, onOpenContact, listings,
 }: Props) {
   const meId = currentUserId ?? '';
   const [view, setView] = useState<'list' | 'board'>(() => (readPref('crm:tasks:view') === 'board' ? 'board' : 'list'));
@@ -1440,6 +1444,7 @@ export default function TasksSection({
       {detailTask && (
         <TaskDetailPanel
           task={detailTask}
+          listings={listings}
           profiles={profiles}
           clients={clients}
           isAdmin={isAdmin}
@@ -1467,7 +1472,7 @@ export default function TasksSection({
             <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 20, color: 'var(--k-111)' }}>New Task</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>{LABEL('Title *')}<input autoFocus value={newForm.title} onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleNewTask()} placeholder="Task name…" style={INPUT_STYLE} /></div>
-              <div>{LABEL('Notes')}<MentionTextarea value={newForm.description} onChange={v => setNewForm(f => ({ ...f, description: v }))} profiles={profiles} placeholder="Optional details… (@ to tag a teammate)" style={{ ...INPUT_STYLE, minHeight: 60, resize: 'none' }} /></div>
+              <div>{LABEL('Notes')}<MentionTextarea value={newForm.description} onChange={v => setNewForm(f => ({ ...f, description: v }))} profiles={profiles} listings={listings} placeholder="Optional details… (@ teammate · # property)" style={{ ...INPUT_STYLE, minHeight: 60, resize: 'none' }} /></div>
               <div>{LABEL('Type')}
                 <select value={newForm.type} onChange={e => setNewForm(f => ({ ...f, type: e.target.value as typeof f.type }))} style={INPUT_STYLE}>
                   <option value="">✓ To-Do</option>

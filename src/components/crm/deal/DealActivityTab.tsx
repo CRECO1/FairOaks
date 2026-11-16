@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import MentionTextarea from '../MentionTextarea';
 import { listingTagLabel, type TagListing } from '@/lib/listing-tags';
 import { Icon } from './dealUi';
+import TaggedText from '../TaggedText';
 
 type Kind = 'email' | 'call' | 'meeting' | 'stage' | 'note' | 'tag' | 'task';
 interface Item { id: string; kind: Kind; at: string; title: string; detail?: string | null; actor_id?: string | null }
@@ -165,7 +166,7 @@ export default function DealActivityTab(p: DealActivityTabProps) {
                     <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-ink,#111)' }}>{i.title}</span>
                     <span style={{ fontSize: 12, color: 'var(--c-faint,#9ca3af)' }}>{timeLabel(i.at)}{i.actor_id && names[i.actor_id] ? ` · ${names[i.actor_id]}` : ''}</span>
                   </div>
-                  {i.detail && <div style={{ fontSize: 13.5, color: 'var(--c-ink-2,#4b5563)', marginTop: 3, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{i.detail}</div>}
+                  {i.detail && <div style={{ fontSize: 13.5, color: 'var(--c-ink-2,#4b5563)', marginTop: 3, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}><TaggedText text={i.detail} listings={p.listings ?? []} onOpen={p.onOpenListing} /></div>}
                 </div>
               </div>
             );

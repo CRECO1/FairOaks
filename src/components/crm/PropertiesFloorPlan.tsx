@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { TagListing } from '@/lib/listing-tags';
 import MentionTextarea, { parseMentionIds, parseMentionContactIds, type MentionContact } from '@/components/crm/MentionTextarea';
 
 /**
@@ -229,9 +230,11 @@ interface Props {
   onMention?: (ids: string[], message: string, entityType: string, entityId?: string) => void;
   /** CRM contacts, so a suite note can tag one (silent — the contact is never notified). */
   contacts?: MentionContact[];
+  /** Properties for the # picker in suite notes. */
+  listings?: TagListing[];
 }
 
-export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, onToast, profiles = [], onMention, contacts = [] }: Props) {
+export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, onToast, profiles = [], onMention, contacts = [], listings }: Props) {
   const [rows, setRows] = useState<Record<string, SuiteRow>>({});
   const [building, setBuilding] = useState<BuildingKey>('bldg1');
   const [floor, setFloor] = useState<1 | 2>(1);
@@ -521,7 +524,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
 
           <label style={lbl}>Notes</label>
           {profiles.length
-            ? <MentionTextarea value={form.notes} onChange={v => setForm({ ...form, notes: v })} profiles={profiles} contacts={contacts} rows={3} placeholder="Notes… (@ to tag a teammate or a contact)" style={{ ...inp, resize: 'vertical' }} />
+            ? <MentionTextarea value={form.notes} onChange={v => setForm({ ...form, notes: v })} profiles={profiles} contacts={contacts} listings={listings} rows={3} placeholder="Notes… (@ teammate or contact · # property)" style={{ ...inp, resize: 'vertical' }} />
             : <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} style={{ ...inp, resize: 'vertical' }} />}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

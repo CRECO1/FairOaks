@@ -8,6 +8,7 @@ import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import Skeleton from '@/components/crm/Skeleton';
 import MentionTextarea from '@/components/crm/MentionTextarea';
 import type { TagListing } from '@/lib/listing-tags';
+import TaggedText from '@/components/crm/TaggedText';
 
 interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; type?: string }
 interface Attendee { id: string; name: string }
@@ -22,6 +23,7 @@ interface Props {
   clients?: PickContact[];
   /** Properties for the # picker in the meeting note (silent tag). */
   listings?: TagListing[];
+  onOpenListing?: (listingId: string) => void;
   authToken?: string;
   businessUnit?: string;
   showToast?: (m: string) => void;
@@ -34,7 +36,7 @@ const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${Stri
 
 const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--k-fffdf6)', border: '1px solid var(--k-f0e2c4)', color: 'var(--k-7a5410)', borderRadius: 20, padding: '3px 9px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' };
 
-export default function DealMeetings({ dealId, clientId, clients = [], listings, authToken, businessUnit, showToast }: Props) {
+export default function DealMeetings({ dealId, clientId, clients = [], listings, onOpenListing, authToken, businessUnit, showToast }: Props) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<'new' | string | null>(null);
@@ -288,7 +290,7 @@ export default function DealMeetings({ dealId, clientId, clients = [], listings,
                     </>
                   )}
                 </div>
-                {m.note && <div style={{ fontSize: 13, color: 'var(--k-374151)', whiteSpace: 'pre-wrap', marginBottom: m.attendees.length ? 8 : 0 }}>{m.note}</div>}
+                {m.note && <div style={{ fontSize: 13, color: 'var(--k-374151)', whiteSpace: 'pre-wrap', marginBottom: m.attendees.length ? 8 : 0 }}><TaggedText text={m.note} listings={listings ?? []} onOpen={onOpenListing} /></div>}
                 {m.attendees.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                     <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', fontWeight: 600 }}>👥</span>

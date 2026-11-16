@@ -2,6 +2,7 @@
 
 import { tenancies, shortDate } from '@/lib/rent-roll-tenancy';
 import MentionTextarea, { parseMentionIds, parseMentionContactIds } from '@/components/crm/MentionTextarea';
+import type { TagListing } from '@/lib/listing-tags';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import EmailProspects from '@/components/crm/EmailProspects';
 
@@ -111,10 +112,11 @@ function Cell({ value, onSave, align, width, placeholder, type = 'text', bold, m
  * A notes cell with the @ picker. Same behaviour as Cell (saves on blur, Enter commits, Esc reverts) but a tag
  * (@Zack) opens the teammate list and tells the host, which notifies the person once the note is saved.
  */
-function NoteCell({ value, onSave, profiles, contacts }: {
+function NoteCell({ value, onSave, profiles, contacts, listings }: {
   value: string | null | undefined; onSave: (v: string) => void;
   profiles?: Array<{ id: string; first_name: string; last_name: string; role?: string }>;
   contacts?: Array<{ id: string; first_name?: string; last_name?: string; business_name?: string; type?: string }>;
+  listings?: TagListing[];
 }) {
   const [v, setV] = useState<string>(value ?? '');
   const dirty = useRef(false);
@@ -130,6 +132,7 @@ function NoteCell({ value, onSave, profiles, contacts }: {
       value={v}
       onChange={x => { dirty.current = true; setV(x); }}
       profiles={profiles}
+      listings={listings}
       contacts={contacts}
       rows={1}
       hideHint
@@ -228,11 +231,13 @@ function ContactCell({ row, contacts, onLink, onText, onCreate }: {
   );
 }
 
-export default function RentRoll({ listingId, listingName, authToken, isAdmin, contacts = [], onToast, profiles, onMention }: {
+export default function RentRoll({ listingId, listingName, authToken, isAdmin, contacts = [], onToast, profiles, onMention, listings }: {
   listingId: string; listingName?: string; authToken?: string; isAdmin?: boolean; contacts?: CrmContact[]; onToast?: (m: string) => void;
   /** Teammates for the @ picker in the notes cells; with onMention, a tag notifies them when the note is saved. */
   profiles?: Array<{ id: string; first_name: string; last_name: string; role?: string }>;
   onMention?: (ids: string[], message: string, entityType: string, entityId?: string) => void;
+  /** Properties for the # picker in the notes cells. */
+  listings?: TagListing[];
 }) {
   const [rows, setRows] = useState<RentRollRow[]>([]);
   const [vendors, setVendors] = useState<VendorRow[]>([]);
@@ -525,7 +530,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
                   <td style={TD}><Cell value={r.email} onSave={v => saveCell(r.id, 'email', v)} /></td>
                   <td style={TD}><Cell value={r.phone} onSave={v => saveCell(r.id, 'phone', v)} /></td>
                   <td style={TD}><ContactCell row={r} contacts={localContacts.length ? [...localContacts, ...contacts] : contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} onCreate={n => createContact(n, r)} /></td>
-                  <td style={TD}><NoteCell value={r.notes} profiles={profiles} contacts={noteContacts} onSave={v => { tagNotify(v, r.notes, r.tenant_name || r.suite || 'a suite'); saveCell(r.id, 'notes', v, { tagged_contact_ids: tagsOf(v) }); }} /></td>
+                  <td style={TD}><NoteCell value={r.notes} profiles={profiles} contacts={noteContacts} listings={listings} onSave={v => { tagNotify(v, r.notes, r.tenant_name || r.suite || 'a suite'); saveCell(r.id, 'notes', v, { tagged_contact_ids: tagsOf(v) }); }} /></td>
                   <td style={{ ...TD, textAlign: 'center' }}>
                     {isAdmin && <button onClick={() => removeSuite(r)} title="Remove suite" style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}
                   </td>
@@ -564,7 +569,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
                   <td style={TD}><ContactCell row={r} contacts={localContacts.length ? [...localContacts, ...contacts] : contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} onCreate={n => createContact(n, r)} /></td>
                   <td style={TD}><Cell value={r.phone} onSave={v => saveCell(r.id, 'phone', v)} /></td>
                   <td style={TD}><Cell value={r.email} onSave={v => saveCell(r.id, 'email', v)} /></td>
-                  <td style={TD}><NoteCell value={r.notes} profiles={profiles} contacts={noteContacts} onSave={v => { tagNotify(v, r.notes, r.tenant_name || r.suite || 'a suite'); saveCell(r.id, 'notes', v, { tagged_contact_ids: tagsOf(v) }); }} /></td>
+                  <td style={TD}><NoteCell value={r.notes} profiles={profiles} contacts={noteContacts} listings={listings} onSave={v => { tagNotify(v, r.notes, r.tenant_name || r.suite || 'a suite'); saveCell(r.id, 'notes', v, { tagged_contact_ids: tagsOf(v) }); }} /></td>
                   <td style={{ ...TD, textAlign: 'center' }}>
                     {isAdmin && <button onClick={() => removeSuite(r)} title="Remove backup tenant" style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}
                   </td>
@@ -601,7 +606,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
                   <td style={TD}><Cell value={v.vendor} onSave={x => saveVendor(v.id, 'vendor', x)} /></td>
                   <td style={TD}><Cell value={v.contact} onSave={x => saveVendor(v.id, 'contact', x)} /></td>
                   <td style={TD}><Cell value={v.phone} onSave={x => saveVendor(v.id, 'phone', x)} /></td>
-                  <td style={TD}><NoteCell value={v.notes} profiles={profiles} contacts={noteContacts} onSave={x => { tagNotify(x, v.notes, v.label || v.vendor || 'a vendor'); saveVendor(v.id, 'notes', x, { tagged_contact_ids: tagsOf(x) }); }} /></td>
+                  <td style={TD}><NoteCell value={v.notes} profiles={profiles} contacts={noteContacts} listings={listings} onSave={x => { tagNotify(x, v.notes, v.label || v.vendor || 'a vendor'); saveVendor(v.id, 'notes', x, { tagged_contact_ids: tagsOf(x) }); }} /></td>
                   <td style={{ ...TD, textAlign: 'center' }}>{isAdmin && <button onClick={() => removeVendor(v.id, v.label || v.vendor || undefined)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}</td>
                 </tr>
               ))}
@@ -622,7 +627,7 @@ export default function RentRoll({ listingId, listingName, authToken, isAdmin, c
           {infoRows.map(v => (
             <div key={v.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 8, padding: '2px 4px 2px 0' }}>
               <div style={{ flex: '0 0 210px' }}><Cell value={v.label} bold onSave={x => saveVendor(v.id, 'label', x)} /></div>
-              <div style={{ flex: 1 }}><NoteCell value={v.notes} profiles={profiles} contacts={noteContacts} onSave={x => { tagNotify(x, v.notes, v.label || 'the building'); saveVendor(v.id, 'notes', x, { tagged_contact_ids: tagsOf(x) }); }} /></div>
+              <div style={{ flex: 1 }}><NoteCell value={v.notes} profiles={profiles} contacts={noteContacts} listings={listings} onSave={x => { tagNotify(x, v.notes, v.label || 'the building'); saveVendor(v.id, 'notes', x, { tagged_contact_ids: tagsOf(x) }); }} /></div>
               {isAdmin && <button onClick={() => removeVendor(v.id, v.label || v.vendor || undefined)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '8px 6px' }}>✕</button>}
             </div>
           ))}

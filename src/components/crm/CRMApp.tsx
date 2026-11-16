@@ -59,6 +59,7 @@ import CampaignPreflight from '@/components/crm/CampaignPreflight';
 import CallTapPrompt from '@/components/crm/CallTapPrompt';
 import MentionTextarea, { parseMentionContactIds, parseMentionIds } from '@/components/crm/MentionTextarea';
 import { parseListingTagIds, listingTagLabel, type TagListing } from '@/lib/listing-tags';
+import TaggedText from '@/components/crm/TaggedText';
 import DealActivityTab from '@/components/crm/deal/DealActivityTab';
 import { DealHeader, DealCardStyles, StatTiles, STAGE_PALETTE, DealTile, TileStyles, Icon, daysAgo } from '@/components/crm/deal/dealUi';
 import Ico, { type IcoName } from '@/components/crm/Ico';
@@ -8906,6 +8907,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {page === 'tasks' && tasksSubTab === 'tasks' && (() => {
             return (
               <TasksSection
+                listings={tagListings}
                 tasks={tasks}
                 tasksLoading={tasksLoading}
                 profiles={profiles}
@@ -11723,6 +11725,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               )}
               {propertiesTab === 'floorplan' && (
                 <PropertiesFloorPlan
+                  listings={tagListings}
                   profiles={profiles}
                   contacts={clients}
                   onMention={noteMention}
@@ -12068,7 +12071,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* ── Meetings — log meetings + tag attendee contacts (silent) ── */}
                   <div style={{ marginTop: 18 }}>
-                    <DealMeetings dealId={activeDeal.id} clients={clients} listings={tagListings} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} />
+                    <DealMeetings dealId={activeDeal.id} clients={clients} listings={tagListings} onOpenListing={id => { setActiveDeal(null); openEntity('listing', id); }} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} />
                   </div>
 
                   {/* ── Loss Reason Banner ── */}
@@ -13816,7 +13819,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     </div>
                   ) : c.notes ? (
-                    <div style={{ background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 8, padding: '12px 14px', fontSize: 14, color: 'var(--k-374151)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{c.notes}</div>
+                    <div style={{ background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 8, padding: '12px 14px', fontSize: 14, color: 'var(--k-374151)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}><TaggedText text={c.notes} listings={tagListings} onOpen={id => { setActiveClient(null); openEntity('listing', id); }} /></div>
                   ) : (
                     <div style={{ fontSize: 13, color: '#d1d5db' }}>No notes yet.</div>
                   )}
@@ -13944,7 +13947,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <span style={{ ...sc, padding: '1px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700 } as React.CSSProperties}>{t.status.replace('_',' ')}</span>
                                     {dueBadge(t.due_date)}
                                   </div>
-                                  {t.description && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 3 }}>{t.description}</div>}
+                                  {t.description && <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 3 }}><TaggedText text={t.description} listings={tagListings} onOpen={id => { setActiveClient(null); openEntity('listing', id); }} /></div>}
                                 </div>
                               </div>
                             );
@@ -13971,7 +13974,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--k-6b7280)', textDecoration: 'line-through', marginBottom: 2 }}>{t.title}</div>
                                   {t.due_date && <div style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>Due {new Date(t.due_date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>}
-                                  {t.description && <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 2 }}>{t.description}</div>}
+                                  {t.description && <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 2 }}><TaggedText text={t.description} listings={tagListings} onOpen={id => { setActiveClient(null); openEntity('listing', id); }} /></div>}
                                 </div>
                               </div>
                             ))}
@@ -14186,7 +14189,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <span title={`${stampFull} (${ta.label})`} style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--k-6b7280)', fontWeight: 600, whiteSpace: 'nowrap' }}>{stamp}</span>
                                   </div>
                                   {act.note && (
-                                    <div style={{ fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5, background: 'var(--k-f9fafb)', borderRadius: 6, padding: '6px 8px' }}>{act.note}</div>
+                                    <div style={{ fontSize: 13, color: 'var(--k-6b7280)', lineHeight: 1.5, background: 'var(--k-f9fafb)', borderRadius: 6, padding: '6px 8px' }}><TaggedText text={act.note} listings={tagListings} onOpen={id => { setActiveClient(null); openEntity('listing', id); }} /></div>
                                   )}
                                 </div>
                               </div>
