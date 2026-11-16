@@ -11700,8 +11700,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   profiles={profiles}
                   clients={clients}
                   onToast={showToast}
-                  onOpenContact={id => { openEntity('contact', id); }}
-                  onOpenDeal={id => { openEntity('deal', id); }}
+                  // openEntity can only open what is already loaded (contacts / deals load a moment after a cold start): retry briefly.
+                  onOpenContact={id => { let n = 0; const go = () => { if (openEntityRef.current?.('contact', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }}
+                  onOpenDeal={id => { let n = 0; const go = () => { if (openEntityRef.current?.('deal', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }}
                   onAddDocument={lid => setComposer({ file: null, doc: null, listingId: lid })}
                   onSignFile={(url, name, lid) => signUploadedFile(url, name, { listingId: lid })}
                   reloadSignal={esignFieldsVersion}
