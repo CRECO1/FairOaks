@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   const [notes, acts, calls] = await Promise.all([
     db.from('crm_clients').select('id, first_name, last_name, business_name, type, business_unit, lead_hold').contains('tagged_listing_ids', tag).limit(200),
     db.from('crm_client_activities').select('id, client_id, type, note, created_at').contains('tagged_listing_ids', tag).order('created_at', { ascending: false }).limit(300),
-    db.from('crm_call_log').select('id, business_unit, contact_id, deal_id, direction, caller_name, from_number, to_number, started_at, notes').contains('tagged_listing_ids', tag).order('started_at', { ascending: false }).limit(200),
+    db.from('crm_call_log').select('id, business_unit, contact_id, deal_id, direction, caller_name, from_number, to_number, started_at, notes, summary').contains('tagged_listing_ids', tag).order('started_at', { ascending: false }).limit(200),
   ]);
   if (notes.error || acts.error || calls.error) {
     console.error('[listing-inquiries]', notes.error ?? acts.error ?? calls.error);
@@ -80,10 +80,13 @@ export async function GET(req: NextRequest) {
 
   // Calls whose note tagged this property. A call from someone who is not a contact yet is exactly "the property they called on".
   // Same visibility as the Calling Log: your workspace (admins: any), and a call on a deal you can't see stays hidden.
+  const dealCalls: { deal_id: string; at: string | null; snippet: string | null }[] = [];
   for (const call of calls.data ?? []) {
     if (!isAdminRole(ctx.role) && call.business_unit !== ctx.businessUnit) continue;
     if (call.deal_id && !(await canAccessLinked(ctx, { business_unit: call.business_unit as string, deal_id: call.deal_id as string }))) continue;
-    const snippet = String(call.notes ?? '').replace(/\s+/g, ' ').trim().slice(0, 160) || null;
+    const snippet = String(call.notes || call.summary || '').replace(/\s+/g, ' ').trim().slice(0, 160) || null;
+    // A call logged ON a deal belongs under that deal (below), not as a separate caller.
+    if (call.deal_id) { dealCalls.push({ deal_id: call.deal_id as string, at: call.started_at as string | null, snippet }); continue; }
     const c = call.contact_id ? contacts.get(call.contact_id as string) : null;
     if (c) {
       if (!visible(c)) continue;
@@ -108,7 +111,7 @@ export async function GET(req: NextRequest) {
     type DealRow = { id: string; client: string | null; property: string | null; business_unit: string | null };
     const deals = new Map<string, DealRow>();
     for (const d of (dealsTagged.data ?? []) as DealRow[]) deals.set(d.id, d);
-    const missingDeals = [...new Set([...(dealNotes.data ?? []).map(n => n.deal_id as string), ...(dealMeets.data ?? []).map(m => m.deal_id as string)])].filter(id => !deals.has(id));
+    const missingDeals = [...new Set([...(dealNotes.data ?? []).map(n => n.deal_id as string), ...(dealMeets.data ?? []).map(m => m.deal_id as string), ...dealCalls.map(c => c.deal_id)])].filter(id => !deals.has(id));
     if (missingDeals.length) {
       const { data } = await db.from('crm_deals').select('id, client, property, business_unit').in('id', missingDeals);
       for (const d of (data ?? []) as DealRow[]) deals.set(d.id, d);
@@ -118,6 +121,10 @@ export async function GET(req: NextRequest) {
     for (const m of dealMeets.data ?? []) {
       const at = (m.created_at as string) ?? null; const cur = latest.get(m.deal_id as string);
       if (!cur || (at ?? '') > (cur.at ?? '')) latest.set(m.deal_id as string, { at, snippet: String(m.note ?? '').replace(/\s+/g, ' ').trim().slice(0, 160) || null });
+    }
+    for (const c of dealCalls) {
+      const cur = latest.get(c.deal_id);
+      if (!cur || (c.at ?? '') > (cur.at ?? '')) latest.set(c.deal_id, { at: c.at, snippet: c.snippet });
     }
     for (const d of deals.values()) {
       if (hidden.has(d.id)) continue;
