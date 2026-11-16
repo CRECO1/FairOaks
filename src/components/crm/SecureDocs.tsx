@@ -83,22 +83,27 @@ export default function SecureDocs({ clientId, dealId, autoOpen, onAutoOpened, a
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const consumed = useRef(onAutoOpened);
-  consumed.current = onAutoOpened;   // latest callback without re-running the effect below on every parent render
+  consumed.current = onAutoOpened;   // latest callback without re-running the effects below on every parent render
+  const openedByList = useRef(false);
   const loaded = reqs !== null;
   useEffect(() => () => { scrollTimers.current.forEach(clearTimeout); }, []);   // only when the section goes away
   useEffect(() => {
     if (!autoOpen || !loaded) return;   // wait until the list has loaded so the form does not jump
+    openedByList.current = true;
     setCreating(true);
-    // The card is still laying out (sections above fill in), so look again a couple of times; a retry only scrolls if the form is still out of view.
+    // The card can still be laying out (sections above fill in), so look again a couple of times; a retry only scrolls if the form is still out of view.
     scrollTimers.current.forEach(clearTimeout);
     scrollTimers.current = [150, 600, 1300].map(ms => setTimeout(() => {
       const el = rootRef.current; if (!el) return;
       const top = el.getBoundingClientRect().top;
       if (top < 60 || top > window.innerHeight * 0.5) el.scrollIntoView({ behavior: 'auto', block: 'start' });
     }, ms));
-    // Only now — after it has opened and settled — tell the list the request is handled (a remount before this point simply opens it again).
-    scrollTimers.current.push(setTimeout(() => consumed.current?.(), 1500));
   }, [autoOpen, loaded]);
+  // The list's request stays alive until the person closes the form (Cancel, or after creating one). If the card is rebuilt in the
+  // meantime — which happens in the first seconds after the page loads — the new copy simply opens the form again.
+  useEffect(() => {
+    if (!creating && openedByList.current) { openedByList.current = false; consumed.current?.(); }
+  }, [creating]);
 
   const pick = (k: string) => { setPreset(k); setItems(PRESETS[k].items); };
   const toggle = (i: Item) => setItems(cur => (cur.some(x => x.key === i.key) ? cur.filter(x => x.key !== i.key) : [...cur, i]));
