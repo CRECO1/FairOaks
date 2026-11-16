@@ -79,12 +79,19 @@ export default function SecureDocs({ clientId, dealId, autoOpen, onAutoOpened, a
   useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); setTextFor(null); load(); }, [load]);
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const scrollTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => { scrollTimers.current.forEach(clearTimeout); }, []);   // only when the section goes away
   useEffect(() => {
     if (!autoOpen || reqs === null) return;   // wait until the list has loaded so the form does not jump
     setCreating(true);
-    const t = setTimeout(() => rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+    // The card is still laying out (sections above fill in), so look again a couple of times; a retry only scrolls if the form is still out of view.
+    scrollTimers.current.forEach(clearTimeout);
+    scrollTimers.current = [150, 600, 1300].map(ms => setTimeout(() => {
+      const el = rootRef.current; if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      if (top < 60 || top > window.innerHeight * 0.5) el.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }, ms));
     onAutoOpened?.();
-    return () => clearTimeout(t);
   }, [autoOpen, reqs, onAutoOpened]);
 
   const pick = (k: string) => { setPreset(k); setItems(PRESETS[k].items); };
