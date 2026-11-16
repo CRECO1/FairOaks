@@ -20,10 +20,10 @@ const TENANT = /\|\s*unit:\s*\S/i;
 const INQUIRY = /engaged:|crexi lead|loopnet lead|inquir|asked about|called about|requested info|viewed space/i;
 const looksLikeOutreach = (t: string) => OUTREACH.test(t) && !INQUIRY.test(t);
 /** A suggested answer for notes that are neither clearly safe nor outreach: the review shows it as a hint, a person still decides. */
-const ASKISH = /\b(asked|asking|interested|wants?|wanted|looking (for|at|to)|inquir|requested?|available|availability|tour|toured|showing|lease rate|how much|call(ed)? (me|back)|returned (a )?call|follow(ed)? up|looked at|visited|came on the tour|found your listing|brochure|flyer|asking price|proposal|loi)\b/i;
+const ASKISH = /\b(asked|asking|interested|wants?|wanted|looking (for|at|to)|inquir|requested?|available|availability|tour|toured|showing|lease rate|how much|call(ed)? (me|back)|returned (a )?call|follow(ed)? up|looked at|visited|came on the tour|found your listing|brochure|flyer|asking price)\b/i;
 /** Notes that are research about who owns the property (county records), a system message, or about the property's own landlord / owner: not someone asking about it. */
 const RESEARCH = /\bowner of record\b|\bper bexar cad\b|\bcounty owner\b|\bprop(erty)? id\b\s*\d|\bmailing address\b.*\bsos file\b/i;
-const SYSTEM = /^\s*✅?\s*task completed:/i;
+const SYSTEM = /^\s*(✅\s*)?(task completed:|stage moved to\b|sent email:|email (sent|received)\b|deal (created|moved|stage))/i;
 const OWNERISH = /\blandlord contact\b|\bproperty manager\b|\bhandles (the )?[^.]{0,40}tenants\b|\bowner of the\b|\bowns\b/i;
 type Verdict = 'inquiry' | 'two' | 'general' | 'owner' | 'research' | 'system';
 function verdictFor(text: string, namedCount: number, ownerLinked = false): { verdict: Verdict; hint: string } {
