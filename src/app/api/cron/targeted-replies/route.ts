@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { listingTagToken } from '@/lib/listing-tags';
+import { recordJobRun } from '@/lib/job-runs';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -18,11 +19,11 @@ export async function GET(req: NextRequest) {
   const rows: Record<string, unknown>[] = [];
   for (let from = 0; from < 10000; from += 1000) {
     const { data, error } = await db.from('crm_clients').select('id, agent_id, targeted_listing_ids, targeted_at').not('targeted_listing_ids', 'eq', '{}').order('id').range(from, from + 999);
-    if (error) { console.error('[targeted-replies]', error.message); return NextResponse.json({ error: 'query failed' }, { status: 500 }); }
+    if (error) { console.error('[targeted-replies]', error.message); await recordJobRun(db, 'targeted-replies', false, `Query failed: ${error.message}`); return NextResponse.json({ error: 'query failed' }, { status: 500 }); }
     rows.push(...(data ?? []));
     if ((data?.length ?? 0) < 1000) break;
   }
-  if (!rows.length) return NextResponse.json({ checked: 0, converted: 0 });
+  if (!rows.length) { await recordJobRun(db, 'targeted-replies', true, 'No targeted contacts to check'); return NextResponse.json({ checked: 0, converted: 0 }); }
 
   const replied = new Set<string>();
   const ids = rows.map(r => r.id as string);
@@ -48,5 +49,6 @@ export async function GET(req: NextRequest) {
       c.targeted_listing_ids = left; converted++;
     }
   }
+  await recordJobRun(db, 'targeted-replies', true, `Checked ${rows.length} targeted contact${rows.length === 1 ? '' : 's'}; ${replied.size} had written back; ${converted} moved to asked`, { checked: rows.length, replied: replied.size, converted });
   return NextResponse.json({ checked: rows.length, replied: replied.size, converted });
 }

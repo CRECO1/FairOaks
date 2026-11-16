@@ -12,6 +12,9 @@ const GREEN = 'FF1F3D2E', GOLD = 'FFB8972A', MINT = 'FFD6E4D6', WHITE = 'FFFFFFF
 
 export type Marketing = Awaited<ReturnType<typeof listingProspects>>;
 export type Calls = Awaited<ReturnType<typeof callsForProspects>>;
+/** Counts only, for the owner: how much interest the CRM's tagged inquiries show for this property. */
+export type Interest = { asked: number; askedWeek: number; followedUp: number; targeted: number; deals: number };
+
 export function summarize(m: Marketing) {
   const sent = m.campaigns.reduce((s, c) => s + c.sent, 0);
   const opens = m.campaigns.reduce((s, c) => s + c.opened, 0);
@@ -85,7 +88,7 @@ export function industryGroups(m: Marketing) {
   return { total: people.length, groups };
 }
 
-export async function toXlsx(header: { property: string; fund: string; agent: string }, sections: ReportSection[], m: Marketing, calls: Calls, websiteLine?: string | null) {
+export async function toXlsx(header: { property: string; fund: string; agent: string }, sections: ReportSection[], m: Marketing, calls: Calls, websiteLine?: string | null, interest?: Interest | null) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'CRECO';
   const ws = wb.addWorksheet(header.property.slice(0, 31), {
@@ -261,6 +264,16 @@ export async function toXlsx(header: { property: string; fund: string; agent: st
   for (const p of m.prospects.filter(x => x.emailsOpened > 0 && !x.dead && !x.unsubscribed)) {
     const row = mk.addRow([p.business || p.name || p.email, p.opens, p.lastOpen ? new Date(p.lastOpen) : null, p.category, '']);
     row.getCell(3).numFmt = 'mm/dd/yyyy'; row.eachCell(x => { x.font = font(); });
+  }
+  if (interest && (interest.asked + interest.targeted + interest.deals) > 0) {
+    mk.addRow([]);
+    const ih = mk.addRow(['Interest from tagged inquiries (counts only)', 'Count', '', '', '']);
+    ih.eachCell(c => { c.font = font({ bold: true, color: { argb: WHITE } }); c.fill = fill(GREEN); });
+    const rows: [string, number][] = [
+      ['People who asked about this property (all time)', interest.asked], ['…of those, in the last 7 days', interest.askedWeek],
+      ['Asks with a follow-up logged', interest.followedUp], ['People reached out to (outreach lists)', interest.targeted], ['Deals on this property', interest.deals],
+    ];
+    for (const [k, v] of rows) { const r = mk.addRow([k, v, '', '', '']); r.eachCell(x => { x.font = font(); }); }
   }
   return wb.xlsx.writeBuffer();
 }

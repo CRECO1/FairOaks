@@ -7,14 +7,23 @@ type Item = { id: string; name: string; source: string; at: string; snippet: str
 export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?: string; onOpenContact?: (id: string) => void }) {
   const [d, setD] = useState<{ total: number; tagged: number; untagged: number; items: Item[]; calls?: { total: number; tagged: number }; removed?: { total: number; items: { id: string; name: string; at: string }[] } | null } | null>(null);
   const [showRemoved, setShowRemoved] = useState(false);
+  const [jobs, setJobs] = useState<{ key: string; label: string; when: string; runs: { ran_at: string; ok: boolean; summary: string | null }[] }[] | null>(null);
+  const [showJobs, setShowJobs] = useState(false);
+  const [preview, setPreview] = useState<{ listings: number; messages: { to: string; title: string; body: string }[] } | null | 'loading'>(null);
+  const loadPreview = async () => {
+    setPreview('loading');
+    const r = await fetch('/api/crm/inquiry-digest-preview', { headers: { Authorization: `Bearer ${authToken}` } }).catch(() => null);
+    setPreview(r?.ok ? await r.json() : null);
+  };
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!authToken) return;
     let alive = true;
+    fetch('/api/crm/job-runs', { headers: { Authorization: `Bearer ${authToken}` } }).then(r => (r.ok ? r.json() : null)).then(j => { if (alive && j?.jobs) setJobs(j.jobs); }).catch(() => {});
     fetch('/api/crm/lead-tag-health', { headers: { Authorization: `Bearer ${authToken}` } }).then(r => (r.ok ? r.json() : null)).then(j => { if (alive && j) setD(j); }).catch(() => {});
     return () => { alive = false; };
   }, [authToken]);
-  if (!d || (d.total === 0 && !(d.calls?.total) && !(d.removed?.total))) return null;
+  if (!d) return null;
   return (
     <div style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)' }}>
       {d.total > 0 && <button onClick={() => d.untagged > 0 && setOpen(o => !o)} title="Leads from the last 7 days: how many were tagged to a property when they arrived"
@@ -26,6 +35,36 @@ export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?
         <div style={{ marginTop: 3 }}>
           <button onClick={() => setShowRemoved(o => !o)} title="Every contact delete is logged; merging duplicates deletes the extra one" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: 'inherit', textAlign: 'left' }}>🗑 Contacts removed or merged, last 7 days: <b>{d.removed.total}</b> {showRemoved ? '▾' : '▸'}</button>
           {showRemoved && d.removed.items.map(r => <div key={r.id + r.at} style={{ fontSize: 12, marginLeft: 14 }}>{r.name} · {new Date(r.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>)}
+        </div>
+      )}
+      {jobs && (
+        <div style={{ marginTop: 3 }}>
+          <button onClick={() => setShowJobs(o => !o)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: 'inherit', textAlign: 'left' }}>⚙ Tagging jobs {showJobs ? '▾' : '▸'}</button>
+          {showJobs && (
+            <div style={{ marginTop: 4, marginLeft: 6 }}>
+              {jobs.map(j => {
+                const last = j.runs[0];
+                return (
+                  <div key={j.key} style={{ marginBottom: 6 }}>
+                    <div><b style={{ color: 'var(--k-374151, #374151)' }}>{j.label}</b> <span style={{ fontSize: 11.5 }}>· {j.when}</span></div>
+                    {last
+                      ? <div style={{ fontSize: 12, color: last.ok ? 'var(--k-0f766e, #0f766e)' : '#b91c1c' }}>{last.ok ? '✓' : '✗'} {new Date(last.ran_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · {last.summary}</div>
+                      : <div style={{ fontSize: 12 }}>No run recorded yet (it logs itself the next time it runs).</div>}
+                  </div>
+                );
+              })}
+              <button onClick={loadPreview} disabled={preview === 'loading'} style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer' }}>{preview === 'loading' ? 'Looking…' : 'Preview today’s alert (sends nothing)'}</button>
+              {preview && preview !== 'loading' && (
+                <div style={{ marginTop: 6, fontSize: 12.5 }}>
+                  {preview.messages.length === 0 ? 'Nothing to send right now: no new tagged inquiries since the last run.' : preview.messages.map((m, i) => (
+                    <div key={i} style={{ background: 'var(--k-f9fafb, #f9fafb)', border: '1px solid #eef0f2', borderRadius: 8, padding: '6px 10px', marginBottom: 5 }}>
+                      <div style={{ fontSize: 11.5 }}>To {m.to}</div><div><b>{m.title}</b></div><div>{m.body}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
       {open && (

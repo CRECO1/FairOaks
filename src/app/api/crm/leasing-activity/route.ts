@@ -3,7 +3,8 @@ import { getCrmContext, unauthorized, notFound, isAdminRole } from '@/lib/crm-au
 import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildLeasingActivity, type TenantRow } from '@/lib/leasing-activity';
-import { toXlsx, summarize, marketingLines, industryGroups, stageOf, prospectName, prospectNote } from '@/lib/leasing-activity-xlsx';
+import { toXlsx, summarize, marketingLines, industryGroups, stageOf, prospectName, prospectNote, type Interest } from '@/lib/leasing-activity-xlsx';
+import { buildInquiries, buildTargeted, buildFunnel } from '@/lib/listing-inquiries';
 import { listingProspects, callsForProspects } from '@/lib/listing-prospects';
 import { syncLeasingLeads } from '@/lib/leasing-leads';
 import { loadPropertyPerformance, websiteLine, type PerfListing } from '@/lib/property-performance';
@@ -51,6 +52,15 @@ export async function GET(req: NextRequest) {
     loadPropertyPerformance(db, [listing as unknown as PerfListing], 7, false),
   ]).then(([m, w]) => websiteLine(m.get(listingId), w.get(listingId))).catch(() => null);
 
+  // Interest from #-tagged inquiries: counts only (no names), same access rules as the property's own list.
+  const interest: Interest | null = await (async () => {
+    const inq = await buildInquiries(ctx, listingId); if (!inq.ok) return null;
+    const tg = await buildTargeted(ctx, listingId); const f = await buildFunnel(ctx, listingId, inq.items, tg.total);
+    const weekAgo = Date.now() - 7 * 86_400_000;
+    const people = inq.items.filter(i => i.via !== 'deal' && i.via !== 'task');
+    return { asked: f.asked, askedWeek: people.filter(i => i.last_at && Date.parse(i.last_at) >= weekAgo).length, followedUp: f.followedUp, targeted: f.targeted, deals: f.deals };
+  })().catch(() => null);
+
   if (req.nextUrl.searchParams.get('format') !== 'xlsx') {
     const ind = industryGroups(marketing);
     const industries = {
@@ -60,9 +70,9 @@ export async function GET(req: NextRequest) {
         rows: g.people.map(p => ({ id: p.client_id, name: prospectName(p), status: stageOf(p), date: p.lastOpen ?? p.lastSent, note: prospectNote(p) })),
       })),
     };
-    return NextResponse.json({ header, sections, industries, marketing: { ...summarize(marketing), calls, lines: { ...marketingLines(marketing, calls), website: web } }, synced });
+    return NextResponse.json({ header, sections, industries, marketing: { ...summarize(marketing), calls, lines: { ...marketingLines(marketing, calls), website: web } }, interest, synced });
   }
-  const buf = await toXlsx(header, sections, marketing, calls, web);
+  const buf = await toXlsx(header, sections, marketing, calls, web, interest);
   const stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).replace(/-/g, '');
   const file = `${stamp} Leasing Activity Report - ${header.property}`.replace(/[^\w .-]+/g, '-') + '.xlsx';
   return new NextResponse(Buffer.from(buf), {

@@ -2007,7 +2007,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {inquiries.map(q => (
-                          <button key={q.key} onClick={() => { if (q.deal_id) onOpenDeal?.(q.deal_id); else if (q.contact_id) onOpenContact?.(q.contact_id); }} disabled={q.deal_id ? !onOpenDeal : (!onOpenContact || !q.contact_id)}
+                          <div key={q.key}>
+                          <button onClick={() => { if (q.deal_id) onOpenDeal?.(q.deal_id); else if (q.contact_id) onOpenContact?.(q.contact_id); }} disabled={q.deal_id ? !onOpenDeal : (!onOpenContact || !q.contact_id)}
                             style={{ display: 'block', width: '100%', textAlign: 'left', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '9px 12px', cursor: (q.deal_id ? onOpenDeal : (onOpenContact && q.contact_id)) ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{q.name}</span>
@@ -2020,6 +2021,18 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             </div>
                             {q.snippet && <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.snippet}</div>}
                           </button>
+                          {q.contact_id && !q.deal_id && (
+                            <button type="button" title="Open the new-deal form on this property with this person filled in (nothing is created until you press Create)"
+                              onClick={() => {
+                                const c = clients.find(x => x.id === q.contact_id);
+                                const nm = c ? (c.business_name || `${c.first_name} ${c.last_name}`.trim()) : q.name;
+                                setActiveTab('deals');
+                                setNewDeal({ client: nm, client_email: c?.email || '', client_phone: c?.phone || c?.cell_phone || '', client_id: q.contact_id ?? '', type: 'Tenant Lease', stage: 'Prospect' });
+                                setShowNewDeal(true);
+                              }}
+                              style={{ margin: '4px 0 0 4px', fontSize: 11.5, fontWeight: 700, padding: '3px 11px', borderRadius: 14, border: '1px solid #e9d8a6', background: '#fffbeb', color: '#92400e', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>💼 Start a deal</button>
+                          )}
+                          </div>
                         ))}
                       </div>
                     )}

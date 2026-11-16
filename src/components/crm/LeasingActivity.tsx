@@ -43,12 +43,13 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
   const [header, setHeader] = useState<Header | null>(null);
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [mk, setMk] = useState<Mk | null>(null);
+  const [interest, setInterest] = useState<{ asked: number; askedWeek: number; followedUp: number; targeted: number; deals: number } | null>(null);
   const [ind, setInd] = useState<Ind | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     const j = await fetch(`/api/crm/leasing-activity?listing_id=${listingId}`, { headers: authOf(authToken) }).then(r => r.json()).catch(() => ({}));
-    setHeader(j.header ?? null); setSections(j.sections ?? []); setMk(j.marketing ?? null); setInd(j.industries ?? null);
+    setHeader(j.header ?? null); setSections(j.sections ?? []); setMk(j.marketing ?? null); setInterest(j.interest ?? null); setInd(j.industries ?? null);
   }, [listingId, authToken]);
   useEffect(() => { load(); }, [load]);
 
@@ -223,7 +224,8 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
           <span style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 800 }}>Email marketing</span><span>{mk.lines.email}</span>
           <span style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 800 }}>Calls</span><span>{mk.lines.calls}</span>
           {mk.lines.website && (<><span style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 800 }}>Website</span><span>{mk.lines.website}</span></>)}
-          <span /><span style={{ color: 'var(--k-9ca3af)' }}>These lines appear in the header of the downloaded sheet; per-campaign detail is on its second sheet.</span>
+          {interest && (interest.asked + interest.targeted + interest.deals) > 0 && (<><span style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 800 }}>Interest</span><span>{interest.asked} asked ({interest.askedWeek} this week) · {interest.followedUp} followed up · {interest.targeted} reached out · {interest.deals} deal{interest.deals === 1 ? '' : 's'}</span></>)}
+          <span /><span style={{ color: 'var(--k-9ca3af)' }}>These lines appear in the header of the downloaded sheet; per-campaign detail and the interest counts are on its second sheet.</span>
         </div>
       )}
     </div>

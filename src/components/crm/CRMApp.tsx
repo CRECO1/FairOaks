@@ -1245,6 +1245,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Gmail connection state
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailChecked, setGmailChecked] = useState(false); // the status check has answered (connected or not)
+  const [gmailPromptHidden, setGmailPromptHidden] = useState(() => { try { return Date.now() - Number(localStorage.getItem('crm:gmail-connect-prompt') || 0) < 7 * 86_400_000; } catch { return false; } });
   const [gmailAccounts, setGmailAccounts] = useState<{ id: string; email: string; needsReconnect?: boolean }[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [mlsSyncing, setMlsSyncing] = useState(false);
@@ -6714,6 +6715,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
             <div>
+              {gmailChecked && !gmailConnected && !gmailPromptHidden && session && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
+                  <span style={{ flex: '1 1 260px' }}>✉️ <b>Connect your Gmail</b> so emails send from the CRM, replies show up on the contact, and the CRM can tell when someone you reached out to writes back. It takes one tap on Google&apos;s “Allow” screen.</span>
+                  <a href={`/api/gmail/auth?userId=${session.user.id}&bu=${businessUnit}`} style={{ fontSize: 12.5, fontWeight: 700, padding: '6px 14px', borderRadius: 16, border: '1px solid #c9922c', background: '#fff', color: '#92400e', textDecoration: 'none' }}>Connect Gmail</a>
+                  <button onClick={() => { try { localStorage.setItem('crm:gmail-connect-prompt', String(Date.now())); } catch { /* ignore */ } setGmailPromptHidden(true); }} style={{ fontSize: 12.5, padding: '6px 12px', borderRadius: 16, border: 'none', background: 'none', color: 'var(--k-6b7280)', cursor: 'pointer' }}>Not now</button>
+                </div>
+              )}
               <ListingFollowUps authToken={session?.access_token} userId={profile?.id} onToast={showToast}
                 onOpenContact={id => { let n = 0; const go = () => { if (openEntityRef.current?.('contact', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }} />
               <TargetedFollowUps authToken={session?.access_token}
@@ -6724,7 +6732,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     const subject = `Following up on ${i.listing}`;
                     const body = `Hi ${i.first_name || 'there'},\n\nI wanted to follow up about ${i.listing}. Is space like this still on your radar? Happy to send details or set up a time to walk it.\n`;
                     window.location.href = `mailto:${i.email ?? ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-                    showToast('Gmail isn’t connected here, so your mail app opened with the message started');
+                    showToast('Gmail isn’t connected here, so your mail app opened with the message started. Connect Gmail on the dashboard to send from the CRM.');
                     return;
                   }
                   // Open their card and start a short follow-up email (subject + body). Nothing is sent until the person presses send.

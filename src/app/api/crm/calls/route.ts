@@ -8,6 +8,7 @@ import { toE164 } from '@/lib/phone';
 import { blockKey } from '@/lib/call-blocklist';
 import { buildHistory, internalNumbers, otherParty, type HistoryCall } from '@/lib/call-history';
 import { listingTagIdsForText } from '@/lib/listing-tags-server';
+import { autoTagIdsForText } from '@/lib/lead-listing-tag';
 
 // The Calling Log: Talkroute calls + voicemails, calls the voice bot answered, and
 // calls agents log by hand — one list, scoped to the caller's workspace.
@@ -270,7 +271,10 @@ export async function PATCH(req: NextRequest) {
   if (b.notes !== undefined) {
     patch.notes = b.notes || null;
     // Re-derived from the note text on every save, so the tag and the sentence can never drift apart.
-    patch.tagged_listing_ids = await listingTagIdsForText(supabase, ctx, existing.business_unit, b.notes);
+    // ...plus the property the call SUMMARY names (the phone bot's / voicemail's AI write-up), so editing the note never wipes that tag.
+    const { data: sm } = await supabase.from('crm_call_log').select('summary, ai_meta').eq('id', id).maybeSingle();
+    const fromSummary = await autoTagIdsForText(supabase, existing.business_unit, String(sm?.summary ?? ''), [(sm?.ai_meta as { property?: string | null } | null)?.property ?? null]);
+    patch.tagged_listing_ids = [...new Set([...(await listingTagIdsForText(supabase, ctx, existing.business_unit, b.notes)), ...fromSummary])];
   }
   // The wrap-up: what the call was. Spam also closes any open call-back.
   if (b.outcome !== undefined) {

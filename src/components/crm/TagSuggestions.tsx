@@ -1,11 +1,11 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
 
-type Source = 'contact' | 'activity' | 'call';
+type Source = 'contact' | 'activity' | 'call' | 'callsummary';
 type Item = { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach?: boolean; safe?: boolean; verdict?: string; hint?: string };
-type Group = { listing_id: string; listing: string; n: number; outreach?: number; bySource: Record<Source, number> };
+type Group = { listing_id: string; listing: string; n: number; outreach?: number; bySource: Partial<Record<Source, number>> };
 type Undo = { source: Source; row_id: string; listing_id: string; before: string; after: string; tags_before: string[] };
-const SRC = { contact: 'Contact notes', activity: 'Logged note', call: 'Call note' } as const;
+const SRC = { contact: 'Contact notes', activity: 'Logged note', call: 'Call note', callsummary: 'Call summary' } as const;
 
 /**
  * Review old notes that name a property without a '#'. Nothing changes until you approve: "Tag it" on one note, or "Tag all N" for a whole
@@ -148,7 +148,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged 
             const inquiryRows = rows.filter(r => !r.outreach);
             const outreachN = rows.length - inquiryRows.length;
             const isOpen = open === g.listing_id;
-            const parts = (['contact', 'activity', 'call'] as Source[]).map(s => ({ s, n: rows.filter(r => r.source === s).length })).filter(x => x.n).map(x => `${x.n} ${SRC[x.s].toLowerCase()}`).join(' · ');
+            const parts = (['contact', 'activity', 'call', 'callsummary'] as Source[]).map(s => ({ s, n: rows.filter(r => r.source === s).length })).filter(x => x.n).map(x => `${x.n} ${SRC[x.s].toLowerCase()}`).join(' · ');
             return (
               <div key={g.listing_id} style={{ border: '1px solid #eef0f2', borderRadius: 12, marginBottom: 10, overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', flexWrap: 'wrap' }}>
