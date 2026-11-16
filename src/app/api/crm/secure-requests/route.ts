@@ -119,7 +119,18 @@ export async function GET(req: NextRequest) {
       dealLabel.set(d.id as string, address ? `Deal · ${address}` : 'Deal');
     }
   }
+  // Who a text would go to (the contact, or the deal's contact) — for the 💬 Text box on each request.
+  let textClientId = clientIdParam;
+  if (dealIdParam) textClientId = ((await db.from('crm_deals').select('client_id').eq('id', dealIdParam).maybeSingle()).data?.client_id as string | undefined) ?? '';
+  const { data: tc } = UUID_RE.test(textClientId)
+    ? await db.from('crm_clients').select('id, first_name, last_name, phone, cell_phone, business_unit').eq('id', textClientId).maybeSingle()
+    : { data: null };
+  const contact = tc ? {
+    id: tc.id as string, name: [tc.first_name, tc.last_name].filter(Boolean).join(' '), first_name: (tc.first_name as string | null) ?? '',
+    phone: ((tc.cell_phone as string | null) || (tc.phone as string | null) || null), business_unit: tc.business_unit as string,
+  } : null;
   return NextResponse.json({
+    contact,
     requests: visible.map(r => ({ ...publicShape(r), deal_label: r.deal_id ? dealLabel.get(r.deal_id) ?? 'Deal' : null, files: (files ?? []).filter(f => f.request_id === r.id) })),
   });
 }
@@ -211,6 +222,12 @@ export async function PATCH(req: NextRequest) {
     const valid = (profs ?? []).map(p => p.id as string);
     await db.from('crm_secure_requests').update({ shared_with: valid }).eq('id', r.id);
     await logSecure(db, r.id, me, 'shared', `${valid.length} agent${valid.length === 1 ? '' : 's'} added`, ip);
+  } else if (act === 'texted') {
+    // The 💬 Text box sent (or the agent opened a text on their own phone). Only live links count as "sent".
+    if (r.status !== 'open' || r.purged_at || Date.parse(r.expires_at) <= Date.now()) return NextResponse.json({ error: 'This link is not active.' }, { status: 400 });
+    const how = body.how === 'office-line' ? 'from the office line' : 'from their own phone (opened a text)';
+    await db.from('crm_secure_requests').update({ sent_at: r.sent_at ?? new Date().toISOString() }).eq('id', r.id);
+    await logSecure(db, r.id, me, 'sent', `link texted ${how}`, ip);
   } else if (act === 'resend') {
     if (r.status !== 'open' || r.purged_at || Date.parse(r.expires_at) <= Date.now()) return NextResponse.json({ error: 'This link is not active — extend it first.' }, { status: 400 });
     const email = (typeof body.email === 'string' && body.email.trim()) || r.recipient_email || '';

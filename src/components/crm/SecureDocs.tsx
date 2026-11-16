@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import type { DrivePerson } from '@/components/crm/drive/DocsDrive';
+import QuickText from '@/components/crm/QuickText';
 
 // "Secure documents" on a contact card: ask a tenant for an application / ID / pay stubs / bank statements through a
 // private expiring upload link. Files live in their own private bucket and are shown only to the broker, whoever made the
@@ -15,6 +16,7 @@ interface Req {
   view_count: number; last_upload_at: string | null; submitted_at: string | null; created_at: string; created_by: string | null;
   shared_with: string[] | null; link: string | null; files: SFile[]; deal_id?: string | null; deal_label?: string | null;
 }
+interface TextContact { id: string; name: string; first_name: string; phone: string | null; business_unit: string }
 interface LogRow { id: number; actor_label: string; action: string; detail: string | null; created_at: string }
 
 const PRESETS: Record<string, { label: string; items: Item[] }> = {
@@ -49,6 +51,8 @@ export default function SecureDocs({ clientId, dealId, authToken, userId, role, 
   onPreview?: (f: { url: string; name: string; type?: string | null }) => void;
 }) {
   const [reqs, setReqs] = useState<Req[] | null>(null);
+  const [contact, setContact] = useState<TextContact | null>(null);
+  const [textFor, setTextFor] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [preset, setPreset] = useState('tenant');
   const [items, setItems] = useState<Item[]>(PRESETS.tenant.items);
@@ -67,9 +71,10 @@ export default function SecureDocs({ clientId, dealId, authToken, userId, role, 
       const r = await fetch(`/api/crm/secure-requests?${dealId ? `dealId=${dealId}` : `clientId=${clientId}`}`, { headers: auth() });
       const j = await r.json().catch(() => ({}));
       setReqs(r.ok ? (j.requests ?? []) : []);
+      setContact(r.ok ? (j.contact ?? null) : null);
     } catch { setReqs([]); }
   }, [clientId, dealId, auth]);
-  useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); load(); }, [load]);
+  useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); setTextFor(null); load(); }, [load]);
 
   const pick = (k: string) => { setPreset(k); setItems(PRESETS[k].items); };
   const toggle = (i: Item) => setItems(cur => (cur.some(x => x.key === i.key) ? cur.filter(x => x.key !== i.key) : [...cur, i]));
@@ -158,6 +163,17 @@ export default function SecureDocs({ clientId, dealId, authToken, userId, role, 
       setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
     } catch { showToast('Could not build the zip — try opening files one at a time.'); }
     finally { setZipping(null); }
+  };
+
+  // The text a tenant gets: who it's from, what to do, the private link, when it stops working, the office number.
+  const textMessage = (r: Req) => {
+    const me = (profiles ?? []).find(p => p.id === userId)?.first_name?.trim();
+    const exp = new Date(r.expires_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'America/Chicago' });
+    const first = contact?.first_name?.trim();
+    return `${first ? `Hi ${first}, ` : 'Hi, '}${me ? `${me} with ` : ''}CRECO here. Please upload your documents through this private link (please don’t email them): ${r.link} — it works until ${exp}. Questions? Call (210) 817-3443.`;
+  };
+  const markTexted = async (r: Req, how: 'office-line' | 'own-phone') => {
+    try { await fetch('/api/crm/secure-requests', { method: 'PATCH', headers: json(), body: JSON.stringify({ id: r.id, action: 'texted', how }) }); await load(); } catch { /* the log entry is a nicety */ }
   };
 
   const copy = async (link: string | null) => {
@@ -258,6 +274,7 @@ export default function SecureDocs({ clientId, dealId, authToken, userId, role, 
                       {r.files.length > 1 && <button type="button" style={btn} disabled={zipping === r.id} onClick={() => downloadAll(r)}>{zipping === r.id ? 'Preparing…' : `↓ Download all (${r.files.length})`}</button>}
                       {live && <button type="button" style={btn} onClick={() => copy(r.link)}>Copy link</button>}
                       {live && <button type="button" style={btn} onClick={() => patch(r, { action: 'resend' }, 'Link emailed')}>{r.sent_at ? 'Resend email' : 'Email link'}</button>}
+                      {live && <button type="button" style={btn} onClick={() => setTextFor(t => (t === r.id ? null : r.id))}>💬 Text link</button>}
                       {live ? <button type="button" style={btn} onClick={() => patch(r, { action: 'revoke' }, 'Link closed')}>Close link</button>
                         : <button type="button" style={btn} onClick={() => patch(r, { action: 'extend' }, 'Link reopened for 14 days')}>Reopen link</button>}
                       {live && <button type="button" style={btn} onClick={() => patch(r, { action: 'extend' }, 'Link extended 14 days')}>Extend</button>}
@@ -269,6 +286,18 @@ export default function SecureDocs({ clientId, dealId, authToken, userId, role, 
                   )}
                   {r.purged_at && <div style={{ marginTop: 8 }}><button type="button" style={btn} onClick={() => showLog(r)}>{log ? 'Hide activity' : 'Activity'}</button></div>}
 
+                  {textFor === r.id && live && r.link && (
+                    <div style={{ marginTop: 8 }}>
+                      {contact?.phone ? (
+                        <>
+                          <QuickText authToken={authToken} businessUnit={contact.business_unit} contactId={contact.id} phone={contact.phone} name={contact.name}
+                            initialBody={textMessage(r)} showToast={showToast} onSent={() => { void markTexted(r, 'office-line'); }} />
+                          <a href={`sms:${contact.phone.replace(/[^\d+]/g, '')}?&body=${encodeURIComponent(textMessage(r))}`} onClick={() => { void markTexted(r, 'own-phone'); }}
+                            style={{ display: 'inline-block', fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', textDecoration: 'underline', padding: touch ? '8px 0' : 0 }}>Or text it from my own phone</a>
+                        </>
+                      ) : <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', fontStyle: 'italic' }}>There’s no phone number on this contact to text. Add one, or use “Copy link”.</div>}
+                    </div>
+                  )}
                   {sharing === r.id && (
                     <div style={{ marginTop: 8, background: 'var(--k-f9fafb, #f9fafb)', borderRadius: 8, padding: 10 }}>
                       <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginBottom: 6 }}>The broker, the contact’s owner and whoever made the request always see this. Tick anyone else who should.</div>

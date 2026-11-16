@@ -9,7 +9,7 @@ interface Thread { conversation_id: string; number: string | null; our_number: s
 export interface QuickTextTemplate { label: string; body: string }
 interface Props {
   authToken?: string; businessUnit: string; contactId?: string | null; phone: string | null; name?: string;
-  templates?: QuickTextTemplate[]; showToast?: (m: string) => void; onSent?: (body: string) => void;
+  templates?: QuickTextTemplate[]; /** Start the box with this message already typed (still sent only on Send). */ initialBody?: string; showToast?: (m: string) => void; onSent?: (body: string) => void;
 }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
@@ -18,11 +18,11 @@ const pretty = (n: string | null | undefined) => { const d = last10(n); return d
 const when = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const chip: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 16, padding: '6px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", minHeight: 32 };
 
-export default function QuickText({ authToken, businessUnit, contactId, phone, name, templates = [], showToast, onSent }: Props) {
+export default function QuickText({ authToken, businessUnit, contactId, phone, name, templates = [], initialBody, showToast, onSent }: Props) {
   const tail = last10(phone);
   const [thread, setThread] = useState<Thread | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [body, setBody] = useState('');
+  const [body, setBody] = useState(initialBody ?? '');
   const [busy, setBusy] = useState(false);
   const [sentNote, setSentNote] = useState<string | null>(null);
 
