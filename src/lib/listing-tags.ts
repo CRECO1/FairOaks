@@ -82,13 +82,12 @@ const esc = (s: string) => s.replace(/[.*+?^${}()[\]\\|]/g, '\\$&');
 /**
  * A property address typed WITHOUT a '#' ("called about 1222 Chulie Dr"): returns the listing and where the address sits in the text,
  * so the note box can offer one tap to turn it into a tag. Needs the street number AND the street name; the street ending (Dr, St…) is
- * optional. Returns null when nothing matches or the match fits two different addresses.
+ * optional. Returns null when nothing matches. If several of our properties are named, the first one in the text wins.
  */
 export function suggestListingTag(text: string, listings: TagListing[]): { listing: TagListing; start: number; end: number } | null {
   if (!text || !listings.length || !/\d/.test(text)) return null;
   const seen = new Set<string>();
   let best: { listing: TagListing; start: number; end: number } | null = null;
-  let ambiguous = false;
   for (const l of listings) {
     const slug = listingAddressSlug(l).toLowerCase();
     if (!slug || seen.has(slug)) continue;
@@ -102,8 +101,8 @@ export function suggestListingTag(text: string, listings: TagListing[]): { listi
     const m = re.exec(text);
     if (!m) continue;
     seen.add(slug);
-    if (best && best.listing.id !== l.id) { ambiguous = true; continue; }
-    best = { listing: l, start: m.index, end: m.index + m[0].length };
+    // A note can name several of our properties: offer the one that comes FIRST (after it is tagged, the next one is offered).
+    if (!best || m.index < best.start) best = { listing: l, start: m.index, end: m.index + m[0].length };
   }
-  return ambiguous ? null : best;
+  return best;
 }

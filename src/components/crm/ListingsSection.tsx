@@ -1971,7 +1971,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{q.name}</span>
                               {q.type && <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>{q.type}</span>}
-                              {!q.contact_id && !q.deal_id && <span title="This caller isn't a contact yet" style={{ fontSize: 10.5, color: 'var(--k-9ca3af)', border: '1px solid var(--k-e5e7eb)', borderRadius: 20, padding: '1px 7px' }}>not a contact yet</span>}
+                              {!q.contact_id && !q.deal_id && q.via === 'call' && <span title="This caller isn't a contact yet" style={{ fontSize: 10.5, color: 'var(--k-9ca3af)', border: '1px solid var(--k-e5e7eb)', borderRadius: 20, padding: '1px 7px' }}>not a contact yet</span>}
                               <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--k-0f766e)', fontWeight: 600 }}>
                                 {q.via === 'notes' ? 'In their notes' : q.via === 'task' ? `Task${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}` : q.via === 'deal' ? `Deal notes${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}` : `${q.via === 'call' ? 'Call' : q.via === 'meeting' ? 'Meeting' : q.via === 'email' ? 'Email' : 'Note'}${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}`}
                               </span>

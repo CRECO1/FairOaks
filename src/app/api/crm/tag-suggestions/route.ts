@@ -22,6 +22,19 @@ async function listingsFor(db: ReturnType<typeof adminClient>, ctx: CrmContext) 
   return (data ?? []).filter(l => listingAccessible(l as Record<string, unknown>, ctx)) as (TagListing & Record<string, unknown>)[];
 }
 
+/** Every contact with a note. The database hands back at most 1,000 rows per request whatever .limit() says, so read it in pages. */
+async function allClients(db: ReturnType<typeof adminClient>, unit: string | null) {
+  const rows: Record<string, unknown>[] = [];
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await db.from('crm_clients').select('id, first_name, last_name, business_name, notes, tagged_listing_ids, lead_hold')
+      .eq('business_unit', unit).not('notes', 'is', null).order('id').range(from, from + 999);
+    if (error) return { data: rows, error };
+    rows.push(...(data ?? []));
+    if ((data?.length ?? 0) < 1000) break;
+  }
+  return { data: rows, error: null };
+}
+
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
@@ -33,9 +46,9 @@ export async function GET(req: NextRequest) {
 
   const hold = (c: { lead_hold: boolean | null }) => !!c.lead_hold && ctx.role !== 'super_admin';
   const [clients, acts, calls] = await Promise.all([
-    db.from('crm_clients').select('id, first_name, last_name, business_name, notes, tagged_listing_ids, lead_hold').eq('business_unit', ctx.businessUnit).not('notes', 'is', null).limit(6000),
-    db.from('crm_client_activities').select('id, client_id, note, created_at, tagged_listing_ids').not('note', 'is', null).order('created_at', { ascending: false }).limit(3000),
-    db.from('crm_call_log').select('id, contact_id, notes, started_at, tagged_listing_ids, caller_name, from_number').eq('business_unit', ctx.businessUnit).not('notes', 'is', null).order('started_at', { ascending: false }).limit(2000),
+    allClients(db, ctx.businessUnit),
+    db.from('crm_client_activities').select('id, client_id, note, created_at, tagged_listing_ids').not('note', 'is', null).order('created_at', { ascending: false }).limit(1000),
+    db.from('crm_call_log').select('id, contact_id, notes, started_at, tagged_listing_ids, caller_name, from_number').eq('business_unit', ctx.businessUnit).not('notes', 'is', null).order('started_at', { ascending: false }).limit(1000),
   ]);
   const nameOf = (c: { first_name: string | null; last_name: string | null; business_name: string | null }) => c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
   const cmap = new Map<string, { name: string; hold: boolean }>();
