@@ -97,7 +97,7 @@ export function suggestListingTag(text: string, listings: TagListing[]): { listi
     let suffix = '';
     if (name.length > 1 && SUFFIX.has(name[name.length - 1].toLowerCase().replace(/\./g, ''))) suffix = name.pop() as string;
     if (alnum(name.join('')).length < 3) continue;
-    const re = new RegExp(`(?<![#\\w])${esc(words[0])}\\s+${name.map(esc).join('\\s+')}(?:\\s+${esc(suffix)}\\.?)?(?![A-Za-z0-9])`, 'i');
+    const re = new RegExp(`(?<![#\\w])${esc(words[0])}\\s+${name.map(esc).join('\\s+')}(?:\\s+(?:${[...SUFFIX].map(esc).join('|')}))?(?![A-Za-z0-9])`, 'i');
     const m = re.exec(text);
     if (!m) continue;
     seen.add(slug);
