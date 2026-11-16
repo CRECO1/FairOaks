@@ -13735,7 +13735,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 {/* Files — anything uploaded onto this person, plus the files on their deals' Docs tabs. */}
                 <ContactFiles clientId={c.id} authToken={session?.access_token} userId={profile?.id}
-                  isAdmin={isSuperAdmin || profile?.role === 'admin'} showToast={showToast} onPreview={setPreviewFile}
+                  isAdmin={isSuperAdmin || profile?.role === 'admin'} role={profile?.role} showToast={showToast} onPreview={setPreviewFile}
                   userName={`${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim()} profiles={profiles} isMobile={isMobile} onSignDoc={signLiveDoc} />
 
                 {/* Documents — leases and forms tied to this person, whether they were

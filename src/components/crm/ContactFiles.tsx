@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import DealDocUpload from '@/components/crm/DealDocUpload';
+import SecureDocs from '@/components/crm/SecureDocs';
 import LinkedDocs from '@/components/crm/drive/LinkedDocs';
 import type { DrivePerson } from '@/components/crm/drive/DocsDrive';
 import { canEditCardFile, editCardFile } from '@/components/crm/drive/card-edit';
@@ -18,11 +19,12 @@ const PREVIEWABLE = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'docx', 'xlsx',
 const kb = (n: number | null) => (n == null ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const icon = (name: string) => (/\.(png|jpe?g|webp|gif)$/i.test(name) ? '🖼' : '📄');
 
-export default function ContactFiles({ clientId, authToken, userId, isAdmin, showToast, onPreview, userName, profiles, isMobile, onSignDoc }: {
+export default function ContactFiles({ clientId, authToken, userId, isAdmin, role, showToast, onPreview, userName, profiles, isMobile, onSignDoc }: {
   clientId: string;
   authToken?: string;
   userId?: string;
   isAdmin: boolean;
+  role?: string | null;
   showToast: (m: string) => void;
   onPreview: (f: { url: string; name: string; type?: string | null }) => void;
   userName?: string;
@@ -73,6 +75,7 @@ export default function ContactFiles({ clientId, authToken, userId, isAdmin, sho
   return (
     <>
     {userId && <LinkedDocs clientId={clientId} authToken={authToken} currentUser={{ id: userId, name: userName ?? '' }} profiles={profiles ?? []} isAdmin={isAdmin} isMobile={!!isMobile} onToast={showToast} onSignDoc={onSignDoc} />}
+    <SecureDocs clientId={clientId} authToken={authToken} userId={userId} role={role} showToast={showToast} profiles={profiles} onPreview={onPreview} />
     <div style={{ marginBottom: 22 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={label}>Files{list.length ? ` (${list.length})` : ''}</div>

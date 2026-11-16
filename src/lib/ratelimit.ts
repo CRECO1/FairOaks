@@ -62,6 +62,8 @@ const LIMITS = {
   // at one company share a NAT address, and each page view makes a handful of
   // calls. Used with failOpen, see rateLimitFailOpen below.
   esign:         { requests: 120, window: '1 m' },
+  // Tenant secure-upload link (/secure/<token>): page loads, presigns, confirms. A tenant uploading a dozen phone photos stays far under this.
+  'secure-upload': { requests: 90, window: '10 m' },
   // Brochure PDF — 20 per IP per minute; each request builds a jsPDF doc, so an
   // unthrottled GET was the one public route that could be hammered to burn CPU.
   brochure:      { requests: 20, window: '1 m' },
