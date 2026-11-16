@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import { listingTagLabel, listingTagToken, parseListingTagIds, searchListingsForTag, type TagListing } from '@/lib/listing-tags';
+import { suggestListingTag, listingTagLabel, listingTagToken, parseListingTagIds, searchListingsForTag, type TagListing } from '@/lib/listing-tags';
 
 interface Profile { id: string; first_name: string; last_name: string; role?: string; }
 // A CRM contact (client). Tagging one is silent — it records who is involved in the
@@ -226,6 +226,19 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
           onBlur={e => { onBlur?.(e); setTimeout(() => setShowDrop(false), 150); }}
         />
 
+        {!hideHint && listings.length > 0 && (() => {
+          // An address typed without the '#': offer one tap to turn it into a property tag.
+          const sg = suggestListingTag(value, listings);
+          if (!sg) return null;
+          const token = listingTagToken(sg.listing);
+          return (
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => onChange(value.slice(0, sg.start) + '#' + token + value.slice(sg.end))}
+              title="Tag this property so it shows on the contact and the property (nobody is notified)"
+              style={{ marginTop: 4, fontSize: 12, fontWeight: 700, color: 'var(--k-0f766e,#0f766e)', background: 'var(--k-f0fdfa,#f0fdfa)', border: '1px solid var(--k-99f6e4,#99f6e4)', borderRadius: 14, padding: '2px 10px', cursor: 'pointer' }}>
+              🏠 Tag as {listingTagLabel(sg.listing)}?
+            </button>
+          );
+        })()}
         {!hideHint && value.includes('#') && (() => {
           const ids = parseListingTagIds(value, listings);
           if (!ids.length) return null;

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const db = adminClient();
-  const tables = ['crm_clients', 'crm_client_activities', 'crm_call_log', 'crm_deals', 'crm_deal_notes', 'crm_deal_meetings'];
+  const tables = ['crm_clients', 'crm_client_activities', 'crm_call_log', 'crm_deals', 'crm_deal_notes', 'crm_deal_meetings', 'crm_tasks'];
   const rows = await Promise.all(tables.map(t => db.from(t).select('tagged_listing_ids').not('tagged_listing_ids', 'eq', '{}').limit(1000)));
   if (rows.some(r => r.error)) return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   const ids = [...new Set(rows.flatMap(r => (r.data ?? []).flatMap(x => (x as { tagged_listing_ids: string[] | null }).tagged_listing_ids ?? [])))].slice(0, 80);

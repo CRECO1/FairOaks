@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, dbError } from '@/lib/crm-auth';
+import { listingTagIdsForText } from '@/lib/listing-tags-server';
 import { adminClient } from '@/lib/supabase-admin';
 import { validAssignee } from '@/lib/crm-assignee';
 import { normalizeStatus, syncDone } from '@/lib/tasks-view';
@@ -34,8 +35,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const supabase = adminClient();
   // Keep "done" in step everywhere: the Dashboard and Call Queue read completed_at, this page reads status. A task marked done here
   // gets its completed_at (reopening clears it), and a new assignee also becomes the agent the Call Queue files it under.
-  const { data: cur } = await supabase.from('crm_tasks').select('status, completed_at').eq('id', id).maybeSingle();
+  const { data: cur } = await supabase.from('crm_tasks').select('status, completed_at, title, description, business_unit').eq('id', id).maybeSingle();
   Object.assign(update, syncDone(cur ?? {}, update, nowIso));
+  // Re-read the property tags (#1222Chulie) whenever the title or notes change, so the tag and the sentence can't drift apart.
+  if ('title' in body || 'description' in body) {
+    const t = 'title' in body ? body.title : cur?.title;
+    const d = 'description' in body ? body.description : cur?.description;
+    update.tagged_listing_ids = await listingTagIdsForText(supabase, ctx, String(cur?.business_unit ?? ctx.businessUnit ?? 'commercial'), `${t ?? ''} ${d ?? ''}`);
+  }
   const { data, error } = await supabase.from('crm_tasks').update(update).eq('id', id).select().single();
   if (error) return dbError('api/crm/tasks/[id]', error);
   return NextResponse.json({ task: data });

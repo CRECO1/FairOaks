@@ -5,6 +5,7 @@ import { adminClient } from '@/lib/supabase-admin';
 import { dropWalledTasks, ownTasksFilter } from '@/lib/task-walls';
 import { validAssignee } from '@/lib/crm-assignee';
 import { normalizeStatus } from '@/lib/tasks-view';
+import { listingTagIdsForText } from '@/lib/listing-tags-server';
 
 const VALID_UNITS = ['residential', 'commercial'] as const;
 type BusinessUnit = typeof VALID_UNITS[number];
@@ -52,7 +53,9 @@ export async function POST(req: NextRequest) {
   if (!title) return NextResponse.json({ error: 'title required' }, { status: 400 });
   const supabase = adminClient();
   const newStatus = normalizeStatus(status) ?? 'open';   // a task created straight into "Done" is stamped too, so every page agrees it is finished
+  const unit = isAdminRole(ctx.role) ? toUnit(business_unit ?? null, toUnit(ctx.businessUnit)) : toUnit(ctx.businessUnit);
   const { data, error } = await supabase.from('crm_tasks').insert({
+    tagged_listing_ids: await listingTagIdsForText(supabase, ctx, unit, `${title ?? ''} ${description ?? ''}`),   // #1222Chulie in the task's title or notes (silent)
     title, description, due_date: due_date || null, assigned_to: assigned_to || null,
     // agent_id = the person responsible; the Call Queue is scoped by agent_id, so
     // a 'call'/'follow_up' task must carry it to show up there.

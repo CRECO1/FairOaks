@@ -1,4 +1,5 @@
-import { isAdminRole, hiddenDealIds, type CrmContext } from '@/lib/crm-auth';
+import { isAdminRole, hiddenDealIds, heldClientIds, type CrmContext } from '@/lib/crm-auth';
+import { dropWalledTasks, ownTasksFilter } from '@/lib/task-walls';
 import { canAccessLinked } from '@/lib/crm-linked-access';
 import { adminClient } from '@/lib/supabase-admin';
 
@@ -7,7 +8,7 @@ export type InquiryItem = {
   contact_id: string | null;      // null = unknown caller or a deal
   deal_id?: string | null;        // set for a deal entry (openable)
   name: string; type: string | null;
-  via: 'notes' | 'call' | 'meeting' | 'email' | 'note' | 'deal';
+  via: 'notes' | 'call' | 'meeting' | 'email' | 'note' | 'deal' | 'task';
   last_at: string | null; snippet: string | null;
 };
 
@@ -111,6 +112,22 @@ export async function buildInquiries(ctx: CrmContext, listingId: string): Promis
       if (!isAdminRole(ctx.role) && d.business_unit !== ctx.businessUnit) continue;
       const l = latest.get(d.id);
       items.set(`deal:${d.id}`, { key: `deal:${d.id}`, contact_id: null, deal_id: d.id, name: [d.client, d.property].filter(Boolean).join(' — ') || 'Deal', type: 'Deal', via: 'deal', last_at: l?.at ?? null, snippet: l?.snippet ?? null });
+    }
+  }
+
+  // Tasks whose title or notes tagged this property. Same visibility as the Tasks page: an agent sees only their own tasks, a teammate's
+  // walled-off tasks, tasks on private deals and tasks on a lead still on hold stay hidden.
+  {
+    let tq = db.from('crm_tasks').select('id, title, description, status, client_id, deal_id, due_date, created_at, business_unit, agent_id, assigned_to').contains('tagged_listing_ids', tag).order('created_at', { ascending: false }).limit(100);
+    if (!isAdminRole(ctx.role)) tq = tq.or(ownTasksFilter(ctx.userId)).eq('business_unit', ctx.businessUnit);
+    const { data: tdata, error: terr } = await tq;
+    if (!terr && tdata?.length) {
+      const hidden = new Set(await hiddenDealIds(ctx));
+      const held = await heldClientIds(ctx);
+      const rows = (await dropWalledTasks(db, ctx, tdata)).filter(t => !(t.deal_id && hidden.has(t.deal_id as string)) && !(t.client_id && held.has(t.client_id as string)));
+      for (const t of rows) {
+        items.set(`task:${t.id}`, { key: `task:${t.id}`, contact_id: (t.client_id as string | null) ?? null, name: String(t.title ?? 'Task'), type: t.status === 'done' ? 'Task · done' : 'Task', via: 'task', last_at: t.created_at as string, snippet: String(t.description ?? '').replace(/\s+/g, ' ').trim().slice(0, 160) || null });
+      }
     }
   }
 

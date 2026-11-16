@@ -76,3 +76,34 @@ export function searchListingsForTag(listings: TagListing[], query: string, limi
   const rows = q ? listings.filter(l => listingAddressSlug(l).toLowerCase().includes(q) || alnum(l.name ?? '').toLowerCase().includes(q)) : listings;
   return [...rows].sort((a, b) => listingTagLabel(a).localeCompare(listingTagLabel(b), undefined, { numeric: true })).slice(0, limit);
 }
+
+const esc = (s: string) => s.replace(/[.*+?^${}()[\]\\|]/g, '\\$&');
+
+/**
+ * A property address typed WITHOUT a '#' ("called about 1222 Chulie Dr"): returns the listing and where the address sits in the text,
+ * so the note box can offer one tap to turn it into a tag. Needs the street number AND the street name; the street ending (Dr, St…) is
+ * optional. Returns null when nothing matches or the match fits two different addresses.
+ */
+export function suggestListingTag(text: string, listings: TagListing[]): { listing: TagListing; start: number; end: number } | null {
+  if (!text || !listings.length || !/\d/.test(text)) return null;
+  const seen = new Set<string>();
+  let best: { listing: TagListing; start: number; end: number } | null = null;
+  let ambiguous = false;
+  for (const l of listings) {
+    const slug = listingAddressSlug(l).toLowerCase();
+    if (!slug || seen.has(slug)) continue;
+    const words = streetPart(l).split(/\s+/).filter(Boolean);
+    if (words.length < 2 || !/^\d+$/.test(words[0])) continue;
+    let name = words.slice(1);
+    let suffix = '';
+    if (name.length > 1 && SUFFIX.has(name[name.length - 1].toLowerCase().replace(/\./g, ''))) suffix = name.pop() as string;
+    if (alnum(name.join('')).length < 3) continue;
+    const re = new RegExp(`(?<![#\\w])${esc(words[0])}\\s+${name.map(esc).join('\\s+')}(?:\\s+${esc(suffix)}\\.?)?(?![A-Za-z0-9])`, 'i');
+    const m = re.exec(text);
+    if (!m) continue;
+    seen.add(slug);
+    if (best && best.listing.id !== l.id) { ambiguous = true; continue; }
+    best = { listing: l, start: m.index, end: m.index + m[0].length };
+  }
+  return ambiguous ? null : best;
+}

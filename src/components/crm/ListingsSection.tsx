@@ -1,5 +1,6 @@
 'use client';
 
+import TagSuggestions from '@/components/crm/TagSuggestions';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
@@ -257,14 +258,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [inquiriesLoaded, setInquiriesLoaded] = useState(false);
   useEffect(() => {
     setInquiries([]); setInquiriesLoaded(false);
-    if (!active?.id || activeTab !== 'contacts' || !authToken) return;
+    if (!active?.id || !authToken) return;
     let alive = true;
     fetch(`/api/crm/listing-inquiries?listing_id=${active.id}`, { headers: { Authorization: `Bearer ${authToken}` } })
       .then(r => (r.ok ? r.json() : null))
       .then(j => { if (alive) { setInquiries(j?.items ?? []); setInquiriesLoaded(true); } })
       .catch(() => { if (alive) setInquiriesLoaded(true); });
     return () => { alive = false; };
-  }, [active?.id, activeTab, authToken]);
+  }, [active?.id, authToken]);
 
   // Deals-at-this-property tab
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -365,6 +366,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // How many contacts / callers / deals asked about each property (#-tagged in notes). Same access rules as the 'Asked about' list.
   const [askCounts, setAskCounts] = useState<Record<string, number>>({});
   const [askedOnly, setAskedOnly] = useState(false);
+  const [showTagReview, setShowTagReview] = useState(false);
+  const [countsKey, setCountsKey] = useState(0);
   useEffect(() => {
     if (!listings.length) return;
     let live = true;
@@ -373,7 +376,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       .then(j => { if (live && j?.counts) setAskCounts(j.counts as Record<string, number>); })
       .catch(() => {});
     return () => { live = false; };
-  }, [listings.length, authToken]); // eslint-disable-line
+  }, [listings.length, authToken, countsKey]); // eslint-disable-line
 
   // Reopen the property you had open before a refresh, on the same tab (lib/view-memory).
   useRememberedSelection(`${businessUnit}:listing`, active?.id, !loading && listings.length > 0, id => {
@@ -1198,6 +1201,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
+      {showTagReview && <TagSuggestions authToken={authToken} onClose={() => { setShowTagReview(false); setCountsKey(k => k + 1); }} onToast={onToast} onChanged={() => setCountsKey(k => k + 1)} />}
 
       {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -1213,6 +1217,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           <option value="">All Statuses</option>
           {STATUSES.map(s => <option key={s} value={s}>{STATUS_CFG[s]?.label}</option>)}
         </select>
+        {isAdmin && (
+          <button type="button" onClick={() => setShowTagReview(true)} title="Find old notes that name one of our properties without a # and tag them, one tap each"
+            style={{ ...INP, width: 'auto', flex: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--k-6b7280)' }}>
+            🏠 Tag old notes
+          </button>
+        )}
         {Object.keys(askCounts).length > 0 && (
           <button type="button" onClick={() => setAskedOnly(v => !v)} title="Only properties people asked about (# tags in notes and calls), most asked first"
             style={{ ...INP, width: 'auto', flex: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, ...(askedOnly ? { background: 'var(--k-f0fdfa)', borderColor: 'var(--k-99f6e4)', color: 'var(--k-0f766e)' } : { color: 'var(--k-6b7280)' }) }}>
@@ -1393,6 +1403,19 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   })()}
                 </div>
               </div>
+              {/* How many people asked about this property + when last (#-tags), one tap to the list */}
+              {inquiries.length > 0 && (() => {
+                const last = inquiries.map(q => q.last_at).filter((x): x is string => !!x).sort().pop();
+                const days = last ? Math.floor((Date.now() - Date.parse(last)) / 86_400_000) : null;
+                const ago = days == null ? '' : days <= 0 ? ' · last asked today' : days === 1 ? ' · last asked yesterday' : ` · last asked ${days} days ago`;
+                return (
+                  <button type="button" onClick={() => setActiveTab('contacts')} title="See who asked about this property"
+                    style={{ margin: '4px 0 10px', fontSize: 12.5, fontWeight: 700, color: 'var(--k-0f766e)', background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 20, padding: '5px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                    🏠 {inquiries.length} asked about this{ago} →
+                  </button>
+                );
+              })()}
+
               {/* Tabs: one line, scrolls sideways, never wraps a label; the fade on the right says there's more */}
               <div style={{ position: 'relative', margin: '0 -24px' }}>
                 <div ref={tabDrag.ref} {...tabDrag.handlers} style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollbarWidth: 'none', padding: '0 24px', WebkitMaskImage: 'linear-gradient(to right, #000 calc(100% - 36px), transparent)', maskImage: 'linear-gradient(to right, #000 calc(100% - 36px), transparent)', ...tabDrag.style }}>
@@ -1950,7 +1973,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                               {q.type && <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>{q.type}</span>}
                               {!q.contact_id && !q.deal_id && <span title="This caller isn't a contact yet" style={{ fontSize: 10.5, color: 'var(--k-9ca3af)', border: '1px solid var(--k-e5e7eb)', borderRadius: 20, padding: '1px 7px' }}>not a contact yet</span>}
                               <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--k-0f766e)', fontWeight: 600 }}>
-                                {q.via === 'notes' ? 'In their notes' : q.via === 'deal' ? `Deal notes${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}` : `${q.via === 'call' ? 'Call' : q.via === 'meeting' ? 'Meeting' : q.via === 'email' ? 'Email' : 'Note'}${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}`}
+                                {q.via === 'notes' ? 'In their notes' : q.via === 'task' ? `Task${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}` : q.via === 'deal' ? `Deal notes${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}` : `${q.via === 'call' ? 'Call' : q.via === 'meeting' ? 'Meeting' : q.via === 'email' ? 'Email' : 'Note'}${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}`}
                               </span>
                             </div>
                             {q.snippet && <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.snippet}</div>}
