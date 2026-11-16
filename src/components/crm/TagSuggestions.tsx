@@ -17,13 +17,14 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged 
   const [items, setItems] = useState<Item[] | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [total, setTotal] = useState(0);
+  const [tenantsOut, setTenantsOut] = useState(0);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ label: string; rows: Undo[]; targeted?: { row_id: string; listing_id: string }[] } | null>(null);
   const [skips, setSkips] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem(SKIP_KEY) ?? '[]')); } catch { return new Set(); } });
   const h = { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' };
 
-  const load = () => fetch('/api/crm/tag-suggestions', { headers: h }).then(r => (r.ok ? r.json() : null)).then(j => { setItems(j?.items ?? []); setGroups(j?.groups ?? []); setTotal(j?.total ?? 0); }).catch(() => setItems([]));
+  const load = () => fetch('/api/crm/tag-suggestions', { headers: h }).then(r => (r.ok ? r.json() : null)).then(j => { setItems(j?.items ?? []); setGroups(j?.groups ?? []); setTotal(j?.total ?? 0); setTenantsOut(j?.tenantsLeftOut ?? 0); }).catch(() => setItems([]));
   useEffect(() => { load(); }, []); // eslint-disable-line
 
   const key = (i: { source: string; row_id: string }) => `${i.source}:${i.row_id}`;
@@ -115,7 +116,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged 
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)', marginBottom: 12 }}>
           Old notes that name one of our properties but were never tagged. Tagging changes only that address in the note into a # tag, so it counts on the property. Nothing changes until you tap, and a batch can be undone.
-          {items && ` ${live.length} left to review${total > live.length ? ` (of ${total})` : ''}.`}
+          {items && ` ${live.length} left to review${total > live.length ? ` (of ${total})` : ''}.`}{tenantsOut > 0 && ` ${tenantsOut} notes that are current tenants' rent-roll lines are left out.`}
         </div>
         {undo && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--k-f0fdfa, #f0fdfa)', border: '1px solid var(--k-99f6e4, #99f6e4)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, fontSize: 13 }}>

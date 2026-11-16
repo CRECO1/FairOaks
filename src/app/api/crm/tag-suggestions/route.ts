@@ -14,9 +14,12 @@ type Db = ReturnType<typeof adminClient>;
 const MAX_BATCH = 500;
 /** Notes that are OUTREACH LISTS ("Auto Brite – French Pl (1353 W French Pl) lease prospect — Roofing"), not someone asking about the property.
  *  Tagging those would make "asked about" mean "we targeted them", so the one-tap "Tag all" leaves them out (each can still be tagged by hand). */
-const OUTREACH = /\blease prospect\b|\bsale prospect\b|outbound prospect|\bprospect\s*[—–-]|\bprospect list\b|\boutreach\b|\bhit list\b/i;
+const OUTREACH = /\blease prospect\b|\bsale prospect\b|outbound prospect|\bprospect\s*[—–-]|\bprospect for\b|\bprospect list\b|\boutreach\b|\bhit list\b|\benriched \d{4}-\d{2}-\d{2}/i;
+/** Notes that are a CURRENT TENANT's rent-roll line ("… | Unit: 3100 | Rent: $615/mo | Lease …"): they already lease from us, so they are neither inquiries nor outreach targets. Left out of the review altogether. */
+const TENANT = /\|\s*unit:\s*\S[^|]*\|\s*rent:\s*\$/i;
 const INQUIRY = /engaged:|crexi lead|loopnet lead|inquir|asked about|called about|requested info|viewed space/i;
 const looksLikeOutreach = (t: string) => OUTREACH.test(t) && !INQUIRY.test(t);
+const looksLikeTenant = (t: string) => TENANT.test(t) && !INQUIRY.test(t);
 
 /**
  * Old notes that name one of our properties without a '#' ("called about 1222 Chulie Dr").
@@ -61,11 +64,13 @@ export async function GET(req: NextRequest) {
     db.from('crm_client_activities').select('id, client_id, note, created_at, tagged_listing_ids').not('note', 'is', null).order('created_at', { ascending: false }).limit(1000),
     db.from('crm_call_log').select('id, contact_id, notes, started_at, tagged_listing_ids, caller_name, from_number').eq('business_unit', ctx.businessUnit).not('notes', 'is', null).order('started_at', { ascending: false }).limit(1000),
   ]);
+  let tenantsLeftOut = 0;
   const nameOf = (c: { first_name: string | null; last_name: string | null; business_name: string | null }) => c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
   const cmap = new Map<string, { name: string; hold: boolean }>();
   function pushRow(source: Source, rowId: string, contactId: string | null, who: string, text: string, at: string | null, targeted: string[] = []) {
     const sg = suggestListingTag(text, listings);
     if (!sg) return;
+    if (looksLikeTenant(text)) { tenantsLeftOut++; return; }
     if (targeted.includes(sg.listing.id) && looksLikeOutreach(text)) return;   // already marked as targeted: done
     const l = lc.get(sg.listing.id)!;
     out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at, outreach: looksLikeOutreach(text), safe: INQUIRY.test(text) && !looksLikeOutreach(text) });
@@ -91,7 +96,7 @@ export async function GET(req: NextRequest) {
     const g = groups.get(i.listing_id) ?? { listing_id: i.listing_id, listing: i.listing, n: 0, outreach: 0, bySource: { contact: 0, activity: 0, call: 0 } };
     g.n++; if (i.outreach) g.outreach++; g.bySource[i.source]++; groups.set(i.listing_id, g);
   }
-  return NextResponse.json({ items: out.slice(0, 1500), total: out.length, groups: [...groups.values()].sort((a, b) => (b.n - b.outreach) - (a.n - a.outreach) || b.n - a.n) });
+  return NextResponse.json({ items: out.slice(0, 1500), total: out.length, tenantsLeftOut, groups: [...groups.values()].sort((a, b) => (b.n - b.outreach) - (a.n - a.outreach) || b.n - a.n) });
 }
 
 type Applied = { source: Source; row_id: string; listing_id: string; ok: boolean; reason?: string; before?: string; after?: string; tags_before?: string[] };
