@@ -137,7 +137,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged 
         )}
         {items && safeRows.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--k-f9fafb, #f9fafb)', border: '1px solid var(--k-e5e7eb, #e5e7eb)', borderRadius: 12, padding: '10px 12px', marginBottom: 12 }}>
-            <div style={{ flex: '1 1 220px', fontSize: 13 }}><b>{safeRows.length} notes look safe</b> across {safeProps} propert{safeProps === 1 ? 'y' : 'ies'}: they say “Engaged:”, “Crexi lead” or “asked about”, and outreach lists are left out.</div>
+            <div style={{ flex: '1 1 220px', fontSize: 13 }}><b>{safeRows.length} note{safeRows.length === 1 ? '' : 's'} look{safeRows.length === 1 ? 's' : ''} safe</b> across {safeProps} propert{safeProps === 1 ? 'y' : 'ies'}: they say “Engaged:”, “Crexi lead” or “asked about”, and outreach lists are left out.</div>
             <button disabled={busy !== null} onClick={applySafe} style={{ fontSize: 13, fontWeight: 700, padding: '8px 16px', borderRadius: 18, border: '1px solid var(--k-99f6e4, #99f6e4)', background: 'var(--k-f0fdfa, #f0fdfa)', color: 'var(--k-0f766e, #0f766e)', cursor: 'pointer' }}>{busy === 'safe' ? 'Tagging…' : `Apply the ${safeRows.length} safe ones`}</button>
           </div>
         )}

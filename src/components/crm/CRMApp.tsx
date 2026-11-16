@@ -6719,6 +6719,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <TargetedFollowUps authToken={session?.access_token}
                 onOpenContact={id => { let n = 0; const go = () => { if (openEntityRef.current?.('contact', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }}
                 onSecondTouch={i => {
+                  // No Gmail connected for this login: the in-CRM email panel can't open, so open the mail app with the same message started.
+                  if (gmailChecked && !gmailConnected) {
+                    const subject = `Following up on ${i.listing}`;
+                    const body = `Hi ${i.first_name || 'there'},\n\nI wanted to follow up about ${i.listing}. Is space like this still on your radar? Happy to send details or set up a time to walk it.\n`;
+                    window.location.href = `mailto:${i.email ?? ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                    showToast('Gmail isn’t connected here, so your mail app opened with the message started');
+                    return;
+                  }
                   // Open their card and start a short follow-up email (subject + body). Nothing is sent until the person presses send.
                   let n = 0;
                   const go = () => {
