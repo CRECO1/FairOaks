@@ -76,7 +76,9 @@ export default function SecureDocs({ clientId, dealId, autoOpen, onAutoOpened, a
       setContact(r.ok ? (j.contact ?? null) : null);
     } catch { setReqs([]); }
   }, [clientId, dealId, auth]);
-  useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); setTextFor(null); load(); }, [load]);
+  // Reset only when the card is for a DIFFERENT contact/deal. (A login-token refresh changes `load` too — that must reload the list, never close a form someone is filling in.)
+  useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); setTextFor(null); }, [clientId, dealId]);
+  useEffect(() => { load(); }, [load]);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
