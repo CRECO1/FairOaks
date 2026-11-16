@@ -24,6 +24,7 @@ export default function SecureUploadPage() {
   const [busy, setBusy] = useState<Record<string, string>>({});   // item key → "Uploading name…"
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [sentBefore, setSentBefore] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [missing, setMissing] = useState(false);
   const api = `/api/secure-upload/${token}`;
@@ -37,7 +38,7 @@ export default function SecureUploadPage() {
         if (r.status === 404) { setMissing(true); return; }
         if (r.status === 429) { setErr('Lots of people are using this link right now — please wait a minute and refresh.'); return; }
         const j: Data = await r.json();
-        setData(j); setFiles(j.files ?? []); setDone(!!j.submitted);
+        setData(j); setFiles(j.files ?? []); setDone(!!j.submitted); setSentBefore(!!j.submitted);
       } catch { setErr('We couldn’t load this page. Please check your connection and refresh.'); }
     })();
   }, [api]);
@@ -84,7 +85,7 @@ export default function SecureUploadPage() {
     setFinishing(true); setErr(null);
     const r = await post({ action: 'finish' });
     setFinishing(false);
-    if (r.ok) setDone(true); else setErr(r.j.error || 'Something went wrong — please try again.');
+    if (r.ok) { setDone(true); setSentBefore(true); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* older browsers */ } } else setErr(r.j.error || 'Something went wrong — please try again.');
   };
 
   const first = (data?.name ?? '').trim().split(/\s+/)[0];
@@ -146,16 +147,30 @@ export default function SecureUploadPage() {
       <p style={{ margin: '0 0 14px', color: '#4b5563', lineHeight: 1.5 }}>
         {data.agentName} asked for the items below. This page is private: only your CRECO broker can see what you upload, and files are encrypted while stored. Please don’t email these documents.
       </p>
+      {done && (
+        <div role="status" style={{ background: '#f0fdf4', border: '2px solid #16a34a', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: '#15803d' }}>✓ Your documents were sent</div>
+          <div style={{ fontSize: 14, color: '#166534', marginTop: 4, lineHeight: 1.5 }}>
+            {data.agentName} has been notified that {files.length} file{files.length === 1 ? '' : 's'} arrived. You can close this page now. If you add another file below, you’ll see a button to send it too.
+          </div>
+        </div>
+      )}
       {items.length > 0 && <div style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 600, color: doneItems === items.length ? '#15803d' : '#6b7280' }}>{doneItems === items.length ? '✓ Everything on the list is uploaded' : `${doneItems} of ${items.length} items uploaded`}</div>}
       {data.note && <div style={{ ...card, background: '#faf7ef', borderLeft: `3px solid ${GOLD}`, whiteSpace: 'pre-line' }}>{data.note}</div>}
       {err && <div role="alert" style={{ ...card, color: '#b91c1c', borderColor: '#fecaca', background: '#fef2f2' }}>{err}</div>}
       {items.map(i => slot(i.key, i.label))}
       {slot(OTHER, 'Anything else you’d like to include', true)}
-      <button type="button" onClick={finish} disabled={finishing || !files.length}
-        style={{ width: '100%', minHeight: 52, borderRadius: 12, border: 'none', background: files.length ? '#111' : '#d1d5db', color: '#fff', fontWeight: 800, fontSize: 16, cursor: files.length && !finishing ? 'pointer' : 'default', marginTop: 4 }}>
-        {finishing ? 'Sending…' : done ? '✓ Sent — tap to notify again' : 'I’m done — notify my broker'}
-      </button>
-      {done && <p style={{ textAlign: 'center', color: '#15803d', fontWeight: 600, marginTop: 12 }}>Thank you{first ? `, ${first}` : ''}! {data.agentName} has been told your documents arrived.</p>}
+      {done ? (
+        <div role="status" style={{ ...card, textAlign: 'center', background: '#f0fdf4', borderColor: '#86efac', marginTop: 4 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: '#15803d' }}>✓ All done — nothing more to do</div>
+          <div style={{ fontSize: 13.5, color: '#166534', marginTop: 4 }}>{data.agentName} has your documents. You can close this page.</div>
+        </div>
+      ) : (
+        <button type="button" onClick={finish} disabled={finishing || !files.length}
+          style={{ width: '100%', minHeight: 52, borderRadius: 12, border: 'none', background: files.length ? '#111' : '#d1d5db', color: '#fff', fontWeight: 800, fontSize: 16, cursor: files.length && !finishing ? 'pointer' : 'default', marginTop: 4 }}>
+          {finishing ? 'Sending…' : sentBefore ? 'Send the new files too' : 'I’m done — send to my broker'}
+        </button>
+      )}
       <p style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12, marginTop: 18, lineHeight: 1.6 }}>
         Up to {data.maxFileMb} MB per file · PDF, photo, Word or Excel{exp && <> · this link works until {exp}</>}<br />
         Need help? Call (210) 817-3443.
