@@ -227,3 +227,21 @@ export async function notifyOpened(db: SupabaseClient, r: SecureRequestRow): Pro
     }, { db });
   } catch (e) { console.error('[secure-upload] opened alert failed', e); }
 }
+
+/**
+ * A file was refused by the safety scan: a phone alert to the request's creator, the contact's owner and the deal's owner
+ * (no email, and the filename is shortened). One alert per request — a second block replaces the first instead of stacking.
+ */
+export async function notifyBlocked(db: SupabaseClient, r: SecureRequestRow, filename: string, reason: string): Promise<void> {
+  try {
+    const { data: c } = await db.from('crm_clients').select('agent_id').eq('id', r.client_id).maybeSingle();
+    const { data: d } = r.deal_id ? await db.from('crm_deals').select('agent_id').eq('id', r.deal_id).maybeSingle() : { data: null };
+    const ids = [...new Set([r.created_by, c?.agent_id as string | null | undefined, d?.agent_id as string | null | undefined].filter((x): x is string => !!x))];
+    const name = filename.length > 50 ? `${filename.slice(0, 47)}…` : filename;
+    await sendPushToProfiles(ids, {
+      title: `⚠️ A file from ${r.recipient_name || 'a contact'} was blocked`,
+      body: `${name} — looks like ${reason}. It was not saved.`,
+      url: crmLink('contacts', { type: 'contact', id: r.client_id }), tag: `secure-blocked-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
+    }, { db });
+  } catch (e) { console.error('[secure-upload] blocked alert failed', e); }
+}

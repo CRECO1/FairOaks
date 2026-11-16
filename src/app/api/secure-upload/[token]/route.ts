@@ -6,7 +6,7 @@ import { isAutomationUA } from '@/lib/automation-ua';
 import { adminClient } from '@/lib/supabase-admin';
 import { scanFile, SCAN_VERSION } from '@/lib/file-scan';
 import {
-  SECURE_BUCKET, CONTENT_TYPES, MAX_FILE_SIZE, MAX_FILES_PER_REQUEST, UUID_RE, extOf, logSecure, notifyUploads, notifyOpened, sniffStored, type SecureRequestRow,
+  SECURE_BUCKET, CONTENT_TYPES, MAX_FILE_SIZE, MAX_FILES_PER_REQUEST, UUID_RE, extOf, logSecure, notifyUploads, notifyOpened, notifyBlocked, sniffStored, type SecureRequestRow,
 } from '@/lib/secure-upload';
 
 // PUBLIC, token-gated — intentionally NOT in middleware.ts's matcher, so a tenant (no login) reaches it.
@@ -129,6 +129,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (!scan.ok) {
       await db.storage.from(SECURE_BUCKET).remove([storagePath]);
       await logSecure(db, r.id, { label: 'system' }, 'blocked', `${filename} — refused: looks like ${scan.reason} (${scan.code})`, ip);
+      after(() => notifyBlocked(db, r, filename, scan.reason));   // after the tenant has their answer — never slows the page
       return NextResponse.json({ error: `“${filename}” was stopped by our security check. Please send a plain PDF or photo instead, or call us at (210) 817-3443.` }, { status: 400 });
     }
     const { data: file, error } = await db.from('crm_secure_files')
