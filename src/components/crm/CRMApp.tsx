@@ -2523,6 +2523,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [session, profile, signLiveDoc]);
   // A Matchmaker alert email links to /crm/<bu>?mm=<tenant id>#properties: open Properties → Matchmaker on that tenant.
   const [matchmakerClientId, setMatchmakerClientId] = useState<string | null>(null);
+  // The contact card's "Find space" button: Properties → Matchmaker, already on that person.
+  const openMatchmakerFor = (id: string) => { setPage('properties'); setPropertiesTab('matchmaker'); setMatchmakerClientId(id); };
   useEffect(() => {
     if (!session || !profile) return;
     const id = new URLSearchParams(window.location.search).get('mm');
@@ -11716,6 +11718,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   authToken={session?.access_token}
                   isMobile={isMobile}
                   initialClientId={matchmakerClientId ?? undefined}
+                  onInitialConsumed={() => setMatchmakerClientId(null)}
                 />
               )}
               {propertiesTab === 'floorplan' && (
@@ -13544,8 +13547,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <ContactJumpBar />
                 {/* Contact Info */}
                 <div>
-                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 10 }}>
-                    {c.type === 'Tenant' ? '🔑 Tenant Details' : c.type === 'Buyer' ? '🏡 Buyer Details' : c.type === 'Seller' ? '🪧 Seller Details' : c.type === 'Landlord/Investor' ? '🏢 Landlord Details' : c.type === 'Agent' || c.type === 'Broker' ? '🤝 Agent Details' : 'Contact Information'}
+                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <span>{c.type === 'Tenant' ? '🔑 Tenant Details' : c.type === 'Buyer' ? '🏡 Buyer Details' : c.type === 'Seller' ? '🪧 Seller Details' : c.type === 'Landlord/Investor' ? '🏢 Landlord Details' : c.type === 'Agent' || c.type === 'Broker' ? '🤝 Agent Details' : 'Contact Information'}</span>
+                    {businessUnit === 'commercial' && (c.type === 'Tenant' || c.type === 'Buyer') && (
+                      <button onClick={() => { setActiveClient(null); openMatchmakerFor(c.id); }} title="Open the Matchmaker on ${c.first_name || 'this contact'} — see what fits what they need"
+                        style={{ textTransform: 'none', letterSpacing: 0, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: isMobile ? '9px 14px' : '4px 11px', minHeight: isMobile ? 40 : undefined, fontSize: 12.5, fontWeight: 700, color: 'var(--k-a8741a)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', flexShrink: 0 }}>🎯 Find space</button>
+                    )}
                   </div>
                   {isMobile && (() => {
                     const missing = [!c.email && 'Email', !c.phone && 'Phone', !c.cell_phone && 'Cell', (c.type === 'Agent' || c.type === 'Broker') && !c.brokerage && 'Brokerage', (c.type === 'Agent' || c.type === 'Broker') && !c.license && 'License #'].filter(Boolean) as string[];

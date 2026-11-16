@@ -8,6 +8,7 @@ import StarButton from '@/components/crm/StarButton';
 import Skeleton from '@/components/crm/Skeleton';
 import MatchEmailModal from '@/components/crm/MatchEmailModal';
 import { criteriaFromRow, describeCriteria, displayName, hasCriteria as hasNeed, matchProperties, MATCH_COLUMNS, possessive, propertyLine, propertyTitle, sourceLabel, type DealType, type Fit, type MatchProperty, type NeedCriteria } from '@/lib/matchmaker/match';
+import { summarizeExtraction, type ExtractedSearch } from '@/lib/matchmaker/extract';
 
 const GROUP_STEP = 12;     // listings shown per fit group before "Show more"
 const PEOPLE_SHOWN = 150;  // people listed at once; the heading always reports the true total
@@ -49,8 +50,10 @@ const crit = (r: Req): NeedCriteria => ({ dealType: r.dealType, assetTypes: r.as
 const sentWhen = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 const buyerName = (b: Buyer) => [b.first_name, b.last_name].filter(Boolean).join(' ') || b.business_name || 'Contact';
 const hasSaved = (b: Buyer) => !!(b.asset_types?.length || b.req_size_min || b.req_size_max || b.req_price_min || b.req_price_max || b.req_submarkets?.length || b.req_rate_max || b.req_must_haves);
-/** Who to look at first: people with the daily alert on, then people marked as searching, then anyone with a saved search. */
-const tier = (b: Buyer) => (b.req_auto_match ? 0 : b.req_active ? 1 : hasSaved(b) ? 2 : 3);
+/** A real search says more than a property type: a size, a budget, an area, a need, lease or buy. 161 contacts carry only a type from an old import. */
+const isReal = (b: Buyer) => !!(b.req_size_min || b.req_size_max || b.req_price_min || b.req_price_max || b.req_submarkets?.length || b.req_rate_max || b.req_must_haves || b.req_deal_type || b.req_active || b.req_auto_match);
+/** Who to look at first: the daily alert on, then marked as searching, then a real saved search, then just a type, then everyone else. */
+const tier = (b: Buyer) => (b.req_auto_match ? 0 : b.req_active ? 1 : isReal(b) ? 2 : hasSaved(b) ? 3 : 4);
 
 // ── data: everything is asked for at once, shown as it arrives, and kept for the next visit ───────────────────────────────
 type PageResult = { data: unknown[] | null; error: { message?: string } | null };
@@ -149,10 +152,12 @@ function Switch({ on, disabled, onChange, children, big }: { on: boolean; disabl
   );
 }
 
-export default function MatchmakerSection({ businessUnit, onToast, currentUserId, authToken, isMobile = false, initialClientId }: {
+export default function MatchmakerSection({ businessUnit, onToast, currentUserId, authToken, isMobile = false, initialClientId, onInitialConsumed }: {
   businessUnit: string; onToast: (m: string) => void; currentUserId?: string; authToken?: string; isMobile?: boolean;
-  /** Open on this tenant (a link from a Matchmaker alert email). */
+  /** Open on this tenant (a link from a Matchmaker alert email, or the contact card's Find space button). */
   initialClientId?: string;
+  /** Called once that tenant is open, so the parent can forget the id and the next visit starts clean. */
+  onInitialConsumed?: () => void;
 }) {
   const supabase = useMemo(() => createBrowserClient(), []);
   const { buyers, props, loadingPeople, loadingProps, setupMissing, failed, patchBuyer, addBuyer } = useMatchmakerData(supabase, businessUnit);
@@ -176,6 +181,10 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   const [mail, setMail] = useState<null | 'agent' | 'client'>(null);
   const [more, setMore] = useState<Record<Fit, number>>({ strong: GROUP_STEP, good: GROUP_STEP, possible: GROUP_STEP });
   const [possibleOpen, setPossibleOpen] = useState(false);
+  // "Describe it": a typed sentence or the notes on the card become the search
+  const [describe, setDescribe] = useState('');
+  const [reading, setReading] = useState<null | 'typed' | 'notes'>(null);
+  const [filled, setFilled] = useState<null | { search: ExtractedSearch; source: 'ai' | 'rules'; from: 'typed' | 'notes'; applied: boolean }>(null);
   const autoOpened = useRef(false);
   const sizeRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLInputElement>(null);
@@ -228,8 +237,10 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   function pick(b: Buyer) {
     setSel(b); setCalled(new Set()); setPeopleOpen(false);
     setReq(reqFrom(b));
-    setFormOpen(!hasNeed(criteriaFromRow(b)));   // a saved search opens as a summary with the matches right under it
+    // a real saved search opens as a summary with the matches right under it; someone with only a property type still gets the form (and the describe box)
+    setFormOpen(!(isReal(b) && hasNeed(criteriaFromRow(b))));
     setMore({ strong: GROUP_STEP, good: GROUP_STEP, possible: GROUP_STEP }); setPossibleOpen(false);
+    setFilled(null); setDescribe('');
     void loadState(b.id);
   }
   // A link from an alert email opens straight on that tenant.
@@ -237,14 +248,14 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     if (!initialClientId || autoOpened.current || loadingPeople) return;
     autoOpened.current = true;
     const b = buyers.find(x => x.id === initialClientId);
-    if (b) { setWho(''); pick(b); return; }
+    if (b) { setWho(''); pick(b); onInitialConsumed?.(); return; }
     // not one of the buyer / tenant / investor types the list shows (a tenant-rep client saved by the Copilot, say): open it anyway
     void (async () => {
       const { data } = await supabase.from('crm_clients').select(BUYER_COLS + (setupMissing ? '' : BUYER_COLS_NEW)).eq('id', initialClientId).maybeSingle();
       if (!data) return;
       const row = data as unknown as Buyer;
       addBuyer(row);
-      setWho(''); pick(row);
+      setWho(''); pick(row); onInitialConsumed?.();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialClientId, buyers, loadingPeople]);
@@ -291,12 +302,16 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   }), [shown]);
   const strongCt = visible.filter(r => r.fit === 'strong').length;
   const goodCt = visible.filter(r => r.fit === 'good').length;
+  // Most Property DB rows were last checked more than two months ago, so "confirm it's still available" on every card is noise: say it once.
+  const AGE_CAVEAT = /— confirm it.s still available$/;
+  const staleShare = visible.length ? visible.filter(r => r.caveats.some(c => AGE_CAVEAT.test(c))).length / visible.length : 0;
+  const hideAge = visible.length >= 5 && staleShare >= 0.6;
   const thin = hasCriteria && visible.length > 40 && !need.sizeMin && !need.sizeMax && need.areas.length === 0;   // too loose to be useful
 
   const peopleMatches = useMemo(() => {
     const q = search.trim().toLowerCase();
     return buyers
-      .filter(b => (!who || (who === 'criteria' ? hasSaved(b) : b.type === who))
+      .filter(b => (!who || (who === 'criteria' ? isReal(b) : b.type === who))
         && (!q || `${b.first_name ?? ''} ${b.last_name ?? ''} ${b.business_name ?? ''}`.toLowerCase().includes(q)))
       .sort((a, b) => tier(a) - tier(b));   // stable: the name order from the load is kept inside each group
   }, [buyers, search, who]);
@@ -305,7 +320,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     Tenant: buyers.filter(b => b.type === 'Tenant').length,
     Buyer: buyers.filter(b => b.type === 'Buyer').length,
     'Landlord/Investor': buyers.filter(b => b.type === 'Landlord/Investor').length,
-    criteria: buyers.filter(hasSaved).length,
+    criteria: buyers.filter(isReal).length,
   }), [buyers]);
 
   async function addCall(p: Prop) {
@@ -349,6 +364,35 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     setMail(kind);
   }
 
+  // Put an extracted search into the form (the criteria; the two switches stay as they were).
+  const applySearch = (x: ExtractedSearch) => setReq(r => ({
+    ...r, dealType: x.dealType, assetTypes: x.assetTypes,
+    sizeMin: x.sizeMin != null ? String(x.sizeMin) : '', sizeMax: x.sizeMax != null ? String(x.sizeMax) : '',
+    rateMax: x.rateMax != null ? String(x.rateMax) : '', priceMin: x.priceMin != null ? String(x.priceMin) : '', priceMax: x.priceMax != null ? String(x.priceMax) : '',
+    submarkets: x.areas, moveInBy: x.moveInBy ?? '', mustHaves: x.mustHaves,
+  }));
+  async function readSearch(from: 'typed' | 'notes') {
+    if (reading) return;
+    if (from === 'typed' && !describe.trim()) return;
+    if (from === 'notes' && !sel) return;
+    setReading(from);
+    try {
+      const r = await fetch('/api/crm/matchmaker/extract', { method: 'POST', headers: authHeaders, body: JSON.stringify(from === 'notes' ? { client_id: sel!.id } : { text: describe }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { onToast(j.error || 'Could not read that — try again'); return; }
+      const x = j.search as ExtractedSearch | undefined;
+      if (!x?.found) {
+        onToast(j.empty ? 'Nothing in the notes yet — type what they need above' : from === 'notes' ? 'The notes do not say what they are looking for — type it above' : 'Could not find a search in that — try adding a size or a type');
+        return;
+      }
+      // Notes can disagree with a search someone already built, so those wait for a click; a typed sentence is an instruction.
+      const replace = from === 'typed' || !hasCriteria;
+      if (replace) { applySearch(x); setFormOpen(true); if (from === 'typed') setDescribe(''); }
+      setFilled({ search: x, source: (j.source as 'ai' | 'rules') ?? 'ai', from, applied: replace });
+    } catch { onToast('Could not read that — try again'); }
+    finally { setReading(null); }
+  }
+
   const addArea = (value?: string) => {
     const v = (value ?? areaDraft).trim();
     if (!v) return;
@@ -369,6 +413,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   const ghost: React.CSSProperties = { minHeight: isMobile ? 44 : 32, padding: '0 14px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
   const card: React.CSSProperties = { background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, padding: isMobile ? 14 : 16 };
   const tenantFirst = sel ? (sel.first_name || buyerName(sel)) : '';
+  const theirs = tenantFirst ? possessive(tenantFirst) : 'their';
 
   // ── the people list (a rail on a desktop, a sheet on a phone) ──
   const peoplePicker = (
@@ -429,9 +474,9 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
               {r.reasons.slice(0, 3).map(w => <div key={w}><span style={{ color: 'var(--k-16a34a)', fontWeight: 700 }}>✓</span> {w}</div>)}
             </div>
           )}
-          {r.caveats.length > 0 && (
+          {r.caveats.filter(c => !(hideAge && AGE_CAVEAT.test(c))).length > 0 && (
             <div style={{ marginTop: 3, fontSize: 11.5, color: '#9a6a00', lineHeight: 1.5 }}>
-              {r.caveats.slice(0, 2).map(w => <div key={w}>• {w}</div>)}
+              {r.caveats.filter(c => !(hideAge && AGE_CAVEAT.test(c))).slice(0, 2).map(w => <div key={w}>• {w}</div>)}
             </div>
           )}
           {(p.listing_agent_name || tel) && (
@@ -520,6 +565,22 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
               </div>
             </div>
 
+            {filled && (
+              <div role="status" style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--k-fdf6e8)', border: '1px solid #ecd9a8', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--k-374151)', lineHeight: 1.5 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--k-a8741a)' }}>
+                    ✨ {filled.applied ? (filled.from === 'notes' ? `Filled in from ${theirs} notes` : 'Filled in from what you typed') : `Found in ${theirs} notes`}
+                    <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}> · {filled.source === 'ai' ? `read by AI, ${filled.search.confidence} confidence` : 'read by simple rules (the AI was unavailable)'}</span>
+                  </div>
+                  <div style={{ marginTop: 2 }}>{summarizeExtraction(filled.search)}</div>
+                  {filled.search.evidence[0] && <div style={{ marginTop: 3, fontSize: 12, color: 'var(--k-6b7280)', fontStyle: 'italic' }}>“{filled.search.evidence[0]}”</div>}
+                  <div style={{ marginTop: 4, fontSize: 12, color: 'var(--k-6b7280)' }}>{filled.applied ? (sel ? 'Check it, change anything that is off, then save.' : 'Check it — the matches are below.') : 'This is different from the search on screen.'}</div>
+                  {!filled.applied && <button onClick={() => { applySearch(filled.search); setFormOpen(true); setFilled({ ...filled, applied: true }); }} style={{ ...ghost, marginTop: 8, background: '#c9922c', borderColor: '#c9922c', color: '#fff', fontWeight: 700 }}>Use this search</button>}
+                </div>
+                <button onClick={() => setFilled(null)} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: '#c9b48a', cursor: 'pointer', fontSize: 16, padding: isMobile ? 8 : 2, flexShrink: 0 }}>✕</button>
+              </div>
+            )}
+
             {!formOpen && hasCriteria && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', minWidth: 0 }}>
@@ -531,6 +592,23 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
 
             {formOpen && (
               <div>
+                <div style={{ marginBottom: 14, padding: isMobile ? 12 : 14, borderRadius: 10, background: 'var(--k-fdf6e8)', border: '1px solid #ecd9a8' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-a8741a)', marginBottom: 8 }}>✨ Quickest way: type or paste what they need</div>
+                  <div style={{ display: 'flex', gap: 8, flexDirection: isMobile ? 'column' : 'row' }}>
+                    <textarea value={describe} onChange={e => setDescribe(e.target.value)} rows={2} aria-label="Describe what they need"
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void readSearch('typed'); } }}
+                      placeholder="e.g. 3,000 SF office in Boerne, up to $30/SF, by March — needs a drive-thru"
+                      style={{ ...inp, flex: 1, resize: 'vertical', minHeight: isMobile ? 76 : 56, background: 'var(--k-fff)' }} />
+                    <button onClick={() => void readSearch('typed')} disabled={!describe.trim() || !!reading}
+                      style={{ padding: '0 18px', minHeight: isMobile ? 46 : 40, alignSelf: isMobile ? 'stretch' : 'flex-start', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: !describe.trim() || reading ? 'default' : 'pointer', opacity: !describe.trim() || reading ? .55 : 1, whiteSpace: 'nowrap' }}>{reading === 'typed' ? 'Reading…' : 'Fill it in'}</button>
+                  </div>
+                  {sel && (
+                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <button onClick={() => void readSearch('notes')} disabled={!!reading} style={{ ...ghost, opacity: reading ? .6 : 1 }}>{reading === 'notes' ? 'Reading…' : `📝 Read ${theirs} notes`}</button>
+                      <span style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>Looks through the notes on {tenantFirst}’s card for what they are asking for.</span>
+                    </div>
+                  )}
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 14 }}>
                   <div>
                     <div style={lbl}>Looking to</div>
@@ -679,6 +757,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                     </span>
                   </div>
                 )}
+                {hideAge && <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', margin: '0 0 12px' }}>Most of these were last checked more than two months ago — confirm one is still available before you send it.</div>}
                 {sel && hiddenCount > 0 && (
                   <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', margin: '0 0 10px' }}>
                     {hiddenCount} marked “not a fit” for {tenantFirst} {showHidden ? 'shown below, dimmed' : 'hidden'} · <button onClick={() => setShowHidden(v => !v)} style={{ background: 'none', border: 'none', color: 'var(--k-a8741a)', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 12.5, fontFamily: "'DM Sans',sans-serif" }}>{showHidden ? 'hide them' : 'show them'}</button>

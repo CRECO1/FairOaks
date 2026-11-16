@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { criteriaFromRow, describeCriteria, displayName, EMAIL_MIN_SCORE, EMPTY_NEED, matchProperties, parseRate, possessive, propertyLine, propertyTitle, suiteOf, type MatchProperty, type NeedCriteria } from '../src/lib/matchmaker/match';
 import { buildMatchEmail } from '../src/lib/matchmaker/email';
+import { buildExtractInput, heuristicExtract, normalizeType, sanitizeExtraction, summarizeExtraction } from '../src/lib/matchmaker/extract';
 
 const NOW = new Date('2026-11-11T12:00:00Z');
 const day = (n: number) => new Date(NOW.getTime() - n * 86_400_000).toISOString();
@@ -147,6 +148,77 @@ ok('a client email says "To confirm: …", not the broker-facing "Couldn’t con
   const dt: NeedCriteria = { ...EMPTY_NEED, assetTypes: ['Retail'], mustHaves: 'drive-thru' };
   const e = buildMatchEmail({ audience: 'client', broker, tenant: { name: 'Sam Ortega', firstName: 'Sam', business: null }, criteria: dt, results: matchProperties(dt, [P('dt', { asset_type: 'Retail', description: 'Inline space' })], { now: NOW }) });
   assert.ok(e.html.includes('To confirm: drive-thru') && e.text.includes('To confirm: drive-thru')); assert.ok(!e.html.includes('Couldn’t confirm') && !e.text.includes('Couldn’t confirm'));
+});
+
+// ── turning words into a search (src/lib/matchmaker/extract.ts) ──────────────────────────────────────────────────────────
+const AREAS = ['Boerne', 'San Antonio', 'Boerne / Hill Country', 'Stone Oak', 'New Braunfels'];
+const NOW_X = new Date('2026-11-13T12:00:00Z');
+ok('extract: type names the model or a person might use become the seven types', () => {
+  assert.equal(normalizeType('industrial'), 'Industrial'); assert.equal(normalizeType('Warehouse'), 'Industrial'); assert.equal(normalizeType('dental office'), 'Medical');
+  assert.equal(normalizeType('restaurant'), 'Retail'); assert.equal(normalizeType('mixed use'), 'Mixed-Use'); assert.equal(normalizeType('banana'), null); assert.equal(normalizeType(''), null);
+});
+ok('extract: sanitize keeps a sound search, fixes a swapped range, drops junk', () => {
+  const s = sanitizeExtraction({ found: true, dealType: 'lease', assetTypes: ['office', 'Medical', 'office', 'spaceship'], sizeMin: 4000, sizeMax: 2000, rateMax: 32, areas: ['Boerne', 'boerne', ' ', 'x'], moveInBy: '2027-03-01', mustHaves: ['medical build-out', 'corner'], confidence: 'medium', evidence: ['looking for 2,000-4,000 SF', '', 'a'.repeat(400)] });
+  assert.equal(s.found, true); assert.deepEqual(s.assetTypes, ['Office', 'Medical']); assert.equal(s.sizeMin, 2000); assert.equal(s.sizeMax, 4000); assert.equal(s.rateMax, 32);
+  assert.deepEqual(s.areas, ['Boerne']); assert.equal(s.moveInBy, '2027-03-01'); assert.equal(s.mustHaves, 'medical build-out, corner'); assert.equal(s.confidence, 'medium');
+  assert.equal(s.evidence.length, 2); assert.ok(s.evidence[1].length <= 180);
+});
+ok('extract: sanitize rejects nonsense numbers, bad dates and "found" with nothing in it', () => {
+  const s = sanitizeExtraction({ found: true, sizeMin: 3, sizeMax: 999_999_999, rateMax: 9000, priceMax: 12, moveInBy: 'March', dealType: 'swap', confidence: 'certain' });
+  assert.equal(s.sizeMin, null); assert.equal(s.sizeMax, null); assert.equal(s.rateMax, null); assert.equal(s.priceMax, null); assert.equal(s.moveInBy, null); assert.equal(s.dealType, ''); assert.equal(s.confidence, 'low'); assert.equal(s.found, false);
+  assert.equal(sanitizeExtraction(null).found, false); assert.equal(sanitizeExtraction('hi').found, false); assert.equal(sanitizeExtraction({ found: false, sizeMin: 2000 }).found, false);
+});
+ok('rules: one typed sentence fills the form', () => {
+  const s = heuristicExtract("Dr. Alvarez wants to lease 2,500-3,500 sf of medical office in Boerne, up to $32/SF, by March 2027. Needs a medical build-out.", AREAS, NOW_X);
+  assert.equal(s.found, true); assert.equal(s.dealType, 'lease'); assert.equal(s.sizeMin, 2500); assert.equal(s.sizeMax, 3500); assert.equal(s.rateMax, 32);
+  assert.ok(s.assetTypes.includes('Medical') && s.assetTypes.includes('Office')); assert.deepEqual(s.areas, ['Boerne']); assert.equal(s.moveInBy, '2027-03-01'); assert.ok(s.mustHaves.includes('medical build-out')); assert.equal(s.confidence, 'medium');
+});
+ok('rules: "CEO looking for 2500-4000 SQ ft of office with yard" (a real note)', () => {
+  const s = heuristicExtract('Sign Call. CEO of Harmony hospice looking for 2500-4000 SQ ft of office with yard around it', AREAS, NOW_X);
+  assert.equal(s.found, true); assert.equal(s.sizeMin, 2500); assert.equal(s.sizeMax, 4000); assert.deepEqual(s.assetTypes, ['Office']); assert.ok(s.mustHaves.includes('yard'));
+});
+ok('rules: a single size becomes a band, "up to" and "at least" become one-sided', () => {
+  const one = heuristicExtract('Tenant needs 3,000 SF retail', AREAS, NOW_X); assert.equal(one.sizeMin, 2400); assert.equal(one.sizeMax, 3750);
+  const upTo = heuristicExtract('Looking for up to 5,000 SF of industrial', AREAS, NOW_X); assert.equal(upTo.sizeMin, null); assert.equal(upTo.sizeMax, 5000);
+  const atLeast = heuristicExtract('Wants at least 8,000 sf warehouse', AREAS, NOW_X); assert.equal(atLeast.sizeMin, 8000); assert.equal(atLeast.sizeMax, null);
+  const plus = heuristicExtract('Seeking 10,000+ SF flex', AREAS, NOW_X); assert.equal(plus.sizeMin, 10000); assert.equal(plus.sizeMax, null);
+});
+ok('rules: where a prospect IS today is not what they want (real notes from the CRM)', () => {
+  for (const t of [
+    'Southern Warehousing & Distribution · 265,000 SF main facility at 3232 N Panam Expy (78219) plus 250,000 SF off-site; also lease',
+    'Moved Nov 17, 2025 into an 8,894 SF tenant finish-out at 28615 I-10 W, double its old space, so it just signed a lease',
+    'Leased 40,800 SF of 112,500 SF building at 5410 Dietrich Rd, San Antonio, reported 9/21/2022',
+    'Building 42,365 SF facility at 3139 IH-35 New Braunfels (due 9/30/2026) - weak lease prospect.',
+    'Chipley fit: WEAK (Only 11 trucks and 8 drivers; 29,750 SF cross-dock likely oversized.)',
+  ]) assert.equal(heuristicExtract(t, AREAS, NOW_X).found, false, t.slice(0, 50));
+});
+ok('rules: a negated type does not count; a stated requirement does', () => {
+  const s = heuristicExtract('Site needs ~1.5 acres + 12,500 SF prototype, so it may not fit inline retail.', AREAS, NOW_X);
+  assert.ok(!s.assetTypes.includes('Retail')); assert.equal(s.sizeMin, 10000); assert.equal(s.sizeMax, 15650);
+  const e = heuristicExtract('Seen elsewhere seeking freestanding or end-cap units of about 3,400-5,500 SF with a patio.', AREAS, NOW_X);
+  assert.equal(e.sizeMin, 3400); assert.equal(e.sizeMax, 5500); assert.ok(e.assetTypes.includes('Retail')); assert.ok(e.mustHaves.includes('patio') && e.mustHaves.includes('end cap'));
+});
+ok('rules: buying reads a price, not a rate; unit-less "under $30" is a lease rate', () => {
+  const buy = heuristicExtract('Looking to buy a retail building, $1M-$3M, in Boerne', AREAS, NOW_X); assert.equal(buy.dealType, 'sale'); assert.equal(buy.priceMin, 1_000_000); assert.equal(buy.priceMax, 3_000_000); assert.equal(buy.rateMax, null);
+  const lease = heuristicExtract('Needs to lease an office, budget under $28', AREAS, NOW_X); assert.equal(lease.dealType, 'lease'); assert.equal(lease.rateMax, 28);
+});
+ok('rules: a ZIP code and a month without a year (this year if ahead, else next)', () => {
+  const s = heuristicExtract('Looking for retail near 78006 by January', AREAS, NOW_X); assert.deepEqual(s.areas, ['78006']); assert.equal(s.moveInBy, '2027-01-01');
+  const t = heuristicExtract('Wants an office by December', AREAS, NOW_X); assert.equal(t.moveInBy, '2026-12-01');
+});
+ok('rules: nothing that says they want something → not found', () => {
+  assert.equal(heuristicExtract('Called, left voicemail. Nice guy. Follow up Tuesday.', AREAS, NOW_X).found, false);
+  assert.equal(heuristicExtract('', AREAS, NOW_X).found, false);
+});
+ok('extract: what is sent to the model keeps the start and end of long notes and says today', () => {
+  const long = 'A'.repeat(2500) + 'MIDDLE' + 'B'.repeat(4000);
+  const text = buildExtractInput({ who: 'Maria (Tenant)', notes: long, activity: ['Call — wants 3,000 SF'], today: '2026-11-13' });
+  assert.ok(text.includes('Today is 2026-11-13') && text.includes('Client: Maria (Tenant)') && text.includes('<notes>') && text.includes('wants 3,000 SF'));
+  assert.ok(!text.includes('MIDDLE') && text.length < 9000);
+  assert.ok(buildExtractInput({ typed: 'x'.repeat(5000), today: '2026-11-13' }).length < 2700);
+});
+ok('extract: the banner line reads like the search', () => {
+  assert.equal(summarizeExtraction(sanitizeExtraction({ found: true, dealType: 'lease', assetTypes: ['Office'], sizeMin: 2000, sizeMax: 4000, rateMax: 30, areas: ['Boerne'], mustHaves: 'yard' })), 'Lease · Office · 2,000–4,000 SF · up to $30/SF/yr · Boerne · needs yard');
 });
 
 console.log(`\n${n} checks passed`);
