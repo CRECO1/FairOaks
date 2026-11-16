@@ -4,6 +4,7 @@
 // under a row in the Calling Log.
 import React, { useEffect, useState } from 'react';
 import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
+import type { TagListing } from '@/lib/listing-tags';
 
 export const OUTCOMES = [
   { key: 'new_lead', label: 'New lead', bg: 'var(--k-dcfce7)', fg: 'var(--k-166534)' },
@@ -33,6 +34,8 @@ interface Props {
   onClose: () => void;
   /** Teammates for the @ picker. Without it the note is plain text. */
   profiles?: { id: string; first_name: string; last_name: string }[];
+  /** Properties for the # picker (silent tag: which property the caller asked about). Without it # does nothing. */
+  listings?: TagListing[];
   /** Ids of teammates @tagged in the note that was just saved — the parent notifies them. */
   onMention?: (ids: string[], call: WrapCall, note: string) => void;
 }
@@ -57,7 +60,7 @@ function guessName(cnam: string | null): { first: string; last: string; company:
   return { first: parts[0] ?? '', last: parts.slice(1).join(' '), company: '' };
 }
 
-export default function CallWrapUp({ call, authToken, businessUnit, showToast, onSaved, onClose, profiles, onMention }: Props) {
+export default function CallWrapUp({ call, authToken, businessUnit, showToast, onSaved, onClose, profiles, listings, onMention }: Props) {
   const [outcome, setOutcome] = useState<string | null>(call.outcome ?? null);
   const [note, setNote] = useState(call.notes ?? '');
   const [mode, setMode] = useState<'new' | 'link'>('new');
@@ -134,7 +137,7 @@ export default function CallWrapUp({ call, authToken, businessUnit, showToast, o
       <div>
         <span style={label}>Note</span>
         {profiles?.length ? (
-          <MentionTextarea value={note} onChange={setNote} profiles={profiles} style={{ ...input, minHeight: 56 }} placeholder="What did they want? What happens next? (@ to tag a teammate)" />
+          <MentionTextarea value={note} onChange={setNote} profiles={profiles} listings={listings} style={{ ...input, minHeight: 56 }} placeholder="What did they want? What happens next? (@ teammate · # property)" />
         ) : (
           <textarea value={note} onChange={e => setNote(e.target.value)} style={{ ...input, minHeight: 56 }} placeholder="What did they want? What happens next?" />
         )}

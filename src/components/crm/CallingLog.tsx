@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CallWrapUp, { outcomeMeta } from '@/components/crm/CallWrapUp';
 import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
+import type { TagListing } from '@/lib/listing-tags';
 import WrapUpQueue from '@/components/crm/WrapUpQueue';
 import CallbackTimeMenu from '@/components/crm/CallbackTimeMenu';
 import QuickText from '@/components/crm/QuickText';
@@ -42,6 +43,8 @@ interface Thread { conversation_id: string; number: string | null; our_number: s
 interface Props {
   authToken?: string; showToast?: (m: string) => void; isAdmin?: boolean; isSuperAdmin?: boolean; businessUnit: string;
   onOpenContact?: (contactId: string) => void; agents?: Agent[];
+  /** Properties for the # picker in call notes (silent tag: which property the caller asked about). */
+  listings?: TagListing[];
   /** Teammates @tagged in a call note — parent creates the notification. */
   onMention?: (ids: string[], call: { id: string; caller_name?: string | null; from_number?: string | null }, note: string) => void;
 }
@@ -125,7 +128,7 @@ function preset(kind: 'hour' | 'eod' | 'tmrw'): string {
   return d.toISOString();
 }
 
-export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin, businessUnit, onOpenContact, agents = [], onMention }: Props) {
+export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin, businessUnit, onOpenContact, agents = [], listings, onMention }: Props) {
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -430,6 +433,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
 
       {queueOpen && (
         <WrapUpQueue
+          listings={listings}
           calls={list.filter(needsWrap)}
           authToken={authToken}
           businessUnit={businessUnit}
@@ -716,6 +720,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                   )}
                   {wrapFor === c.id && (
                     <CallWrapUp
+                      listings={listings}
                       call={c}
                       authToken={authToken}
                       businessUnit={businessUnit}
@@ -747,7 +752,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                       ) : c.transcript ? <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, fontSize: 13, color: 'var(--k-374151)' }}>{c.transcript}</pre> : null}
                       <div style={{ marginTop: 10 }}>
                         <span style={label}>Your notes</span>
-                        <MentionTextarea value={noteDraft[c.id] ?? c.notes ?? ''} onChange={v => setNoteDraft(n => ({ ...n, [c.id]: v }))} profiles={agents} style={{ ...input, minHeight: 52 }} placeholder="What you did about it… (@ to tag a teammate)" />
+                        <MentionTextarea value={noteDraft[c.id] ?? c.notes ?? ''} onChange={v => setNoteDraft(n => ({ ...n, [c.id]: v }))} profiles={agents} listings={listings} style={{ ...input, minHeight: 52 }} placeholder="What you did about it… (@ teammate · # property)" />
                         {(noteDraft[c.id] ?? c.notes ?? '') !== (c.notes ?? '') && <button onClick={async () => {
                           const next = noteDraft[c.id] ?? '';
                           await patch(c, { notes: next }, 'Note saved ✓');

@@ -21,7 +21,7 @@ const RESULT: Record<string, string> = { answered: 'Talked to them', left_voicem
 
 interface CallRow {
   id: string; contact_id: string | null; direction: string | null; result: string | null; outcome: string | null;
-  notes: string | null; started_at: string | null; handled_by: string | null; wrapped_by: string | null;
+  notes: string | null; started_at: string | null; handled_by: string | null; wrapped_by: string | null; tagged_listing_ids: string[] | null;
 }
 
 export function callNoteText(c: Pick<CallRow, 'direction' | 'result' | 'outcome' | 'notes'>): string {
@@ -33,7 +33,7 @@ export function callNoteText(c: Pick<CallRow, 'direction' | 'result' | 'outcome'
 export async function mirrorCallNote(db: SupabaseClient, callId: string, actorId?: string | null): Promise<'created' | 'updated' | 'adopted' | 'skipped'> {
   try {
     const { data } = await db.from('crm_call_log')
-      .select('id, contact_id, direction, result, outcome, notes, started_at, handled_by, wrapped_by')
+      .select('id, contact_id, direction, result, outcome, notes, started_at, handled_by, wrapped_by, tagged_listing_ids')
       .eq('id', callId).maybeSingle();
     const call = data as CallRow | null;
     const notes = (call?.notes ?? '').trim();
@@ -42,12 +42,15 @@ export async function mirrorCallNote(db: SupabaseClient, callId: string, actorId
     const text = callNoteText(call);
     const at = call.started_at ?? new Date().toISOString();
     const agent = actorId ?? call.wrapped_by ?? call.handled_by ?? null;
+    // Properties #-tagged in the call's note travel with the copy on the contact's card.
+    const tags = (call.tagged_listing_ids ?? []) as string[];
+    const sameTags = (a: unknown) => JSON.stringify([...((a as string[] | null) ?? [])].sort()) === JSON.stringify([...tags].sort());
 
     // Already mirrored: keep it current.
-    const { data: mine } = await db.from('crm_client_activities').select('id, note, client_id').eq('call_log_id', call.id).maybeSingle();
+    const { data: mine } = await db.from('crm_client_activities').select('id, note, client_id, tagged_listing_ids').eq('call_log_id', call.id).maybeSingle();
     if (mine) {
-      if (mine.note === text && mine.client_id === call.contact_id) return 'skipped';
-      await db.from('crm_client_activities').update({ note: text, client_id: call.contact_id }).eq('id', mine.id);
+      if (mine.note === text && mine.client_id === call.contact_id && sameTags(mine.tagged_listing_ids)) return 'skipped';
+      await db.from('crm_client_activities').update({ note: text, client_id: call.contact_id, tagged_listing_ids: tags }).eq('id', mine.id);
       return 'updated';
     }
 
@@ -59,7 +62,7 @@ export async function mirrorCallNote(db: SupabaseClient, callId: string, actorId
       .eq('client_id', call.contact_id).in('type', ['call', 'note']).is('call_log_id', null).gte('created_at', from).lte('created_at', to);
     const twin = (near ?? []).find(r => String(r.note ?? '').includes(probe));
     if (twin) {
-      await db.from('crm_client_activities').update({ call_log_id: call.id }).eq('id', twin.id);
+      await db.from('crm_client_activities').update({ call_log_id: call.id, tagged_listing_ids: tags }).eq('id', twin.id);
       return 'adopted';
     }
 
@@ -67,7 +70,7 @@ export async function mirrorCallNote(db: SupabaseClient, callId: string, actorId
     // up stays a plain note, so it reads right on the card.
     const spoke = call.direction === 'outbound' || call.result === 'answered';
     const { error } = await db.from('crm_client_activities').insert({
-      client_id: call.contact_id, agent_id: agent, type: spoke ? 'call' : 'note', note: text, call_log_id: call.id, created_at: at,
+      client_id: call.contact_id, agent_id: agent, type: spoke ? 'call' : 'note', note: text, call_log_id: call.id, created_at: at, tagged_listing_ids: tags,
     });
     if (error) { console.error('[call-note-mirror] insert failed:', error.message); return 'skipped'; }
     return 'created';

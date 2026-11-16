@@ -7,11 +7,12 @@ import { canAccessLinked } from '@/lib/crm-linked-access';
 import { toE164 } from '@/lib/phone';
 import { blockKey } from '@/lib/call-blocklist';
 import { buildHistory, internalNumbers, otherParty, type HistoryCall } from '@/lib/call-history';
+import { listingTagIdsForText } from '@/lib/listing-tags-server';
 
 // The Calling Log: Talkroute calls + voicemails, calls the voice bot answered, and
 // calls agents log by hand — one list, scoped to the caller's workspace.
 
-const COLS = 'id, business_unit, source, kind, external_id, direction, result, from_number, to_number, caller_name, contact_id, deal_id, started_at, duration_sec, recording_url, transcript, summary, intent, callback_number, needs_follow_up, follow_up_due, follow_up_assignee, handled_at, handled_by, notes, ai_meta, created_at, outcome, wrapped_at, wrapped_by, answered_by, answered_by_bot';
+const COLS = 'id, business_unit, source, kind, external_id, direction, result, from_number, to_number, caller_name, contact_id, deal_id, started_at, duration_sec, recording_url, transcript, summary, intent, callback_number, needs_follow_up, follow_up_due, follow_up_assignee, handled_at, handled_by, notes, ai_meta, created_at, outcome, wrapped_at, wrapped_by, answered_by, answered_by_bot, tagged_listing_ids';
 
 function scopedUnit(req: NextRequest, ctx: { role: string | null; businessUnit: string | null }): string {
   if (isAdminRole(ctx.role)) return req.nextUrl.searchParams.get('business_unit') ?? ctx.businessUnit ?? 'commercial';
@@ -195,12 +196,14 @@ export async function POST(req: NextRequest) {
   // A plain "try again" with no call-back to attach it to becomes its own call-back; with one,
   // the reminder moves onto that call-back instead (below).
   const queued = !!b.needs_follow_up || (!!retry && !resolves && (result === 'no_answer' || result === 'left_voicemail'));
+  // Properties #-tagged in the note (#1222Chulie): which property the caller asked about.
+  const taggedListings = await listingTagIdsForText(supabase, ctx, unit, b.notes);
   const { data, error } = await supabase.from('crm_call_log').insert({
     business_unit: unit, source: 'manual', kind: 'call', direction: outbound ? 'outbound' : 'inbound',
     result, from_number: outbound ? null : number, to_number: outbound ? number : null,
     caller_name: b.caller_name || null, contact_id: b.contact_id || resolves?.contact_id || null, deal_id: b.deal_id || null,
     started_at: b.started_at || now, duration_sec: b.duration_sec ? Number(b.duration_sec) : null,
-    summary: b.summary || null, notes: b.notes || null, needs_follow_up: queued,
+    summary: b.summary || null, notes: b.notes || null, tagged_listing_ids: taggedListings, needs_follow_up: queued,
     follow_up_due: queued ? retry : null, follow_up_assignee: queued ? ctx.userId : null,
     handled_at: queued ? null : now, handled_by: queued ? null : ctx.userId,
   }).select(COLS).single();
@@ -263,7 +266,11 @@ export async function PATCH(req: NextRequest) {
   if (b.handled === true) { patch.handled_at = new Date().toISOString(); patch.handled_by = ctx.userId; }
   if (b.handled === false) { patch.handled_at = null; patch.handled_by = null; }
   if (b.needs_follow_up !== undefined) patch.needs_follow_up = !!b.needs_follow_up;
-  if (b.notes !== undefined) patch.notes = b.notes || null;
+  if (b.notes !== undefined) {
+    patch.notes = b.notes || null;
+    // Re-derived from the note text on every save, so the tag and the sentence can never drift apart.
+    patch.tagged_listing_ids = await listingTagIdsForText(supabase, ctx, existing.business_unit, b.notes);
+  }
   // The wrap-up: what the call was. Spam also closes any open call-back.
   if (b.outcome !== undefined) {
     if (b.outcome !== null && !(OUTCOMES as readonly string[]).includes(b.outcome)) return NextResponse.json({ error: 'Unknown outcome' }, { status: 400 });

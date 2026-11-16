@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
+import { canAccessLinked } from '@/lib/crm-linked-access';
 import { adminClient } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
@@ -8,17 +9,22 @@ export const dynamic = 'force-dynamic';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * GET /api/crm/listing-inquiries?listing_id=… — the contacts whose notes (or a logged call / meeting / note) #-tagged this
- * property, e.g. "#1222Chulie". Answers "who asked about this building?" even when no deal exists.
+ * GET /api/crm/listing-inquiries?listing_id=… — who asked about this property: contacts whose notes (or a logged call / meeting /
+ * note) #-tagged it, e.g. "#1222Chulie", plus calls whose note tagged it from a caller who is not a contact yet.
+ * Answers "who asked about this building?" even when no deal exists.
  *
  * Access: the caller must be able to open the listing, and a contact only appears if the caller could open that contact
  * (new-lead holds are the broker's alone; otherwise same workspace, admins see all) — the same rule as assertOwnsResource.
  */
 export type InquiryItem = {
-  contact_id: string; name: string; type: string | null;
+  key: string;                    // contact id, or `call:<id>` for a caller who is not a contact
+  contact_id: string | null;      // null = unknown caller (not openable)
+  name: string; type: string | null;
   via: 'notes' | 'call' | 'meeting' | 'email' | 'note';
   last_at: string | null; snippet: string | null;
 };
+
+const prettyPhone = (n: string | null | undefined) => { const d = String(n ?? '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : (n ?? '') || 'Unknown caller'; };
 
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
@@ -29,12 +35,13 @@ export async function GET(req: NextRequest) {
 
   const db = adminClient();
   const tag = [listingId];
-  const [notes, acts] = await Promise.all([
+  const [notes, acts, calls] = await Promise.all([
     db.from('crm_clients').select('id, first_name, last_name, business_name, type, business_unit, lead_hold').contains('tagged_listing_ids', tag).limit(200),
     db.from('crm_client_activities').select('id, client_id, type, note, created_at').contains('tagged_listing_ids', tag).order('created_at', { ascending: false }).limit(300),
+    db.from('crm_call_log').select('id, business_unit, contact_id, deal_id, direction, caller_name, from_number, to_number, started_at, notes').contains('tagged_listing_ids', tag).order('started_at', { ascending: false }).limit(200),
   ]);
-  if (notes.error || acts.error) {
-    console.error('[listing-inquiries]', notes.error ?? acts.error);
+  if (notes.error || acts.error || calls.error) {
+    console.error('[listing-inquiries]', notes.error ?? acts.error ?? calls.error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 
@@ -42,7 +49,7 @@ export async function GET(req: NextRequest) {
   type ContactRow = { id: string; first_name: string | null; last_name: string | null; business_name: string | null; type: string | null; business_unit: string | null; lead_hold: boolean | null };
   const contacts = new Map<string, ContactRow>();
   for (const c of (notes.data ?? []) as ContactRow[]) contacts.set(c.id, c);
-  const missing = [...new Set((acts.data ?? []).map(a => a.client_id as string))].filter(id => !contacts.has(id));
+  const missing = [...new Set([...(acts.data ?? []).map(a => a.client_id as string), ...(calls.data ?? []).map(c => c.contact_id as string | null).filter((x): x is string => !!x)])].filter(id => !contacts.has(id));
   if (missing.length) {
     const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, type, business_unit, lead_hold').in('id', missing);
     for (const c of (data ?? []) as ContactRow[]) contacts.set(c.id, c);
@@ -59,14 +66,32 @@ export async function GET(req: NextRequest) {
     if (!c || !visible(c) || items.has(c.id)) continue;
     const t = String(a.type);
     items.set(c.id, {
-      contact_id: c.id, name: c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact', type: c.type ?? null,
+      key: c.id, contact_id: c.id, name: c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact', type: c.type ?? null,
       via: t === 'call' || t === 'meeting' || t === 'email' ? t : 'note', last_at: a.created_at as string,
       snippet: String(a.note ?? '').replace(/\s+/g, ' ').trim().slice(0, 160) || null,
     });
   }
   for (const c of notes.data as ContactRow[]) {  // tagged in the contact's own notes, no logged touch
     if (items.has(c.id) || !visible(c)) continue;
-    items.set(c.id, { contact_id: c.id, name: c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact', type: c.type ?? null, via: 'notes', last_at: null, snippet: null });
+    items.set(c.id, { key: c.id, contact_id: c.id, name: c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact', type: c.type ?? null, via: 'notes', last_at: null, snippet: null });
+  }
+
+  // Calls whose note tagged this property. A call from someone who is not a contact yet is exactly "the property they called on".
+  // Same visibility as the Calling Log: your workspace (admins: any), and a call on a deal you can't see stays hidden.
+  for (const call of calls.data ?? []) {
+    if (!isAdminRole(ctx.role) && call.business_unit !== ctx.businessUnit) continue;
+    if (call.deal_id && !(await canAccessLinked(ctx, { business_unit: call.business_unit as string, deal_id: call.deal_id as string }))) continue;
+    const snippet = String(call.notes ?? '').replace(/\s+/g, ' ').trim().slice(0, 160) || null;
+    const c = call.contact_id ? contacts.get(call.contact_id as string) : null;
+    if (c) {
+      if (!visible(c)) continue;
+      const have = items.get(c.id);
+      if (have && (have.last_at ?? '') >= String(call.started_at ?? '')) continue;   // the contact's own entry is newer
+      items.set(c.id, { key: c.id, contact_id: c.id, name: c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact', type: c.type ?? null, via: 'call', last_at: call.started_at as string, snippet });
+    } else {
+      const num = call.direction === 'outbound' ? call.to_number : call.from_number;
+      items.set(`call:${call.id}`, { key: `call:${call.id}`, contact_id: null, name: (call.caller_name as string | null) || prettyPhone(num as string | null), type: null, via: 'call', last_at: call.started_at as string, snippet });
+    }
   }
 
   const list = [...items.values()].sort((a, b) => (b.last_at ?? '').localeCompare(a.last_at ?? ''));

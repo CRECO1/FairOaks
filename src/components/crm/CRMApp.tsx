@@ -11823,6 +11823,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {page === 'calls' && (
             <CallingLog
+              listings={tagListings}
               authToken={session?.access_token}
               showToast={showToast}
               isAdmin={isAdmin}
@@ -15524,6 +15525,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       )}
       {/* After you tap a phone number anywhere in the CRM and come back: "How did the call go?" */}
       <CallTapPrompt
+        listings={tagListings}
         businessUnit={businessUnit}
         authToken={session?.access_token}
         isMobile={isMobile}

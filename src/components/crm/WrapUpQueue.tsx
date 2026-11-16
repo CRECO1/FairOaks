@@ -16,6 +16,7 @@ interface Props {
   onSaved: (id: string, patch: Partial<CallRow>) => void;
   onClose: () => void;
   profiles?: { id: string; first_name: string; last_name: string }[];
+  listings?: { id: string; name?: string | null; address?: string | null }[];
   onMention?: (ids: string[], call: { id: string }, note: string) => void;
 }
 
@@ -26,7 +27,7 @@ const pretty = (n: string | null | undefined) => {
 const when = (iso: string) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const dur = (s: number | null) => (s == null ? '' : s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`);
 
-export default function WrapUpQueue({ calls, authToken, businessUnit, isMobile, showToast, onSaved, onClose, profiles, onMention }: Props) {
+export default function WrapUpQueue({ calls, authToken, businessUnit, isMobile, showToast, onSaved, onClose, profiles, listings, onMention }: Props) {
   // Snapshot the queue when it opens (newest first — fresher calls are easier to remember),
   // so saving a call doesn't reshuffle the one you're looking at.
   const ids = useMemo(() => calls.map(c => c.id), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -71,6 +72,7 @@ export default function WrapUpQueue({ calls, authToken, businessUnit, isMobile, 
             {/* key = the call, so the panel resets for each one */}
             <CallWrapUp
               key={call!.id}
+              listings={listings}
               call={call!}
               authToken={authToken}
               businessUnit={businessUnit}
