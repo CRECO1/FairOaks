@@ -10,20 +10,26 @@ export const dynamic = 'force-dynamic';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Source = 'contact' | 'activity' | 'call';
+type Db = ReturnType<typeof adminClient>;
+const MAX_BATCH = 500;
 
 /**
- * Old notes that name one of our properties without a '#' ("called about 1222 Chulie Dr"). GET lists them for review; POST turns ONE
- * of them into a real tag: it replaces just that address in the note with its #tag (so the sentence and the tag can't drift apart) and
- * stores the tag. Admins only, review-first: nothing changes until a person approves each one. Respects the same listing and
- * contact access as the rest of tagging (new-lead holds are the broker's alone).
+ * Old notes that name one of our properties without a '#' ("called about 1222 Chulie Dr").
+ *  GET  — the review list, plus a per-property summary so a whole group can be approved at once.
+ *  POST — turns notes into real tags: replaces just that address in each note with its #tag (so the sentence and the tag can't drift
+ *         apart) and stores the tag. One row {source,row_id,listing_id}, or a batch {listing_id, items:[{source,row_id}]} (max 500).
+ *         Every change reports the exact before/after text so it can be undone.
+ *  PUT  — undo: puts the old text and tags back, but only on a note that still reads exactly as the tag left it.
+ * Admins only, review-first: nothing changes until a person approves. Respects the same listing and contact access as the rest of
+ * tagging (new-lead holds are the broker's alone).
  */
-async function listingsFor(db: ReturnType<typeof adminClient>, ctx: CrmContext) {
+async function listingsFor(db: Db, ctx: CrmContext) {
   const { data } = await db.from('crm_listings').select('id, name, address, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').eq('business_unit', ctx.businessUnit);
   return (data ?? []).filter(l => listingAccessible(l as Record<string, unknown>, ctx)) as (TagListing & Record<string, unknown>)[];
 }
 
 /** Every contact with a note. The database hands back at most 1,000 rows per request whatever .limit() says, so read it in pages. */
-async function allClients(db: ReturnType<typeof adminClient>, unit: string | null) {
+async function allClients(db: Db, unit: string | null) {
   const rows: Record<string, unknown>[] = [];
   for (let from = 0; from < 20000; from += 1000) {
     const { data, error } = await db.from('crm_clients').select('id, first_name, last_name, business_name, notes, tagged_listing_ids, lead_hold')
@@ -52,16 +58,16 @@ export async function GET(req: NextRequest) {
   ]);
   const nameOf = (c: { first_name: string | null; last_name: string | null; business_name: string | null }) => c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
   const cmap = new Map<string, { name: string; hold: boolean }>();
-  for (const c of clients.data ?? []) {
-    cmap.set(c.id as string, { name: nameOf(c as never), hold: hold(c as never) });
-    if (hold(c as never)) continue;
-    pushRow('contact', c.id as string, c.id as string, nameOf(c as never), c.notes as string, null);
-  }
   function pushRow(source: Source, rowId: string, contactId: string | null, who: string, text: string, at: string | null) {
     const sg = suggestListingTag(text, listings);
     if (!sg) return;
     const l = lc.get(sg.listing.id)!;
     out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at });
+  }
+  for (const c of clients.data ?? []) {
+    cmap.set(c.id as string, { name: nameOf(c as never), hold: hold(c as never) });
+    if (hold(c as never)) continue;
+    pushRow('contact', c.id as string, c.id as string, nameOf(c as never), c.notes as string, null);
   }
   for (const a of acts.data ?? []) {
     const c = cmap.get(a.client_id as string);
@@ -73,7 +79,39 @@ export async function GET(req: NextRequest) {
     if (c?.hold) continue;
     pushRow('call', k.id as string, (k.contact_id as string | null) ?? null, c?.name ?? (k.caller_name as string | null) ?? 'Unknown caller', k.notes as string, k.started_at as string);
   }
-  return NextResponse.json({ items: out.slice(0, 300), total: out.length });
+  // Per-property summary, biggest first, so a whole property can be approved in one go.
+  const groups = new Map<string, { listing_id: string; listing: string; n: number; bySource: Record<Source, number> }>();
+  for (const i of out) {
+    const g = groups.get(i.listing_id) ?? { listing_id: i.listing_id, listing: i.listing, n: 0, bySource: { contact: 0, activity: 0, call: 0 } };
+    g.n++; g.bySource[i.source]++; groups.set(i.listing_id, g);
+  }
+  return NextResponse.json({ items: out.slice(0, 1500), total: out.length, groups: [...groups.values()].sort((a, b) => b.n - a.n) });
+}
+
+type Applied = { source: Source; row_id: string; listing_id: string; ok: boolean; reason?: string; before?: string; after?: string; tags_before?: string[] };
+
+/** Turn ONE note into a tagged note. Returns what was there before, for undo. */
+async function applyOne(db: Db, ctx: CrmContext, listings: (TagListing & Record<string, unknown>)[], source: Source, rowId: string, listingId: string): Promise<Applied> {
+  const fail = (reason: string): Applied => ({ source, row_id: rowId, listing_id: listingId, ok: false, reason });
+  const table = source === 'contact' ? 'crm_clients' : source === 'activity' ? 'crm_client_activities' : 'crm_call_log';
+  const col = source === 'activity' ? 'note' : 'notes';
+  const { data: row } = await db.from(table).select(source === 'contact' ? 'id, notes, business_unit, lead_hold, tagged_listing_ids' : source === 'activity' ? 'id, note, client_id, tagged_listing_ids' : 'id, notes, business_unit, contact_id, tagged_listing_ids').eq('id', rowId).maybeSingle();
+  if (!row) return fail('not found');
+  const r = row as unknown as Record<string, unknown>;
+  if (source === 'activity') {
+    const { data: c } = await db.from('crm_clients').select('business_unit, lead_hold').eq('id', r.client_id as string).maybeSingle();
+    if (!c || c.business_unit !== ctx.businessUnit || (c.lead_hold && ctx.role !== 'super_admin')) return fail('not found');
+  } else if (r.business_unit !== ctx.businessUnit || (source === 'contact' && r.lead_hold && ctx.role !== 'super_admin')) return fail('not found');
+
+  const text = String(r[col] ?? '');
+  const sg = suggestListingTag(text, listings.filter(l => l.id === listingId));
+  if (!sg) return fail('that address is no longer in the note');
+  const next = `${text.slice(0, sg.start)}#${listingTagToken(sg.listing)}${text.slice(sg.end)}`;
+  const tags = await listingTagIdsForText(db, ctx, ctx.businessUnit ?? 'commercial', next);
+  const { error } = await db.from(table).update({ [col]: next, tagged_listing_ids: tags }).eq('id', rowId);
+  if (error) return fail('could not save');
+  if (source === 'call') await mirrorCallNote(db, rowId, ctx.userId).catch(() => 'skipped');
+  return { source, row_id: rowId, listing_id: listingId, ok: true, before: text, after: next, tags_before: (r.tagged_listing_ids as string[] | null) ?? [] };
 }
 
 export async function POST(req: NextRequest) {
@@ -81,31 +119,49 @@ export async function POST(req: NextRequest) {
   if (!ctx) return unauthorized();
   if (!isAdminRole(ctx.role)) return NextResponse.json({ error: 'Admins only' }, { status: 403 });
   const b = await req.json().catch(() => null);
-  const source = b?.source as Source; const rowId = String(b?.row_id ?? ''); const listingId = String(b?.listing_id ?? '');
-  if (!['contact', 'activity', 'call'].includes(source) || !UUID.test(rowId) || !UUID.test(listingId)) return NextResponse.json({ error: 'source, row_id and listing_id required' }, { status: 400 });
+  const listingId = String(b?.listing_id ?? '');
+  if (!UUID.test(listingId)) return NextResponse.json({ error: 'listing_id required' }, { status: 400 });
+  const raw: { source: Source; row_id: string }[] = Array.isArray(b?.items) ? b.items : [{ source: b?.source, row_id: b?.row_id }];
+  const items = raw.filter(i => ['contact', 'activity', 'call'].includes(i?.source) && UUID.test(String(i?.row_id ?? ''))).slice(0, MAX_BATCH);
+  if (!items.length) return NextResponse.json({ error: 'source and row_id required' }, { status: 400 });
   const db = adminClient();
   const listings = await listingsFor(db, ctx);
   if (!listings.some(l => l.id === listingId)) return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
+  const results: Applied[] = [];
+  for (const i of items) results.push(await applyOne(db, ctx, listings, i.source, i.row_id, listingId));
+  const done = results.filter(r => r.ok);
+  if (!Array.isArray(b?.items)) {       // single-row callers (the one-by-one review) keep the simple answer
+    return done.length ? NextResponse.json({ ok: true, undo: done }) : NextResponse.json({ error: results[0]?.reason === 'that address is no longer in the note' ? 'That address is no longer in the note' : 'Not found' }, { status: results[0]?.reason === 'not found' ? 404 : 409 });
+  }
+  return NextResponse.json({ ok: true, done: done.length, failed: results.length - done.length, undo: done });
+}
 
-  const table = source === 'contact' ? 'crm_clients' : source === 'activity' ? 'crm_client_activities' : 'crm_call_log';
-  const col = source === 'activity' ? 'note' : 'notes';
-  const { data: row } = await db.from(table).select(source === 'contact' ? `id, notes, business_unit, lead_hold` : source === 'activity' ? 'id, note, client_id' : 'id, notes, business_unit, contact_id').eq('id', rowId).maybeSingle();
-  if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const r = row as unknown as Record<string, unknown>;
-  // Same workspace + hold rules as the list.
-  if (source === 'activity') {
-    const { data: c } = await db.from('crm_clients').select('business_unit, lead_hold').eq('id', r.client_id as string).maybeSingle();
-    if (!c || c.business_unit !== ctx.businessUnit || (c.lead_hold && ctx.role !== 'super_admin')) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  } else if (r.business_unit !== ctx.businessUnit || (source === 'contact' && r.lead_hold && ctx.role !== 'super_admin')) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-  const text = String(r[col] ?? '');
-  const only = listings.filter(l => l.id === listingId);
-  const sg = suggestListingTag(text, only);
-  if (!sg) return NextResponse.json({ error: 'That address is no longer in the note' }, { status: 409 });
-  const next = `${text.slice(0, sg.start)}#${listingTagToken(sg.listing)}${text.slice(sg.end)}`;
-  const tags = await listingTagIdsForText(db, ctx, ctx.businessUnit ?? 'commercial', next);
-  const { error } = await db.from(table).update({ [col]: next, tagged_listing_ids: tags }).eq('id', rowId);
-  if (error) return NextResponse.json({ error: 'Internal error' }, { status: 500 });
-  if (source === 'call') await mirrorCallNote(db, rowId, ctx.userId).catch(() => 'skipped');
-  return NextResponse.json({ ok: true });
+export async function PUT(req: NextRequest) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+  if (!isAdminRole(ctx.role)) return NextResponse.json({ error: 'Admins only' }, { status: 403 });
+  const b = await req.json().catch(() => null);
+  const undo: Applied[] = Array.isArray(b?.undo) ? b.undo.slice(0, MAX_BATCH) : [];
+  const db = adminClient();
+  let restored = 0, skipped = 0;
+  for (const u of undo) {
+    if (!['contact', 'activity', 'call'].includes(u?.source) || !UUID.test(String(u?.row_id ?? '')) || typeof u.before !== 'string' || typeof u.after !== 'string') { skipped++; continue; }
+    const table = u.source === 'contact' ? 'crm_clients' : u.source === 'activity' ? 'crm_client_activities' : 'crm_call_log';
+    const col = u.source === 'activity' ? 'note' : 'notes';
+    const { data: row } = await db.from(table).select(`id, ${col}, ${u.source === 'activity' ? 'client_id' : 'business_unit'}`).eq('id', u.row_id).maybeSingle();
+    const r = row as unknown as Record<string, unknown> | null;
+    // Only a note that still reads exactly as the tag left it (someone may have edited it since), in this workspace.
+    if (!r || String(r[col] ?? '') !== u.after) { skipped++; continue; }
+    if (u.source !== 'activity' && r.business_unit !== ctx.businessUnit) { skipped++; continue; }
+    if (u.source === 'activity') {
+      const { data: c } = await db.from('crm_clients').select('business_unit').eq('id', r.client_id as string).maybeSingle();
+      if (!c || c.business_unit !== ctx.businessUnit) { skipped++; continue; }
+    }
+    const tags = Array.isArray(u.tags_before) ? u.tags_before.filter((x: unknown): x is string => typeof x === 'string' && UUID.test(x)) : [];
+    const { error } = await db.from(table).update({ [col]: u.before, tagged_listing_ids: tags }).eq('id', u.row_id);
+    if (error) { skipped++; continue; }
+    if (u.source === 'call') await mirrorCallNote(db, u.row_id, ctx.userId).catch(() => 'skipped');
+    restored++;
+  }
+  return NextResponse.json({ ok: true, restored, skipped });
 }

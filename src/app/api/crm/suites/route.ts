@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, getCrmAdmin, isAdminRole, unauthorized, forbidden } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { tenancies } from '@/lib/rent-roll-tenancy';
+import { listingTagIdsForText } from '@/lib/listing-tags-server';
 import { cleanIdList } from '@/lib/clean-id-list';
 
 // 8000 Fair Oaks Pkwy — the only property the Floor Plans view draws.
@@ -132,6 +133,7 @@ export async function PUT(req: NextRequest) {
     sq_ft: sq_ft === '' || sq_ft == null ? null : Number(sq_ft),
     lease_expiration: lease_expiration === '' || lease_expiration == null ? null : lease_expiration,
     notes: notes ?? null,
+    mentioned_listing_ids: await listingTagIdsForText(supabase, (await getCrmContext(req))!, toUnit(business_unit ?? null), notes),   // #tags in the suite note (silent)
     // Contacts @-tagged in the notes (silent). Only touched when the caller sends it, so other edits never wipe them.
     ...('tagged_contact_ids' in (body ?? {}) ? { tagged_contact_ids: cleanIdList(body.tagged_contact_ids) } : {}),
     updated_by: caller.id,

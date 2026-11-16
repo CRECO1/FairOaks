@@ -1,6 +1,7 @@
 'use client';
 
 import TagSuggestions from '@/components/crm/TagSuggestions';
+import InquiryAlertPrompt from '@/components/crm/InquiryAlertPrompt';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
@@ -254,15 +255,16 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [addingContact, setAddingContact] = useState(false);
   const [flyerBusy, setFlyerBusy] = useState(false);
   // Contacts whose notes / logged calls #-tagged the open property (read-only; GET /api/crm/listing-inquiries).
-  const [inquiries, setInquiries] = useState<Array<{ key: string; contact_id: string | null; deal_id?: string | null; name: string; type: string | null; via: string; last_at: string | null; snippet: string | null }>>([]);
+  const [inquiries, setInquiries] = useState<Array<{ key: string; contact_id: string | null; deal_id?: string | null; name: string; type: string | null; via: string; last_at: string | null; snippet: string | null; needs_follow_up?: boolean }>>([]);
   const [inquiriesLoaded, setInquiriesLoaded] = useState(false);
+  const [mentions, setMentions] = useState<Array<{ key: string; kind: string; listing_id: string | null; label: string; detail: string | null; snippet: string | null }>>([]);
   useEffect(() => {
-    setInquiries([]); setInquiriesLoaded(false);
+    setInquiries([]); setMentions([]); setInquiriesLoaded(false);
     if (!active?.id || !authToken) return;
     let alive = true;
     fetch(`/api/crm/listing-inquiries?listing_id=${active.id}`, { headers: { Authorization: `Bearer ${authToken}` } })
       .then(r => (r.ok ? r.json() : null))
-      .then(j => { if (alive) { setInquiries(j?.items ?? []); setInquiriesLoaded(true); } })
+      .then(j => { if (alive) { setInquiries(j?.items ?? []); setMentions(j?.mentions ?? []); setInquiriesLoaded(true); } })
       .catch(() => { if (alive) setInquiriesLoaded(true); });
     return () => { alive = false; };
   }, [active?.id, authToken]);
@@ -1203,6 +1205,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
       {showTagReview && <TagSuggestions authToken={authToken} onClose={() => { setShowTagReview(false); setCountsKey(k => k + 1); }} onToast={onToast} onChanged={() => setCountsKey(k => k + 1)} />}
 
+      <InquiryAlertPrompt authToken={authToken} onToast={onToast} />
+
       {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search listings…"
@@ -1405,13 +1409,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
               {/* How many people asked about this property + when last (#-tags), one tap to the list */}
               {inquiries.length > 0 && (() => {
-                const last = inquiries.map(q => q.last_at).filter((x): x is string => !!x).sort().pop();
-                const days = last ? Math.floor((Date.now() - Date.parse(last)) / 86_400_000) : null;
-                const ago = days == null ? '' : days <= 0 ? ' · last asked today' : days === 1 ? ' · last asked yesterday' : ` · last asked ${days} days ago`;
+                const dated = inquiries.filter(q => q.last_at).sort((a, b) => String(b.last_at).localeCompare(String(a.last_at)));
+                const last = dated[0];
+                const days = last?.last_at ? Math.floor((Date.now() - Date.parse(last.last_at)) / 86_400_000) : null;
+                const when = days == null ? '' : days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+                const who = last && (last.contact_id || last.deal_id || last.via === 'task') ? last.name.split(' — ')[0] : '';
+                const need = inquiries.filter(q => q.needs_follow_up).length;
                 return (
                   <button type="button" onClick={() => setActiveTab('contacts')} title="See who asked about this property"
-                    style={{ margin: '4px 0 10px', fontSize: 12.5, fontWeight: 700, color: 'var(--k-0f766e)', background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 20, padding: '5px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                    🏠 {inquiries.length} asked about this{ago} →
+                    style={{ margin: '4px 0 10px', fontSize: 12.5, fontWeight: 700, color: 'var(--k-0f766e)', background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 20, padding: '5px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textAlign: 'left' }}>
+                    🏠 {inquiries.length} asked{last && when ? ` · ${who ? `${who}, ` : ''}${when}` : ''}
+                    {need > 0 && <span style={{ color: '#b45309', marginLeft: 6 }}>· {need} need{need === 1 ? 's' : ''} follow-up</span>} →
                   </button>
                 );
               })()}
@@ -1971,6 +1979,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{q.name}</span>
                               {q.type && <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>{q.type}</span>}
+                              {q.needs_follow_up && <span title="They asked a week or more ago and nothing has been logged on them since" style={{ fontSize: 10.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 20, padding: '1px 7px', fontWeight: 600 }}>no follow-up in {Math.floor((Date.now() - Date.parse(q.last_at ?? '')) / 86_400_000)} days</span>}
                               {!q.contact_id && !q.deal_id && q.via === 'call' && <span title="This caller isn't a contact yet" style={{ fontSize: 10.5, color: 'var(--k-9ca3af)', border: '1px solid var(--k-e5e7eb)', borderRadius: 20, padding: '1px 7px' }}>not a contact yet</span>}
                               <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--k-0f766e)', fontWeight: 600 }}>
                                 {q.via === 'notes' ? 'In their notes' : q.via === 'task' ? `Task${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}` : q.via === 'deal' ? `Deal notes${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}` : `${q.via === 'call' ? 'Call' : q.via === 'meeting' ? 'Meeting' : q.via === 'email' ? 'Email' : 'Note'}${q.last_at ? ` · ${new Date(q.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}`}
@@ -1982,6 +1991,27 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       </div>
                     )}
                   </div>
+                  {mentions.length > 0 && (
+                    <div style={{ marginTop: 22 }}>
+                      <div title="Notes on other properties that #-tag this one. Not inquiries, so they are not counted above." style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>🔗 Mentioned in notes on other properties</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginBottom: 8 }}>Not inquiries, so they are not counted. Tap one to open that property.</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {mentions.map(m => {
+                          const src = m.listing_id ? listings.find(x => x.id === m.listing_id) : undefined;
+                          return (
+                            <button key={m.key} disabled={!src} onClick={() => src && openListing(src)}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 10, padding: '9px 12px', cursor: src ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{m.label}</span>
+                                {m.detail && <span style={{ fontSize: 11.5, color: 'var(--k-6b7280)' }}>{m.detail}</span>}
+                              </div>
+                              {m.snippet && <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.snippet}</div>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -9,6 +9,7 @@ import { newTrackingId, withOpenPixel, unsubscribeUrlFor } from '@/lib/email-tra
 import { emailLeadOwner, type OwnerProfile } from '@/lib/email-lead-owner';
 import { extractEmailText } from '@/lib/gmail-body';
 import { formatLeadEmail } from '@/lib/lead-email-text';
+import { tagLeadNotes } from '@/lib/lead-listing-tag';
 import { matchListing, gmailListingTerms, isAutomated, displayName, freshText, looksLikePitch, hasInquiryIntent, type ListingLite } from '@/lib/direct-inquiry';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -665,12 +666,13 @@ async function importDirectInquiries(
       const propertyName = listing.address || listing.name || subject;
       const message = fresh.replace(/\s+/g, ' ').slice(0, 500);
 
+      const tagged = await tagLeadNotes(supabase, 'commercial', [`Property: ${propertyName}`, `Message: ${message}`].join('\n'), [listing.address, listing.name]);
       const { data: newClient, error: insertErr } = await supabase.from('crm_clients').insert([{
         agent_id: agentId, assigned_agent_ids: backupIds,
         first_name: parts[0] ?? '', last_name: parts.slice(1).join(' '), business_name: '',
         email: addr, phone, type: 'Tenant',
         lead_source: 'Email — Direct inquiry', prospect_status: 'new',
-        notes: [`Property: ${propertyName}`, `Message: ${message}`].join('\n'),
+        notes: tagged.notes, tagged_listing_ids: tagged.tagged_listing_ids,
         business_unit: 'commercial', tags: ['auto-imported', 'direct-inquiry'],
       }]).select('id').single();
       const clientId = newClient?.id as string | undefined;
@@ -818,6 +820,10 @@ export async function POST(req: import('next/server').NextRequest) {
 
           const clientType = business_unit === 'commercial' ? 'Tenant' : 'Buyer';
 
+          const leadNotes = await tagLeadNotes(supabase, business_unit, [
+            parsed.property ? `Property: ${parsed.property}` : '',
+            parsed.message  ? `Message: ${parsed.message}` : '',
+          ].filter(Boolean).join('\n'), [parsed.property]);
           const { data: newClient, error: insertErr } = await supabase.from('crm_clients').insert([{
             agent_id:        agentId,
             assigned_agent_ids: backupIds,
@@ -831,10 +837,8 @@ export async function POST(req: import('next/server').NextRequest) {
             type:             clientType,
             lead_source:      source.source,
             prospect_status:  'new',
-            notes:            [
-              parsed.property ? `Property: ${parsed.property}` : '',
-              parsed.message  ? `Message: ${parsed.message}` : '',
-            ].filter(Boolean).join('\n'),
+            notes:            leadNotes.notes,
+            tagged_listing_ids: leadNotes.tagged_listing_ids,
             business_unit,
             tags:             ['auto-imported'],
           }]).select('id').single();

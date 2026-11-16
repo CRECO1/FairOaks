@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
+import { listingTagIdsForText } from '@/lib/listing-tags-server';
 import { cleanIdList } from '@/lib/clean-id-list';
 
 // Vendors + building info for a property folder (crm_listing_vendors). Two flavours in
@@ -49,8 +50,10 @@ export async function POST(req: NextRequest) {
   if (!listingId) return NextResponse.json({ error: 'listing_id required' }, { status: 400 });
   if (!(await assertCanAccessListing(listingId, ctx))) return notFound('Listing not found');
   const supabase = adminClient();
+  const rec = clean(body);
+  if ('notes' in rec) rec.mentioned_listing_ids = await listingTagIdsForText(supabase, ctx, ctx.businessUnit ?? 'commercial', rec.notes);
   const { data, error } = await supabase.from('crm_listing_vendors')
-    .insert({ ...clean(body), listing_id: listingId, business_unit: ctx.businessUnit ?? 'commercial', created_by: ctx.userId })
+    .insert({ ...rec, listing_id: listingId, business_unit: ctx.businessUnit ?? 'commercial', created_by: ctx.userId })
     .select().single();
   if (error) { console.error('[listing-vendors] POST', error); return NextResponse.json({ error: 'Could not add the row' }, { status: 500 }); }
   return NextResponse.json({ row: data });
@@ -66,8 +69,10 @@ export async function PATCH(req: NextRequest) {
   const { data: cur } = await supabase.from('crm_listing_vendors').select('listing_id').eq('id', id).maybeSingle();
   if (!cur?.listing_id) return notFound('Row not found');
   if (!(await assertCanAccessListing(cur.listing_id, ctx))) return notFound('Row not found');
+  const rec = clean(body);
+  if ('notes' in rec) rec.mentioned_listing_ids = await listingTagIdsForText(supabase, ctx, ctx.businessUnit ?? 'commercial', rec.notes);
   const { data, error } = await supabase.from('crm_listing_vendors')
-    .update({ ...clean(body), updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    .update({ ...rec, updated_at: new Date().toISOString() }).eq('id', id).select().single();
   if (error) { console.error('[listing-vendors] PATCH', error); return NextResponse.json({ error: 'Could not save the change' }, { status: 500 }); }
   return NextResponse.json({ row: data });
 }

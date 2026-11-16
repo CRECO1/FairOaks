@@ -1,3 +1,4 @@
+import { tagLeadNotes } from '@/lib/lead-listing-tag';
 import { NextRequest, NextResponse } from 'next/server';
 import { createLeadFollowUpTask } from '@/lib/lead-followup';
 import { fairOaksEmail } from '@/lib/fair-oaks-email';
@@ -196,13 +197,15 @@ export async function POST(req: NextRequest) {
 
             const unsubscribe_token = crypto.randomUUID();
 
+            const leadTag = await tagLeadNotes(supabaseAdmin, unit, noteLines.join('\n'), [property_interest]);
             const { data: newClient, error: crmInsertErr } = await supabaseAdmin.from('crm_clients').insert([{
               first_name,
               last_name,
               email: email ?? null,
               phone: phone ?? '',
               type: clientType,
-              notes: noteLines.join('\n'),
+              notes: leadTag.notes,
+              tagged_listing_ids: leadTag.tagged_listing_ids,
               agent_id: adminId,
               assigned_agent_ids: [],
               lead_source: isValuation

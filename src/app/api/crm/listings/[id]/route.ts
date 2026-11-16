@@ -1,3 +1,4 @@
+import { listingTagIdsForText } from '@/lib/listing-tags-server';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, notFound } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
@@ -26,6 +27,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   for (const k of ALLOWED) if (k in body) update[k] = body[k] !== '' ? body[k] : null;
   // Contacts @-tagged in the Internal Notes (derived by the form from the note text; silent, never notified).
   if ('tagged_contact_ids' in body) update.tagged_contact_ids = cleanIdList(body.tagged_contact_ids);
+  // Properties #-tagged in the Internal Notes ("see #1222Chulie"), derived here from the text; silent.
+  if ('notes' in body) update.mentioned_listing_ids = (await listingTagIdsForText(adminClient(), ctx, String(listing.business_unit ?? ctx.businessUnit ?? 'commercial'), body.notes)).filter(x => x !== id);
   // Yes/No/unknown columns are booleans: anything that isn't clearly yes/no is "unknown", never a stray string.
   for (const k of ['elevator', 'grade_level_doors', 'dock_high_doors']) {
     if (k in update) { const v = update[k]; update[k] = (v === true || v === 'true') ? true : (v === false || v === 'false') ? false : null; }

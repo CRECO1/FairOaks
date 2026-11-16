@@ -1,5 +1,6 @@
 import { isAdminRole, hiddenDealIds, heldClientIds, type CrmContext } from '@/lib/crm-auth';
 import { dropWalledTasks, ownTasksFilter } from '@/lib/task-walls';
+import { listingAccessible, rentRollAccessible } from '@/lib/listing-files-access';
 import { canAccessLinked } from '@/lib/crm-linked-access';
 import { adminClient } from '@/lib/supabase-admin';
 
@@ -10,6 +11,8 @@ export type InquiryItem = {
   name: string; type: string | null;
   via: 'notes' | 'call' | 'meeting' | 'email' | 'note' | 'deal' | 'task';
   last_at: string | null; snippet: string | null;
+  /** Contacts only: a week or more since they asked and nothing logged on them since. */
+  needs_follow_up?: boolean;
 };
 
 const prettyPhone = (n: string | null | undefined) => { const d = String(n ?? '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : (n ?? '') || 'Unknown caller'; };
@@ -19,7 +22,7 @@ export async function buildInquiries(ctx: CrmContext, listingId: string): Promis
   const db = adminClient();
   const tag = [listingId];
   const [notes, acts, calls] = await Promise.all([
-    db.from('crm_clients').select('id, first_name, last_name, business_name, type, business_unit, lead_hold').contains('tagged_listing_ids', tag).limit(200),
+    db.from('crm_clients').select('id, first_name, last_name, business_name, type, business_unit, lead_hold, last_touched_at').contains('tagged_listing_ids', tag).limit(200),
     db.from('crm_client_activities').select('id, client_id, type, note, created_at').contains('tagged_listing_ids', tag).order('created_at', { ascending: false }).limit(300),
     db.from('crm_call_log').select('id, business_unit, contact_id, deal_id, direction, caller_name, from_number, to_number, started_at, notes, summary').contains('tagged_listing_ids', tag).order('started_at', { ascending: false }).limit(200),
   ]);
@@ -29,12 +32,12 @@ export async function buildInquiries(ctx: CrmContext, listingId: string): Promis
   }
 
   // Contacts that only show up through an activity.
-  type ContactRow = { id: string; first_name: string | null; last_name: string | null; business_name: string | null; type: string | null; business_unit: string | null; lead_hold: boolean | null };
+  type ContactRow = { id: string; first_name: string | null; last_name: string | null; business_name: string | null; type: string | null; business_unit: string | null; lead_hold: boolean | null; last_touched_at?: string | null };
   const contacts = new Map<string, ContactRow>();
   for (const c of (notes.data ?? []) as ContactRow[]) contacts.set(c.id, c);
   const missing = [...new Set([...(acts.data ?? []).map(a => a.client_id as string), ...(calls.data ?? []).map(c => c.contact_id as string | null).filter((x): x is string => !!x)])].filter(id => !contacts.has(id));
   if (missing.length) {
-    const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, type, business_unit, lead_hold').in('id', missing);
+    const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, type, business_unit, lead_hold, last_touched_at').in('id', missing);
     for (const c of (data ?? []) as ContactRow[]) contacts.set(c.id, c);
   }
 
@@ -131,6 +134,64 @@ export async function buildInquiries(ctx: CrmContext, listingId: string): Promis
     }
   }
 
+  // "Needs follow-up": they asked a week or more ago and nothing has been logged on them since (their last touch is no later than the ask).
+  const nowMs = Date.now();
+  for (const it of items.values()) {
+    if (!it.contact_id || !it.last_at || it.via === 'deal' || it.via === 'task') continue;
+    const c = contacts.get(it.contact_id);
+    const askedMs = Date.parse(it.last_at);
+    if (!c || !Number.isFinite(askedMs) || nowMs - askedMs < 7 * 86_400_000) continue;
+    const touched = c.last_touched_at ? Date.parse(c.last_touched_at) : 0;
+    if (!touched || touched <= askedMs + 86_400_000) it.needs_follow_up = true;
+  }
+
   const list = [...items.values()].sort((a, b) => (b.last_at ?? '').localeCompare(a.last_at ?? ''));
   return { ok: true, items: list };
+}
+
+export type MentionItem = { key: string; kind: 'property' | 'suite' | 'rentroll' | 'vendor'; listing_id: string | null; label: string; detail: string | null; snippet: string | null };
+
+/**
+ * Notes on OTHER properties that #-tag this one: a property's Internal Notes, a floor-plan suite note, a rent-roll note, a vendor / building
+ * note ("see #1222Chulie for the comparable lease"). This is NOT inquiry activity, so it never changes the "asked" counts; it is its own list.
+ * Each source keeps its own access rule so a tag can't expose a note the caller couldn't open: property + vendor notes follow listing access,
+ * rent-roll rows only show to the property's own / assigned agents and admins, suite notes are workspace-wide like the floor plan itself.
+ */
+export async function buildMentions(ctx: CrmContext, listingId: string): Promise<MentionItem[]> {
+  const db = adminClient();
+  const tag = [listingId];
+  const snip = (t: unknown) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, 160) || null;
+  const [lst, suites, tenants, vendors] = await Promise.all([
+    db.from('crm_listings').select('id, name, address, notes, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').contains('mentioned_listing_ids', tag).limit(50),
+    db.from('office_suites').select('id, business_unit, listing_id, suite_number, tenant_name, notes').contains('mentioned_listing_ids', tag).limit(50),
+    db.from('crm_property_tenants').select('id, listing_id, suite, tenant_name, notes').contains('mentioned_listing_ids', tag).limit(50),
+    db.from('crm_listing_vendors').select('id, listing_id, label, vendor, notes').contains('mentioned_listing_ids', tag).limit(50),
+  ]);
+  if (lst.error || suites.error || tenants.error || vendors.error) return [];
+  const srcIds = [...new Set([...(suites.data ?? []).map(r => r.listing_id), ...(tenants.data ?? []).map(r => r.listing_id), ...(vendors.data ?? []).map(r => r.listing_id)].filter((x): x is string => !!x && x !== listingId))];
+  const { data: srcRows } = srcIds.length ? await db.from('crm_listings').select('id, name, address, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').in('id', srcIds) : { data: [] };
+  const src = new Map((srcRows ?? []).map(l => [l.id as string, l as Record<string, unknown>]));
+  const label = (l: Record<string, unknown> | undefined) => (l ? String(l.address ?? '').split(',')[0].trim() || String(l.name ?? 'Property') : 'Property');
+  const out: MentionItem[] = [];
+  for (const l of lst.data ?? []) {
+    if (l.id === listingId || !listingAccessible(l as Record<string, unknown>, ctx)) continue;
+    out.push({ key: `p:${l.id}`, kind: 'property', listing_id: l.id as string, label: label(l as Record<string, unknown>), detail: 'Internal notes', snippet: snip(l.notes) });
+  }
+  for (const r of suites.data ?? []) {
+    if (!isAdminRole(ctx.role) && r.business_unit !== ctx.businessUnit) continue;
+    const l = r.listing_id ? src.get(r.listing_id as string) : undefined;
+    if (r.listing_id === listingId) continue;
+    out.push({ key: `s:${r.id}`, kind: 'suite', listing_id: (r.listing_id as string | null) ?? null, label: label(l), detail: `Suite ${r.suite_number ?? ''}${r.tenant_name ? ` · ${r.tenant_name}` : ''}`.trim(), snippet: snip(r.notes) });
+  }
+  for (const r of tenants.data ?? []) {
+    const l = src.get(r.listing_id as string);
+    if (!l || r.listing_id === listingId || !rentRollAccessible(l, ctx)) continue;
+    out.push({ key: `t:${r.id}`, kind: 'rentroll', listing_id: r.listing_id as string, label: label(l), detail: `Rent roll · ${r.suite ?? ''}${r.tenant_name ? ` ${r.tenant_name}` : ''}`.trim(), snippet: snip(r.notes) });
+  }
+  for (const r of vendors.data ?? []) {
+    const l = src.get(r.listing_id as string);
+    if (!l || r.listing_id === listingId || !listingAccessible(l, ctx)) continue;
+    out.push({ key: `v:${r.id}`, kind: 'vendor', listing_id: r.listing_id as string, label: label(l), detail: String(r.label ?? r.vendor ?? 'Building note'), snippet: snip(r.notes) });
+  }
+  return out;
 }

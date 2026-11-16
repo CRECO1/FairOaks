@@ -25,6 +25,7 @@
  * }
  */
 
+import { tagLeadNotes } from '@/lib/lead-listing-tag';
 import { NextRequest, NextResponse } from 'next/server';
 import { createLeadFollowUpTask, isSameSubmission, isSubscriptionLead } from '@/lib/lead-followup';
 import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
@@ -244,13 +245,15 @@ export async function POST(req: NextRequest) {
       message ? `Message: ${message}` : '',
     ].filter(Boolean).join('\n');
 
+    const leadTag = await tagLeadNotes(supabase, unit, noteLines);
     const { data: newClient, error: insertErr } = await supabase.from('crm_clients').insert([{
       first_name,
       last_name,
       email: email ?? '',
       phone: phone ?? '',
       type: clientType,
-      notes: noteLines,
+      notes: leadTag.notes,
+      tagged_listing_ids: leadTag.tagged_listing_ids,
       agent_id: adminId,
       assigned_agent_ids: backupId && backupId !== adminId ? [backupId] : [],
       lead_source: source,

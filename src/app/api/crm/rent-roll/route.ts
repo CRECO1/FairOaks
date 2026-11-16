@@ -4,6 +4,7 @@ import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { tenancies } from '@/lib/rent-roll-tenancy';
+import { listingTagIdsForText } from '@/lib/listing-tags-server';
 import { cleanIdList } from '@/lib/clean-id-list';
 
 // Rent roll = one editable row per suite on a property folder (crm_property_tenants).
@@ -103,6 +104,7 @@ export async function POST(req: NextRequest) {
   if (!(await assertCanSeeRentRoll(listingId, ctx))) return notFound('Listing not found');
   const supabase = adminClient();
   const row = clean(body);
+  if ('notes' in row) row.mentioned_listing_ids = await listingTagIdsForText(supabase, ctx, ctx.businessUnit ?? 'commercial', row.notes);   // #tags in the note (silent)
   // A linked tenant contact must be in the caller's workspace (the SELECT join returns its PII).
   if (row.contact_id && !(await assertOwnsResource('crm_clients', String(row.contact_id), ctx))) return NextResponse.json({ error: 'Invalid contact_id' }, { status: 400 });
   const { data, error } = await supabase.from('crm_property_tenants')
@@ -126,6 +128,7 @@ export async function PATCH(req: NextRequest) {
   if (!cur?.listing_id) return notFound('Suite not found');
   if (!(await assertCanSeeRentRoll(cur.listing_id, ctx))) return notFound('Suite not found');
   const row = clean(body);
+  if ('notes' in row) row.mentioned_listing_ids = await listingTagIdsForText(supabase, ctx, ctx.businessUnit ?? 'commercial', row.notes);
   // A linked tenant contact must be in the caller's workspace (the SELECT join returns its PII).
   if (row.contact_id && !(await assertOwnsResource('crm_clients', String(row.contact_id), ctx))) return NextResponse.json({ error: 'Invalid contact_id' }, { status: 400 });
   const { data, error } = await supabase.from('crm_property_tenants')
