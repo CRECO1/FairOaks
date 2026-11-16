@@ -163,6 +163,12 @@ ok('extract: sanitize keeps a sound search, fixes a swapped range, drops junk', 
   assert.deepEqual(s.areas, ['Boerne']); assert.equal(s.moveInBy, '2027-03-01'); assert.equal(s.mustHaves, 'medical build-out, corner'); assert.equal(s.confidence, 'medium');
   assert.equal(s.evidence.length, 2); assert.ok(s.evidence[1].length <= 180);
 });
+ok('extract: one target size (min = max, as Claude returns "3,000 SF") becomes a band, a real range is left alone', () => {
+  const one = sanitizeExtraction({ found: true, assetTypes: ['Retail'], sizeMin: 3000, sizeMax: 3000 }); assert.equal(one.sizeMin, 2400); assert.equal(one.sizeMax, 3750);
+  const tiny = sanitizeExtraction({ found: true, sizeMin: 120, sizeMax: 120 }); assert.equal(tiny.sizeMin, 100); assert.equal(tiny.sizeMax, 150);
+  const range = sanitizeExtraction({ found: true, sizeMin: 2500, sizeMax: 4000 }); assert.equal(range.sizeMin, 2500); assert.equal(range.sizeMax, 4000);
+  const lone = sanitizeExtraction({ found: true, sizeMin: 8000 }); assert.equal(lone.sizeMin, 8000); assert.equal(lone.sizeMax, null);
+});
 ok('extract: sanitize rejects nonsense numbers, bad dates and "found" with nothing in it', () => {
   const s = sanitizeExtraction({ found: true, sizeMin: 3, sizeMax: 999_999_999, rateMax: 9000, priceMax: 12, moveInBy: 'March', dealType: 'swap', confidence: 'certain' });
   assert.equal(s.sizeMin, null); assert.equal(s.sizeMax, null); assert.equal(s.rateMax, null); assert.equal(s.priceMax, null); assert.equal(s.moveInBy, null); assert.equal(s.dealType, ''); assert.equal(s.confidence, 'low'); assert.equal(s.found, false);

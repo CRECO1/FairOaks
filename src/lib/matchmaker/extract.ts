@@ -68,6 +68,8 @@ export function sanitizeExtraction(raw: unknown): ExtractedSearch {
   const assetTypes = [...new Set((Array.isArray(r.assetTypes) ? r.assetTypes : []).map(normalizeType).filter((t): t is (typeof SEARCH_TYPES)[number] => !!t))].slice(0, 4);
   let sizeMin = clamp(r.sizeMin, 100, 50_000_000); let sizeMax = clamp(r.sizeMax, 100, 50_000_000);
   if (sizeMin != null && sizeMax != null && sizeMin > sizeMax) [sizeMin, sizeMax] = [sizeMax, sizeMin];
+  // One target size ("3,000 SF") comes back as min = max. Searching for exactly that would match almost nothing, so look a little either side — the same band the rules reader uses.
+  if (sizeMin != null && sizeMax != null && sizeMin === sizeMax) { const n = sizeMin; sizeMin = Math.max(50, Math.round((n * 0.8) / 50) * 50); sizeMax = Math.round((n * 1.25) / 50) * 50; }
   let priceMin = clamp(r.priceMin, 10_000, 10_000_000_000); let priceMax = clamp(r.priceMax, 10_000, 10_000_000_000);
   if (priceMin != null && priceMax != null && priceMin > priceMax) [priceMin, priceMax] = [priceMax, priceMin];
   const areas: string[] = [];
@@ -197,7 +199,7 @@ Rules:
 - Report only what the text says. Never guess. Leave a field empty when the text does not give it.
 - A size, rate or address that describes the client's CURRENT space, the size of their business, a past deal, or a listing someone else is marketing is NOT what they want. Example: "265,000 SF main facility", "moved into an 8,894 SF suite", "leased 40,800 SF in 2022" — none of these is a requirement. Only report numbers the client is ASKING for (looking for, needs, wants, seeking, requirement, budget, "SF needed").
 - If the text only describes the client's current footprint or a prospecting note about how well they might fit a particular building, call the tool with found=false.
-- Sizes are square feet; lease rates are $/SF/year; sale prices are dollars; "areas" are cities, neighborhoods or ZIP codes; moveInBy only when a date or month/year is stated (YYYY-MM-DD, the 1st for a month).
+- When the client names ONE size ("3,000 SF"), put it in both sizeMin and sizeMax — do not invent a range. Sizes are square feet; lease rates are $/SF/year; sale prices are dollars; "areas" are cities, neighborhoods or ZIP codes; moveInBy only when a date or month/year is stated (YYYY-MM-DD, the 1st for a month).
 - assetTypes only from: Retail, Office, Industrial, Flex, Land, Medical, Mixed-Use (a restaurant or shop is Retail; a warehouse is Industrial; a clinic or dental office is Medical).
 - mustHaves: short phrases for specific requirements (drive-thru, 24' clear, medical build-out, corner, yard, patio, parking).
 - evidence: up to 3 SHORT quotes copied from the text that support what you reported.
