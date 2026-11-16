@@ -58,10 +58,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
 
   // A real person opening the page — not a mail scanner pre-fetching the link.
   if (!isAutomationUA(req.headers.get('user-agent'))) {
-    await db.from('crm_secure_requests').update({ view_count: r.view_count + 1, ...(r.first_viewed_at ? {} : { first_viewed_at: new Date().toISOString() }) }).eq('id', r.id);
+    await db.from('crm_secure_requests').update({ view_count: r.view_count + 1 }).eq('id', r.id);
     if (!r.first_viewed_at) {
-      await logSecure(db, r.id, who(r), 'viewed', 'opened the link', ipOf(req));
-      after(() => notifyOpened(db, r));   // after the page has loaded — never slows the visitor
+      // Claimed with a compare-and-set, so two page loads landing together record (and alert) the first open only once.
+      const { data: first } = await db.from('crm_secure_requests').update({ first_viewed_at: new Date().toISOString() }).eq('id', r.id).is('first_viewed_at', null).select('id');
+      if (first?.length) {
+        await logSecure(db, r.id, who(r), 'viewed', 'opened the link', ipOf(req));
+        after(() => notifyOpened(db, r));   // after the page has loaded — never slows the visitor
+      }
     }
   }
 
