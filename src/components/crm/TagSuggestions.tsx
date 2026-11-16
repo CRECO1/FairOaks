@@ -118,6 +118,45 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }); // eslint-disable-line
+  // Bulk by the suggested answer: every note whose hint says "Looks like an inquiry" (tag them), or "Looks like a general note" (hide them as Not it, for the
+  // whole team). Outreach lists and phone-call summaries are left out (those have their own buttons / are reviewed by hand). Preview first, one Undo.
+  const bulkInq = useMemo(() => live.filter(i => i.source !== 'callsummary' && !i.outreach && i.verdict === 'inquiry'), [live]);
+  const bulkGen = useMemo(() => live.filter(i => i.source !== 'callsummary' && !i.outreach && i.verdict === 'general'), [live]);
+  const sample = (rows: Item[], tagged: boolean) => rows.slice(0, 3).map(r => `• ${r.contact}: …${(tagged ? r.after : r.before).replace(/\s+/g, ' ').slice(0, 110)}…`).join('\n');
+  const applyInquiries = async () => {
+    if (!bulkInq.length || !window.confirm(`Tag ${bulkInq.length} notes that look like inquiries? Only the address in each note changes, and one Undo puts them all back.\n\nExamples:\n${sample(bulkInq, true)}`)) return;
+    setBusy('bulk');
+    const all: Undo[] = []; let failed = 0;
+    const byL = new Map<string, Item[]>(); for (const r of bulkInq) byL.set(r.listing_id, [...(byL.get(r.listing_id) ?? []), r]);
+    for (const [lid, rows] of byL) for (let i = 0; i < rows.length; i += 500) {
+      const out = await post(lid, rows.slice(i, i + 500));
+      if (!out) { failed += Math.min(500, rows.length - i); continue; }
+      all.push(...out.undo); failed += out.failed;
+    }
+    setBusy(null);
+    const done = new Set(all.map(u => key(u)));
+    setItems(cur => (cur ?? []).filter(x => !done.has(key(x))));
+    setUndo({ label: 'the inquiry-looking notes', rows: all });
+    onChanged?.();
+    onToast(`Tagged ${all.length} note${all.length === 1 ? '' : 's'}${failed ? ` (${failed} had changed and were skipped)` : ''}`);
+  };
+  const hideGeneral = async () => {
+    if (!bulkGen.length || !window.confirm(`Hide ${bulkGen.length} notes that look like general notes (Not it, for the whole team)? Their text is not changed, and one Undo brings them all back.\n\nExamples:\n${sample(bulkGen, false)}`)) return;
+    setBusy('bulk');
+    const hidden: { source: string; row_id: string; listing_id: string }[] = [];
+    const byL = new Map<string, Item[]>(); for (const r of bulkGen) byL.set(r.listing_id, [...(byL.get(r.listing_id) ?? []), r]);
+    for (const [lid, rows] of byL) for (let i = 0; i < rows.length; i += 500) {
+      const r = await fetch('/api/crm/tag-suggestions', { method: 'POST', headers: h, body: JSON.stringify({ mode: 'skip', listing_id: lid, items: rows.slice(i, i + 500).map(x => ({ source: x.source, row_id: x.row_id })) }) }).catch(() => null);
+      const j = r?.ok ? await r.json() : null;
+      if (j?.skipped) hidden.push(...j.skipped);
+    }
+    setBusy(null);
+    const gone = new Set(hidden.map(x => `${x.source}:${x.row_id}`));
+    setItems(cur => (cur ?? []).filter(x => !gone.has(key(x))));
+    setUndo({ label: 'the general notes', rows: [], skipped: hidden });
+    onChanged?.();
+    onToast(`Hid ${hidden.length} general note${hidden.length === 1 ? '' : 's'}`);
+  };
   const doUndo = async () => {
     if (!undo) return;
     let restored = 0, skipped = 0, ok = true;
@@ -157,8 +196,17 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
         </div>
         {undo && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--k-f0fdfa, #f0fdfa)', border: '1px solid var(--k-99f6e4, #99f6e4)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, fontSize: 13 }}>
-            <span style={{ flex: 1 }}>{undo.skipped ? `Hid 1 note` : undo.targeted ? `Marked ${undo.targeted.length} contact${undo.targeted.length === 1 ? '' : 's'}` : `Tagged ${undo.rows.length} note${undo.rows.length === 1 ? '' : 's'}`} for {undo.label}.</span>
+            <span style={{ flex: 1 }}>{undo.skipped ? `Hid ${undo.skipped.length} note${undo.skipped.length === 1 ? '' : 's'}` : undo.targeted ? `Marked ${undo.targeted.length} contact${undo.targeted.length === 1 ? '' : 's'}` : `Tagged ${undo.rows.length} note${undo.rows.length === 1 ? '' : 's'}`} for {undo.label}.</span>
             <button onClick={doUndo} style={{ fontSize: 12.5, fontWeight: 700, padding: '5px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer' }}>Undo</button>
+          </div>
+        )}
+        {items && !cardMode && (bulkInq.length > 0 || bulkGen.length > 0) && (
+          <div style={{ border: '1px solid var(--k-e5e7eb, #e5e7eb)', borderRadius: 12, padding: '10px 12px', marginBottom: 12, background: 'var(--k-f9fafb, #f9fafb)' }}>
+            <div style={{ fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)', marginBottom: 8 }}>Bulk by the suggested answer (you see examples first, and one Undo reverses it):</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {bulkInq.length > 0 && <button disabled={busy !== null} onClick={applyInquiries} style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 18, border: '1px solid var(--k-99f6e4, #99f6e4)', background: 'var(--k-f0fdfa, #f0fdfa)', color: 'var(--k-0f766e, #0f766e)', cursor: 'pointer' }}>{busy === 'bulk' ? 'Working…' : `🏠 Tag the ${bulkInq.length} that look like inquiries`}</button>}
+              {bulkGen.length > 0 && <button disabled={busy !== null} onClick={hideGeneral} style={{ fontSize: 13, padding: '8px 14px', borderRadius: 18, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', color: 'var(--k-374151, #374151)', cursor: 'pointer' }}>{busy === 'bulk' ? 'Working…' : `Hide the ${bulkGen.length} general notes`}</button>}
+            </div>
           </div>
         )}
         {items && live.length > 0 && !cardMode && (

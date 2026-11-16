@@ -18,5 +18,5 @@ export async function POST(req: NextRequest) {
   if (!u) return NextResponse.json({ ok: false, reason: 'nothing_to_report' });
   const key = await saveOwnerUpdateDraft(db, ctx.userId, u).catch(() => null);
   if (!key) return NextResponse.json({ error: 'Could not save the draft' }, { status: 500 });
-  return NextResponse.json({ ok: true, key, subject: u.subject, to: u.to, recipients: u.recipients });
+  return NextResponse.json({ ok: true, key, subject: u.subject, to: u.to, recipients: u.recipients, selfAddressed: u.selfAddressed });
 }

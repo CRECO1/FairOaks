@@ -291,7 +291,7 @@ export async function buildFunnel(ctx: CrmContext, listingId: string, items: Inq
   return { targeted: targetedTotal, asked: people.length, followedUp: people.filter(i => i.followed_up).length, deals: ids.size };
 }
 
-export type OverviewRow = { listing_id: string; listing: string; asked: number; targeted: number; followedUp: number; deals: number; needsFollowUp: number; avgReplyDays: number | null };
+export type OverviewRow = { listing_id: string; listing: string; hasOwnerEmail: boolean; asked: number; targeted: number; followedUp: number; deals: number; needsFollowUp: number; avgReplyDays: number | null };
 
 /** One row per property the caller can see that has any tagged interest or outreach: the numbers behind each property's funnel, side by side. */
 export async function buildOverview(ctx: CrmContext): Promise<OverviewRow[]> {
@@ -300,6 +300,8 @@ export async function buildOverview(ctx: CrmContext): Promise<OverviewRow[]> {
   const ids = [...new Set([...(await taggedListingIds(120)), ...Object.keys(tcounts)])].slice(0, 80);
   if (!ids.length) return [];
   const { data: lst } = await db.from('crm_listings').select('id, name, address, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').in('id', ids);
+  const { data: links } = await db.from('crm_listing_contacts').select('listing_id, role, crm_clients(email)').in('listing_id', ids).limit(2000);
+  const ownerEmail = new Set((links ?? []).filter(l => /landlord|owner/i.test(String(l.role ?? ''))).filter(l => { const c = Array.isArray(l.crm_clients) ? l.crm_clients[0] : l.crm_clients; return !!(c as { email?: string | null } | null)?.email; }).map(l => l.listing_id as string));
   const rows: OverviewRow[] = [];
   await Promise.all((lst ?? []).filter(l => listingAccessible(l as Record<string, unknown>, ctx)).map(async l => {
     const r = await buildInquiries(ctx, l.id as string);
@@ -308,7 +310,7 @@ export async function buildOverview(ctx: CrmContext): Promise<OverviewRow[]> {
     const people = r.items.filter(i => i.via !== 'deal' && i.via !== 'task');
     const days = people.map(i => i.responded_days).filter((x): x is number => typeof x === 'number');
     rows.push({
-      listing_id: l.id as string, listing: String(l.address ?? '').split(',')[0].trim() || String(l.name ?? 'Property'),
+      listing_id: l.id as string, listing: String(l.address ?? '').split(',')[0].trim() || String(l.name ?? 'Property'), hasOwnerEmail: ownerEmail.has(l.id as string),
       asked: f.asked, targeted: f.targeted, followedUp: f.followedUp, deals: f.deals, needsFollowUp: people.filter(i => i.needs_follow_up).length,
       avgReplyDays: days.length ? Math.round((days.reduce((a, b) => a + b, 0) / days.length) * 10) / 10 : null,
     });
@@ -321,7 +323,7 @@ export async function buildOverview(ctx: CrmContext): Promise<OverviewRow[]> {
     const cur = byAddr.get(key);
     if (!cur) { byAddr.set(key, { ...r }); continue; }
     byAddr.set(key, {
-      ...cur, asked: Math.max(cur.asked, r.asked), targeted: Math.max(cur.targeted, r.targeted), followedUp: Math.max(cur.followedUp, r.followedUp),
+      ...cur, hasOwnerEmail: cur.hasOwnerEmail || r.hasOwnerEmail, asked: Math.max(cur.asked, r.asked), targeted: Math.max(cur.targeted, r.targeted), followedUp: Math.max(cur.followedUp, r.followedUp),
       deals: Math.max(cur.deals, r.deals), needsFollowUp: Math.max(cur.needsFollowUp, r.needsFollowUp), avgReplyDays: cur.avgReplyDays ?? r.avgReplyDays,
     });
   }

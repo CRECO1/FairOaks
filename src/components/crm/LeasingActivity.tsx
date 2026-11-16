@@ -50,7 +50,7 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
     setDraftBusy(false);
     if (!j) { onToast?.('Could not make the draft'); return; }
     if (j.ok === false) { onToast?.('Nothing to report yet for this property'); return; }
-    onToast?.(j.recipients ? `Owner update saved to your Drafts (Emails → Drafts) for ${j.to}. Nothing was sent.` : 'Owner update saved to your Drafts, but this property has no landlord email on file. Nothing was sent.');
+    onToast?.(j.recipients ? `Owner update saved to your Drafts (Emails → Drafts) for ${j.to}. Nothing was sent.` : 'Owner update saved to your Drafts, addressed to YOU to forward, because no landlord email is linked to this property yet. Nothing was sent.');
   };
   const [mk, setMk] = useState<Mk | null>(null);
   const [interest, setInterest] = useState<{ asked: number; askedWeek: number; followedUp: number; targeted: number; deals: number } | null>(null);

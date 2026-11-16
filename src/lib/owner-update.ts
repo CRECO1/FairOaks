@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CrmContext } from '@/lib/crm-auth';
 import { buildInquiries, buildTargeted, buildFunnel } from '@/lib/listing-inquiries';
 
-export type OwnerUpdate = { listingId: string; property: string; to: string; recipients: number; subject: string; bodyHtml: string; interest: { asked: number; askedWeek: number; followedUp: number; targeted: number; deals: number } };
+export type OwnerUpdate = { listingId: string; property: string; to: string; recipients: number; selfAddressed: boolean; subject: string; bodyHtml: string; interest: { asked: number; askedWeek: number; followedUp: number; targeted: number; deals: number } };
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -33,10 +33,14 @@ export async function buildOwnerUpdate(db: SupabaseClient, ctx: CrmContext, list
   if (interest.targeted) li.push(`We have reached out directly to ${interest.targeted} ${interest.targeted === 1 ? 'business' : 'businesses'} that look like a fit.`);
   if (interest.deals) li.push(`${interest.deals} ${interest.deals === 1 ? 'deal is' : 'deals are'} in progress.`);
 
-  const { data: prof } = await db.from('crm_profiles').select('email_signature').eq('id', ctx.userId).maybeSingle();
+  const { data: prof } = await db.from('crm_profiles').select('email_signature, email').eq('id', ctx.userId).maybeSingle();
   const sig = String((prof as { email_signature?: string | null } | null)?.email_signature ?? '');
-  const bodyHtml = `<p>Hi ${esc(first || 'there')},</p><p>A quick update on ${esc(property)}:</p><ul>${li.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p>I'll keep following up with each of them and send the full leasing report when you want it. Happy to talk it through any time.</p>${sig ? `<br>${sig}` : ''}`;
-  return { listingId, property, to: emails.join(', '), recipients: emails.length, subject: `Weekly update: ${property}`, bodyHtml, interest };
+  const agentEmail = String((prof as { email?: string | null } | null)?.email ?? '').trim().toLowerCase();
+  // No landlord email on file: address the draft to the agent so it is never empty, with a note to forward it.
+  const selfAddressed = emails.length === 0 && !!agentEmail;
+  const forwardNote = selfAddressed ? `<p style="background:#fff7e6;border:1px solid #f0d9a8;padding:8px 10px;border-radius:6px"><b>For you to forward:</b> no landlord or owner email is linked to ${esc(property)} yet, so this draft is addressed to you. Link the owner on the property&apos;s Contacts tab and next week&apos;s draft will be addressed to them. Delete this box before forwarding.</p>` : '';
+  const bodyHtml = `${forwardNote}<p>Hi ${esc(first || 'there')},</p><p>A quick update on ${esc(property)}:</p><ul>${li.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p>I'll keep following up with each of them and send the full leasing report when you want it. Happy to talk it through any time.</p>${sig ? `<br>${sig}` : ''}`;
+  return { listingId, property, to: selfAddressed ? agentEmail : emails.join(', '), recipients: emails.length, selfAddressed, subject: `${selfAddressed ? 'FORWARD: ' : ''}Weekly update: ${property}`, bodyHtml, interest };
 }
 
 /** Save an owner update as a draft for `userId` (idempotent per property per week). Returns the draft key. */

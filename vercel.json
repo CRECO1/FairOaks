@@ -52,6 +52,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/cron/second-touch-drafts",
+      "schedule": "50 14 * * 1"
+    },
+    {
       "path": "/api/cron/owner-update-drafts",
       "schedule": "40 14 * * 1"
     },

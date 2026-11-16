@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 const JOBS: { key: string; label: string; when: string }[] = [
   { key: 'property-inquiry-digest', label: 'Morning inquiry alert', when: 'weekdays about 9 AM Central' },
   { key: 'targeted-replies', label: 'Outreach reply conversion', when: 'daily about 9:20 AM Central' },
+  { key: 'second-touch-drafts', label: 'Second-touch drafts', when: 'Mondays about 9:50 AM Central (drafts only, never sent)' },
   { key: 'owner-update-drafts', label: 'Weekly owner update drafts', when: 'Mondays about 9:40 AM Central (drafts only, never sent)' },
   { key: 'tagging-selfcheck', label: 'Nightly self-check', when: 'daily about 5:15 AM Central (tests the tagger on a sample, sends nothing)' },
   { key: 'call-auto-tag', label: 'Phone bot & voicemail tagging', when: 'each time a call summary is saved' },

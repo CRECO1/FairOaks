@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 
-type Row = { listing_id: string; listing: string; asked: number; targeted: number; followedUp: number; deals: number; needsFollowUp: number; avgReplyDays: number | null };
+type Row = { listing_id: string; listing: string; hasOwnerEmail?: boolean; asked: number; targeted: number; followedUp: number; deals: number; needsFollowUp: number; avgReplyDays: number | null };
 type SortKey = 'asked' | 'targeted' | 'followedUp' | 'deals' | 'needsFollowUp' | 'avgReplyDays';
 
 /** Every property with tagged interest or outreach side by side, so you can see where to push: who is getting asks, who is getting follow-up, where people stall. */
@@ -41,7 +41,7 @@ export default function InterestOverview({ authToken, onClose, onOpen }: { authT
                 </div>
                 {sorted.map(r => (
                   <button key={r.listing_id} onClick={() => { onOpen(r.listing_id); onClose(); }} style={{ display: 'block', width: '100%', textAlign: 'left', border: '1px solid #eef0f2', borderRadius: 12, padding: '10px 12px', marginBottom: 8, background: 'var(--k-fff, #fff)', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>{r.listing}</div>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>{r.listing}{!r.hasOwnerEmail && <span title="No landlord or owner email is linked, so the weekly owner update is addressed to you" style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 600, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '1px 7px' }}>⚠ no owner email</span>}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px 8px', fontSize: 12, color: 'var(--k-6b7280, #6b7280)' }}>
                       <div><b style={{ fontSize: 15, color: 'var(--k-111, #111)' }}>{r.asked}</b><br />asked</div>
                       <div><b style={{ fontSize: 15, color: 'var(--k-111, #111)' }}>{r.targeted}</b><br />reached out</div>
@@ -71,7 +71,7 @@ export default function InterestOverview({ authToken, onClose, onOpen }: { authT
                 <tbody>
                   {sorted.map(r => (
                     <tr key={r.listing_id} onClick={() => { onOpen(r.listing_id); onClose(); }} style={{ borderBottom: '1px solid #f1f3f5', cursor: 'pointer' }}>
-                      <td style={{ padding: '8px', fontWeight: 600 }}>{r.listing}</td>
+                      <td style={{ padding: '8px', fontWeight: 600 }}>{r.listing}{!r.hasOwnerEmail && <span title="No landlord or owner email is linked, so the weekly owner update is addressed to you. Open the property → Contacts to link one." style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 600, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '1px 7px' }}>⚠ no owner email</span>}</td>
                       <td style={{ padding: '8px', textAlign: 'right' }}>{r.asked}</td>
                       <td style={{ padding: '8px', textAlign: 'right' }}>{r.targeted}</td>
                       <td style={{ padding: '8px', textAlign: 'right' }}>{r.followedUp}</td>

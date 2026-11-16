@@ -9,6 +9,8 @@ export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?
   const [showRemoved, setShowRemoved] = useState(false);
   const [jobs, setJobs] = useState<{ key: string; label: string; when: string; runs: { ran_at: string; ok: boolean; summary: string | null }[] }[] | null>(null);
   const [showJobs, setShowJobs] = useState(false);
+  const [gm, setGm] = useState<{ mailboxes: { email: string; name: string; needsReconnect: boolean; checkedAt: string | null }[]; filedToday: { received: number; sent: number }; lastFiledAt: string | null; lastLeadImportAt: string | null; healthy: boolean } | null>(null);
+  const [showGm, setShowGm] = useState(false);
   const [preview, setPreview] = useState<{ listings: number; messages: { to: string; title: string; body: string }[] } | null | 'loading'>(null);
   const [testText, setTestText] = useState('');
   const [testOut, setTestOut] = useState<{ listing: string; how: string }[] | null | 'loading'>(null);
@@ -28,6 +30,7 @@ export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?
   useEffect(() => {
     if (!authToken) return;
     let alive = true;
+    fetch('/api/crm/gmail-health', { headers: { Authorization: `Bearer ${authToken}` } }).then(r => (r.ok ? r.json() : null)).then(j => { if (alive && j) setGm(j); }).catch(() => {});
     fetch('/api/crm/job-runs', { headers: { Authorization: `Bearer ${authToken}` } }).then(r => (r.ok ? r.json() : null)).then(j => { if (alive && j?.jobs) setJobs(j.jobs); }).catch(() => {});
     fetch('/api/crm/lead-tag-health', { headers: { Authorization: `Bearer ${authToken}` } }).then(r => (r.ok ? r.json() : null)).then(j => { if (alive && j) setD(j); }).catch(() => {});
     return () => { alive = false; };
@@ -44,6 +47,20 @@ export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?
         <div style={{ marginTop: 3 }}>
           <button onClick={() => setShowRemoved(o => !o)} title="Every contact delete is logged; merging duplicates deletes the extra one" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: 'inherit', textAlign: 'left' }}>🗑 Contacts removed or merged, last 7 days: <b>{d.removed.total}</b> {showRemoved ? '▾' : '▸'}</button>
           {showRemoved && d.removed.items.map(r => <div key={r.id + r.at} style={{ fontSize: 12, marginLeft: 14 }}>{r.name} · {new Date(r.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>)}
+        </div>
+      )}
+      {gm && (
+        <div style={{ marginTop: 3 }}>
+          <button onClick={() => setShowGm(o => !o)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: 'inherit', textAlign: 'left' }}>
+            ✉ Gmail: <b style={{ color: gm.healthy ? 'var(--k-0f766e, #0f766e)' : '#b91c1c' }}>{gm.mailboxes.length === 0 ? 'no mailbox connected' : gm.healthy ? `${gm.mailboxes.length} mailbox${gm.mailboxes.length === 1 ? '' : 'es'} healthy` : 'a mailbox needs reconnecting'}</b>
+            {' · '}{gm.filedToday.received + gm.filedToday.sent} email{gm.filedToday.received + gm.filedToday.sent === 1 ? '' : 's'} filed today{gm.lastFiledAt ? ` (last ${new Date(gm.lastFiledAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })})` : ''} {showGm ? '▾' : '▸'}
+          </button>
+          {showGm && (
+            <div style={{ marginTop: 4, marginLeft: 14, fontSize: 12.5 }}>
+              {gm.mailboxes.map(m => <div key={m.email} style={{ color: m.needsReconnect ? '#b91c1c' : undefined }}>{m.needsReconnect ? '⚠' : '✓'} {m.name || m.email} <span style={{ color: 'var(--k-9ca3af, #9ca3af)' }}>· {m.email}{m.needsReconnect ? ' · Google stopped accepting it: reconnect from that person’s sidebar' : ''}</span></div>)}
+              <div style={{ color: 'var(--k-9ca3af, #9ca3af)', marginTop: 2 }}>{gm.filedToday.received} received · {gm.filedToday.sent} sent filed today{gm.lastLeadImportAt ? ` · lead-email import last filed ${new Date(gm.lastLeadImportAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}</div>
+            </div>
+          )}
         </div>
       )}
       {jobs && (

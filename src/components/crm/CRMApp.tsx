@@ -63,6 +63,7 @@ import { parseListingTagIds, listingTagLabel, listingTagToken, suggestListingTag
 import TaggedText from '@/components/crm/TaggedText';
 import ListingFollowUps from '@/components/crm/ListingFollowUps';
 import TargetedFollowUps from '@/components/crm/TargetedFollowUps';
+import ContactJourney from '@/components/crm/ContactJourney';
 import DealActivityTab from '@/components/crm/deal/DealActivityTab';
 import { DealHeader, DealCardStyles, StatTiles, STAGE_PALETTE, DealTile, TileStyles, Icon, daysAgo } from '@/components/crm/deal/dealUi';
 import Ico, { type IcoName } from '@/components/crm/Ico';
@@ -6728,7 +6729,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               )}
               <ListingFollowUps authToken={session?.access_token} userId={profile?.id} onToast={showToast}
                 onOpenContact={id => { let n = 0; const go = () => { if (openEntityRef.current?.('contact', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }} />
-              <TargetedFollowUps authToken={session?.access_token}
+              <TargetedFollowUps authToken={session?.access_token} onToast={showToast}
                 onOpenContact={id => { let n = 0; const go = () => { if (openEntityRef.current?.('contact', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }}
                 onSecondTouch={i => {
                   // No Gmail connected for this login: the in-CRM email panel can't open, so open the mail app with the same message started.
@@ -14183,6 +14184,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     );
                   })()}
+
+                  <ContactJourney contactId={c.id} authToken={session?.access_token} />
 
                   {/* Properties this contact asked about (no deal needed): #-tagged in their notes or in a logged call / note, e.g. #1222Chulie */}
                   {(() => {
