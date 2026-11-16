@@ -106,3 +106,25 @@ export function suggestListingTag(text: string, listings: TagListing[]): { listi
   }
   return best;
 }
+
+/** Every one of our properties a note names by address (typed without a '#'), in the order they appear. */
+export function suggestAllListingTags(text: string, listings: TagListing[]): { listing: TagListing; start: number; end: number }[] {
+  if (!text || !listings.length || !/\d/.test(text)) return [];
+  const seen = new Set<string>();
+  const out: { listing: TagListing; start: number; end: number }[] = [];
+  for (const l of listings) {
+    const slug = listingAddressSlug(l).toLowerCase();
+    if (!slug || seen.has(slug)) continue;
+    const words = streetPart(l).split(/\s+/).filter(Boolean);
+    if (words.length < 2 || !/^\d+$/.test(words[0])) continue;
+    const name = words.slice(1);
+    if (name.length > 1 && SUFFIX.has(name[name.length - 1].toLowerCase().replace(/\./g, ''))) name.pop();
+    if (alnum(name.join('')).length < 3) continue;
+    const re = new RegExp(`(?<![#\\w])${esc(words[0])}\\s+${name.map(esc).join('\\s+')}(?:\\s+(?:${[...SUFFIX].map(esc).join('|')}))?(?![A-Za-z0-9])`, 'i');
+    const m = re.exec(text);
+    if (!m) continue;
+    seen.add(slug);
+    out.push({ listing: l, start: m.index, end: m.index + m[0].length });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}

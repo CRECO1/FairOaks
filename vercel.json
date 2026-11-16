@@ -52,6 +52,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/cron/targeted-replies",
+      "schedule": "20 14 * * *"
+    },
+    {
       "path": "/api/cron/property-inquiry-digest",
       "schedule": "5 14 * * 1-5"
     },

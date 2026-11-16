@@ -259,14 +259,15 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [inquiries, setInquiries] = useState<Array<{ key: string; contact_id: string | null; deal_id?: string | null; name: string; type: string | null; via: string; last_at: string | null; snippet: string | null; needs_follow_up?: boolean }>>([]);
   const [inquiriesLoaded, setInquiriesLoaded] = useState(false);
   const [targeted, setTargeted] = useState<{ total: number; items: Array<{ contact_id: string; name: string; type: string | null }> }>({ total: 0, items: [] });
+  const [funnel, setFunnel] = useState<{ targeted: number; asked: number; followedUp: number; deals: number } | null>(null);
   const [mentions, setMentions] = useState<Array<{ key: string; kind: string; listing_id: string | null; label: string; detail: string | null; snippet: string | null }>>([]);
   useEffect(() => {
-    setInquiries([]); setMentions([]); setTargeted({ total: 0, items: [] }); setInquiriesLoaded(false);
+    setInquiries([]); setMentions([]); setFunnel(null); setTargeted({ total: 0, items: [] }); setInquiriesLoaded(false);
     if (!active?.id || !authToken) return;
     let alive = true;
     fetch(`/api/crm/listing-inquiries?listing_id=${active.id}`, { headers: { Authorization: `Bearer ${authToken}` } })
       .then(r => (r.ok ? r.json() : null))
-      .then(j => { if (alive) { setInquiries(j?.items ?? []); setMentions(j?.mentions ?? []); setTargeted(j?.targeted ?? { total: 0, items: [] }); setInquiriesLoaded(true); } })
+      .then(j => { if (alive) { setInquiries(j?.items ?? []); setMentions(j?.mentions ?? []); setTargeted(j?.targeted ?? { total: 0, items: [] }); setFunnel(j?.funnel ?? null); setInquiriesLoaded(true); } })
       .catch(() => { if (alive) setInquiriesLoaded(true); });
     return () => { alive = false; };
   }, [active?.id, authToken]);
@@ -373,6 +374,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [targetedCounts, setTargetedCounts] = useState<Record<string, number>>({});
   const [showTagReview, setShowTagReview] = useState(false);
   const [countsKey, setCountsKey] = useState(0);
+  const [pendingTags, setPendingTags] = useState<number | null>(null);
   useEffect(() => {
     if (!listings.length) return;
     let live = true;
@@ -382,6 +384,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       .catch(() => {});
     return () => { live = false; };
   }, [listings.length, authToken, countsKey]); // eslint-disable-line
+
+  // Admins: how many old notes still wait on a tagging decision (the number on the 'Tag old notes' button).
+  useEffect(() => {
+    if (!isAdmin || !authToken || !listings.length) return;
+    let live = true;
+    fetch('/api/crm/tag-suggestions?summary=1', { headers: authHeaders }).then(r => (r.ok ? r.json() : null)).then(j => { if (live && typeof j?.total === 'number') setPendingTags(j.total); }).catch(() => {});
+    return () => { live = false; };
+  }, [isAdmin, listings.length, authToken, countsKey]); // eslint-disable-line
 
   // Reopen the property you had open before a refresh, on the same tab (lib/view-memory).
   useRememberedSelection(`${businessUnit}:listing`, active?.id, !loading && listings.length > 0, id => {
@@ -1228,7 +1238,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         {isAdmin && (
           <button type="button" onClick={() => setShowTagReview(true)} title="Find old notes that name one of our properties without a # and tag them, one tap each"
             style={{ ...INP, width: 'auto', flex: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--k-6b7280)' }}>
-            🏠 Tag old notes
+            🏠 Tag old notes{pendingTags ? ` (${pendingTags})` : ''}
           </button>
         )}
         {Object.keys(askCounts).length > 0 && (
@@ -1426,6 +1436,24 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     🏠 {inquiries.length} asked{last && when ? ` · ${who ? `${who}, ` : ''}${when}` : ''}{targeted.total > 0 && <span style={{ color: '#b45309', marginLeft: 6 }}>· 🎯 {targeted.total} targeted</span>}
                     {need > 0 && <span style={{ color: '#b45309', marginLeft: 6 }}>· {need} need{need === 1 ? 's' : ''} follow-up</span>} →
                   </button>
+                );
+              })()}
+
+              {/* Funnel: reached out → asked → followed up → deal, with the step-to-step conversion */}
+              {funnel && (funnel.targeted + funnel.asked + funnel.deals) > 0 && (() => {
+                const pct = (n: number, d: number) => (d > 0 ? ` (${Math.round((n / d) * 100)}%)` : '');
+                const steps: [string, number, string][] = [
+                  ['🎯', funnel.targeted, 'reached out'], ['🏠', funnel.asked, 'asked'], ['✅', funnel.followedUp, 'followed up'], ['💼', funnel.deals, funnel.deals === 1 ? 'deal' : 'deals'],
+                ];
+                return (
+                  <div title="Reached out (outreach lists) → asked (tagged inquiries) → asks with a follow-up logged → deals on this property. The percent is each step out of the one before." style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 6px', margin: '0 0 10px', fontSize: 12, color: 'var(--k-6b7280)' }}>
+                    {steps.map(([icon, n, label], i) => (
+                      <React.Fragment key={label}>
+                        {i > 0 && <span style={{ color: 'var(--k-9ca3af)' }}>→</span>}
+                        <span style={{ fontWeight: 600, color: n > 0 ? 'var(--k-374151)' : 'var(--k-9ca3af)' }}>{icon} {n} {label}<span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}>{i > 0 ? pct(n, steps[i - 1][1]) : ''}</span></span>
+                      </React.Fragment>
+                    ))}
+                  </div>
                 );
               })()}
 

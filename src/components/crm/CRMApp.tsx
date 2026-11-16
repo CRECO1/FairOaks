@@ -59,9 +59,10 @@ import CampaignEngagedPanel from '@/components/crm/CampaignEngagedPanel';
 import CampaignPreflight from '@/components/crm/CampaignPreflight';
 import CallTapPrompt from '@/components/crm/CallTapPrompt';
 import MentionTextarea, { parseMentionContactIds, parseMentionIds } from '@/components/crm/MentionTextarea';
-import { parseListingTagIds, listingTagLabel, type TagListing } from '@/lib/listing-tags';
+import { parseListingTagIds, listingTagLabel, listingTagToken, suggestListingTag, type TagListing } from '@/lib/listing-tags';
 import TaggedText from '@/components/crm/TaggedText';
 import ListingFollowUps from '@/components/crm/ListingFollowUps';
+import TargetedFollowUps from '@/components/crm/TargetedFollowUps';
 import DealActivityTab from '@/components/crm/deal/DealActivityTab';
 import { DealHeader, DealCardStyles, StatTiles, STAGE_PALETTE, DealTile, TileStyles, Icon, daysAgo } from '@/components/crm/deal/dealUi';
 import Ico, { type IcoName } from '@/components/crm/Ico';
@@ -6715,6 +6716,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <div>
               <ListingFollowUps authToken={session?.access_token} userId={profile?.id} onToast={showToast}
                 onOpenContact={id => { let n = 0; const go = () => { if (openEntityRef.current?.('contact', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }} />
+              <TargetedFollowUps authToken={session?.access_token}
+                onOpenContact={id => { let n = 0; const go = () => { if (openEntityRef.current?.('contact', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }}
+                onSecondTouch={i => {
+                  // Open their card and start a short follow-up email (subject + body). Nothing is sent until the person presses send.
+                  let n = 0;
+                  const go = () => {
+                    if (openEntityRef.current?.('contact', i.contact_id) === false && n++ < 12) { setTimeout(go, 500); return; }
+                    setTimeout(() => {
+                      setReplyToContactEmail(null); setComposeSubject(`Following up on ${i.listing}`); setShowContactCompose(true);
+                      let k = 0;
+                      const fill = () => {
+                        const el = contactComposeBodyRef.current;
+                        if (el) el.innerHTML = `<p>Hi ${i.first_name || 'there'},</p><p>I wanted to follow up about ${i.listing}. Is space like this still on your radar? Happy to send details or set up a time to walk it.</p>`;
+                        else if (k++ < 10) setTimeout(fill, 300);
+                      };
+                      fill();
+                    }, 700);
+                  };
+                  go();
+                }} />
               {/* ── Action center: what needs YOU today / this week (your own open
                      tasks + follow-ups + deals). Leads the dashboard; the charts
                      sit in the collapsed "Numbers" section below. ── */}
@@ -13824,7 +13845,31 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     </div>
                   ) : c.notes ? (
+                    <>
                     <div style={{ background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 8, padding: '12px 14px', fontSize: 14, color: 'var(--k-374151)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}><TaggedText text={c.notes} listings={tagListings} onOpen={id => { setActiveClient(null); openEntity('listing', id); }} /></div>
+                    {(() => {
+                      // The note names one of our properties by address but isn't tagged: one tap turns that address into the tag (nobody is notified).
+                      const text = c.notes ?? '';
+                      if (/prospect|outreach|enriched \d{4}-/i.test(text)) return null;   // outreach-list notes are not inquiries
+                      const sg = suggestListingTag(text, tagListings);
+                      if (!sg) return null;
+                      return (
+                        <button type="button" title="Tag this property so it counts on the contact and the property (nobody is notified)"
+                          onClick={async () => {
+                            const next = text.slice(0, sg.start) + '#' + listingTagToken(sg.listing) + text.slice(sg.end);
+                            const taggedProps = parseListingTagIds(next, tagListings);
+                            const { error } = await supabase.from('crm_clients').update({ notes: next, tagged_listing_ids: taggedProps }).eq('id', c.id);
+                            if (error) { showToast('Could not tag that'); return; }
+                            setClients(prev => prev.map(x => x.id === c.id ? { ...x, notes: next, tagged_listing_ids: taggedProps } : x));
+                            setActiveClient(prev => prev ? { ...prev, notes: next, tagged_listing_ids: taggedProps } : prev);
+                            showToast(`Tagged ${listingTagLabel(sg.listing)}`);
+                          }}
+                          style={{ marginTop: 6, fontSize: 12.5, fontWeight: 700, color: 'var(--k-0f766e)', background: 'var(--k-f0fdfa)', border: '1px solid var(--k-99f6e4)', borderRadius: 16, padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                          🏠 This note names {listingTagLabel(sg.listing)} · Tag it
+                        </button>
+                      );
+                    })()}
+                    </>
                   ) : (
                     <div style={{ fontSize: 13, color: '#d1d5db' }}>No notes yet.</div>
                   )}

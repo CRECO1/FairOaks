@@ -13,6 +13,8 @@ export type InquiryItem = {
   last_at: string | null; snippet: string | null;
   /** Contacts only: a week or more since they asked and nothing logged on them since. */
   needs_follow_up?: boolean;
+  /** Contacts only: something was logged on them after they asked (their last touch is more than a day past the ask). */
+  followed_up?: boolean;
 };
 
 const prettyPhone = (n: string | null | undefined) => { const d = String(n ?? '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : (n ?? '') || 'Unknown caller'; };
@@ -140,9 +142,10 @@ export async function buildInquiries(ctx: CrmContext, listingId: string): Promis
     if (!it.contact_id || !it.last_at || it.via === 'deal' || it.via === 'task') continue;
     const c = contacts.get(it.contact_id);
     const askedMs = Date.parse(it.last_at);
-    if (!c || !Number.isFinite(askedMs) || nowMs - askedMs < 7 * 86_400_000) continue;
+    if (!c || !Number.isFinite(askedMs)) continue;
     const touched = c.last_touched_at ? Date.parse(c.last_touched_at) : 0;
-    if (!touched || touched <= askedMs + 86_400_000) it.needs_follow_up = true;
+    if (touched > askedMs + 86_400_000) it.followed_up = true;
+    if (nowMs - askedMs >= 7 * 86_400_000 && (!touched || touched <= askedMs + 86_400_000)) it.needs_follow_up = true;
   }
 
   const list = [...items.values()].sort((a, b) => (b.last_at ?? '').localeCompare(a.last_at ?? ''));
@@ -243,4 +246,24 @@ export async function targetedCounts(ctx: CrmContext): Promise<Record<string, nu
     if ((data?.length ?? 0) < 1000) break;
   }
   return out;
+}
+
+export type Funnel = { targeted: number; asked: number; followedUp: number; deals: number };
+
+/** The property's funnel: contacts we reached out to → people who asked → asks that got a follow-up logged → deals on this property. Counts only what the caller may see. */
+export async function buildFunnel(ctx: CrmContext, listingId: string, items: InquiryItem[], targetedTotal: number): Promise<Funnel> {
+  const db = adminClient();
+  const people = items.filter(i => i.via !== 'deal' && i.via !== 'task');
+  const [byListing, byTag] = await Promise.all([
+    db.from('crm_deals').select('id, business_unit').eq('listing_id', listingId).limit(500),
+    db.from('crm_deals').select('id, business_unit').contains('tagged_listing_ids', [listingId]).limit(500),
+  ]);
+  const hidden = new Set(await hiddenDealIds(ctx));
+  const ids = new Set<string>();
+  for (const d of [...(byListing.data ?? []), ...(byTag.data ?? [])]) {
+    if (hidden.has(d.id as string)) continue;
+    if (!isAdminRole(ctx.role) && d.business_unit !== ctx.businessUnit) continue;
+    ids.add(d.id as string);
+  }
+  return { targeted: targetedTotal, asked: people.length, followedUp: people.filter(i => i.followed_up).length, deals: ids.size };
 }

@@ -5,7 +5,8 @@ type Item = { id: string; name: string; source: string; at: string; snippet: str
 
 /** Admin health line: of the leads that arrived this week, how many were tagged to a property at import, and which named none. */
 export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?: string; onOpenContact?: (id: string) => void }) {
-  const [d, setD] = useState<{ total: number; tagged: number; untagged: number; items: Item[] } | null>(null);
+  const [d, setD] = useState<{ total: number; tagged: number; untagged: number; items: Item[]; calls?: { total: number; tagged: number }; removed?: { total: number; items: { id: string; name: string; at: string }[] } | null } | null>(null);
+  const [showRemoved, setShowRemoved] = useState(false);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!authToken) return;
@@ -13,13 +14,20 @@ export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?
     fetch('/api/crm/lead-tag-health', { headers: { Authorization: `Bearer ${authToken}` } }).then(r => (r.ok ? r.json() : null)).then(j => { if (alive && j) setD(j); }).catch(() => {});
     return () => { alive = false; };
   }, [authToken]);
-  if (!d || d.total === 0) return null;
+  if (!d || (d.total === 0 && !(d.calls?.total) && !(d.removed?.total))) return null;
   return (
     <div style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)' }}>
-      <button onClick={() => d.untagged > 0 && setOpen(o => !o)} title="Leads from the last 7 days: how many were tagged to a property when they arrived"
+      {d.total > 0 && <button onClick={() => d.untagged > 0 && setOpen(o => !o)} title="Leads from the last 7 days: how many were tagged to a property when they arrived"
         style={{ background: 'none', border: 'none', padding: 0, cursor: d.untagged > 0 ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 12.5, color: 'inherit', textAlign: 'left' }}>
         🏠 Leads, last 7 days: <b>{d.total}</b> new · <b style={{ color: 'var(--k-0f766e, #0f766e)' }}>{d.tagged}</b> tagged to a property{d.untagged > 0 && <> · <b style={{ color: '#b45309' }}>{d.untagged}</b> named no property {open ? '▾' : '▸'}</>}
-      </button>
+      </button>}
+      {d.calls && d.calls.total > 0 && <div title="Phone bot and voicemail summaries from the last 7 days: how many named one of our properties and were tagged to it" style={{ marginTop: 3 }}>📞 Bot &amp; voicemail calls, last 7 days: <b>{d.calls.total}</b> · <b style={{ color: 'var(--k-0f766e, #0f766e)' }}>{d.calls.tagged}</b> tagged to a property</div>}
+      {d.removed && d.removed.total > 0 && (
+        <div style={{ marginTop: 3 }}>
+          <button onClick={() => setShowRemoved(o => !o)} title="Every contact delete is logged; merging duplicates deletes the extra one" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: 'inherit', textAlign: 'left' }}>🗑 Contacts removed or merged, last 7 days: <b>{d.removed.total}</b> {showRemoved ? '▾' : '▸'}</button>
+          {showRemoved && d.removed.items.map(r => <div key={r.id + r.at} style={{ fontSize: 12, marginLeft: 14 }}>{r.name} · {new Date(r.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>)}
+        </div>
+      )}
       {open && (
         <div style={{ marginTop: 6 }}>
           {d.items.map(i => (

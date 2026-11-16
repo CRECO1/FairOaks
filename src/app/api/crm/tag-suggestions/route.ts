@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, isAdminRole, type CrmContext } from '@/lib/crm-auth';
 import { listingAccessible } from '@/lib/listing-files-access';
-import { suggestListingTag, listingTagToken, listingTagLabel, type TagListing } from '@/lib/listing-tags';
+import { suggestListingTag, suggestAllListingTags, listingTagToken, listingTagLabel, type TagListing } from '@/lib/listing-tags';
 import { listingTagIdsForText } from '@/lib/listing-tags-server';
 import { mirrorCallNote } from '@/lib/call-note-mirror';
 import { adminClient } from '@/lib/supabase-admin';
@@ -19,6 +19,13 @@ const OUTREACH = /\blease prospect\b|\bsale prospect\b|outbound prospect|\bprosp
 const TENANT = /\|\s*unit:\s*\S[^|]*\|\s*rent:\s*\$/i;
 const INQUIRY = /engaged:|crexi lead|loopnet lead|inquir|asked about|called about|requested info|viewed space/i;
 const looksLikeOutreach = (t: string) => OUTREACH.test(t) && !INQUIRY.test(t);
+/** A suggested answer for notes that are neither clearly safe nor outreach: the review shows it as a hint, a person still decides. */
+const ASKISH = /\b(asked|asking|interested|wants?|wanted|looking (for|at)|inquir|requested?|available|availability|tour|showing|lease rate|how much|call(ed)? (me|back)|returned (a )?call|follow(ed)? up)\b/i;
+function verdictFor(text: string, namedCount: number): { verdict: 'inquiry' | 'two' | 'general'; hint: string } {
+  if (namedCount >= 2) return { verdict: 'two', hint: 'Names more than one property' };
+  if (ASKISH.test(text)) return { verdict: 'inquiry', hint: 'Looks like an inquiry' };
+  return { verdict: 'general', hint: 'Looks like a general note' };
+}
 const looksLikeTenant = (t: string) => TENANT.test(t) && !INQUIRY.test(t);
 
 /**
@@ -56,7 +63,7 @@ export async function GET(req: NextRequest) {
   const db = adminClient();
   const listings = await listingsFor(db, ctx);
   const lc = new Map(listings.map(l => [l.id, l]));
-  const out: { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach: boolean; safe: boolean }[] = [];
+  const out: { source: Source; row_id: string; contact_id: string | null; contact: string; listing_id: string; listing: string; before: string; after: string; at: string | null; outreach: boolean; safe: boolean; verdict: string; hint: string }[] = [];
 
   const hold = (c: { lead_hold: boolean | null }) => !!c.lead_hold && ctx.role !== 'super_admin';
   const [clients, acts, calls] = await Promise.all([
@@ -64,16 +71,25 @@ export async function GET(req: NextRequest) {
     db.from('crm_client_activities').select('id, client_id, note, created_at, tagged_listing_ids').not('note', 'is', null).order('created_at', { ascending: false }).limit(1000),
     db.from('crm_call_log').select('id, contact_id, notes, started_at, tagged_listing_ids, caller_name, from_number').eq('business_unit', ctx.businessUnit).not('notes', 'is', null).order('started_at', { ascending: false }).limit(1000),
   ]);
+  // "Not it" answers, shared by the whole team (before the table exists, or on any error, nothing is skipped).
+  const skipped = new Set<string>();
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data: sk, error: skErr } = await db.from('crm_tag_review_skips').select('source, row_id, listing_id').eq('business_unit', ctx.businessUnit ?? 'commercial').order('row_id').range(from, from + 999);
+    if (skErr) break;
+    for (const x of sk ?? []) skipped.add(`${x.source}:${x.row_id}:${x.listing_id}`);
+    if ((sk?.length ?? 0) < 1000) break;
+  }
   let tenantsLeftOut = 0;
   const nameOf = (c: { first_name: string | null; last_name: string | null; business_name: string | null }) => c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
   const cmap = new Map<string, { name: string; hold: boolean }>();
   function pushRow(source: Source, rowId: string, contactId: string | null, who: string, text: string, at: string | null, targeted: string[] = []) {
     const sg = suggestListingTag(text, listings);
     if (!sg) return;
+    if (skipped.has(`${source}:${rowId}:${sg.listing.id}`)) return;
     if (looksLikeTenant(text)) { tenantsLeftOut++; return; }
     if (targeted.includes(sg.listing.id) && looksLikeOutreach(text)) return;   // already marked as targeted: done
     const l = lc.get(sg.listing.id)!;
-    out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at, outreach: looksLikeOutreach(text), safe: INQUIRY.test(text) && !looksLikeOutreach(text) });
+    out.push({ source, row_id: rowId, contact_id: contactId, contact: who, listing_id: l.id, listing: listingTagLabel(l), before: text.slice(Math.max(0, sg.start - 40), sg.end + 40), after: `${text.slice(Math.max(0, sg.start - 40), sg.start)}#${listingTagToken(l)}${text.slice(sg.end, sg.end + 40)}`, at, outreach: looksLikeOutreach(text), safe: INQUIRY.test(text) && !looksLikeOutreach(text), ...verdictFor(text, suggestAllListingTags(text, listings).length) });
   }
   for (const c of clients.data ?? []) {
     cmap.set(c.id as string, { name: nameOf(c as never), hold: hold(c as never) });
@@ -90,6 +106,7 @@ export async function GET(req: NextRequest) {
     if (c?.hold) continue;
     pushRow('call', k.id as string, (k.contact_id as string | null) ?? null, c?.name ?? (k.caller_name as string | null) ?? 'Unknown caller', k.notes as string, k.started_at as string);
   }
+  if (req.nextUrl.searchParams.get('summary') === '1') return NextResponse.json({ total: out.length });   // just the badge number
   // Per-property summary, biggest first, so a whole property can be approved in one go.
   const groups = new Map<string, { listing_id: string; listing: string; n: number; outreach: number; bySource: Record<Source, number> }>();
   for (const i of out) {
@@ -138,6 +155,13 @@ export async function POST(req: NextRequest) {
   const db = adminClient();
   const listings = await listingsFor(db, ctx);
   if (!listings.some(l => l.id === listingId)) return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
+  // "Not it": remembered for the whole team, so nobody reviews the same note twice. Writes nothing to the note itself.
+  if (b?.mode === 'skip') {
+    const rows = items.map(i => ({ source: i.source, row_id: i.row_id, listing_id: listingId, business_unit: ctx.businessUnit ?? 'commercial', skipped_by: ctx.userId }));
+    const { error } = await db.from('crm_tag_review_skips').upsert(rows, { onConflict: 'source,row_id,listing_id' });
+    if (error) return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    return NextResponse.json({ ok: true, done: rows.length, skipped: rows.map(r => ({ source: r.source, row_id: r.row_id, listing_id: r.listing_id })) });
+  }
   // Outreach lists: record "we targeted these people for this property" WITHOUT touching their notes and without counting them as inquiries.
   if (b?.mode === 'targeted') {
     const ids = items.filter(i => i.source === 'contact').map(i => i.row_id);
@@ -147,7 +171,7 @@ export async function POST(req: NextRequest) {
       if (r.business_unit !== ctx.businessUnit || (r.lead_hold && ctx.role !== 'super_admin')) continue;
       const cur = (r.targeted_listing_ids as string[] | null) ?? [];
       if (cur.includes(listingId)) continue;
-      const { error } = await db.from('crm_clients').update({ targeted_listing_ids: [...cur, listingId] }).eq('id', r.id as string);
+      const { error } = await db.from('crm_clients').update({ targeted_listing_ids: [...cur, listingId], targeted_at: new Date().toISOString() }).eq('id', r.id as string);
       if (!error) added.push({ row_id: r.id as string, listing_id: listingId });
     }
     return NextResponse.json({ ok: true, done: added.length, failed: ids.length - added.length, added });
@@ -168,6 +192,15 @@ export async function PUT(req: NextRequest) {
   const b = await req.json().catch(() => null);
   const undo: Applied[] = Array.isArray(b?.undo) ? b.undo.slice(0, MAX_BATCH) : [];
   const db = adminClient();
+  if (Array.isArray(b?.unskip)) {       // undo of "Not it"
+    let restored = 0;
+    for (const u of (b.unskip as { source: Source; row_id: string; listing_id: string }[]).slice(0, MAX_BATCH)) {
+      if (!['contact', 'activity', 'call'].includes(u?.source) || !UUID.test(String(u?.row_id ?? '')) || !UUID.test(String(u?.listing_id ?? ''))) continue;
+      const { error } = await db.from('crm_tag_review_skips').delete().eq('source', u.source).eq('row_id', u.row_id).eq('listing_id', u.listing_id).eq('business_unit', ctx.businessUnit ?? 'commercial');
+      if (!error) restored++;
+    }
+    return NextResponse.json({ ok: true, restored, skipped: 0 });
+  }
   if (Array.isArray(b?.untarget)) {       // undo of "mark as targeted": take that property back off those contacts
     let restored = 0;
     for (const u of (b.untarget as { row_id: string; listing_id: string }[]).slice(0, MAX_BATCH)) {

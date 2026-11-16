@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
-import { buildInquiries, buildMentions, buildTargeted, type InquiryItem } from '@/lib/listing-inquiries';
+import { buildInquiries, buildMentions, buildTargeted, buildFunnel, type InquiryItem } from '@/lib/listing-inquiries';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,5 +26,6 @@ export async function GET(req: NextRequest) {
   if (!(await assertCanAccessListing(listingId, ctx))) return notFound('Listing not found');
   const r = await buildInquiries(ctx, listingId);
   if (!r.ok) return NextResponse.json({ error: 'Internal error' }, { status: 500 });
-  return NextResponse.json({ items: r.items, mentions: await buildMentions(ctx, listingId).catch(() => []), targeted: await buildTargeted(ctx, listingId).catch(() => ({ total: 0, items: [] })) });
+  const targeted = await buildTargeted(ctx, listingId).catch(() => ({ total: 0, items: [] }));
+  return NextResponse.json({ items: r.items, mentions: await buildMentions(ctx, listingId).catch(() => []), targeted, funnel: await buildFunnel(ctx, listingId, r.items, targeted.total).catch(() => null) });
 }
