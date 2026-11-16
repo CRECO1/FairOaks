@@ -313,5 +313,17 @@ export async function buildOverview(ctx: CrmContext): Promise<OverviewRow[]> {
       avgReplyDays: days.length ? Math.round((days.reduce((a, b) => a + b, 0) / days.length) * 10) / 10 : null,
     });
   }));
-  return rows.filter(r => r.asked + r.targeted + r.deals > 0).sort((a, b) => b.asked - a.asked || b.targeted - a.targeted);
+  // Some properties exist twice as listing rows (same address, a trailing space…) and a tag is stored on both, so adding the rows would count every person
+  // twice. One row per address: the biggest of each figure.
+  const byAddr = new Map<string, OverviewRow>();
+  for (const r of rows) {
+    const key = r.listing.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const cur = byAddr.get(key);
+    if (!cur) { byAddr.set(key, { ...r }); continue; }
+    byAddr.set(key, {
+      ...cur, asked: Math.max(cur.asked, r.asked), targeted: Math.max(cur.targeted, r.targeted), followedUp: Math.max(cur.followedUp, r.followedUp),
+      deals: Math.max(cur.deals, r.deals), needsFollowUp: Math.max(cur.needsFollowUp, r.needsFollowUp), avgReplyDays: cur.avgReplyDays ?? r.avgReplyDays,
+    });
+  }
+  return [...byAddr.values()].map(r => ({ ...r, listing: r.listing.trim() })).filter(r => r.asked + r.targeted + r.deals > 0).sort((a, b) => b.asked - a.asked || b.targeted - a.targeted);
 }
