@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     const { data: blob } = await supabase.storage.from(BUCKET).download(form.storage_path);
     if (!blob) return NextResponse.json({ error: 'Could not read that form.' }, { status: 500 });
     const bytes = Buffer.from(await blob.arrayBuffer());
-    const safe = String(form.name || 'Form').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60);
+    const safe = (safeObjectName(String(form.name || 'Form')).replace(/\.+$/, '').slice(0, 60) || 'Form');
     const path = `imports/${ctx.userId}/${Date.now()}_${safe}.pdf`;
     const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: 'application/pdf', upsert: true });
     if (upErr) { console.error('[esign-import] form copy', upErr); return NextResponse.json({ error: 'Could not prepare that form.' }, { status: 500 }); }
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     if (!blob) return NextResponse.json({ error: 'Could not read that document.' }, { status: 500 });
     const bytes = Buffer.from(await blob.arrayBuffer());
     const base = String(doc.name || doc.storage_path.split('/').pop() || 'Document').replace(/\.pdf$/i, '');
-    const safe = base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60);
+    const safe = (safeObjectName(base).replace(/\.+$/, '').slice(0, 60) || 'Document');
     const path = `imports/${ctx.userId}/${Date.now()}_${safe}.pdf`;
     const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: 'application/pdf', upsert: true });
     if (upErr) { console.error('[esign-import] deal doc copy', upErr); return NextResponse.json({ error: 'Could not prepare that document.' }, { status: 500 }); }

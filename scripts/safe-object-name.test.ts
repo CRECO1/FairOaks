@@ -27,5 +27,10 @@ for (const n of names) {
 }
 if (safeObjectName('Smith Inc..pdf') !== 'Smith_Inc.pdf') { bad++; console.log('FAIL expected Smith_Inc.pdf'); }
 if (!safeObjectName('x'.repeat(400) + '.pdf').endsWith('.pdf')) { bad++; console.log('FAIL long name lost its extension'); }
+// e-sign import appends '.pdf' to a cleaned stem: a stem ending in '.' must not produce '..pdf'.
+for (const n of ['Smith Inc.', 'Lease Inc..', 'Form...', 'x.']) {
+  const stem = (safeObjectName(n).replace(/\.+$/, '').slice(0, 60) || 'Form');
+  if (`${Date.now()}_${stem}.pdf`.includes('..')) { bad++; console.log('FAIL e-sign stem', n); }
+}
 console.log(bad ? `${bad} FAILED` : `all ${names.length + 2} checks passed`);
 process.exit(bad ? 1 : 0);
