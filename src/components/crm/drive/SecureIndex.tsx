@@ -12,7 +12,7 @@ import type { DrivePerson } from '@/components/crm/drive/DocsDrive';
 // searchable, previewed on hover, shared by Drive's sharing, or read by Copilot.
 
 interface Row {
-  id: string; client_id: string; deal_id: string | null; contact_name: string; deal_label: string | null;
+  id: string; client_id: string | null; deal_id: string | null; contact_name: string; deal_label: string | null;
   status: 'open' | 'revoked'; purged_at: string | null; expires_at: string; submitted_at: string | null; first_viewed_at: string | null; sent_at: string | null;
   created_at: string; last_upload_at: string | null; purge_after: string; keep_files: boolean; requested_by: string | null;
   file_count: number; items_total: number; items_done: number;
@@ -87,7 +87,7 @@ export default function SecureIndex({ authToken, businessUnit, isMobile, onOpenC
     setMkBusy(true);
     try {
       const r = await fetch('/api/crm/secure-requests', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
-        body: JSON.stringify({ action: 'create_folder', name, ...(mkPw ? { password: mkPw, guestView: mkView } : {}) }) });
+        body: JSON.stringify({ action: 'create_folder', name, business_unit: businessUnit, ...(mkPw ? { password: mkPw, guestView: mkView } : {}) }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { onToast(j.error || 'Could not create the folder'); return; }
       const made = j.request as { id: string; link: string | null };
@@ -142,7 +142,7 @@ export default function SecureIndex({ authToken, businessUnit, isMobile, onOpenC
           </div>
           {row && row.kind !== 'folder' && (row.deal_id && onOpenDeal
             ? <button type="button" style={hBtn} onClick={() => onOpenDeal(row.deal_id!)}>Open the deal</button>
-            : row.client_id && onOpenContact ? <button type="button" style={hBtn} onClick={() => onOpenContact(row.client_id)}>Open the contact</button> : null)}
+            : row.client_id && onOpenContact ? <button type="button" style={hBtn} onClick={() => onOpenContact(row.client_id!)}>Open the contact</button> : null)}
         </div>
         {justMade?.id === openId && (
           <div role="status" style={{ background: 'var(--k-fdf6e9)', border: '1px solid #f0e2c4', borderRadius: 12, padding: '12px 14px', marginBottom: 12, fontSize: 13.5, color: 'var(--k-374151)', lineHeight: 1.55 }}>
@@ -152,7 +152,7 @@ export default function SecureIndex({ authToken, businessUnit, isMobile, onOpenC
               <span style={{ marginLeft: 8 }}>2. The password <code style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, padding: '2px 8px', fontSize: 14 }}>{justMade.password}</code></span>
               <button type="button" style={{ ...hBtn, height: 32 }} onClick={() => void copyText(justMade.password, 'Password')}>Copy password</button>
             </div>
-            <div style={{ fontSize: 12.5, color: 'var(--k-a06a12)' }}>Send them separately: the link by email or text, the password by phone. This is the only time the password is shown — afterwards it can only be replaced.</div>
+            <div style={{ fontSize: 12.5, color: 'var(--k-a06a12)' }}>Send them separately: the link by email or text, the password by phone. Capitals, spaces and dashes don’t matter when they type it. This is the only time the password is shown — afterwards it can only be replaced.</div>
           </div>
         )}
         <SecureDocs requestId={openId} authToken={authToken} userId={userId} role={role} profiles={profiles} showToast={onToast} onChanged={() => void load()} />
@@ -187,7 +187,7 @@ export default function SecureIndex({ authToken, businessUnit, isMobile, onOpenC
               <input type="checkbox" checked={mkView} onChange={e => setMkView(e.target.checked)} /> With the password they can open the files, not just add their own
             </label>
           )}
-          <button type="submit" disabled={mkBusy || !mkName.trim()} style={{ ...hBtn, border: 'none', background: mkName.trim() ? '#111' : 'var(--k-e5e7eb)', color: mkName.trim() ? '#fff' : 'var(--k-9ca3af)' }}>{mkBusy ? 'Creating…' : 'Create folder'}</button>
+          <button type="submit" disabled={mkBusy || !mkName.trim()} style={{ ...hBtn, border: 'none', background: mkName.trim() ? 'var(--k-111)' : 'var(--k-e5e7eb)', color: mkName.trim() ? 'var(--k-fff)' : 'var(--k-9ca3af)' }}>{mkBusy ? 'Creating…' : 'Create folder'}</button>
         </form>
       )}
       <div role="group" aria-label="Filter" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, marginBottom: 12 }}>

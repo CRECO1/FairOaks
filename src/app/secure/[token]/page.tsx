@@ -12,7 +12,7 @@ import { prepareUpload, putWithProgress } from '@/lib/upload-client';
 interface Item { key: string; label: string }
 interface UFile { id: string; item_key: string | null; name: string; file_size: number | null; mine?: boolean }
 interface Data {
-  state: 'ok' | 'expired' | 'revoked' | 'deleted' | 'password'; agentName: string; name?: string | null; items?: Item[]; note?: string | null;
+  state: 'ok' | 'expired' | 'revoked' | 'deleted' | 'password'; agentName: string; brand?: string; name?: string | null; items?: Item[]; note?: string | null;
   expiresAt?: string; submitted?: boolean; files?: UFile[]; maxFileMb?: number;
   kind?: 'request' | 'folder'; title?: string | null; canView?: boolean; lockedMinutes?: number;
 }
@@ -40,6 +40,7 @@ export default function SecureUploadPage() {
   const [password, setPassword] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const [pwErr, setPwErr] = useState<string | null>(null);
+  const [showPw, setShowPw] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
   const headers = useCallback((json = false): Record<string, string> => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), ...(pass.current ? { 'x-secure-session': pass.current } : {}) }), []);
 
@@ -65,7 +66,7 @@ export default function SecureUploadPage() {
     if (r.status === 401 && j.needsPassword) {
       pass.current = null; try { sessionStorage.removeItem(passKey); } catch { /* ignore */ }
       setPwErr('For your security, please enter the password again.');
-      setData(d => (d ? { state: 'password', agentName: d.agentName } : d));
+      setData(d => (d ? { state: 'password', agentName: d.agentName, brand: d.brand } : d));
     }
     return { ok: r.ok, j };
   }, [api, headers, passKey]);
@@ -76,7 +77,7 @@ export default function SecureUploadPage() {
     try {
       const r = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'unlock', password }) });
       const j = await r.json().catch(() => ({}));
-      if (r.status === 410) { setData(d => ({ state: 'revoked', agentName: d?.agentName ?? 'your CRECO broker' })); return; }
+      if (r.status === 410) { setData(d => ({ state: 'revoked', agentName: d?.agentName ?? 'your broker', brand: d?.brand })); return; }
       if (!r.ok || !j.session) { setPwErr(j.error || 'That’s not the password.'); return; }
       pass.current = j.session as string;
       try { sessionStorage.setItem(passKey, pass.current); } catch { /* still works for this page load */ }
@@ -140,11 +141,15 @@ export default function SecureUploadPage() {
   const wrap: React.CSSProperties = { minHeight: '100vh', background: '#f6f4ef', fontFamily: '-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif', color: '#1a1a1a', padding: '0 16px 48px' };
   const card: React.CSSProperties = { background: '#fff', border: '1px solid #e7e2d6', borderRadius: 12, padding: 16, marginBottom: 12 };
 
+  const brand = data?.brand || 'CRECO';
+  const role = brand === 'CRECO' ? 'broker' : 'agent';   // what each company calls the person the visitor is dealing with
+  // The agent's name — or, when there is none to give, "your CRECO broker", which needs a capital at the start of a sentence.
+  const Agent = (data?.agentName ?? '').replace(/^./, c => c.toUpperCase());
   const shell = (children: React.ReactNode) => (
     <div style={wrap}>
       <div style={{ maxWidth: 560, margin: '0 auto' }}>
         <div style={{ padding: '22px 0 14px', borderBottom: `3px solid ${GOLD}`, marginBottom: 18, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: 0.5, color: GOLD }}>CRECO</span>
+          <span style={{ fontSize: brand.length > 10 ? 18 : 22, fontWeight: 800, letterSpacing: 0.5, color: GOLD }}>{brand}</span>
           <span style={{ fontSize: 12, color: '#6b7280' }}>🔒 Secure folder</span>
         </div>
         {children}
@@ -152,16 +157,22 @@ export default function SecureUploadPage() {
     </div>
   );
 
-  if (missing) return shell(<div style={card}><h1 style={{ fontSize: 20, margin: '0 0 8px' }}>We can’t find that link</h1><p style={{ margin: 0, color: '#4b5563' }}>Please check that you copied the whole link from your email, or ask your CRECO broker to send a new one.</p></div>);
+  if (missing) return shell(<div style={card}><h1 style={{ fontSize: 20, margin: '0 0 8px' }}>We can’t find that link</h1><p style={{ margin: 0, color: '#4b5563' }}>Please check that you copied the whole link from your email, or ask your {role} to send a new one.</p></div>);
   if (!data) return shell(err ? <div style={{ ...card, color: '#b91c1c' }}>{err}</div> : <p style={{ color: '#6b7280' }}>Loading…</p>);
   if (data.state === 'password') {
     return shell(
       <form onSubmit={e => { e.preventDefault(); void unlock(); }} style={card}>
         <h1 style={{ fontSize: 20, margin: '0 0 6px' }}>🔑 This folder needs a password</h1>
-        <p style={{ margin: '0 0 14px', color: '#4b5563', lineHeight: 1.5 }}>{data.agentName} set a password on this private folder and will have given it to you separately — by phone or text, not by email.</p>
+        <p style={{ margin: '0 0 14px', color: '#4b5563', lineHeight: 1.5 }}>{Agent} set a password on this private folder and will have given it to you separately — by phone or text, not by email.</p>
         <label htmlFor="secure-pw" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Password</label>
-        <input id="secure-pw" type="password" autoFocus autoComplete="off" value={password} onChange={e => { setPassword(e.target.value); setPwErr(null); }}
-          style={{ width: '100%', boxSizing: 'border-box', minHeight: 48, borderRadius: 10, border: `1.5px solid ${pwErr ? '#fca5a5' : '#d1d5db'}`, padding: '0 14px', fontSize: 16 }} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input id="secure-pw" type={showPw ? 'text' : 'password'} autoFocus autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={password} onChange={e => { setPassword(e.target.value); setPwErr(null); }}
+            aria-describedby="secure-pw-hint"
+            style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', minHeight: 48, borderRadius: 10, border: `1.5px solid ${pwErr ? '#fca5a5' : '#d1d5db'}`, padding: '0 14px', fontSize: 16 }} />
+          <button type="button" onClick={() => setShowPw(s => !s)} aria-pressed={showPw} aria-label={showPw ? 'Hide the password' : 'Show the password'}
+            style={{ minHeight: 48, padding: '0 14px', borderRadius: 10, border: '1.5px solid #d1d5db', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer', flexShrink: 0 }}>{showPw ? 'Hide' : 'Show'}</button>
+        </div>
+        <div id="secure-pw-hint" style={{ color: '#6b7280', fontSize: 12.5, marginTop: 6 }}>Capitals, spaces and dashes don’t matter.</div>
         {pwErr && <div role="alert" style={{ color: '#b91c1c', fontSize: 13.5, marginTop: 8 }}>{pwErr}</div>}
         <button type="submit" disabled={!password || unlocking}
           style={{ marginTop: 14, width: '100%', minHeight: 50, borderRadius: 12, border: 'none', background: password ? '#111' : '#d1d5db', color: '#fff', fontWeight: 800, fontSize: 16, cursor: password && !unlocking ? 'pointer' : 'default' }}>
@@ -214,14 +225,14 @@ export default function SecureUploadPage() {
         <>
           <h1 style={{ fontSize: 22, margin: '0 0 6px', overflowWrap: 'anywhere' }}>{data.title || 'Secure folder'}</h1>
           <p style={{ margin: '0 0 14px', color: '#4b5563', lineHeight: 1.5 }}>
-            {data.agentName} set up this private folder for you. {data.canView ? 'You can open the files in it and add your own.' : 'Add your documents below.'} Files are encrypted while stored — please don’t email these documents.
+            {Agent} set up this private folder for you. {data.canView ? 'You can open the files in it and add your own.' : 'Add your documents below.'} Files are encrypted while stored — please don’t email these documents.
           </p>
         </>
       ) : (
         <>
           <h1 style={{ fontSize: 22, margin: '0 0 6px' }}>{first ? `Hi ${first} —` : 'Hello —'} upload your documents</h1>
           <p style={{ margin: '0 0 14px', color: '#4b5563', lineHeight: 1.5 }}>
-            {data.agentName} asked for the items below. This page is private: only your CRECO broker can see what you upload, and files are encrypted while stored. Please don’t email these documents.
+            {Agent} asked for the items below. This page is private: only your {brand} {role} can see what you upload, and files are encrypted while stored. Please don’t email these documents.
           </p>
         </>
       )}
@@ -229,7 +240,7 @@ export default function SecureUploadPage() {
         <div role="status" style={{ background: '#f0fdf4', border: '2px solid #16a34a', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
           <div style={{ fontSize: 17, fontWeight: 800, color: '#15803d' }}>✓ Your documents were sent</div>
           <div style={{ fontSize: 14, color: '#166534', marginTop: 4, lineHeight: 1.5 }}>
-            {data.agentName} has been notified that {sentFiles.length} file{sentFiles.length === 1 ? '' : 's'} arrived. You can close this page now. If you add another file below, you’ll see a button to send it too.
+            {Agent} has been notified that {sentFiles.length} file{sentFiles.length === 1 ? '' : 's'} arrived. You can close this page now. If you add another file below, you’ll see a button to send it too.
           </div>
         </div>
       )}
@@ -253,12 +264,12 @@ export default function SecureUploadPage() {
       {done ? (
         <div role="status" style={{ ...card, textAlign: 'center', background: '#f0fdf4', borderColor: '#86efac', marginTop: 4 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: '#15803d' }}>✓ All done — nothing more to do</div>
-          <div style={{ fontSize: 13.5, color: '#166534', marginTop: 4 }}>{data.agentName} has your documents. You can close this page.</div>
+          <div style={{ fontSize: 13.5, color: '#166534', marginTop: 4 }}>{Agent} has your documents. You can close this page.</div>
         </div>
       ) : (
         <button type="button" onClick={finish} disabled={finishing || !sentFiles.length}
           style={{ width: '100%', minHeight: 52, borderRadius: 12, border: 'none', background: sentFiles.length ? '#111' : '#d1d5db', color: '#fff', fontWeight: 800, fontSize: 16, cursor: sentFiles.length && !finishing ? 'pointer' : 'default', marginTop: 4 }}>
-          {finishing ? 'Sending…' : sentBefore ? 'Send the new files too' : 'I’m done — send to my broker'}
+          {finishing ? 'Sending…' : sentBefore ? 'Send the new files too' : `I’m done — send to my ${role}`}
         </button>
       )}
       <p style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12, marginTop: 18, lineHeight: 1.6 }}>

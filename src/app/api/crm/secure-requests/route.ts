@@ -210,6 +210,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const db = adminClient();
   if (body.action === 'create_folder') return createFolder(req, body, ctx);
+  if (body.action === 'count_for') return countFor(body, ctx);
   if (body.action === 'presign') return agentPresign(body, ctx);
   if (body.action === 'confirm') return agentConfirm(req, body, ctx);
   // An optional password on the link (the same rules as a folder's).
@@ -273,8 +274,12 @@ async function createFolder(req: NextRequest, body: Record<string, unknown>, ctx
   const password = typeof body.password === 'string' && body.password ? body.password : null;
   if (password) { const bad = passwordProblem(password); if (bad) return NextResponse.json({ error: bad }, { status: 400 }); }
   const db = adminClient();
+  // The folder belongs to the workspace it was made in. An admin can be working in either one, so theirs comes from the page
+  // they are on; an agent's is always their own.
+  const asked = body.business_unit === 'commercial' || body.business_unit === 'residential' ? body.business_unit : null;
+  const unit = (isAdminRole(ctx.role) && asked) || ctx.businessUnit || 'commercial';
   const { data: row, error } = await db.from('crm_secure_requests').insert({
-    kind: 'folder', name, client_id: null, business_unit: ctx.businessUnit ?? 'commercial', created_by: ctx.userId, items: [], token: genToken(),
+    kind: 'folder', name, client_id: null, business_unit: unit, created_by: ctx.userId, items: [], token: genToken(),
     status: password ? 'open' : 'revoked', expires_at: addDays(LINK_DAYS), purge_after: addDays(KEEP_DAYS), keep_files: true,
     ...(password ? { pass_hash: hashPassword(password), guest_view: body.guestView !== false } : {}),
   }).select('*').single();
@@ -284,6 +289,27 @@ async function createFolder(req: NextRequest, body: Record<string, unknown>, ctx
   await logSecure(db, r.id, me, 'created', `secure folder “${name}”`, ipOf(req));
   if (password) await logSecure(db, r.id, me, 'secured', `password required${r.guest_view ? '; people with it can view files' : '; upload only'}`, ipOf(req));
   return NextResponse.json({ request: { ...publicShape(r), deal_label: null, files: [] } });
+}
+
+// ── POST { action: 'count_for', clientIds }  how many secure folders and files these contacts have.
+// Deleting a contact deletes its secure folders with it, so the delete buttons ask this first and say so. Broker only —
+// the same person who may delete contacts — and it returns numbers, never names.
+async function countFor(body: Record<string, unknown>, ctx: Ctx) {
+  if (ctx.role !== 'super_admin') return NextResponse.json({ folders: 0, files: 0 });
+  const ids = Array.isArray(body.clientIds) ? [...new Set((body.clientIds as unknown[]).filter((x): x is string => typeof x === 'string' && UUID_RE.test(x)))].slice(0, 5000) : [];
+  const db = adminClient();
+  const reqIds: string[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await db.from('crm_secure_requests').select('id').in('client_id', ids.slice(i, i + 100)).is('purged_at', null);
+    if (error) { console.error('[secure-requests] count_for', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
+    reqIds.push(...(data ?? []).map(r => r.id as string));
+  }
+  let files = 0;
+  for (let i = 0; i < reqIds.length; i += 100) {
+    const { count } = await db.from('crm_secure_files').select('id', { count: 'exact', head: true }).in('request_id', reqIds.slice(i, i + 100));
+    files += count ?? 0;
+  }
+  return NextResponse.json({ folders: reqIds.length, files });
 }
 
 // ── POST { action: 'presign', id, filename, file_size } / { action: 'confirm', id, storagePath, filename, itemKey? }
@@ -346,6 +372,8 @@ export async function PATCH(req: NextRequest) {
   const me = { id: ctx.userId, label: await actorName(ctx) };
   const ip = ipOf(req);
   const act = body.action as string;
+  // A deleted folder stays on file only as a record of what happened to it. Nothing about it can be changed or reopened.
+  if (r.purged_at) return NextResponse.json({ error: 'This folder was deleted.' }, { status: 400 });
 
   if (act === 'revoke') {
     await db.from('crm_secure_requests').update({ status: 'revoked' }).eq('id', r.id);
@@ -397,6 +425,10 @@ export async function PATCH(req: NextRequest) {
     if (!liveLink(r)) return NextResponse.json({ error: 'This link is not active — extend it first.' }, { status: 400 });
     const email = (typeof body.email === 'string' && body.email.trim()) || r.recipient_email || '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: r.kind === 'folder' ? 'Type the email address to send the link to.' : 'No valid email address to send to.' }, { status: 400 });
+    // A second click (or a second agent) a moment later must not put the same email in their inbox twice.
+    const { data: justSent } = await db.from('crm_secure_log').select('id').eq('request_id', r.id).eq('action', 'sent').eq('detail', email)
+      .gte('created_at', new Date(Date.now() - 60_000).toISOString()).limit(1);
+    if (justSent?.length) return NextResponse.json({ error: `This link was emailed to ${email} a moment ago. Give it a minute before sending it again.` }, { status: 429 });
     const { subject, html } = r.kind === 'folder'
       ? folderEmail(r.business_unit, { folderName: r.name ?? 'Secure folder', senderName: me.label, url: secureUrl(r.token), expiresAt: r.expires_at, needsPassword: !!r.pass_hash, canView: r.guest_view })
       : requestEmail(r.business_unit, { name: r.recipient_name ?? '', senderName: me.label, url: secureUrl(r.token), items: r.items, note: r.note, expiresAt: r.expires_at, reminder: !!r.sent_at, needsPassword: !!r.pass_hash });

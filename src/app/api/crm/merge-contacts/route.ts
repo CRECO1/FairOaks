@@ -23,6 +23,9 @@ const REF_TABLES: [string, string][] = [
   ['crm_activity', 'client_id'],
   ['crm_campaign_enrollments', 'client_id'],
   ['email_lead_imports', 'client_id'],
+  // Secure folders are deleted with their contact (ON DELETE CASCADE). Without this line, merging away a duplicate that a
+  // tenant had uploaded an application to would delete that folder and its access log.
+  ['crm_secure_requests', 'client_id'],
 ];
 
 const norm = (e?: string | null) => String(e ?? '').toLowerCase().trim().replace(/,+$/, '');
@@ -94,6 +97,9 @@ export async function POST(req: NextRequest) {
   for (const [table, col] of REF_TABLES) {
     const { data, error: rErr } = await db.from(table).update({ [col]: primaryId }).in(col, dupIds).select('id');
     if (!rErr) refsMoved += (data ?? []).length;
+    // Anything still pointing at a duplicate when it is deleted is deleted with it. For most tables that is a stray row;
+    // for secure folders it is a tenant's documents — so stop here, with nothing deleted, rather than risk it.
+    else if (table === 'crm_secure_requests') return dbError('move secure folders to the surviving contact', rErr);
   }
 
   const { error: dErr } = await db.from('crm_clients').delete().in('id', dupIds);

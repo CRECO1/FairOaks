@@ -2942,9 +2942,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return `Could not remove ${subject}. Nothing was deleted.`;
   }
 
+  // Deleting a contact deletes its secure folders (a tenant's application, ID, bank statements) with it. The confirmation
+  // says so first — numbers only. If the count can't be fetched, the ordinary confirmation is shown.
+  async function secureFolderWarning(ids: string[]): Promise<string> {
+    try {
+      const r = await fetch('/api/crm/secure-requests', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ action: 'count_for', clientIds: ids }),
+      });
+      const j = r.ok ? await r.json() : null;
+      if (!j?.folders) return '';
+      return `\n\n⚠️ ${ids.length === 1 ? 'This contact has' : 'These contacts have'} ${j.folders} secure folder${j.folders === 1 ? '' : 's'} holding ${j.files} file${j.files === 1 ? '' : 's'}. Deleting ${ids.length === 1 ? 'the contact' : 'them'} deletes those documents too.`;
+    } catch { return ''; }
+  }
+
   async function deleteClient(id: string, name: string) {
     if (!isSuperAdmin) { showToast('Only a super admin can delete contacts.'); return; }
-    if (!confirm(`Remove ${name}? This cannot be undone.`)) return;
+    if (!confirm(`Remove ${name}? This cannot be undone.${await secureFolderWarning([id])}`)) return;
     const { error } = await supabase.from('crm_clients').delete().eq('id', id);
     // Without this the row vanished from the list and the toast said "removed"
     // even when the delete was refused — a false success that reverted on the
@@ -2958,8 +2972,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (!isSuperAdmin) { showToast('Only a super admin can delete contacts.'); return; }
     const count = selectedClientIds.size;
     if (count === 0) return;
-    if (!confirm(`Permanently delete ${count} contact${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
     const ids = [...selectedClientIds];
+    if (!confirm(`Permanently delete ${count} contact${count !== 1 ? 's' : ''}? This cannot be undone.${await secureFolderWarning(ids)}`)) return;
     const { error } = await supabase.from('crm_clients').delete().in('id', ids);
     // One statement, so a single protected contact refuses the whole batch and
     // NOTHING is deleted. Say that plainly rather than clearing the selection

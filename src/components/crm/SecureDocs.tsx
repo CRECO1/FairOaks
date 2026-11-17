@@ -151,14 +151,23 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
     } finally { setSaving(false); }
   };
 
+  // One change to a folder at a time: a second click while the first is still on its way is ignored (a double-click on
+  // "Resend email" must not send two emails), and the folder's buttons dim until it lands.
+  const acting = useRef(new Set<string>());
+  const [busyId, setBusyId] = useState<string | null>(null);
   const patch = async (r: Req, body: Record<string, unknown>, ok?: string) => {
-    const res = await fetch('/api/crm/secure-requests', { method: 'PATCH', headers: json(), body: JSON.stringify({ id: r.id, ...body }) });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) { showToast(j.error || 'That did not work'); return false; }
-    if (ok) showToast(ok);
-    await load(); onChanged?.();
-    if (logs[r.id]) void showLog(r, true);
-    return true;
+    if (acting.current.has(r.id)) return false;
+    acting.current.add(r.id); setBusyId(r.id);
+    try {
+      const res = await fetch('/api/crm/secure-requests', { method: 'PATCH', headers: json(), body: JSON.stringify({ id: r.id, ...body }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(j.error || 'That did not work'); return false; }
+      if (ok) showToast(ok);
+      await load(); onChanged?.();
+      if (logs[r.id]) void showLog(r, true);
+      return true;
+    } catch { showToast('That did not go through — check your connection and try again.'); return false; }
+    finally { acting.current.delete(r.id); setBusyId(b => (b === r.id ? null : b)); }
   };
 
   // Add files of your own: straight to storage, then the server runs the same type + safety checks a visitor's upload gets.
@@ -321,10 +330,10 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, marginBottom: 4 }}>
                 <input type="checkbox" checked={reqView} onChange={e => setReqView(e.target.checked)} /> With the password they can also open the files in this folder
               </label>
-              <div style={{ fontSize: 12, color: 'var(--k-a06a12)', marginBottom: 8 }}>🔑 Give them the password by phone or text — it is never put in the email. It can’t be shown again after this, only replaced.</div>
+              <div style={{ fontSize: 12, color: 'var(--k-a06a12)', marginBottom: 8 }}>🔑 Give them the password by phone or text — it is never put in the email. Capitals, spaces and dashes don’t matter when they type it. It can’t be shown again after this, only replaced.</div>
             </>
           )}
-          <button type="button" disabled={saving} onClick={create} style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: touch ? '12px 18px' : '8px 16px', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>
+          <button type="button" disabled={saving} onClick={create} style={{ background: 'var(--k-111)', color: 'var(--k-fff)', border: 'none', borderRadius: 8, padding: touch ? '12px 18px' : '8px 16px', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>
             {saving ? 'Creating…' : sendMail ? 'Create & email link' : 'Create link'}
           </button>
         </div>
@@ -374,7 +383,7 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
                           <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0 0 16px' }}>
                             <span style={{ flex: '1 1 140px', minWidth: 0, fontSize: 13, overflowWrap: 'anywhere' }}>📄 {f.name} <span style={{ color: 'var(--k-9ca3af)' }}>{[kb(f.file_size), day(f.created_at), whoAdded(f)].filter(Boolean).join(' · ')}</span>{f.scan_status === 'clean' && <span title="Passed the in-house safety scan when it was uploaded" style={{ color: '#15803d', fontWeight: 600, marginLeft: 6, fontSize: 12 }}>✓ scanned</span>}</span>
                             {onPreview && /\.(pdf|png|jpe?g|webp)$/i.test(f.name) && <button type="button" style={btn} onClick={() => openFile(f, true)}>👁 View</button>}
-                            <button type="button" style={{ ...btn, background: '#111', color: '#fff', border: 'none' }} onClick={() => openFile(f, false)}>↓ Open</button>
+                            <button type="button" style={{ ...btn, background: 'var(--k-111)', color: 'var(--k-fff)', border: 'none' }} onClick={() => openFile(f, false)}>↓ Open</button>
                             <button type="button" aria-label={`Delete ${f.name}`} onClick={() => delFile(f)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 15, padding: '4px 2px' }}>🗑</button>
                           </div>
                         ))}
@@ -385,7 +394,7 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
                   {!r.purged_at && isFolder && r.files.length === 0 && !addingTo(r.id) && !upQ.items.some(i => i.ctx === r.id) && <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', marginTop: 8 }}>No files yet. Add your own, or drop them onto this card.</div>}
                   <UploadTray items={upQ.items.filter(i => i.ctx === r.id)} onRetry={upQ.retry} onDismiss={upQ.dismiss} />
                   {!r.purged_at && (
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                    <div aria-busy={busyId === r.id} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, opacity: busyId === r.id ? 0.55 : 1, pointerEvents: busyId === r.id ? 'none' : undefined, transition: 'opacity .15s' }}>
                       <button type="button" style={{ ...btn, color: '#a06a12', borderColor: '#f0e2c4', background: 'var(--k-fdf6e9)' }} disabled={addingTo(r.id)} onClick={() => { addTarget.current = r; addInput.current?.click(); }}>＋ Add files</button>
                       {r.files.length > 1 && <button type="button" style={btn} disabled={zipping === r.id} onClick={() => downloadAll(r)}>{zipping === r.id ? 'Preparing…' : `↓ Download all (${r.files.length})`}</button>}
                       {live && <button type="button" style={btn} onClick={() => copy(r.link)}>Copy link</button>}
@@ -414,7 +423,7 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
                         <input id={`mail-${r.id}`} autoFocus value={mailTo} onChange={e => setMailTo(e.target.value)} type="email" inputMode="email" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="name@example.com"
                           onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setMailFor(null); } }}
                           style={{ flex: '1 1 200px', minWidth: 0, padding: 9, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: touch ? 16 : 14, boxSizing: 'border-box' }} />
-                        <button type="submit" disabled={mailBusy || !EMAIL_OK.test(mailTo.trim())} style={{ ...btn, background: !mailBusy && EMAIL_OK.test(mailTo.trim()) ? '#111' : 'var(--k-e5e7eb)', color: !mailBusy && EMAIL_OK.test(mailTo.trim()) ? '#fff' : 'var(--k-9ca3af)', border: 'none' }}>{mailBusy ? 'Sending…' : 'Send link'}</button>
+                        <button type="submit" disabled={mailBusy || !EMAIL_OK.test(mailTo.trim())} style={{ ...btn, background: !mailBusy && EMAIL_OK.test(mailTo.trim()) ? 'var(--k-111)' : 'var(--k-e5e7eb)', color: !mailBusy && EMAIL_OK.test(mailTo.trim()) ? 'var(--k-fff)' : 'var(--k-9ca3af)', border: 'none' }}>{mailBusy ? 'Sending…' : 'Send link'}</button>
                         <button type="button" style={btn} onClick={() => setMailFor(null)}>Cancel</button>
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 8, lineHeight: 1.5 }}>
@@ -432,7 +441,7 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
                         <input id={`name-${r.id}`} autoFocus onFocus={e => e.currentTarget.select()} value={renameText} onChange={e => setRenameText(e.target.value)} maxLength={80} autoComplete="off"
                           onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setRenameFor(null); } }}
                           style={{ flex: '1 1 200px', minWidth: 0, padding: 9, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: touch ? 16 : 14, boxSizing: 'border-box' }} />
-                        <button type="submit" disabled={!renameText.trim()} style={{ ...btn, background: renameText.trim() ? '#111' : 'var(--k-e5e7eb)', color: renameText.trim() ? '#fff' : 'var(--k-9ca3af)', border: 'none' }}>Save name</button>
+                        <button type="submit" disabled={!renameText.trim()} style={{ ...btn, background: renameText.trim() ? 'var(--k-111)' : 'var(--k-e5e7eb)', color: renameText.trim() ? 'var(--k-fff)' : 'var(--k-9ca3af)', border: 'none' }}>Save name</button>
                         <button type="button" style={btn} onClick={() => setRenameFor(null)}>Cancel</button>
                       </div>
                     </form>
@@ -450,11 +459,11 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
                         <input type="checkbox" checked={pwView} onChange={e => setPwView(e.target.checked)} /> With the password they can also open the files in this folder
                       </label>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <button type="button" disabled={pwText.length < 8} onClick={() => void savePassword(r)} style={{ ...btn, background: pwText.length >= 8 ? '#111' : 'var(--k-e5e7eb)', color: pwText.length >= 8 ? '#fff' : 'var(--k-9ca3af)', border: 'none' }}>Save password</button>
+                        <button type="button" disabled={pwText.length < 8} onClick={() => void savePassword(r)} style={{ ...btn, background: pwText.length >= 8 ? 'var(--k-111)' : 'var(--k-e5e7eb)', color: pwText.length >= 8 ? 'var(--k-fff)' : 'var(--k-9ca3af)', border: 'none' }}>Save password</button>
                         {pwText && <button type="button" style={btn} onClick={async () => { try { await navigator.clipboard.writeText(pwText); showToast('Password copied'); } catch { showToast('Could not copy — select it and copy'); } }}>Copy it</button>}
                         {r.has_password && <button type="button" style={{ ...btn, color: '#b91c1c' }} onClick={async () => { if (confirm('Remove the password? The link goes back to upload-only and nobody outside the team can open files.')) { if (await patch(r, { action: 'clear_password' }, 'Password removed')) setPwFor(null); } }}>Remove password</button>}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--k-a06a12)', marginTop: 8 }}>Copy it now — it can’t be shown again, only replaced. Give it to them by phone or text, never by email.</div>
+                      <div style={{ fontSize: 12, color: 'var(--k-a06a12)', marginTop: 8 }}>Copy it now — it can’t be shown again, only replaced. Give it to them by phone or text, never by email. Capitals, spaces and dashes don’t matter when they type it.</div>
                     </div>
                   )}
                   {textFor === r.id && live && r.link && (

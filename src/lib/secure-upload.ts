@@ -155,13 +155,88 @@ export async function logSecure(db: SupabaseClient, requestId: string, actor: { 
   if (error) console.error('[secure-upload] log failed', action, error.message);
 }
 
-/** Deletes every stored object + row for a request's files (the log stays). */
+const chunks = <T,>(a: T[], n: number): T[][] => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
+
+/** Every object stored under a request's folder — including an upload that never got a row (the page was closed mid-upload). */
+export async function listStoredObjects(db: SupabaseClient, requestId: string): Promise<{ name: string; created_at: string | null }[]> {
+  if (!UUID_RE.test(requestId)) throw new Error('bad request id');
+  const out: { name: string; created_at: string | null }[] = [];
+  for (let offset = 0; offset < 5000; offset += 100) {
+    const { data, error } = await db.storage.from(SECURE_BUCKET).list(`req-${requestId}`, { limit: 100, offset, sortBy: { column: 'name', order: 'asc' } });
+    if (error) throw new Error(error.message);
+    for (const o of data ?? []) if (o.id) out.push({ name: o.name, created_at: o.created_at ?? null });
+    if ((data?.length ?? 0) < 100) break;
+  }
+  return out;
+}
+
+/**
+ * Deletes every stored object + row for a request's files (the log stays). "Every" means the whole storage folder, not only
+ * the files the database knows about — so a half-finished upload is not left behind when a folder is deleted.
+ * Returns how many recorded files were removed.
+ */
 export async function removeRequestFiles(db: SupabaseClient, requestId: string): Promise<number> {
   const { data: files } = await db.from('crm_secure_files').select('id, storage_path').eq('request_id', requestId);
-  const paths = (files ?? []).map(f => f.storage_path as string);
-  if (paths.length) await db.storage.from(SECURE_BUCKET).remove(paths);
+  const paths = new Set((files ?? []).map(f => f.storage_path as string));
+  try { for (const o of await listStoredObjects(db, requestId)) paths.add(`req-${requestId}/${o.name}`); }
+  catch (e) { console.error('[secure-upload] could not list the storage folder', requestId, e); }
+  for (const part of chunks([...paths], 100)) {
+    const { error } = await db.storage.from(SECURE_BUCKET).remove(part);
+    if (error) console.error('[secure-upload] storage remove failed', requestId, error.message);
+  }
   if (files?.length) await db.from('crm_secure_files').delete().eq('request_id', requestId);
-  return paths.length;
+  return files?.length ?? 0;
+}
+
+// ── Leftovers ────────────────────────────────────────────────────────────────
+// Two ways a sensitive file can end up stored with nothing pointing at it:
+//  • its folder's row is gone — deleting a contact deletes its secure requests in the database, but not the stored files;
+//  • the upload reached storage but was never confirmed (the visitor closed the page or lost signal in between).
+// Nobody can open such a file, and nothing would ever delete it. The cron calls this to remove them.
+export const UNFINISHED_AFTER_MS = 2 * 60 * 60_000;   // an upload not confirmed within 2 hours is not going to be
+export async function sweepLeftovers(db: SupabaseClient, o: { dry?: boolean; deep?: boolean; now?: number } = {}): Promise<{ deadFolders: number; deadObjects: number; unfinished: number }> {
+  const now = o.now ?? Date.now();
+  const out = { deadFolders: 0, deadObjects: 0, unfinished: 0 };
+  // 1. Every request folder that exists in storage.
+  const ids: string[] = [];
+  for (let offset = 0; offset < 20_000; offset += 100) {
+    const { data, error } = await db.storage.from(SECURE_BUCKET).list('', { limit: 100, offset, sortBy: { column: 'name', order: 'asc' } });
+    if (error) throw new Error(`list root: ${error.message}`);
+    for (const f of data ?? []) { const m = /^req-([0-9a-f-]{36})$/i.exec(f.name); if (m && UUID_RE.test(m[1])) ids.push(m[1].toLowerCase()); }
+    if ((data?.length ?? 0) < 100) break;
+  }
+  // 2. Which of them still have a live row. Asked id by id (in batches): a folder is only ever called dead on a clear answer.
+  const live = new Set<string>(); const known = new Set<string>();
+  for (const part of chunks(ids, 100)) {
+    const { data, error } = await db.from('crm_secure_requests').select('id, purged_at').in('id', part);
+    if (error) throw new Error(`load requests: ${error.message}`);
+    for (const r of data ?? []) { known.add((r.id as string).toLowerCase()); if (!r.purged_at) live.add((r.id as string).toLowerCase()); }
+  }
+  for (const id of ids) {
+    if (!live.has(id)) {
+      // The row is gone or the folder was deleted: everything under it goes.
+      const objs = await listStoredObjects(db, id);
+      if (!objs.length) continue;
+      out.deadFolders++; out.deadObjects += objs.length;
+      if (o.dry) continue;
+      for (const part of chunks(objs.map(x => `req-${id}/${x.name}`), 100)) await db.storage.from(SECURE_BUCKET).remove(part);
+      if (known.has(id)) await logSecure(db, id, { label: 'system' }, 'cleaned', `removed ${objs.length} leftover stored file${objs.length === 1 ? '' : 's'}`);
+      else console.warn(`[secure-upload] removed ${objs.length} stored file(s) of a request that no longer exists (${id})`);
+    } else if (o.deep) {
+      // A live folder: remove only uploads that were never confirmed and are old enough that they never will be.
+      const objs = await listStoredObjects(db, id);
+      const { data: rows, error } = await db.from('crm_secure_files').select('storage_path').eq('request_id', id);
+      if (error) throw new Error(`load files: ${error.message}`);
+      const recorded = new Set((rows ?? []).map(r => r.storage_path as string));
+      const stale = objs.filter(x => !recorded.has(`req-${id}/${x.name}`) && x.created_at && now - Date.parse(x.created_at) > UNFINISHED_AFTER_MS);
+      if (!stale.length) continue;
+      out.unfinished += stale.length;
+      if (o.dry) continue;
+      await db.storage.from(SECURE_BUCKET).remove(stale.map(x => `req-${id}/${x.name}`));
+      await logSecure(db, id, { label: 'system' }, 'cleaned', `removed ${stale.length} upload${stale.length === 1 ? '' : 's'} that never finished`);
+    }
+  }
+  return out;
 }
 
 // ── Email ────────────────────────────────────────────────────────────────────
@@ -175,7 +250,10 @@ function shell(brand: string, bodyHtml: string, footer: string): string {
     </div>
   </div>`;
 }
-const brandName = (unit: string) => (unit === 'residential' ? 'Fair Oaks Realty Group' : 'CRECO');
+/** The name a visitor sees: each workspace is its own company to the people it deals with. */
+export const brandName = (unit: string) => (unit === 'residential' ? 'Fair Oaks Realty Group' : 'CRECO');
+/** "your CRECO broker" / "your Fair Oaks Realty Group agent" — who the visitor is dealing with when we have no name to give. */
+export const teamLabel = (unit: string) => `your ${brandName(unit)} ${unit === 'residential' ? 'agent' : 'broker'}`;
 
 export function requestEmail(unit: string, o: { name: string; senderName: string; url: string; items: ChecklistItem[]; note?: string | null; expiresAt: string; reminder?: boolean; needsPassword?: boolean }) {
   const first = (o.name || '').trim().split(/\s+/)[0] || 'there';
@@ -187,7 +265,7 @@ export function requestEmail(unit: string, o: { name: string; senderName: string
     ${o.note ? `<p style="background:#faf7ef;border-left:3px solid #c9922c;padding:10px 12px;border-radius:4px;white-space:pre-line">${esc(o.note)}</p>` : ''}
     <p style="margin:22px 0"><a href="${esc(o.url)}" style="background:#c9922c;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px;display:inline-block">🔒 Upload securely</a></p>
     ${o.needsPassword ? PASSWORD_NOTE(o.senderName) : ''}
-    <p style="font-size:12px;color:#6b7280">Only your CRECO broker can see what you upload. The link works until ${esc(exp)}. Or paste this into your browser:<br>${esc(o.url)}</p>
+    <p style="font-size:12px;color:#6b7280">Only ${esc(teamLabel(unit))} can see what you upload. The link works until ${esc(exp)}. Or paste this into your browser:<br>${esc(o.url)}</p>
     <p style="font-size:12px;color:#6b7280">Questions? Call us at ${OFFICE_PHONE}.</p>`;
   return { subject: o.reminder ? 'Reminder — your secure document upload' : 'Your secure document upload', html: shell(brandName(unit), body, 'This is a private upload link made just for you. If you weren’t expecting it, you can ignore this email — nothing is shared unless you upload.') };
 }
@@ -316,17 +394,28 @@ export const LOCK_MINUTES = 15;
 export const CLOSE_AFTER = 15;        // …and at this many the link is closed and the agent told
 const SCRYPT = { N: 16384, r: 8, p: 1, len: 32 };
 
+/**
+ * How a password is compared. These passwords are read out over the phone or typed from a text on a small keyboard, so
+ * capitals, spaces and dashes do not count: "Maple-River-4821", "maple river 4821" and "MapleRiver4821" are the same
+ * password. Guessing stays shut out by the attempt counter (a lock after 5 wrong tries, the link closed at 15), not by case.
+ */
+export const normalizePassword = (plain: string) => String(plain).normalize('NFKC').toLowerCase().replace(/[\s\-‐-―−]+/g, '');
+
+// Stored as  scryptn$N$salt$hash  (the "n" = hashed in the normalised form above). A hash written before that rule,
+// scrypt$…, was made from the exact text and is still checked exactly.
 export function hashPassword(plain: string): string {
   const salt = randomBytes(16);
-  const hash = scryptSync(plain.normalize('NFKC'), salt, SCRYPT.len, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
-  return `scrypt$${SCRYPT.N}$${salt.toString('base64url')}$${hash.toString('base64url')}`;
+  const hash = scryptSync(normalizePassword(plain), salt, SCRYPT.len, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
+  return `scryptn$${SCRYPT.N}$${salt.toString('base64url')}$${hash.toString('base64url')}`;
 }
 export function verifyPassword(plain: string, stored: string | null | undefined): boolean {
   try {
     const [algo, n, salt, hash] = (stored ?? '').split('$');
-    if (algo !== 'scrypt' || !salt || !hash) return false;
+    if ((algo !== 'scrypt' && algo !== 'scryptn') || !salt || !hash) return false;
     const want = Buffer.from(hash, 'base64url');
-    const got = scryptSync(String(plain).normalize('NFKC'), Buffer.from(salt, 'base64url'), want.length, { N: Number(n) || SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
+    const text = algo === 'scryptn' ? normalizePassword(plain) : String(plain).normalize('NFKC');
+    if (!text) return false;
+    const got = scryptSync(text, Buffer.from(salt, 'base64url'), want.length, { N: Number(n) || SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
     return got.length === want.length && timingSafeEqual(got, want);
   } catch { return false; }
 }
@@ -334,7 +423,9 @@ export function verifyPassword(plain: string, stored: string | null | undefined)
 export function passwordProblem(plain: unknown): string | null {
   if (typeof plain !== 'string' || plain.length < PASSWORD_MIN) return `Use a password of at least ${PASSWORD_MIN} characters.`;
   if (plain.length > 128) return 'That password is too long.';
-  if (/^(.)\1+$/.test(plain) || /^(password|12345678|123456789|qwertyui|letmein1)$/i.test(plain)) return 'That password is too easy to guess — pick something else.';
+  const n = normalizePassword(plain);
+  if (n.length < PASSWORD_MIN) return `Use at least ${PASSWORD_MIN} letters or numbers — spaces and dashes don’t count.`;
+  if (/^(.)\1+$/.test(n) || /^(password\d{0,2}|1234567\d{1,3}|qwertyui\w{0,2}|letmein\d{0,2}|abcdefgh\w{0,2})$/.test(n)) return 'That password is too easy to guess — pick something else.';
   return null;
 }
 
@@ -370,6 +461,9 @@ export async function verifyStoredUpload(db: SupabaseClient, requestId: string, 
   const ext = extOf(filename);
   if (!CONTENT_TYPES[ext]) return { ok: false, status: 400, error: 'That file type is not allowed.' };
   const drop = () => db.storage.from(SECURE_BUCKET).remove([storagePath]);
+  // The limit is checked again here, where the file is recorded — starting many uploads at once must not get past it.
+  const { count: have } = await db.from('crm_secure_files').select('id', { count: 'exact', head: true }).eq('request_id', requestId);
+  if ((have ?? 0) >= MAX_FILES_PER_REQUEST) { await drop(); return { ok: false, status: 400, error: `This folder already holds the most files it can (${MAX_FILES_PER_REQUEST}).` }; }
   // Size and type come from what actually landed in storage, not from the request.
   const { data: listed, error: listError } = await db.storage.from(SECURE_BUCKET).list(folder.slice(0, -1), { search: objectName, limit: 5 });
   const obj = listed?.find(o => o.name === objectName);

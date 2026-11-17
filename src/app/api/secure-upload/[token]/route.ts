@@ -8,7 +8,7 @@ import { adminClient } from '@/lib/supabase-admin';
 import {
   SECURE_BUCKET, CONTENT_TYPES, MAX_FILE_SIZE, MAX_FILES_PER_REQUEST, UUID_RE, LOCK_AFTER, LOCK_MINUTES, CLOSE_AFTER, GUEST_SESSION_MINUTES,
   extOf, logSecure, notifyUploads, notifyOpened, notifyBlocked, notifyLocked, verifyStoredUpload, SCAN_STAMP,
-  verifyPassword, makeGuestSession, checkGuestSession, type SecureRequestRow,
+  verifyPassword, makeGuestSession, checkGuestSession, brandName, teamLabel, type SecureRequestRow,
 } from '@/lib/secure-upload';
 
 // PUBLIC, token-gated — intentionally NOT in middleware.ts's matcher, so a tenant or guest (no login) reaches it.
@@ -50,12 +50,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   const { db, r } = ctx;
   const state = stateOf(r);
 
-  let agentName = 'your CRECO broker';
+  const brand = brandName(r.business_unit);
+  let agentName = teamLabel(r.business_unit);
   if (r.created_by) {
     const { data: p } = await db.from('crm_profiles').select('first_name, last_name').eq('id', r.created_by).maybeSingle();
     agentName = [p?.first_name, p?.last_name].filter(Boolean).join(' ') || agentName;
   }
-  if (state !== 'ok') return NextResponse.json({ state, agentName });
+  if (state !== 'ok') return NextResponse.json({ state, agentName, brand });
 
   // A real person opening the page — not a mail scanner pre-fetching the link.
   if (!isAutomationUA(req.headers.get('user-agent'))) {
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   // Behind a password: say nothing about the folder — not its name, not what is in it — until the password is right.
   if (!passed(req, r)) {
     const lockedFor = r.locked_until && Date.parse(r.locked_until) > Date.now() ? Math.ceil((Date.parse(r.locked_until) - Date.now()) / 60_000) : 0;
-    return NextResponse.json({ state: 'password', agentName, lockedMinutes: lockedFor });
+    return NextResponse.json({ state: 'password', agentName, brand, lockedMinutes: lockedFor });
   }
 
   const view = canView(r);
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   if (!view) q = q.is('uploaded_by', null);   // upload-only: never even the NAMES of what the team put in the folder
   const { data: files } = await q;
   return NextResponse.json({
-    state, agentName, kind: r.kind, title: r.kind === 'folder' ? r.name : null, name: r.recipient_name, items: r.items, note: r.note, expiresAt: r.expires_at,
+    state, agentName, brand, kind: r.kind, title: r.kind === 'folder' ? r.name : null, name: r.recipient_name, items: r.items, note: r.note, expiresAt: r.expires_at,
     submitted: !!r.submitted_at, canView: view, maxFileMb: MAX_FILE_SIZE / 1048576,
     files: (files ?? []).map(f => ({ id: f.id, item_key: f.item_key, name: f.name, file_size: f.file_size, created_at: f.created_at, mine: f.uploaded_by === null })),
   });
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   if (!ctx) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   const { db } = ctx;
   let { r } = ctx;
-  if (stateOf(r) !== 'ok') return NextResponse.json({ error: 'This link is no longer active. Please ask your broker for a new one.' }, { status: 410 });
+  if (stateOf(r) !== 'ok') return NextResponse.json({ error: 'This link is no longer active. Please ask us for a new one.' }, { status: 410 });
   const body = await req.json().catch(() => ({}));
   const ip = ipOf(req);
   const folder = `req-${r.id}/`;
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       if (tries >= 4) return NextResponse.json({ error: 'Please try again.' }, { status: 409 });
       const { data: fresh } = await db.from('crm_secure_requests').select('*').eq('id', r.id).single();
       r = fresh as SecureRequestRow;
-      if (stateOf(r) !== 'ok') return NextResponse.json({ error: 'This link is no longer active. Please ask your broker for a new one.' }, { status: 410 });
+      if (stateOf(r) !== 'ok') return NextResponse.json({ error: 'This link is no longer active. Please ask us for a new one.' }, { status: 410 });
     }
     const right = n <= CLOSE_AFTER && typeof body.password === 'string' && verifyPassword(body.password, r.pass_hash);
     if (right) {
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       await db.from('crm_secure_requests').update({ status: 'revoked' }).eq('id', r.id);
       await logSecure(db, r.id, { label: 'system' }, 'locked', `link closed after ${CLOSE_AFTER} wrong passwords`, ip);
       after(() => notifyLocked(db, r));
-      return NextResponse.json({ error: 'This link has been closed after too many wrong passwords. Please contact your broker.' }, { status: 410 });
+      return NextResponse.json({ error: 'This link has been closed after too many wrong passwords. Please call us for a new one.' }, { status: 410 });
     }
     if (n % LOCK_AFTER === 0) {
       await db.from('crm_secure_requests').update({ locked_until: new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString() }).eq('id', r.id);
