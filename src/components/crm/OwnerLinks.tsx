@@ -47,9 +47,14 @@ export default function OwnerLinks({ authToken, onClose, onOpenContact, onChange
     if (timer.current) clearTimeout(timer.current);
     if (text.trim().length < 2) { setFound(f => ({ ...f, [listingId]: [] })); return; }
     timer.current = setTimeout(async () => {
-      const r = await fetch(`/api/crm/contacts?q=${encodeURIComponent(text.trim())}&limit=8`, { headers: h }).catch(() => null);
+      // The contacts search matches ONE word against each name / email column, so a full name finds nothing: search the longest word, then keep only people who match every word.
+      const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+      const longest = [...words].sort((a, b) => b.length - a.length)[0] ?? text.trim();
+      const r = await fetch(`/api/crm/contacts?q=${encodeURIComponent(longest)}&limit=50`, { headers: h }).catch(() => null);
       const j = r?.ok ? await r.json() : null;
-      setFound(f => ({ ...f, [listingId]: j?.contacts ?? [] }));
+      const all: Found[] = j?.contacts ?? [];
+      const hit = all.filter(c => { const hay = `${c.first_name ?? ''} ${c.last_name ?? ''} ${c.business_name ?? ''} ${c.email ?? ''}`.toLowerCase(); return words.every(w => hay.includes(w)); });
+      setFound(f => ({ ...f, [listingId]: hit.slice(0, 8) }));
     }, 250);
   };
   const createAndLink = async (listingId: string) => {

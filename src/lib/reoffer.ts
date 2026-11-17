@@ -23,7 +23,7 @@ const price = (l: { asking_price?: number | null; flyer_type?: string | null }) 
 /**
  * When a property leases or sells, who asked about it (by a #tag) and which of OUR other active listings might suit them. Read-only: people with no email, an
  * unsubscribed or dead address, or a held lead are listed with the reason and left out. Alternatives are only our own active, non-restricted listings of the same
- * kind (lease vs sale) and asset type, nearest in size first: never another broker's space.
+ * kind (lease vs sale), asset type and city, nearest in size first: never another broker's space.
  */
 export async function buildReoffer(db: SupabaseClient, ctx: CrmContext, listingId: string): Promise<Reoffer | null> {
   const { data: l } = await db.from('crm_listings').select('id, name, address, city, type, status, flyer_type, sq_ft, asking_price, business_unit, listing_agent_id, assigned_agent_ids, is_restricted').eq('id', listingId).maybeSingle();
@@ -53,6 +53,8 @@ export async function buildReoffer(db: SupabaseClient, ctx: CrmContext, listingI
   const kind = (t: unknown) => (/lease/i.test(String(t ?? '')) ? 'lease' : /sale/i.test(String(t ?? '')) ? 'sale' : '');
   const alternatives = (alts ?? []).filter(a => !a.is_restricted && listingAccessible(a as Record<string, unknown>, ctx) && (!kind(l.flyer_type) || kind(a.flyer_type) === kind(l.flyer_type)))
     .filter(a => !!a.type && !!l.type && String(a.type).toLowerCase() === String(l.type).toLowerCase())
+    // Someone who asked about a San Antonio space does not want Wichita Falls: when both cities are known they must match.
+    .filter(a => { const c1 = String(l.city ?? '').trim().toLowerCase(), c2 = String(a.city ?? '').trim().toLowerCase(); return !c1 || !c2 || c1 === c2; })
     .map(a => {
       const sf = Number(a.sq_ft) || 0, want_sf = Number(l.sq_ft) || 0;
       const gap = sf && want_sf ? Math.abs(Math.log(sf / want_sf)) : 2;   // unknown size sorts after known sizes

@@ -217,7 +217,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)', marginBottom: 12 }}>
           Old notes that name one of our properties but were never tagged. Tagging changes only that address in the note into a # tag, so it counts on the property. Nothing changes until you tap, and a batch can be undone.
-          {items && ` ${live.length} left to review${total > live.length ? ` (of ${total})` : ''}.`}{tenantsOut > 0 && ` ${tenantsOut} notes that are current tenants' rent-roll lines are left out.`}{logOut > 0 && ` ${logOut} system log lines (stage moves, completed tasks) are kept out of this list.`}
+          {items && ` ${live.length} left to review${total > live.length ? ` (of ${total})` : ''}.`}{tenantsOut > 0 && ` ${tenantsOut} notes that are current tenants' rent-roll lines are left out.`}{logOut > 0 && ` ${logOut} system log line${logOut === 1 ? ' (a stage move or completed task) is' : 's (stage moves, completed tasks) are'} kept out of this list.`}
         </div>
         {undo && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--k-f0fdfa, #f0fdfa)', border: '1px solid var(--k-99f6e4, #99f6e4)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, fontSize: 13 }}>

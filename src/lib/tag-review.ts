@@ -77,6 +77,15 @@ export async function computeTagReview(db: Db, ctx: CrmContext) {
     if (hold(c as never)) continue;
     pushRow('contact', c.id as string, c.id as string, nameOf(c as never), c.notes as string, null, (c.targeted_listing_ids as string[] | null) ?? []);
   }
+  // A contact with no note text of its own is not in the list above, but its logged activities and calls still name properties: load those contacts too.
+  const ensureContacts = async (ids: (string | null | undefined)[]) => {
+    const need = [...new Set(ids.filter((x): x is string => !!x && !cmap.has(x)))];
+    for (let i = 0; i < need.length; i += 200) {
+      const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, lead_hold').eq('business_unit', ctx.businessUnit).in('id', need.slice(i, i + 200));
+      for (const c of data ?? []) cmap.set(c.id as string, { name: nameOf(c as never), hold: hold(c as never) });
+    }
+  };
+  await ensureContacts([...(acts.data ?? []).map(a => a.client_id as string), ...(calls.data ?? []).map(k => k.contact_id as string | null)]);
   for (const a of acts.data ?? []) {
     const c = cmap.get(a.client_id as string);
     if (!c || c.hold) continue;
@@ -97,6 +106,7 @@ export async function computeTagReview(db: Db, ctx: CrmContext) {
     callRows.push(...(data ?? []));
     if ((data?.length ?? 0) < 1000) break;
   }
+  await ensureContacts(callRows.map(k => k.contact_id as string | null));
   for (const k of callRows) {
     const c = k.contact_id ? cmap.get(k.contact_id as string) : null;
     if (c?.hold) continue;

@@ -11,11 +11,11 @@ export type JobDef = {
 const n = (d: Record<string, unknown> | null, k: string) => Number(d?.[k] ?? 0) > 0;
 
 export const JOBS: JobDef[] = [
-  { key: 'property-inquiry-digest', label: 'Morning inquiry alert', when: 'weekdays about 9 AM Central', maxHours: 80, real: d => n(d, 'sent'), realLabel: 'an alert reached a phone' },
-  { key: 'targeted-replies', label: 'Outreach reply conversion', when: 'daily about 9:20 AM Central', maxHours: 36, real: d => n(d, 'converted'), realLabel: 'someone we reached out to was moved to asked' },
-  { key: 'second-touch-drafts', label: 'Second-touch drafts', when: 'Mondays about 9:50 AM Central (drafts only, never sent)', maxHours: 204, real: d => n(d, 'made'), realLabel: 'a second-touch draft was saved' },
-  { key: 'owner-update-drafts', label: 'Weekly owner update drafts', when: 'Mondays about 9:40 AM Central (drafts only, never sent)', maxHours: 204, real: d => n(d, 'made'), realLabel: 'an owner update draft was saved' },
-  { key: 'tagging-selfcheck', label: 'Nightly self-check', when: 'daily about 5:15 AM Central (tests the tagger on a sample, sends nothing)', maxHours: 36, realLabel: 'ran' },
+  { key: 'property-inquiry-digest', label: 'Morning inquiry alert', when: 'weekdays about 8–9 AM Central', maxHours: 80, real: d => n(d, 'sent'), realLabel: 'an alert reached a phone' },
+  { key: 'targeted-replies', label: 'Outreach reply conversion', when: 'daily about 8:20–9:20 AM Central', maxHours: 36, real: d => n(d, 'converted'), realLabel: 'someone we reached out to was moved to asked' },
+  { key: 'second-touch-drafts', label: 'Second-touch drafts', when: 'Mondays about 8:50–9:50 AM Central (drafts only, never sent)', maxHours: 204, real: d => n(d, 'made'), realLabel: 'a second-touch draft was saved' },
+  { key: 'owner-update-drafts', label: 'Weekly owner update drafts', when: 'Mondays about 8:40–9:40 AM Central (drafts only, never sent)', maxHours: 204, real: d => n(d, 'made'), realLabel: 'an owner update draft was saved' },
+  { key: 'tagging-selfcheck', label: 'Nightly self-check', when: 'daily about 4:15–5:15 AM Central (tests the tagger on a sample, sends nothing)', maxHours: 36, realLabel: 'ran' },
   { key: 'call-auto-tag', label: 'Phone bot & voicemail tagging', when: 'each time a call summary is saved', real: () => true, realLabel: 'a real call summary was tagged to a property' },
 ];
 
