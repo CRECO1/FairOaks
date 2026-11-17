@@ -4,6 +4,7 @@ import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, notFound,
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { canAccessLinked } from '@/lib/crm-linked-access';
 import { adminClient } from '@/lib/supabase-admin';
+import { safeObjectName } from '@/lib/safe-object-name';
 
 // Import a one-off document to be signed — a lease addendum, a vendor agreement,
 // anything that isn't in the Transaction Docs form library. The upload becomes a
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
   }
 
   // No `..` anywhere in the name: PUT refuses it, so never mint one.
-  const safe = String(filename).replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.');
+  const safe = safeObjectName(String(filename));
   const storagePath = `imports/${ctx.userId}/${Date.now()}_${safe}`;
   const { data, error } = await adminClient().storage.from(BUCKET).createSignedUploadUrl(storagePath);
   if (error || !data) {

@@ -1,3 +1,4 @@
+import { safeObjectName } from '@/lib/safe-object-name';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { getCrmContext, assertOwnsResource, hiddenDealIds, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
@@ -300,7 +301,7 @@ async function agentPresign(body: Record<string, unknown>, ctx: Ctx) {
   const db = adminClient();
   const { count } = await db.from('crm_secure_files').select('id', { count: 'exact', head: true }).eq('request_id', r.id);
   if ((count ?? 0) >= MAX_FILES_PER_REQUEST) return NextResponse.json({ error: `A secure folder holds up to ${MAX_FILES_PER_REQUEST} files. Start another folder for the rest.` }, { status: 400 });
-  const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-100);
+  const safe = safeObjectName(filename, 100);
   const storagePath = `req-${r.id}/${Date.now()}_${randomBytes(4).toString('hex')}_${safe}`;
   const { data, error } = await db.storage.from(SECURE_BUCKET).createSignedUploadUrl(storagePath);
   if (error || !data) { console.error('[secure-requests] presign', error); return NextResponse.json({ error: 'Could not start the upload — try again' }, { status: 500 }); }

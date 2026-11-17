@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient, SUPABASE_URL } from '@/lib/supabase-admin';
+import { safeObjectName } from '@/lib/safe-object-name';
 
 const BUCKET = 'images';
 const MAX_SIZE_BYTES = 12 * 1024 * 1024; // 12 MB
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'File too large (max 12 MB)' }, { status: 400 });
   }
 
-  const safeName = filename.replace(/[^a-z0-9._-]/gi, '_').toLowerCase();
+  const safeName = safeObjectName(filename).toLowerCase();
   const path = `social/${user.id}/${Date.now()}_${safeName}`;
 
   const supabase = adminClient();

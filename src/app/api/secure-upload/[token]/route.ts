@@ -1,3 +1,4 @@
+import { safeObjectName } from '@/lib/safe-object-name';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { after } from 'next/server';
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }
     const { count } = await db.from('crm_secure_files').select('id', { count: 'exact', head: true }).eq('request_id', r.id);
     if ((count ?? 0) >= MAX_FILES_PER_REQUEST) return NextResponse.json({ error: 'That’s the most files this link can take. Please call us if you need to send more.' }, { status: 400 });
-    const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-100);
+    const safe = safeObjectName(filename, 100);
     const storagePath = `${folder}${Date.now()}_${randomBytes(4).toString('hex')}_${safe}`;
     const { data, error } = await db.storage.from(SECURE_BUCKET).createSignedUploadUrl(storagePath);
     if (error || !data) { console.error('[secure-upload] presign', error); return NextResponse.json({ error: 'Could not start the upload — please try again.' }, { status: 500 }); }

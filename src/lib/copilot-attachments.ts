@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ATTACHMENT_TYPES, attachmentInfo, type AttachmentRef } from '@/lib/copilot-attachment-types';
+import { safeObjectName } from '@/lib/safe-object-name';
 
 export const ATT_BUCKET = 'listing-files';
 const LIVE_ATTACHMENTS = 3;             // only the newest few are re-sent to the model each turn
@@ -16,7 +17,7 @@ const PDF_PAGE_CAP = 100;               // the API reads at most 100 pages of a 
 
 export function newAttachmentPath(userId: string, filename: string): { id: string; path: string } {
   const id = crypto.randomBytes(5).toString('hex');
-  const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80) || 'file';
+  const safe = safeObjectName(filename, 80);
   return { id, path: `copilot/${userId}/${id}__${safe}` };
 }
 
