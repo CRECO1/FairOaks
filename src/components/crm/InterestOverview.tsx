@@ -1,20 +1,24 @@
 'use client';
 import React, { useEffect, useState } from 'react';
+import OwnerLinks from '@/components/crm/OwnerLinks';
 
 type Row = { listing_id: string; listing: string; hasOwnerEmail?: boolean; asked: number; targeted: number; followedUp: number; deals: number; needsFollowUp: number; avgReplyDays: number | null };
 type SortKey = 'asked' | 'targeted' | 'followedUp' | 'deals' | 'needsFollowUp' | 'avgReplyDays';
 
 /** Every property with tagged interest or outreach side by side, so you can see where to push: who is getting asks, who is getting follow-up, where people stall. */
-export default function InterestOverview({ authToken, onClose, onOpen }: { authToken?: string; onClose: () => void; onOpen: (listingId: string) => void }) {
+export default function InterestOverview({ authToken, onClose, onOpen, onOpenContact }: { authToken?: string; onClose: () => void; onOpen: (listingId: string) => void; onOpenContact?: (id: string) => void }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [sort, setSort] = useState<SortKey>('asked');
   const [narrow, setNarrow] = useState(false);
+  const [showOwners, setShowOwners] = useState(false);
+  const [reloadN, setReloadN] = useState(0);
   useEffect(() => { const f = () => setNarrow(window.innerWidth < 640); f(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   useEffect(() => {
     let alive = true;
     fetch('/api/crm/interest-overview', { headers: { Authorization: `Bearer ${authToken}` } }).then(r => (r.ok ? r.json() : null)).then(j => { if (alive) setRows(j?.rows ?? []); }).catch(() => { if (alive) setRows([]); });
     return () => { alive = false; };
-  }, [authToken]);
+  }, [authToken, reloadN]);
+  const noOwner = (rows ?? []).filter(r => !r.hasOwnerEmail).length;
   const val = (r: Row) => (sort === 'avgReplyDays' ? (r.avgReplyDays ?? -1) : r[sort]);
   const sorted = [...(rows ?? [])].sort((a, b) => val(b) - val(a));
   const tot = (k: SortKey) => (rows ?? []).reduce((a, r) => a + (k === 'avgReplyDays' ? 0 : r[k]), 0);
@@ -26,6 +30,7 @@ export default function InterestOverview({ authToken, onClose, onOpen }: { authT
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--k-fff, #fff)', width: 'min(860px, 100%)', maxHeight: '88vh', overflowY: 'auto', borderRadius: '16px 16px 0 0', padding: '18px 18px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <div style={{ fontSize: 17, fontWeight: 700, flex: 1 }}>📊 Interest by property</div>
+          {noOwner > 0 && <button onClick={() => setShowOwners(true)} title="These properties have no landlord or owner email linked, so the weekly owner update is addressed to you" style={{ fontSize: 12.5, fontWeight: 700, padding: '5px 12px', borderRadius: 14, border: '1px solid #fde68a', background: '#fffbeb', color: '#b45309', cursor: 'pointer', whiteSpace: 'nowrap' }}>🏢 Link owners ({noOwner})</button>}
           <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>×</button>
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)', marginBottom: 10 }}>Asked = tagged inquiries. Reached out = outreach lists. Followed up = an email sent or a touch logged after the ask. Tap a column to sort, a row to open the property.</div>
@@ -92,6 +97,7 @@ export default function InterestOverview({ authToken, onClose, onOpen }: { authT
             )
           )}
       </div>
+      {showOwners && <OwnerLinks authToken={authToken} onClose={() => setShowOwners(false)} onOpenContact={onOpenContact} onChanged={() => setReloadN(n => n + 1)} />}
     </div>
   );
 }

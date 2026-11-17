@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { crmLink } from '@/lib/push';
 import { buildInquiries } from '@/lib/listing-inquiries';
+import { computeTagReview } from '@/lib/tag-review';
 
 export type DigestMessage = { profileId: string; title: string; body: string; url: string; listings: number; total: number };
 
@@ -9,7 +10,7 @@ export type DigestMessage = { profileId: string; title: string; body: string; ur
  * since the last run (contact notes and logged touches, calls, deal notes and meetings, tasks), the names the agent may see, and how many people
  * still wait on a call-back. Mondays look back over the weekend. The cron sends these; the admin "Preview today's alert" button just reads them.
  */
-export async function computeInquiryDigest(db: SupabaseClient): Promise<{ listings: number; messages: DigestMessage[] }> {
+async function computeInquiryMessages(db: SupabaseClient): Promise<{ listings: number; messages: DigestMessage[] }> {
   const hours = new Date().getUTCDay() === 1 ? 72 : 24;
   const since = new Date(Date.now() - hours * 3_600_000).toISOString();
   type Src = { table: string; col: string; contact?: string };
@@ -74,4 +75,34 @@ export async function computeInquiryDigest(db: SupabaseClient): Promise<{ listin
     });
   }
   return { listings: counts.size, messages };
+}
+
+/**
+ * The morning alert text per person, plus (for admins only) how many old notes still wait in "Tag old notes": appended to their inquiry alert, or, when they have
+ * no inquiries that morning, sent on its own on Mondays so the review list never quietly grows. Reads only; nothing is sent from here.
+ */
+export async function computeInquiryDigest(db: SupabaseClient): Promise<{ listings: number; messages: DigestMessage[]; reviewWaiting?: number }> {
+  const base = await computeInquiryMessages(db);
+  try {
+    const { data: admins } = await db.from('crm_profiles').select('id, role, business_unit').in('role', ['super_admin', 'admin']).eq('business_unit', 'commercial').limit(10);
+    let first: number | undefined;
+    for (const a of admins ?? []) {
+      // The review count is a nice-to-have: give it 15 s at most, so a slow database can never hold up the inquiry alerts themselves.
+      const r = await Promise.race([
+        computeTagReview(db, { userId: a.id as string, role: (a.role as string | null) ?? null, businessUnit: (a.business_unit as string | null) ?? 'commercial' }),
+        new Promise<null>(res => setTimeout(() => res(null), 15_000)),
+      ]);
+      if (!r) continue;
+      if (first === undefined) first = r.total;
+      if (!r.total) continue;
+      const line = `${r.total} old note${r.total === 1 ? '' : 's'} to review`;
+      const mine = base.messages.find(m => m.profileId === a.id);
+      if (mine) mine.body = `${mine.body} · ${line}`;
+      else if (new Date().getUTCDay() === 1) base.messages.push({ profileId: a.id as string, title: line[0].toUpperCase() + line.slice(1), body: 'Open Properties → Tag old notes to tag them, mark outreach entries, or hide the rest.', url: crmLink('properties'), listings: 0, total: 0 });
+    }
+    return { ...base, reviewWaiting: first };
+  } catch (e) {
+    console.error('[property-inquiry-digest] review count', (e as Error).message);
+    return base;
+  }
 }

@@ -3,6 +3,7 @@ import { dropWalledTasks, ownTasksFilter } from '@/lib/task-walls';
 import { listingAccessible, rentRollAccessible } from '@/lib/listing-files-access';
 import { canAccessLinked } from '@/lib/crm-linked-access';
 import { adminClient } from '@/lib/supabase-admin';
+import { signalsFrom } from '@/lib/follow-up-heat';
 
 export type InquiryItem = {
   key: string;                    // contact id, `call:<id>` for a caller who is not a contact, or `deal:<id>`
@@ -19,6 +20,8 @@ export type InquiryItem = {
   last_email?: { dir: 'sent' | 'received'; at: string };
   /** Contacts only: whole days from their ask to the first email we sent them after it (null when none yet). */
   responded_days?: number;
+  /** Contacts only, for "who to call first": how many different days they asked on, what the words around their asks suggest (toured, asked about price…), and whether they wrote back after the ask. */
+  asks?: number; signals?: string[]; wrote_back?: boolean;
 };
 
 const prettyPhone = (n: string | null | undefined) => { const d = String(n ?? '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : (n ?? '') || 'Unknown caller'; };
@@ -28,7 +31,7 @@ export async function buildInquiries(ctx: CrmContext, listingId: string): Promis
   const db = adminClient();
   const tag = [listingId];
   const [notes, acts, calls] = await Promise.all([
-    db.from('crm_clients').select('id, first_name, last_name, business_name, type, business_unit, lead_hold, last_touched_at').contains('tagged_listing_ids', tag).limit(200),
+    db.from('crm_clients').select('id, first_name, last_name, business_name, type, business_unit, lead_hold, last_touched_at, notes').contains('tagged_listing_ids', tag).limit(200),
     db.from('crm_client_activities').select('id, client_id, type, note, created_at').contains('tagged_listing_ids', tag).order('created_at', { ascending: false }).limit(300),
     db.from('crm_call_log').select('id, business_unit, contact_id, deal_id, direction, caller_name, from_number, to_number, started_at, notes, summary').contains('tagged_listing_ids', tag).order('started_at', { ascending: false }).limit(200),
   ]);
@@ -38,7 +41,7 @@ export async function buildInquiries(ctx: CrmContext, listingId: string): Promis
   }
 
   // Contacts that only show up through an activity.
-  type ContactRow = { id: string; first_name: string | null; last_name: string | null; business_name: string | null; type: string | null; business_unit: string | null; lead_hold: boolean | null; last_touched_at?: string | null };
+  type ContactRow = { notes?: string | null; id: string; first_name: string | null; last_name: string | null; business_name: string | null; type: string | null; business_unit: string | null; lead_hold: boolean | null; last_touched_at?: string | null };
   const contacts = new Map<string, ContactRow>();
   for (const c of (notes.data ?? []) as ContactRow[]) contacts.set(c.id, c);
   const missing = [...new Set([...(acts.data ?? []).map(a => a.client_id as string), ...(calls.data ?? []).map(c => c.contact_id as string | null).filter((x): x is string => !!x)])].filter(id => !contacts.has(id));
@@ -140,6 +143,18 @@ export async function buildInquiries(ctx: CrmContext, listingId: string): Promis
     }
   }
 
+  // Signals for "who to call first": on how many different days each contact asked, and what the words around their asks suggest. Used server-side only; the text is never returned.
+  const askDays = new Map<string, Set<string>>(); const askText = new Map<string, string>(); const metWith = new Set<string>();
+  const addAsk = (id: string, at: unknown, text: unknown) => { if (at) askDays.set(id, (askDays.get(id) ?? new Set()).add(String(at).slice(0, 10))); askText.set(id, ((askText.get(id) ?? '') + ' ' + String(text ?? '')).slice(0, 6000)); };
+  for (const c of (notes.data ?? []) as ContactRow[]) addAsk(c.id, null, c.notes);
+  for (const a of acts.data ?? []) { addAsk(a.client_id as string, a.created_at, a.note); if (a.type === 'meeting') metWith.add(a.client_id as string); }
+  for (const call of calls.data ?? []) if (call.contact_id) addAsk(call.contact_id as string, call.started_at, call.notes || call.summary);
+  for (const it of items.values()) {
+    if (!it.contact_id || it.via === 'deal' || it.via === 'task') continue;
+    it.asks = Math.max(1, askDays.get(it.contact_id)?.size ?? 0);
+    it.signals = signalsFrom(askText.get(it.contact_id) ?? '', contacts.get(it.contact_id)?.type, metWith.has(it.contact_id));
+  }
+
   // Emails count as touches: the latest sent / received email per contact (from the Gmail sync), so "emailed them last week" is a follow-up.
   const mailIds = [...new Set([...items.values()].filter(i => i.contact_id && i.last_at && i.via !== 'deal' && i.via !== 'task').map(i => i.contact_id as string))];
   const mail = new Map<string, { sent: number; received: number; lastDir: 'sent' | 'received'; lastMs: number; sentTimes: number[] }>();
@@ -167,6 +182,7 @@ export async function buildInquiries(ctx: CrmContext, listingId: string): Promis
     const firstAfter = (m?.sentTimes ?? []).filter(t => t > askedMs).sort((a, b) => a - b)[0];
     if (firstAfter) it.responded_days = Math.floor((firstAfter - askedMs) / 86_400_000);
     const touched = Math.max(c.last_touched_at ? Date.parse(c.last_touched_at) : 0, m?.sent ?? 0);
+    if (m && m.received > askedMs) it.wrote_back = true;
     if (touched > askedMs + 86_400_000) it.followed_up = true;
     if (nowMs - askedMs >= 7 * 86_400_000 && (!touched || touched <= askedMs + 86_400_000)) it.needs_follow_up = true;
   }

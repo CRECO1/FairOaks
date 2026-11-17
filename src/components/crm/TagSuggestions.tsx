@@ -19,6 +19,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
   const [groups, setGroups] = useState<Group[]>([]);
   const [total, setTotal] = useState(0);
   const [tenantsOut, setTenantsOut] = useState(0);
+  const [logOut, setLogOut] = useState(0);
   const [cardMode, setCardMode] = useState(false);
   const [narrow, setNarrow] = useState(false);
   useEffect(() => { const f = () => setNarrow(window.innerWidth < 640); f(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
@@ -28,7 +29,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
   const [undo, setUndo] = useState<{ label: string; rows: Undo[]; targeted?: { row_id: string; listing_id: string }[]; skipped?: { source: string; row_id: string; listing_id: string }[] } | null>(null);
   const h = { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' };
 
-  const load = () => fetch('/api/crm/tag-suggestions', { headers: h }).then(r => (r.ok ? r.json() : null)).then(j => { setItems(j?.items ?? []); setGroups(j?.groups ?? []); setTotal(j?.total ?? 0); setTenantsOut(j?.tenantsLeftOut ?? 0); }).catch(() => setItems([]));
+  const load = () => fetch('/api/crm/tag-suggestions', { headers: h }).then(r => (r.ok ? r.json() : null)).then(j => { setItems(j?.items ?? []); setGroups(j?.groups ?? []); setTotal(j?.total ?? 0); setTenantsOut(j?.tenantsLeftOut ?? 0); setLogOut(j?.logLinesLeftOut ?? 0); }).catch(() => setItems([]));
   useEffect(() => { load(); }, []); // eslint-disable-line
 
   const key = (i: { source: string; row_id: string }) => `${i.source}:${i.row_id}`;
@@ -124,7 +125,9 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
   // whole team). Outreach lists and phone-call summaries are left out (those have their own buttons / are reviewed by hand). Preview first, one Undo.
   const bulkInq = useMemo(() => live.filter(i => i.source !== 'callsummary' && !i.outreach && i.verdict === 'inquiry'), [live]);
   const bulkGen = useMemo(() => live.filter(i => i.source !== 'callsummary' && !i.outreach && i.verdict === 'general'), [live]);
-  const bulkOther = useMemo(() => live.filter(i => i.source !== 'callsummary' && !i.outreach && (i.verdict === 'owner' || i.verdict === 'research' || i.verdict === 'system')), [live]);
+  const bulkOther = useMemo(() => live.filter(i => i.source !== 'callsummary' && (i.verdict === 'owner' || i.verdict === 'research' || i.verdict === 'system')), [live]);
+  // Outreach-list entries (we contacted them): one tap marks them all as targeted, whatever property they are on. Owners and research are never in this list.
+  const bulkTarget = useMemo(() => live.filter(i => i.source === 'contact' && i.outreach && i.verdict !== 'owner' && i.verdict !== 'research' && i.verdict !== 'system' && i.verdict !== 'two'), [live]);
   const sample = (rows: Item[], tagged: boolean) => rows.slice(0, 3).map(r => `• ${r.contact}: …${(tagged ? r.after : r.before).replace(/\s+/g, ' ').slice(0, 110)}…`).join('\n');
   const applyInquiries = async () => {
     if (!bulkInq.length || !window.confirm(`Tag ${bulkInq.length} notes that look like inquiries? Only the address in each note changes, and one Undo puts them all back.\n\nExamples:\n${sample(bulkInq, true)}`)) return;
@@ -159,6 +162,23 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
     setUndo({ label: `the ${what.replace(/^an? /, '')}`, rows: [], skipped: hidden });
     onChanged?.();
     onToast(`Hid ${hidden.length} note${hidden.length === 1 ? '' : 's'}`);
+  };
+  const targetAll = async () => {
+    if (!bulkTarget.length || !window.confirm(`Mark ${bulkTarget.length} contact${bulkTarget.length === 1 ? '' : 's'} as targeted (we reached out to them)? Their notes are not changed, they do not count as inquiries, and one Undo reverses it.\n\nExamples:\n${sample(bulkTarget, false)}`)) return;
+    setBusy('bulk');
+    const added: { row_id: string; listing_id: string }[] = [];
+    const byL = new Map<string, Item[]>(); for (const r of bulkTarget) byL.set(r.listing_id, [...(byL.get(r.listing_id) ?? []), r]);
+    for (const [lid, rows] of byL) for (let i = 0; i < rows.length; i += 500) {
+      const r = await fetch('/api/crm/tag-suggestions', { method: 'POST', headers: h, body: JSON.stringify({ mode: 'targeted', listing_id: lid, items: rows.slice(i, i + 500).map(x => ({ source: x.source, row_id: x.row_id })) }) }).catch(() => null);
+      const j = r?.ok ? await r.json() : null;
+      if (j?.added) added.push(...j.added);
+    }
+    setBusy(null);
+    const gone = new Set(bulkTarget.filter(x => added.some(a => a.row_id === x.row_id && a.listing_id === x.listing_id)).map(x => key(x)));
+    setItems(cur => (cur ?? []).filter(x => !gone.has(key(x))));
+    setUndo({ label: 'the outreach-list entries (targeted)', rows: [], targeted: added });
+    onChanged?.();
+    onToast(`Marked ${added.length} as targeted`);
   };
   const hideGeneral = () => hideRows(bulkGen, 'general notes');
   const hideOther = () => hideRows(bulkOther, 'owner research, landlord / owner contacts or system messages');
@@ -197,7 +217,7 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)', marginBottom: 12 }}>
           Old notes that name one of our properties but were never tagged. Tagging changes only that address in the note into a # tag, so it counts on the property. Nothing changes until you tap, and a batch can be undone.
-          {items && ` ${live.length} left to review${total > live.length ? ` (of ${total})` : ''}.`}{tenantsOut > 0 && ` ${tenantsOut} notes that are current tenants' rent-roll lines are left out.`}
+          {items && ` ${live.length} left to review${total > live.length ? ` (of ${total})` : ''}.`}{tenantsOut > 0 && ` ${tenantsOut} notes that are current tenants' rent-roll lines are left out.`}{logOut > 0 && ` ${logOut} system log lines (stage moves, completed tasks) are kept out of this list.`}
         </div>
         {undo && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--k-f0fdfa, #f0fdfa)', border: '1px solid var(--k-99f6e4, #99f6e4)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, fontSize: 13 }}>
@@ -205,11 +225,12 @@ export default function TagSuggestions({ authToken, onClose, onToast, onChanged,
             <button onClick={doUndo} style={{ fontSize: 12.5, fontWeight: 700, padding: '5px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', cursor: 'pointer' }}>Undo</button>
           </div>
         )}
-        {items && !cardMode && (bulkInq.length > 0 || bulkGen.length > 0 || bulkOther.length > 0) && (
+        {items && !cardMode && (bulkInq.length > 0 || bulkGen.length > 0 || bulkOther.length > 0 || bulkTarget.length > 0) && (
           <div style={{ border: '1px solid var(--k-e5e7eb, #e5e7eb)', borderRadius: 12, padding: '10px 12px', marginBottom: 12, background: 'var(--k-f9fafb, #f9fafb)' }}>
             <div style={{ fontSize: 12.5, color: 'var(--k-6b7280, #6b7280)', marginBottom: 8 }}>Bulk by the suggested answer (you see examples first, and one Undo reverses it):</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {bulkInq.length > 0 && <button disabled={busy !== null} onClick={applyInquiries} style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 18, border: '1px solid var(--k-99f6e4, #99f6e4)', background: 'var(--k-f0fdfa, #f0fdfa)', color: 'var(--k-0f766e, #0f766e)', cursor: 'pointer' }}>{busy === 'bulk' ? 'Working…' : `🏠 Tag the ${bulkInq.length} that look like inquiries`}</button>}
+              {bulkTarget.length > 0 && <button disabled={busy !== null} onClick={targetAll} title="Outreach-list lines (prospect —, ASK FOR, TOP TARGET): we contacted them, they did not ask" style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 18, border: '1px solid #fde68a', background: '#fffbeb', color: '#b45309', cursor: 'pointer' }}>{busy === 'bulk' ? 'Working…' : `🎯 Mark the ${bulkTarget.length} outreach entries as targeted`}</button>}
               {bulkOther.length > 0 && <button disabled={busy !== null} onClick={hideOther} title="Owner research from county records, landlord / owner contacts of the property, and system messages: none of them is someone asking about it" style={{ fontSize: 13, padding: '8px 14px', borderRadius: 18, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', color: 'var(--k-374151, #374151)', cursor: 'pointer' }}>{busy === 'bulk' ? 'Working…' : `Hide the ${bulkOther.length} owner / research / system notes`}</button>}
               {bulkGen.length > 0 && <button disabled={busy !== null} onClick={hideGeneral} style={{ fontSize: 13, padding: '8px 14px', borderRadius: 18, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'var(--k-fff, #fff)', color: 'var(--k-374151, #374151)', cursor: 'pointer' }}>{busy === 'bulk' ? 'Working…' : `Hide the ${bulkGen.length} general notes`}</button>}
             </div>

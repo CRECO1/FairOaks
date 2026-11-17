@@ -4,6 +4,7 @@ import TagSuggestions from '@/components/crm/TagSuggestions';
 import InquiryAlertPrompt from '@/components/crm/InquiryAlertPrompt';
 import LeadTagHealth from '@/components/crm/LeadTagHealth';
 import InterestOverview from '@/components/crm/InterestOverview';
+import ReofferToAskers from '@/components/crm/ReofferToAskers';
 import DuplicateListings from '@/components/crm/DuplicateListings';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
@@ -255,6 +256,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [listingContacts, setListingContacts] = useState<ListingContact[]>([]);
   const [ownerSug, setOwnerSug] = useState<{ contact_id: string; name: string; email: string | null; ownerName: string; via: string }[]>([]);
   const [contactSearch, setContactSearch] = useState('');
+  const [showReoffer, setShowReoffer] = useState(false);
   const [contactRole, setContactRole] = useState('Landlord');
   const [addingContact, setAddingContact] = useState(false);
   const [flyerBusy, setFlyerBusy] = useState(false);
@@ -1238,7 +1240,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
       {showDupes && <DuplicateListings authToken={authToken} onClose={() => setShowDupes(false)} onToast={onToast} onChanged={() => { void loadListings(); setCountsKey(k => k + 1); }} />}
-      {showOverview && <InterestOverview authToken={authToken} onClose={() => setShowOverview(false)} onOpen={id => { const l = listings.find(x => x.id === id); if (l) openListing(l); }} />}
+      {showReoffer && active && <ReofferToAskers authToken={authToken} listingId={active.id} onClose={() => setShowReoffer(false)} onToast={onToast} />}
+      {showOverview && <InterestOverview authToken={authToken} onClose={() => setShowOverview(false)} onOpen={id => { const l = listings.find(x => x.id === id); if (l) openListing(l); }} onOpenContact={onOpenContact} />}
       {showTagReview && <TagSuggestions onOpenContact={onOpenContact} authToken={authToken} onClose={() => { setShowTagReview(false); setCountsKey(k => k + 1); }} onToast={onToast} onChanged={() => setCountsKey(k => k + 1)} />}
 
       <InquiryAlertPrompt authToken={authToken} onToast={onToast} />
@@ -2040,7 +2043,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
                   {/* People who asked about this property — #-tagged in a contact's notes or a logged call, no deal needed */}
                   <div style={{ marginTop: 22 }}>
-                    <div title="Contacts whose notes or logged calls tagged this property with #" style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>🏠 Asked about this property</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                      <div title="Contacts whose notes or logged calls tagged this property with #" style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-374151)' }}>🏠 Asked about this property</div>
+                      {inquiriesLoaded && ['leased', 'sold', 'pending'].includes(String(active?.status ?? '')) && inquiries.some(q => q.contact_id) && (
+                        <button onClick={() => setShowReoffer(true)} title="This property is no longer available: save a draft email to each person who asked, suggesting our other listings" style={{ fontSize: 12, fontWeight: 700, padding: '4px 11px', borderRadius: 14, border: '1px solid var(--k-99f6e4, #99f6e4)', background: 'var(--k-f0fdfa, #f0fdfa)', color: 'var(--k-0f766e, #0f766e)', cursor: 'pointer' }}>↩ Re-offer to the {inquiries.filter(q => q.contact_id).length} who asked</button>
+                      )}
+                    </div>
                     <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', marginBottom: 8 }}>Anyone whose notes or logged calls tag this property (type # in a contact&apos;s, call&apos;s or deal&apos;s note, e.g. #{(active?.address ?? active?.name ?? '').split(',')[0].trim().split(/\s+/).slice(0, 2).join('') || 'address'}). Read-only.</div>
                     {!inquiriesLoaded ? (
                       <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)' }}>Loading…</div>

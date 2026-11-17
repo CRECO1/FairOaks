@@ -5,6 +5,7 @@ import { autoTagIdsForText } from '@/lib/lead-listing-tag';
 import { buildOverview, taggedListingIds } from '@/lib/listing-inquiries';
 import { computeInquiryDigest } from '@/lib/inquiry-digest';
 import { recordJobRun } from '@/lib/job-runs';
+import { silentJobs } from '@/lib/job-health';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
     await check('call summary tags the property', async () => { const ids = await autoTagIdsForText(db, 'commercial', `The caller asked about ${label} and wants 3,000 sq ft.`, []); if (!ids.includes(sample.id as string)) throw new Error(`summary naming ${label} was not tagged`); });
     await check('interest overview builds', async () => { const { data: sa } = await db.from('crm_profiles').select('id').eq('role', 'super_admin').limit(1); const uid = (sa?.[0]?.id as string | undefined) ?? ''; if (!uid) throw new Error('no super_admin profile'); const rows = await buildOverview({ userId: uid, role: 'super_admin', businessUnit: 'commercial' }); if (!Array.isArray(rows)) throw new Error('overview returned no list'); return `${rows.length} properties`; });
     await check('tagged-listing scan runs', async () => { const ids = await taggedListingIds(); return `${ids.length} properties have tags`; });
+    await check('scheduled jobs are firing', async () => { const quiet = await silentJobs(db); if (quiet.length) throw new Error(quiet.join('; ')); return 'every scheduled job ran on time'; });
     await check('morning alert text builds (not sent)', async () => { const d = await computeInquiryDigest(db); return `${d.messages.length} alert${d.messages.length === 1 ? '' : 's'} would go out now`; });
   } catch (e) { results.push({ name: 'self-check setup', ok: false, note: (e as Error).message.slice(0, 160) }); }
 

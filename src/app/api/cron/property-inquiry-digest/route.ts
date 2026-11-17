@@ -5,6 +5,7 @@ import { computeInquiryDigest } from '@/lib/inquiry-digest';
 import { recordJobRun } from '@/lib/job-runs';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /**
  * GET /api/cron/property-inquiry-digest — weekdays ~9 AM CT. One phone alert per listing agent (text built by lib/inquiry-digest.ts, which the

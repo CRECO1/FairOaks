@@ -7,7 +7,7 @@ type Item = { id: string; name: string; source: string; at: string; snippet: str
 export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?: string; onOpenContact?: (id: string) => void }) {
   const [d, setD] = useState<{ total: number; tagged: number; untagged: number; items: Item[]; calls?: { total: number; tagged: number }; removed?: { total: number; items: { id: string; name: string; at: string }[] } | null } | null>(null);
   const [showRemoved, setShowRemoved] = useState(false);
-  const [jobs, setJobs] = useState<{ key: string; label: string; when: string; runs: { ran_at: string; ok: boolean; summary: string | null }[] }[] | null>(null);
+  const [jobs, setJobs] = useState<{ key: string; label: string; when: string; realLabel?: string; status?: 'ok' | 'failed' | 'late' | 'never' | 'waiting'; hoursSince?: number | null; lastReal?: { ran_at: string; summary: string | null } | null; note?: string | null; runs: { ran_at: string; ok: boolean; summary: string | null }[] }[] | null>(null);
   const [showJobs, setShowJobs] = useState(false);
   const [gm, setGm] = useState<{ mailboxes: { email: string; name: string; needsReconnect: boolean; checkedAt: string | null }[]; filedToday: { received: number; sent: number }; lastFiledAt: string | null; lastLeadImportAt: string | null; healthy: boolean } | null>(null);
   const [showGm, setShowGm] = useState(false);
@@ -65,17 +65,22 @@ export default function LeadTagHealth({ authToken, onOpenContact }: { authToken?
       )}
       {jobs && (
         <div style={{ marginTop: 3 }}>
-          <button onClick={() => setShowJobs(o => !o)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: 'inherit', textAlign: 'left' }}>⚙ Tagging jobs {showJobs ? '▾' : '▸'}</button>
+          <button onClick={() => setShowJobs(o => !o)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, color: 'inherit', textAlign: 'left' }}>⚙ Tagging jobs{jobs.filter(j => j.status === 'late' || j.status === 'failed').length > 0 && <b style={{ color: '#b91c1c' }}> · {jobs.filter(j => j.status === 'late' || j.status === 'failed').length} need a look</b>} {showJobs ? '▾' : '▸'}</button>
           {showJobs && (
             <div style={{ marginTop: 4, marginLeft: 6 }}>
               {jobs.map(j => {
                 const last = j.runs[0];
                 return (
                   <div key={j.key} style={{ marginBottom: 6 }}>
-                    <div><b style={{ color: 'var(--k-374151, #374151)' }}>{j.label}</b> <span style={{ fontSize: 11.5 }}>· {j.when}</span></div>
+                    <div><b style={{ color: 'var(--k-374151, #374151)' }}>{j.label}</b> <span style={{ fontSize: 11.5 }}>· {j.when}</span>
+                      {j.status === 'late' && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '1px 7px' }}>{j.hoursSince == null ? 'never ran' : `silent ${Math.round(j.hoursSince / 24 * 10) / 10} days`}</span>}
+                      {j.status === 'failed' && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '1px 7px' }}>last run failed</span>}
+                    </div>
                     {last
                       ? <div style={{ fontSize: 12, color: last.ok ? 'var(--k-0f766e, #0f766e)' : '#b91c1c' }}>{last.ok ? '✓' : '✗'} {new Date(last.ran_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · {last.summary}</div>
-                      : <div style={{ fontSize: 12 }}>No run recorded yet (it logs itself the next time it runs).</div>}
+                      : <div style={{ fontSize: 12 }}>{j.status === 'waiting' ? 'Waiting for the first real call summary that names a property.' : 'No run recorded yet (it logs itself the next time it runs).'}</div>}
+                    {j.realLabel && j.key !== 'tagging-selfcheck' && <div style={{ fontSize: 11.5, color: j.lastReal ? 'var(--k-6b7280, #6b7280)' : '#b45309' }}>{j.lastReal ? `Last real event (${j.realLabel}): ${new Date(j.lastReal.ran_at).toLocaleString('en-US', { month: 'short', day: 'numeric' })}` : `Not seen on a real event yet (${j.realLabel})`}</div>}
+                    {j.note && <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af, #9ca3af)' }}>{j.note}</div>}
                   </div>
                 );
               })}

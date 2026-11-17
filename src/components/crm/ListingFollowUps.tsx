@@ -1,7 +1,12 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 
-type Item = { contact_id: string; name: string; listing_id: string; listing: string; days: number; snippet: string | null };
+type Item = { contact_id: string; name: string; listing_id: string; listing: string; days: number; snippet: string | null; heat?: 'hot' | 'warm' | 'cool'; score?: number; reasons?: string[] };
+const HEAT: Record<string, { label: string; fg: string; bg: string; bd: string }> = {
+  hot: { label: '🔥 Hot', fg: '#b91c1c', bg: '#fef2f2', bd: '#fecaca' },
+  warm: { label: 'Warm', fg: '#b45309', bg: '#fffbeb', bd: '#fde68a' },
+  cool: { label: 'Cool', fg: '#6b7280', bg: '#f3f4f6', bd: '#e5e7eb' },
+};
 const DONE_KEY = 'crm:listing-followup-tasked';
 
 /**
@@ -12,6 +17,7 @@ export default function ListingFollowUps({ authToken, userId, onOpenContact, onT
   const [items, setItems] = useState<Item[] | null>(null);
   const [made, setMade] = useState<Set<string>>(() => { try { return new Set(JSON.parse(sessionStorage.getItem(DONE_KEY) ?? '[]')); } catch { return new Set(); } });
   const [busy, setBusy] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
   const h = { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' };
 
   useEffect(() => {
@@ -36,13 +42,16 @@ export default function ListingFollowUps({ authToken, userId, onOpenContact, onT
   if (!items || items.length === 0) return null;
   return (
     <div style={{ background: 'var(--k-fff, #fff)', border: '1px solid var(--k-e5e7eb, #e5e7eb)', borderRadius: 14, padding: '14px 16px', marginBottom: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>🏠 Asked about a listing, no follow-up yet <span style={{ fontWeight: 500, color: 'var(--k-9ca3af, #9ca3af)' }}>· {items.length}</span></div>
-      <div style={{ fontSize: 12, color: 'var(--k-6b7280, #6b7280)', marginBottom: 8 }}>They asked a week or more ago and nothing has been logged on them since.</div>
-      {items.slice(0, 6).map(i => (
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>📞 Call these first <span style={{ fontWeight: 500, color: 'var(--k-9ca3af, #9ca3af)' }}>· {items.length} waiting</span></div>
+      <div style={{ fontSize: 12, color: 'var(--k-6b7280, #6b7280)', marginBottom: 8 }}>Asked about a listing a week or more ago, nothing logged since. Best bets first: asked more than once, toured, asked about price, wrote back, or asked recently.</div>
+      {items.slice(0, all ? 50 : 3).map(i => (
         <div key={k(i)} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '7px 0', borderTop: '1px solid #f1f3f5' }}>
           <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600 }}>{i.name} <span style={{ fontWeight: 500, color: 'var(--k-6b7280, #6b7280)' }}>· {i.listing}</span></div>
-            <div style={{ fontSize: 11.5, color: '#b45309' }}>asked {i.days} days ago</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+              {i.heat && <span style={{ fontSize: 10.5, fontWeight: 700, marginRight: 6, padding: '1px 7px', borderRadius: 10, color: HEAT[i.heat].fg, background: HEAT[i.heat].bg, border: `1px solid ${HEAT[i.heat].bd}`, verticalAlign: 'middle' }}>{HEAT[i.heat].label}</span>}
+              {i.name} <span style={{ fontWeight: 500, color: 'var(--k-6b7280, #6b7280)' }}>· {i.listing}</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: '#b45309' }}>asked {i.days} days ago{i.reasons && i.reasons.length ? <span style={{ color: 'var(--k-6b7280, #6b7280)' }}> · {i.reasons.filter(r => !/^asked (in the last|this month|over)/.test(r)).slice(0, 3).join(' · ')}</span> : null}</div>
           </div>
           <button onClick={() => onOpenContact(i.contact_id)} style={{ fontSize: 12.5, padding: '5px 12px', borderRadius: 14, border: '1px solid var(--k-e5e7eb, #e5e7eb)', background: 'none', cursor: 'pointer', color: 'var(--k-374151, #374151)' }}>Open</button>
           {made.has(k(i))
@@ -50,7 +59,7 @@ export default function ListingFollowUps({ authToken, userId, onOpenContact, onT
             : <button disabled={busy === k(i)} onClick={() => makeTask(i)} style={{ fontSize: 12.5, fontWeight: 700, padding: '5px 12px', borderRadius: 14, border: '1px solid var(--k-99f6e4, #99f6e4)', background: 'var(--k-f0fdfa, #f0fdfa)', color: 'var(--k-0f766e, #0f766e)', cursor: 'pointer' }}>{busy === k(i) ? '…' : 'Call task'}</button>}
         </div>
       ))}
-      {items.length > 6 && <div style={{ fontSize: 12, color: 'var(--k-9ca3af, #9ca3af)', paddingTop: 6 }}>+ {items.length - 6} more (open each property to see them all)</div>}
+      {items.length > 3 && <button onClick={() => setAll(a => !a)} style={{ fontSize: 12.5, color: 'var(--k-0f766e, #0f766e)', fontWeight: 600, background: 'none', border: 'none', padding: '6px 0 0', cursor: 'pointer' }}>{all ? 'Show only the top 3' : `Show all ${Math.min(items.length, 50)}`}</button>}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { adminClient } from '@/lib/supabase-admin';
 import { computeInquiryDigest } from '@/lib/inquiry-digest';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /** GET /api/crm/inquiry-digest-preview — admins: exactly what the next morning inquiry alert would say to each listing agent right now. Sends NOTHING. */
 export async function GET(req: NextRequest) {
