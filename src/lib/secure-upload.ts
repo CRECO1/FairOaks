@@ -172,12 +172,13 @@ export async function removeRequestFiles(db: SupabaseClient, requestId: string):
 }
 
 // ── Email ────────────────────────────────────────────────────────────────────
-function shell(brand: string, bodyHtml: string): string {
+// `footer` is the small grey line under the signature. Each email says what IT is: a request link, a folder link, or a notice to an agent.
+function shell(brand: string, bodyHtml: string, footer: string): string {
   return `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
     <div style="border-bottom:3px solid #c9922c;padding:14px 0 10px"><span style="font-size:20px;font-weight:800;letter-spacing:.5px;color:#c9922c">${esc(brand)}</span></div>
     <div style="padding:20px 2px;font-size:15px;line-height:1.55">${bodyHtml}<!--agent-signature--></div>
     <div style="border-top:1px solid #eee;margin-top:18px;padding-top:12px;font-size:11px;color:#9ca3af">
-      This is a private upload link made just for you. If you weren’t expecting it, you can ignore this email — nothing is shared unless you upload.
+      ${footer}
     </div>
   </div>`;
 }
@@ -195,7 +196,7 @@ export function requestEmail(unit: string, o: { name: string; senderName: string
     ${o.needsPassword ? PASSWORD_NOTE(o.senderName) : ''}
     <p style="font-size:12px;color:#6b7280">Only your CRECO broker can see what you upload. The link works until ${esc(exp)}. Or paste this into your browser:<br>${esc(o.url)}</p>
     <p style="font-size:12px;color:#6b7280">Questions? Call us at ${OFFICE_PHONE}.</p>`;
-  return { subject: o.reminder ? 'Reminder — your secure document upload' : 'Your secure document upload', html: shell(brandName(unit), body) };
+  return { subject: o.reminder ? 'Reminder — your secure document upload' : 'Your secure document upload', html: shell(brandName(unit), body, 'This is a private upload link made just for you. If you weren’t expecting it, you can ignore this email — nothing is shared unless you upload.') };
 }
 // The password itself is NEVER put in an email: it travels separately (a call or a text), so a forwarded or intercepted email is not enough.
 const PASSWORD_NOTE = (sender: string) => `<p style="background:#faf7ef;border-left:3px solid #c9922c;padding:10px 12px;border-radius:4px">🔑 This link needs a <strong>password</strong>. ${esc(sender)} will give it to you separately — by phone or text, not by email.</p>`;
@@ -209,7 +210,8 @@ export function folderEmail(unit: string, o: { folderName: string; senderName: s
     <p style="margin:22px 0"><a href="${esc(o.url)}" style="background:#c9922c;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px;display:inline-block">🔒 Open the secure folder</a></p>
     <p style="font-size:12px;color:#6b7280">The link works until ${esc(exp)}. Or paste this into your browser:<br>${esc(o.url)}</p>
     <p style="font-size:12px;color:#6b7280">Questions? Call us at ${OFFICE_PHONE}.</p>`;
-  return { subject: `Your secure folder: ${o.folderName}`, html: shell(brandName(unit), body) };
+  const footer = `This link opens a private folder that ${esc(o.senderName)} set up for you. If you weren’t expecting it, you can ignore this email — nothing of yours is shared unless you add files.`;
+  return { subject: `Your secure folder: ${o.folderName}`, html: shell(brandName(unit), body, footer) };
 }
 
 export function uploadedEmail(unit: string, o: { agentName: string; recipientName: string; count: number; contactUrl: string; submitted: boolean }) {
@@ -217,7 +219,7 @@ export function uploadedEmail(unit: string, o: { agentName: string; recipientNam
     <p><strong>${esc(o.recipientName || 'Your contact')}</strong> ${o.submitted ? 'finished uploading' : 'uploaded'} ${o.count} file${o.count === 1 ? '' : 's'} to the secure folder.</p>
     <p style="margin:20px 0"><a href="${esc(o.contactUrl)}" style="background:#111;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:8px;display:inline-block">Open in the CRM</a></p>
     <p style="font-size:12px;color:#6b7280">The files stay inside the CRM — open the contact card → Secure documents.</p>`;
-  return { subject: `Secure files received from ${o.recipientName || 'a contact'}`, html: shell(brandName(unit), body) };
+  return { subject: `Secure files received from ${o.recipientName || 'a contact'}`, html: shell(brandName(unit), body, 'You’re getting this because you have access to this secure folder in the CRM.') };
 }
 
 export async function sendSecureEmail(unit: string, to: string, subject: string, html: string): Promise<{ ok: boolean; error?: string; id?: string }> {
