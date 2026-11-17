@@ -3,6 +3,7 @@ import { getCrmContext, assertOwnsResource, hiddenDealIds, unauthorized, notFoun
 import { findIdenticalFile } from '@/lib/dup-files';
 import { adminClient } from '@/lib/supabase-admin';
 import { onDeal } from '@/lib/deal-access';
+import { safeObjectName } from '@/lib/safe-object-name';
 
 // Files on a CONTACT's card: anything uploaded straight onto the person, plus every file on the Docs tab of
 // their deals (a lease filed against the deal is still that person's lease). Stored in the same private
@@ -114,7 +115,7 @@ async function presign(body: Record<string, unknown>, ctx: Ctx) {
     const hint = ext === 'heic' || ext === 'heif' ? ' Share the photo as a JPG, or set Camera → Formats to Most Compatible.' : '';
     return NextResponse.json({ error: `.${ext || '?'} files can't be attached here — use PDF, Word, Excel, CSV, JPG, PNG or WebP.${hint}` }, { status: 400 });
   }
-  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.').slice(-120);
+  const safeName = safeObjectName(filename);
   const storagePath = `client-${clientId}/${Date.now()}_${safeName}`;
   const { data, error } = await adminClient().storage.from(BUCKET).createSignedUploadUrl(storagePath);
   if (error || !data) {

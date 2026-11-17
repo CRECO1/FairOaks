@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { findIdenticalFile } from '@/lib/dup-files';
 import { adminClient } from '@/lib/supabase-admin';
+import { safeObjectName } from '@/lib/safe-object-name';
 
 const BUCKET = 'deal-docs';
 
@@ -138,7 +139,7 @@ export async function POST(req: NextRequest) {
   if (!contentType) return typeError(file.name);
 
   const supabase = adminClient();
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.');
+  const safeName = safeObjectName(file.name);
   const storagePath = `${dealId}/${Date.now()}_${safeName}`;
 
   const { error: uploadError } = await supabase.storage
@@ -167,7 +168,7 @@ async function presign(body: Record<string, unknown>, ctx: Ctx) {
   const contentType = CONTENT_TYPES[extOf(filename)];
   if (!contentType) return typeError(filename);
 
-  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.').slice(-120);
+  const safeName = safeObjectName(filename);
   const storagePath = `${dealId}/${Date.now()}_${safeName}`;
   const { data, error } = await adminClient().storage.from(BUCKET).createSignedUploadUrl(storagePath);
   if (error || !data) {

@@ -3,6 +3,7 @@ import { unauthorized, notFound } from '@/lib/crm-auth';
 import { driveContext } from '@/lib/drive-server';
 import { userRateLimit } from '@/lib/user-ratelimit';
 import { DRIVE_FILE_MAX, DRIVE_FILE_TYPES, FILE_COLS } from '@/lib/drive-types';
+import { safeObjectName } from '@/lib/safe-object-name';
 
 // Upload a file into a Drive folder. The browser PUTs the bytes straight to storage (a posted body is capped at ~4.5 MB on Vercel),
 // so this route only hands out a signed upload URL (presign) and then records the file once it has landed (confirm).
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `.${ext || '?'} files can't be uploaded here — use PDF, Word, Excel, PowerPoint, an image, CSV or text.${hint}` }, { status: 400 });
     }
     if (Number(body.size) > DRIVE_FILE_MAX) return NextResponse.json({ error: 'A file must be 25 MB or smaller' }, { status: 400 });
-    const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.').slice(-120);
+    const safe = safeObjectName(filename);
     const storagePath = `${bu}/${crypto.randomUUID()}/${safe}`;
     const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(storagePath);
     if (error || !data) { console.error('[drive/upload] presign', error); return NextResponse.json({ error: 'Could not start the upload — try again' }, { status: 500 }); }

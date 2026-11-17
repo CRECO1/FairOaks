@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { LISTING_FILES_BUCKET as BUCKET, callerCanAccessListing } from '@/lib/listing-files-access';
+import { safeObjectName } from '@/lib/safe-object-name';
 
 const ALLOWED_EXT = new Set(['pdf','doc','docx','xls','xlsx','jpg','jpeg','png','gif','webp','ppt','pptx','key','zip','txt','csv','mp4','mov']);
 const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `File type .${ext} not allowed` }, { status: 400 });
   }
 
-  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.');
+  const safeName = safeObjectName(filename);
   const storagePath = `${listing_id}/${Date.now()}_${safeName}`;
 
   const supabase = adminClient();
