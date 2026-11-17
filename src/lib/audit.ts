@@ -12,6 +12,7 @@ import { adminClient } from '@/lib/supabase-admin';
 import { NextRequest } from 'next/server';
 
 export type AuditAction =
+  | 'client_error'
   | 'invite_agent'
   | 'delete_agent'
   | 'reset_password'
