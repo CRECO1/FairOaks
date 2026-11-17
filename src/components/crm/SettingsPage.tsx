@@ -222,7 +222,7 @@ export default function SettingsPage(props: {
               <h2 style={h2}>Notifications</h2>
               <p style={sub}>Phone and desktop alerts for new leads, @mentions, voicemails and signatures — they reach you even when the CRM is closed. Choose which kinds you want below.</p>
               {props.businessUnit === 'commercial'
-                ? <PhoneAlerts token={props.token} visitors={props.isSuperAdmin} />
+                ? <PhoneAlerts token={props.token} visitors={props.isSuperAdmin} explainUnavailable />
                 : <div style={{ fontSize: 13, color: 'var(--k-6b7280, #6b7280)' }}>Phone alerts are available in the Commercial workspace.</div>}
             </section>
           )}

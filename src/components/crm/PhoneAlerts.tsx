@@ -21,7 +21,7 @@ const isStandalone = () => window.matchMedia('(display-mode: standalone)').match
  *
  * `tone="dark"` is for the sidebar/drawer (always dark); the default follows the CRM theme.
  */
-export default function PhoneAlerts({ token, tone = 'theme', visitors = false }: { token?: string; tone?: 'theme' | 'dark'; visitors?: boolean }) {
+export default function PhoneAlerts({ token, tone = 'theme', visitors = false, explainUnavailable = false }: { token?: string; tone?: 'theme' | 'dark'; visitors?: boolean; explainUnavailable?: boolean }) {
   const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   const [st, setSt] = useState<St>('loading');
   const [cats, setCats] = useState<PushCategory[]>([]);
@@ -104,6 +104,10 @@ export default function PhoneAlerts({ token, tone = 'theme', visitors = false }:
     await fetch('/api/crm/push', { method: 'PATCH', headers: headers(true), body: JSON.stringify({ endpoint, categories: next }) });
   };
 
+  // The Settings page asks for an explanation instead of silence; the sidebar still hides the control.
+  if (explainUnavailable && (st === 'unavailable' || st === 'unsupported')) {
+    return <div style={{ fontSize: 13, color: 'var(--k-6b7280, #6b7280)', lineHeight: 1.45 }}>{st === 'unsupported' ? 'This browser can’t receive phone alerts. Open the CRM in Chrome or Safari (on iPhone, add it to your Home Screen first) to turn them on.' : 'Phone alerts aren’t available right now. Try again later or ask the broker.'}</div>;
+  }
   if (st === 'loading' || st === 'unavailable' || st === 'unsupported') return null;
 
   const dark = tone === 'dark';
