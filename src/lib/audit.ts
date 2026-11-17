@@ -13,6 +13,7 @@ import { NextRequest } from 'next/server';
 
 export type AuditAction =
   | 'client_error'
+  | 'upload_failed'
   | 'invite_agent'
   | 'delete_agent'
   | 'reset_password'

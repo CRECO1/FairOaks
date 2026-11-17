@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { DrivePerson } from '@/components/crm/drive/DocsDrive';
 import QuickText from '@/components/crm/QuickText';
 import { secureState } from '@/lib/secure-status';
+import { UploadTray, useUploadQueue, type UpRunner } from '@/components/crm/UploadTray';
+import { putWithProgress } from '@/lib/upload-client';
 
 // "Secure documents" on a contact card: ask a tenant for an application / ID / pay stubs / bank statements through a
 // private expiring upload link. Files live in their own private bucket and are shown only to the broker, whoever made the
@@ -38,7 +40,7 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'sh
 const nameOf = (p: DrivePerson) => [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Agent';
 
 const statusOf = (r: Req) => secureState({ ...r, fileCount: r.files.length });
-const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv';
+const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.csv';
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;   // the same test the server applies before it sends
 // A password that is easy to read out over the phone and hard to guess: two plain words and four digits.
 const WORDS = ['Maple', 'River', 'Cedar', 'Stone', 'Amber', 'Field', 'Harbor', 'Canyon', 'Meadow', 'Summit', 'Prairie', 'Juniper', 'Copper', 'Willow', 'Falcon', 'Garnet', 'Lantern', 'Orchard', 'Pebble', 'Quartz', 'Ranch', 'Saddle', 'Timber', 'Valley', 'Wagon', 'Yarrow', 'Bluff', 'Creek', 'Dune', 'Ember', 'Grove', 'Mesa'];
@@ -84,7 +86,6 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
   const [renameFor, setRenameFor] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
   // An agent adding their own files to a folder.
-  const [adding, setAdding] = useState<Record<string, string>>({});
   const [dropOn, setDropOn] = useState<string | null>(null);
   const addInput = useRef<HTMLInputElement>(null);
   const addTarget = useRef<Req | null>(null);
@@ -161,36 +162,22 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
   };
 
   // Add files of your own: straight to storage, then the server runs the same type + safety checks a visitor's upload gets.
-  const addFiles = async (r: Req, picked: FileList | File[] | null) => {
-    const filesToSend = picked ? Array.from(picked) : [];
-    if (!filesToSend.length) return;
-    let added = 0;
-    for (const file of filesToSend) {
-      setAdding(a => ({ ...a, [r.id]: `Uploading ${file.name}…` }));
-      try {
-        const pre = await fetch('/api/crm/secure-requests', { method: 'POST', headers: json(), body: JSON.stringify({ action: 'presign', id: r.id, filename: file.name, file_size: file.size }) });
-        const pj = await pre.json().catch(() => ({}));
-        if (!pre.ok) { showToast(pj.error || `Could not start ${file.name}`); continue; }
-        const sent = await new Promise<boolean>(resolve => {
-          const x = new XMLHttpRequest();
-          x.open('PUT', pj.uploadUrl);
-          x.setRequestHeader('Content-Type', pj.contentType);
-          x.upload.onprogress = e => { if (e.lengthComputable) setAdding(a => ({ ...a, [r.id]: `Uploading ${file.name}… ${Math.round((e.loaded / e.total) * 100)}%` })); };
-          x.onload = () => resolve(x.status >= 200 && x.status < 300);
-          x.onerror = () => resolve(false);
-          x.send(file);
-        });
-        if (!sent) { showToast(`Could not upload ${file.name} — check your connection`); continue; }
-        setAdding(a => ({ ...a, [r.id]: `Checking ${file.name}…` }));
-        const conf = await fetch('/api/crm/secure-requests', { method: 'POST', headers: json(), body: JSON.stringify({ action: 'confirm', id: r.id, storagePath: pj.storagePath, filename: file.name }) });
-        const cj = await conf.json().catch(() => ({}));
-        if (!conf.ok) { showToast(cj.error || `Could not save ${file.name}`); continue; }
-        added++;
-      } catch { showToast(`Could not upload ${file.name}`); }
-    }
-    setAdding(a => { const n = { ...a }; delete n[r.id]; return n; });
-    if (added) { showToast(`${added} file${added === 1 ? '' : 's'} added to the secure folder`); await load(); onChanged?.(); if (logs[r.id]) void showLog(r, true); }
+  // The shared queue (pre-check, HEIC → JPG, progress, Retry, failure log) is UploadTray.tsx; ctx = the folder's request id.
+  const runSecureUpload: UpRunner = async (file, { setPct, ctx }) => {
+    const id = String(ctx ?? '');
+    const pre = await fetch('/api/crm/secure-requests', { method: 'POST', headers: json(), body: JSON.stringify({ action: 'presign', id, filename: file.name, file_size: file.size }) });
+    const pj = await pre.json().catch(() => ({}));
+    if (!pre.ok) return { ok: false, stage: 'start', error: pj.error || `Could not start the upload (${pre.status})` };
+    const put = await putWithProgress(pj.uploadUrl, file, pj.contentType, setPct);
+    if (!put.ok) return { ok: false, stage: 'send', error: put.status === 0 ? 'The connection dropped while sending — check your signal and press Retry.' : `Storage refused the file (${put.status}).` };
+    const conf = await fetch('/api/crm/secure-requests', { method: 'POST', headers: json(), body: JSON.stringify({ action: 'confirm', id, storagePath: pj.storagePath, filename: file.name }) });
+    const cj = await conf.json().catch(() => ({}));
+    if (!conf.ok) return { ok: false, stage: 'save', error: cj.error || `Could not save the file (${conf.status}) — press Retry.` };
+    return { ok: true, note: 'scanned and added to the secure folder' };
   };
+  const upQ = useUploadQueue({ profile: 'secure', target: 'secure', run: runSecureUpload, authToken: undefined, onAllDone: () => { void load(); onChanged?.(); } });
+  const addFiles = async (r: Req, picked: FileList | File[] | null) => { void upQ.add(picked, r.id); };
+  const addingTo = (id: string) => upQ.items.some(i => i.ctx === id && (i.state === 'queued' || i.state === 'working'));
 
   const savePassword = async (r: Req) => {
     if (await patch(r, { action: 'set_password', password: pwText, guestView: pwView }, 'Password saved. Give it to them by phone or text — never by email.')) { setPwFor(null); setPwText(''); }
@@ -395,11 +382,11 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
                     );
                   })}
 
-                  {!r.purged_at && isFolder && r.files.length === 0 && !adding[r.id] && <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', marginTop: 8 }}>No files yet. Add your own, or drop them onto this card.</div>}
-                  {adding[r.id] && <div style={{ fontSize: 12.5, color: '#a06a12', marginTop: 8 }}>{adding[r.id]}</div>}
+                  {!r.purged_at && isFolder && r.files.length === 0 && !addingTo(r.id) && !upQ.items.some(i => i.ctx === r.id) && <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', marginTop: 8 }}>No files yet. Add your own, or drop them onto this card.</div>}
+                  <UploadTray items={upQ.items.filter(i => i.ctx === r.id)} onRetry={upQ.retry} onDismiss={upQ.dismiss} />
                   {!r.purged_at && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-                      <button type="button" style={{ ...btn, color: '#a06a12', borderColor: '#f0e2c4', background: 'var(--k-fdf6e9)' }} disabled={!!adding[r.id]} onClick={() => { addTarget.current = r; addInput.current?.click(); }}>＋ Add files</button>
+                      <button type="button" style={{ ...btn, color: '#a06a12', borderColor: '#f0e2c4', background: 'var(--k-fdf6e9)' }} disabled={addingTo(r.id)} onClick={() => { addTarget.current = r; addInput.current?.click(); }}>＋ Add files</button>
                       {r.files.length > 1 && <button type="button" style={btn} disabled={zipping === r.id} onClick={() => downloadAll(r)}>{zipping === r.id ? 'Preparing…' : `↓ Download all (${r.files.length})`}</button>}
                       {live && <button type="button" style={btn} onClick={() => copy(r.link)}>Copy link</button>}
                       {live && <button type="button" style={btn} aria-expanded={r.client_id ? undefined : mailFor === r.id} onClick={() => {

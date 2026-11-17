@@ -3,6 +3,7 @@ import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole 
 import { findIdenticalFile } from '@/lib/dup-files';
 import { adminClient } from '@/lib/supabase-admin';
 import { safeObjectName } from '@/lib/safe-object-name';
+import { UPLOAD_PROFILES } from '@/lib/upload-rules';
 
 const BUCKET = 'deal-docs';
 
@@ -11,15 +12,7 @@ const BUCKET = 'deal-docs';
 // phones often report an empty type, which storage would record as
 // application/octet-stream and refuse. Deriving it also means nothing uploaded here
 // can be served back as HTML or script.
-const CONTENT_TYPES: Record<string, string> = {
-  pdf: 'application/pdf',
-  doc: 'application/msword',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  jpg: 'image/jpeg', jpeg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', csv: 'text/csv',
-};
+const CONTENT_TYPES: Record<string, string> = UPLOAD_PROFILES.deal.types;   // one shared list: src/lib/upload-rules.ts
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB — the bucket's own limit
 // Short-lived by design: the client re-signs at click time via the docId path in GET,
 // so a list-time URL never needs to outlive the page it was rendered on.

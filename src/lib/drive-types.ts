@@ -1,3 +1,4 @@
+import { UPLOAD_PROFILES } from '@/lib/upload-rules';
 // Shared by the Drive API routes and the Transaction Docs "Drive" UI (supabase/drive-docs-2026-11.sql).
 
 export type DriveVisibility = 'team' | 'private';
@@ -99,14 +100,7 @@ export const DOC_COLS = 'id,business_unit,folder_id,title,created_by,updated_by,
 
 export const FILE_COLS = 'id,business_unit,folder_id,name,size,mime,created_by,visibility,shared_with,deal_id,trashed_at,created_at,updated_at';
 /** Extension → content type for what the Drive accepts (the bucket enforces the same list). */
-export const DRIVE_FILE_TYPES: Record<string, string> = {
-  pdf: 'application/pdf',
-  doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', csv: 'text/csv',
-  ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
-  txt: 'text/plain',
-};
+export const DRIVE_FILE_TYPES: Record<string, string> = UPLOAD_PROFILES.drive.types;   // one shared list: src/lib/upload-rules.ts
 /** Largest file My Drive takes (25 MB, same as deal and contact files). Pictures are shrunk in the browser first, so this is for PDFs and Office files. */
 export const DRIVE_FILE_MAX = 25 * 1024 * 1024;
 /** Largest file that can still be attached to an email (see attach-upload). Bigger Drive files are kept, just not emailable. */

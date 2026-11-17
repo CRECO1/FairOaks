@@ -10,6 +10,8 @@
 import SecureIndex from '@/components/crm/drive/SecureIndex';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DI, { toneFor, type DIName } from './DriveIcons';
+import { UploadTray, useUploadQueue, type UpRunner } from '@/components/crm/UploadTray';
+import { putWithProgress } from '@/lib/upload-client';
 import dynamic from 'next/dynamic';
 import { openDriveTab, driveDocPath, driveFormPath, onDriveChanged } from './open-tab';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
@@ -105,8 +107,6 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const [openDocId, setOpenDocId] = useState<string | null>(null);
   const [quickDocId, setQuickDocId] = useState<string | null>(null);   // the quick-look side panel
   const [preview, setPreview] = useState<{ url: string; name: string; type?: string | null } | null>(null);
-  const [uploading, setUploading] = useState(0);
-  const [upInfo, setUpInfo] = useState<{ name: string; pct: number } | null>(null);   // the file going up right now and how far it is
   const [dragOver, setDragOver] = useState(false);
   // Bulk actions: the ticked items (keyed kind:id) — a tick-box on every row, a select-all, and an action bar.
   const [sel, setSel] = useState<Map<string, { kind: Kind; item: Item }>>(new Map());
@@ -449,52 +449,31 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     } catch (e) { onToast((e as Error).message || 'Could not open it for editing'); }
   };
 
-  // Upload: the browser PUTs each file straight to storage (signed URL), then the API records it in the current folder.
-  const uploadFiles = async (list: FileList | File[]) => {
-    const parent = view === 'folder' ? folderId : null;
-    const all = Array.from(list);
-    if (!all.length) return;
-    setUploading(n => n + all.length);
-    let ok = 0, madeEditable = 0;
-    const failed: string[] = [];   // one message at the end, not one toast per file (the last would hide the rest)
-    const tooBigToEmail: string[] = [];
-    for (const original of all) {
-      let file = original;
-      try {
-        // Phone photos are 4–12 MB; stored as a normal-sized JPEG they are a fraction of that and still email fine.
-        file = await shrinkImage(original, { maxSide: 2400, quality: 0.85 });
-        if (file.size > DRIVE_FILE_MAX) throw new Error(`“${original.name}” is over 25 MB — shrink or split it first`);
-        const pre = await api<{ uploadUrl: string; storagePath: string; contentType: string }>('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'presign', filename: file.name, size: file.size, parent_id: parent }) });
-        setUpInfo({ name: file.name, pct: 0 });
-        const sent = await new Promise<boolean>(resolve => {
-          const x = new XMLHttpRequest();
-          x.open('PUT', pre.uploadUrl); x.setRequestHeader('Content-Type', pre.contentType);
-          x.upload.onprogress = ev => { if (ev.lengthComputable) setUpInfo({ name: file.name, pct: Math.min(99, Math.round((ev.loaded / ev.total) * 100)) }); };
-          x.onload = () => resolve(x.status >= 200 && x.status < 300);
-          x.onerror = () => resolve(false);
-          x.send(file);
-        });
-        if (!sent) throw new Error(`Couldn’t upload “${file.name}” — try again`);
-        const saved = await api<{ file?: { id: string } }>('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'confirm', storagePath: pre.storagePath, filename: file.name, parent_id: parent }) });
-        ok += 1;
-        if (file.size > DRIVE_EMAIL_MAX) tooBigToEmail.push(file.name);
-        // A Word / text file is also made editable right away (a live document next to it); a problem here is only mentioned.
-        if (canEditFile(file.name) && saved.file?.id) {
-          try { await api(`/api/crm/drive/file/${saved.file.id}/convert`, { method: 'POST' }); madeEditable += 1; }
-          catch (e) { onToast(`“${file.name}” was uploaded, but ${((e as Error).message || 'it could not be made editable').replace(/^./, c => c.toLowerCase())}`); }
-        }
-      } catch (e) { failed.push((e as Error).message); }
-      finally { setUploading(n => n - 1); }
-    }
-    setUpInfo(null);
-    if (failed.length) onToast(failed.length === 1 && !ok ? failed[0] : `${ok ? `${ok} uploaded. ` : ''}${failed.length} couldn’t be uploaded — ${failed.join(' · ')}`);
-    if (ok) {
-      const editable = all.some(f => canEditFile(f.name)), oldWord = all.some(f => /\.(doc|rtf)$/i.test(f.name));
-      const emailNote = tooBigToEmail.length ? ` ${tooBigToEmail.length === 1 ? `“${tooBigToEmail[0]}” is` : `${tooBigToEmail.length} files are`} over 15 MB, so ${tooBigToEmail.length === 1 ? 'it' : 'they'} can’t be attached to an email — share a link instead.` : '';
-      if (!failed.length) onToast((madeEditable ? `Uploaded — ${madeEditable === 1 ? 'it opens as a live, editable document' : `${madeEditable} files open as live, editable documents`}` : editable ? 'Uploaded — click the file (or the pencil) to edit it as a live document' : oldWord ? 'Uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that' : ok === 1 ? 'File uploaded' : `${ok} files uploaded`) + emailNote);
-      refresh();
-    }
+  // Upload: the browser PUTs each file straight to storage (signed URL), then the API records it in the folder it was dropped on.
+  // The queue (pre-check, HEIC → JPG, progress, Retry, failure log) is shared with every other upload screen: UploadTray.tsx.
+  const runDriveUpload: UpRunner = async (picked, { setPct, ctx }) => {
+    const parent = (ctx as { parent: string | null } | undefined)?.parent ?? null;
+    // Phone photos are 4–12 MB; stored as a normal-sized JPEG they are a fraction of that and still email fine.
+    const file = await shrinkImage(picked, { maxSide: 2400, quality: 0.85 });
+    let pre: { uploadUrl: string; storagePath: string; contentType: string };
+    try { pre = await api('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'presign', filename: file.name, size: file.size, parent_id: parent }) }); }
+    catch (e) { return { ok: false, stage: 'start', error: (e as Error).message || 'Couldn’t start the upload' }; }
+    const put = await putWithProgress(pre.uploadUrl, file, pre.contentType, setPct);
+    if (!put.ok) return { ok: false, stage: 'send', error: put.status === 0 ? 'The connection dropped while sending — check your signal and press Retry.' : `Storage refused the file (${put.status}${put.detail ? `: ${put.detail}` : ''}).` };
+    let saved: { file?: { id: string } };
+    try { saved = await api('/api/crm/drive/upload', { method: 'POST', body: JSON.stringify({ action: 'confirm', storagePath: pre.storagePath, filename: file.name, parent_id: parent }) }); }
+    catch (e) { return { ok: false, stage: 'save', error: `${(e as Error).message || 'Couldn’t save the file'} — press Retry.` }; }
+    const notes: string[] = [];
+    if (file.size > DRIVE_EMAIL_MAX) notes.push('over 15 MB, so it can’t be attached to an email');
+    // A Word / text file is also made editable right away (a live document next to it); a problem here is only mentioned.
+    if (canEditFile(file.name) && saved.file?.id) {
+      try { await api(`/api/crm/drive/file/${saved.file.id}/convert`, { method: 'POST' }); notes.push('also opens as a live, editable document'); }
+      catch (e) { notes.push(`couldn’t be made editable (${((e as Error).message || 'try again from its menu').replace(/^./, c => c.toLowerCase())})`); }
+    } else if (/\.(doc|rtf)$/i.test(file.name)) notes.push('older Word (.doc) files can’t be edited here — save as .docx to edit');
+    return { ok: true, note: notes.join('; ') || undefined };
   };
+  const upQ = useUploadQueue({ profile: 'drive', target: 'drive', run: runDriveUpload, authToken, onAllDone: () => refresh() });
+  const uploadFiles = async (list: FileList | File[]) => { void upQ.add(list, { parent: view === 'folder' ? folderId : null }); };
 
   // ── tree ──────────────────────────────────────────────────────────────────
   // ── drag and drop: drag items (or the whole ticked selection) onto a folder, the sidebar tree, "All files" or a breadcrumb to move them ──
@@ -848,7 +827,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
               })()}
             </div>
           )}
-          {uploading > 0 && <div style={{ padding: '10px 16px', marginBottom: 10, borderRadius: 10, fontSize: 13, color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', display: 'flex', alignItems: 'center', gap: 8 }}><DI n="upload" size={15} />{upInfo ? <>Uploading “{upInfo.name}” — {upInfo.pct}%{uploading > 1 ? ` · ${uploading - 1} more waiting` : ''}</> : <>Uploading {uploading} file{uploading === 1 ? '' : 's'}…</>}</div>}
+          <UploadTray items={upQ.items} onRetry={upQ.retry} onDismiss={upQ.dismiss} />
           {loading && !data && <div style={{ padding: 28, color: 'var(--k-9ca3af)', fontSize: 14 }}>Loading…</div>}
           {cardsView && folders.length > 0 && (
             <div style={{ marginBottom: 18 }}>
@@ -883,7 +862,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
             </>
           )}
           {noMatch && <div style={{ padding: '34px 20px', textAlign: 'center', color: 'var(--k-6b7280)', fontSize: 14, background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 14 }}>Nothing here matches those filters. <button type="button" onClick={() => { setChip('all'); setMine(false); setWeek(false); }} style={{ background: 'none', border: 'none', color: 'var(--k-a06a12)', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>Clear filters</button></div>}
-          {empty && uploading === 0 && (
+          {empty && !upQ.busy && upQ.items.length === 0 && (
             <div style={{ padding: '54px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
               <Tile n={view === 'trash' ? 'trash' : view === 'shared' ? 'users' : view === 'templates' ? 'template' : view === 'search' ? 'search' : view === 'recent' ? 'clock' : view === 'starred' ? 'star' : 'folder'} color={GOLD} size={52} />
               <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--k-1a1a1a)', marginTop: 8 }}>
@@ -904,7 +883,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         </>)}
       </div>
 
-      <input ref={fileInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.txt" onChange={e => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ''; }} />
+      <input ref={fileInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.txt" onChange={e => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ''; }} />
 
       {/* Dialogs */}
       {dlg?.t === 'form' && <FormPicker api={api} businessUnit={businessUnit} isMobile={isMobile} onClose={() => setDlg(null)} onPick={id => void createForm(id)} />}

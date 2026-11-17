@@ -7,6 +7,7 @@ import type { CrmContext } from '@/lib/crm-auth';
 import { Resend } from 'resend';
 import { scanFile, SCAN_VERSION } from '@/lib/file-scan';
 import { sendPushToProfiles, crmLink } from '@/lib/push';
+import { UPLOAD_PROFILES } from '@/lib/upload-rules';
 
 export const SECURE_BUCKET = 'secure-intake';
 export const MAX_FILE_SIZE = 25 * 1024 * 1024;
@@ -15,15 +16,7 @@ export const LINK_DAYS = 14;
 export const KEEP_DAYS = 90;
 export const OFFICE_PHONE = '(210) 817-3443';
 
-export const CONTENT_TYPES: Record<string, string> = {
-  pdf: 'application/pdf',
-  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
-  doc: 'application/msword',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  xls: 'application/vnd.ms-excel',
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  csv: 'text/csv',
-};
+export const CONTENT_TYPES: Record<string, string> = UPLOAD_PROFILES.secure.types;   // one shared list: src/lib/upload-rules.ts
 export const extOf = (name: string) => (name.split('.').pop() ?? '').toLowerCase();
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

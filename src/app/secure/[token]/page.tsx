@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { prepareUpload, putWithProgress } from '@/lib/upload-client';
 
 // The visitor's side of a secure folder: a private, expiring page with no login.
 //  • A plain link is UPLOAD-ONLY: it shows only the names of what was sent through it; nothing here can read a file back.
@@ -99,27 +100,27 @@ export default function SecureUploadPage() {
   const upload = async (itemKey: string, list: FileList | null) => {
     if (!list?.length) return;
     setErr(null); setDone(false);
-    for (const file of Array.from(list)) {
+    const problems: string[] = [];   // every problem is listed at the end; one bad file no longer stops the rest
+    for (const original of Array.from(list)) {
+      setBusy(b => ({ ...b, [itemKey]: `Checking ${original.name}…` }));
+      // Plain-language checks BEFORE sending, and an iPhone/Android HEIC photo is turned into a JPG instead of being refused.
+      const prep = await prepareUpload(original, 'secure');
+      if (prep.error) { problems.push(prep.error); continue; }
+      const file = prep.file;
       setBusy(b => ({ ...b, [itemKey]: `Uploading ${file.name}…` }));
       try {
         const pre = await post({ action: 'presign', filename: file.name, file_size: file.size });
-        if (!pre.ok) { setErr(pre.j.error || 'Could not start the upload.'); break; }
-        const sent = await new Promise<boolean>(resolve => {
-          const x = new XMLHttpRequest();
-          x.open('PUT', pre.j.uploadUrl);
-          x.setRequestHeader('Content-Type', pre.j.contentType);
-          x.upload.onprogress = e => { if (e.lengthComputable) setBusy(b => ({ ...b, [itemKey]: `Uploading ${file.name}… ${Math.round((e.loaded / e.total) * 100)}%` })); };
-          x.onload = () => resolve(x.status >= 200 && x.status < 300);
-          x.onerror = () => resolve(false);
-          x.send(file);
-        });
-        if (!sent) { setErr(`We couldn’t upload ${file.name}. Please check your connection and try again.`); break; }
+        if (!pre.ok) { problems.push(pre.j.error || `Could not start uploading ${file.name}.`); continue; }
+        const put = await putWithProgress(pre.j.uploadUrl, file, pre.j.contentType, n => setBusy(b => ({ ...b, [itemKey]: `Uploading ${file.name}… ${n}%` })));
+        if (!put.ok) { problems.push(`We couldn’t upload ${file.name}. Please check your connection and try again.`); continue; }
+        setBusy(b => ({ ...b, [itemKey]: `Checking ${file.name}…` }));
         const conf = await post({ action: 'confirm', storagePath: pre.j.storagePath, filename: file.name, itemKey });
-        if (!conf.ok) { setErr(conf.j.error || `Couldn’t save ${file.name}.`); break; }
+        if (!conf.ok) { problems.push(conf.j.error || `Couldn’t save ${file.name}.`); continue; }
         setFiles(fs => [...fs, conf.j.file as UFile]);
-      } catch { setErr(`We couldn’t upload ${file.name}. Please check your connection and try again.`); break; }
+      } catch { problems.push(`We couldn’t upload ${file.name}. Please check your connection and try again.`); }
     }
     setBusy(b => { const n = { ...b }; delete n[itemKey]; return n; });
+    if (problems.length) setErr(problems.join('  •  '));
   };
 
   const remove = async (f: UFile) => {
@@ -207,7 +208,7 @@ export default function SecureUploadPage() {
 
   return shell(
     <>
-      <input ref={pickRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,image/*" hidden
+      <input ref={pickRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.csv,image/*" hidden
         onChange={e => { void upload(pickKey.current, e.target.files); e.target.value = ''; }} />
       {isFolder ? (
         <>

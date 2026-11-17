@@ -9,6 +9,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { autoConvertCardFile, convertCardFile } from '@/components/crm/drive/card-edit';
+import { putWithProgress } from '@/lib/upload-client';
+import { UploadTray, useUploadQueue, type UpRunner } from '@/components/crm/UploadTray';
 
 // MIME types as well as extensions: an extension-only list makes Android grey out
 // files whose provider reports no name, and without image types iOS doesn't offer
@@ -18,11 +20,9 @@ export const DEAL_DOC_ACCEPT = [
   'application/pdf', '.pdf',
   'application/msword', '.doc',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.docx',
-  'image/jpeg', '.jpg', '.jpeg', 'image/png', '.png', 'image/webp', '.webp',
+  'image/jpeg', '.jpg', '.jpeg', 'image/png', '.png', 'image/webp', '.webp', 'image/heic', '.heic', '.heif',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx', 'application/vnd.ms-excel', '.xls', 'text/csv', '.csv',
 ].join(',');
-const MAX_BYTES = 25 * 1024 * 1024;   // the deal-docs bucket's own limit
-const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
 
 export interface UploadedDealDoc { id: string; name: string }
 
@@ -36,11 +36,9 @@ export default function DealDocUpload({ dealId, clientId, authToken, showToast, 
   showToast: (m: string) => void;
   onUploaded: (doc: UploadedDealDoc) => void;
 }) {
-  const [status, setStatus] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [touch, setTouch] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const convertedRef = useRef(0);
   const endpoint = clientId ? '/api/crm/client-docs' : '/api/crm/docs';
   const owner = clientId ? { clientId } : { dealId };
   const noun = clientId ? 'contact' : 'deal';
@@ -51,61 +49,46 @@ export default function DealDocUpload({ dealId, clientId, authToken, showToast, 
     ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
   });
 
-  // Returns an error message, { dup } when the deal already has this exact file, or null once the file is stored and recorded.
-  async function uploadOne(file: File): Promise<string | { dup: string } | null> {
-    if (file.size > MAX_BYTES) return `${file.name} is ${mb(file.size)} MB — the limit is 25 MB`;
+  // One file: presign → PUT (with progress) → confirm. The queue below (pre-check, HEIC conversion, progress, Retry, failure log) wraps it.
+  const runOne: UpRunner = async (file, { setPct }) => {
     const pre = await fetch(endpoint, {
       method: 'POST', headers: headers(true),
       body: JSON.stringify({ action: 'presign', ...owner, filename: file.name, file_size: file.size }),
     });
     const pj = await pre.json().catch(() => ({}));
-    if (!pre.ok) return pj.error || `Couldn't start the upload (${pre.status})`;
+    if (!pre.ok) return { ok: false, stage: 'start', error: pj.error || `Couldn't start the upload (${pre.status})` };
 
-    const put = await fetch(pj.uploadUrl, { method: 'PUT', headers: { 'Content-Type': pj.contentType }, body: file });
-    if (!put.ok) {
-      const detail = await put.json().then((j: { message?: string; error?: string }) => j.message || j.error).catch(() => '');
-      return `Storage refused ${file.name} (${put.status}${detail ? `: ${detail}` : ''})`;
-    }
+    const put = await putWithProgress(pj.uploadUrl, file, pj.contentType, setPct);
+    if (!put.ok) return { ok: false, stage: 'send', error: put.status === 0 ? 'The connection dropped while sending — check your signal and press Retry.' : `Storage refused the file (${put.status}${put.detail ? `: ${put.detail}` : ''}).` };
 
     const conf = await fetch(endpoint, {
       method: 'POST', headers: headers(true),
       body: JSON.stringify({ action: 'confirm', ...owner, storagePath: pj.storagePath, filename: file.name }),
     });
     const cj = await conf.json().catch(() => ({}));
-    if (!conf.ok) return cj.error || `Couldn't save ${file.name} to the ${noun} (${conf.status})`;
-    if (cj.duplicate) return { dup: cj.doc?.name ?? 'an existing file' };   // already attached: nothing was added
+    if (!conf.ok) return { ok: false, stage: 'save', error: cj.error || `Couldn't save the file to the ${noun} (${conf.status}) — press Retry.` };
+    if (cj.duplicate) return { ok: true, headline: 'Already here', note: `already on this ${noun} as “${cj.doc?.name ?? 'an existing file'}” — not added again` };
     onUploaded(cj.doc);
     // A Word / text file is also made editable right away (a live document linked to this card). The upload already succeeded, so a
     // problem here is only mentioned, never an error.
     if (autoConvertCardFile(file.name) && cj.doc?.id) {
       const r = await convertCardFile(clientId ? 'client' : 'deal', cj.doc.id as string, authToken);
-      if (r.ok) convertedRef.current += 1; else showToast(`${file.name} was uploaded, but ${r.error.charAt(0).toLowerCase()}${r.error.slice(1)}`);
+      if (r.ok) return { ok: true, note: 'also ready to edit as a live document' };
+      showToast(`${file.name} was uploaded, but ${r.error.charAt(0).toLowerCase()}${r.error.slice(1)}`);
     } else if (/\.(doc|rtf)$/i.test(file.name)) showToast(`${file.name} was uploaded. Older Word (.doc) files can’t be edited here — save it as .docx in Word and upload that`);
-    return null;
-  }
-
-  async function uploadAll(list: FileList | File[] | null) {
-    const files = Array.from(list ?? []);
-    if (!files.length || status) return;
-    let ok = 0, skipped = 0;
-    try {
-      for (let i = 0; i < files.length; i++) {
-        setStatus(files.length > 1 ? `Uploading ${i + 1} of ${files.length}…` : `Uploading ${files[i].name}…`);
-        const err = await uploadOne(files[i]).catch(() => 'Upload failed — check your connection and try again');
-        if (err && typeof err === 'object') { skipped++; showToast(`${files[i].name} is already on this ${noun} as “${err.dup}” — not added again`); }
-        else if (err) showToast(err); else ok++;
-      }
-      const made = convertedRef.current; convertedRef.current = 0;
-      if (ok) showToast((ok === 1 && files.length === 1 ? `${files[0].name} uploaded ✓` : `${ok} of ${files.length - skipped} new files uploaded ✓`) + (made ? ` — ${made === 1 ? 'it is' : `${made} are`} also ready to edit as a live document` : ''));
-    } finally {
-      setStatus(null);
-      if (inputRef.current) inputRef.current.value = '';
-    }
+    return { ok: true };
+  };
+  const q = useUploadQueue({ profile: clientId ? 'contact' : 'deal', target: clientId ? 'contact' : 'deal', run: runOne, authToken });
+  const status = null as string | null;   // the tray shows progress; the drop zone stays usable so more files can be added while others send
+  function uploadAll(list: FileList | File[] | null) {
+    void q.add(list);
+    if (inputRef.current) inputRef.current.value = '';
   }
 
   // A <label> around the input, not a div that calls input.click(): tapping it opens
   // the picker natively on every phone, with no script in the gesture path.
   return (
+    <>
     <label
       onDragOver={e => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
@@ -141,5 +124,7 @@ export default function DealDocUpload({ dealId, clientId, authToken, showToast, 
         </>
       )}
     </label>
+    <UploadTray items={q.items} onRetry={q.retry} onDismiss={q.dismiss} />
+    </>
   );
 }

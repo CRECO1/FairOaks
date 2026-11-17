@@ -53,6 +53,7 @@ import PhoneFold from '@/components/crm/PhoneFold';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
 import BackupStatus from '@/components/crm/BackupStatus';
+import UploadFailures from '@/components/crm/UploadFailures';
 import TeamChat from '@/components/crm/TeamChat';
 import DeletedItems from '@/components/crm/DeletedItems';
 import ContactsView from '@/components/crm/ContactsView';
@@ -1047,6 +1048,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [copilotActivityOpen, setCopilotActivityOpen] = useState(false);
   const [backupStatusOpen, setBackupStatusOpen] = useState(false);
+  const [uploadFailuresOpen, setUploadFailuresOpen] = useState(false);
   const [deletedItemsOpen, setDeletedItemsOpen] = useState(false);
   // Which document row is being renamed, and the draft name in the box.
   // Editing a contact's notes without leaving their card — this is where you are
@@ -6418,6 +6420,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
           {/* Owner-only; /api/crm/backup-runs also 403s everyone but super_admin. */}
           {isSuperAdmin && <button className="crm-nav" onClick={() => setBackupStatusOpen(true)}><Ico n="file" />Backups</button>}
+          {isAdmin && <button className="crm-nav" onClick={() => setUploadFailuresOpen(true)}><Ico n="file" />Failed uploads</button>}
           {isSuperAdmin && <button className="crm-nav" onClick={() => setDeletedItemsOpen(true)}><Ico n="trash" />Recently Deleted</button>}
           {/* Owner-only. The server also 403s non-super_admin, so hiding this
               is convenience, not the access control. */}
@@ -6618,6 +6621,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button className="crm-nav" onClick={() => setCrmTheme(t => (t === 'dark' ? 'light' : 'dark'))}><Ico n={crmTheme === 'dark' ? 'sun' : 'moon'} />{crmTheme === 'dark' ? 'Light theme' : 'Dark theme'}</button>
                 <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
                 {isSuperAdmin && <button className="crm-nav" onClick={() => { setBackupStatusOpen(true); setMobileMenuOpen(false); }}><Ico n="file" />Backups</button>}
+                {isAdmin && <button className="crm-nav" onClick={() => { setUploadFailuresOpen(true); setMobileMenuOpen(false); }}><Ico n="file" />Failed uploads</button>}
                 {isSuperAdmin && <button className="crm-nav" onClick={() => { setDeletedItemsOpen(true); setMobileMenuOpen(false); }}><Ico n="trash" />Recently Deleted</button>}
                 {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => { setPage('lead-attribution'); setMobileMenuOpen(false); }}><Ico n="chart" />Lead Attribution</button>}
                 {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => { setPage('plaza-site'); setMobileMenuOpen(false); }}><Ico n="tree" />Plaza Site{plazaPending > 0 && <span style={{ marginLeft: 8, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>{plazaPending}</span>}</button>}
@@ -15693,6 +15697,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       )}
       {copilotActivityOpen && <CopilotActivity token={session?.access_token} isMobile={isMobile} isBroker={isSuperAdmin} onClose={() => setCopilotActivityOpen(false)} />}
       {backupStatusOpen && isSuperAdmin && <BackupStatus token={session?.access_token} isMobile={isMobile} onClose={() => setBackupStatusOpen(false)} />}
+      {uploadFailuresOpen && isAdmin && <UploadFailures token={session?.access_token} isMobile={isMobile} onClose={() => setUploadFailuresOpen(false)} />}
       {deletedItemsOpen && isSuperAdmin && <DeletedItems token={session?.access_token} isMobile={isMobile}
         onRestored={kind => { if (profile) { if (kind === 'deal') loadDeals(profile); else loadClients(profile, 0, true); } }}
         onClose={() => setDeletedItemsOpen(false)} />}

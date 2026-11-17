@@ -4,6 +4,7 @@ import { findIdenticalFile } from '@/lib/dup-files';
 import { adminClient } from '@/lib/supabase-admin';
 import { onDeal } from '@/lib/deal-access';
 import { safeObjectName } from '@/lib/safe-object-name';
+import { UPLOAD_PROFILES } from '@/lib/upload-rules';
 
 // Files on a CONTACT's card: anything uploaded straight onto the person, plus every file on the Docs tab of
 // their deals (a lease filed against the deal is still that person's lease). Stored in the same private
@@ -11,15 +12,7 @@ import { safeObjectName } from '@/lib/safe-object-name';
 // The browser PUTs the file straight to storage (Vercel caps a posted body at 4.5 MB); this route only records it.
 
 const BUCKET = 'deal-docs';
-const CONTENT_TYPES: Record<string, string> = {
-  pdf: 'application/pdf',
-  doc: 'application/msword',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  jpg: 'image/jpeg', jpeg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', csv: 'text/csv',
-};
+const CONTENT_TYPES: Record<string, string> = UPLOAD_PROFILES.contact.types;   // one shared list: src/lib/upload-rules.ts
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const SIGNED_URL_TTL_SECONDS = 3600;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
