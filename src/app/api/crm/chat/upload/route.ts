@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   if (!filename || !contentType) return NextResponse.json({ error: `That file type can't be shared here. Allowed: PDF, Word, Excel, PowerPoint, CSV, TXT and pictures (JPG, PNG, WebP, GIF).` }, { status: 400 });
   if (typeof b.size !== 'number' || !(b.size > 0) || b.size > DRIVE_FILE_MAX) return NextResponse.json({ error: 'Files must be 25 MB or smaller' }, { status: 400 });
   if (!(await userRateLimit('chat-upload', ctx.userId, 120, '1 h')).success) return NextResponse.json({ error: 'Too many uploads this hour. Try again later.' }, { status: 429 });
-  const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.');
   const storagePath = `${chatPrefix(ctx.businessUnit, room)}${randomUUID()}-${safe}`;
   const { data, error } = await adminClient().storage.from(CHAT_BUCKET).createSignedUploadUrl(storagePath);
   if (error || !data) return NextResponse.json({ error: 'Could not start the upload' }, { status: 500 });

@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
   if (!contentType) return NextResponse.json({ error: `.${extOf(name) || '?'} files can't be saved to a deal — only PDF, Word, Excel, CSV, JPG, PNG or WebP.` }, { status: 400 });
   if (bytes.length > MAX_FILE_SIZE) return NextResponse.json({ error: 'File must be 25 MB or smaller' }, { status: 400 });
 
-  const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
+  const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.').slice(-120);
   const storagePath = `${dealId}/${Date.now()}_${safeName}`;
   const up = await db.storage.from(BUCKET).upload(storagePath, bytes, { contentType, upsert: false });
   if (up.error) { console.error('[gmail/save-attachment] upload', up.error.message); return NextResponse.json({ error: 'Could not save the file — try again' }, { status: 500 }); }

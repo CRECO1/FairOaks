@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
   if (!contentType) return typeError(file.name);
 
   const supabase = adminClient();
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.');
   const storagePath = `${dealId}/${Date.now()}_${safeName}`;
 
   const { error: uploadError } = await supabase.storage
@@ -167,7 +167,7 @@ async function presign(body: Record<string, unknown>, ctx: Ctx) {
   const contentType = CONTENT_TYPES[extOf(filename)];
   if (!contentType) return typeError(filename);
 
-  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
+  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.').slice(-120);
   const storagePath = `${dealId}/${Date.now()}_${safeName}`;
   const { data, error } = await adminClient().storage.from(BUCKET).createSignedUploadUrl(storagePath);
   if (error || !data) {

@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `File type .${ext} not allowed` }, { status: 400 });
   }
 
-  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.');
   const storagePath = `${listing_id}/${Date.now()}_${safeName}`;
 
   const supabase = adminClient();

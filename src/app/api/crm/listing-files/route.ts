@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   const ext = (file.name.split('.').pop() ?? '').toLowerCase();
   if (!ALLOWED_EXT.has(ext)) return NextResponse.json({ error: `File type .${ext} not allowed` }, { status: 400 });
   const supabase = adminClient();
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.');
   const storagePath = `${listingId}/${Date.now()}_${safeName}`;
   const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(storagePath, await file.arrayBuffer(), { contentType: file.type || 'application/octet-stream', upsert: false });
   if (uploadErr) { console.error('[listing-files] storage upload error:', uploadErr); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }

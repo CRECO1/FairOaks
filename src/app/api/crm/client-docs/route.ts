@@ -114,7 +114,7 @@ async function presign(body: Record<string, unknown>, ctx: Ctx) {
     const hint = ext === 'heic' || ext === 'heif' ? ' Share the photo as a JPG, or set Camera → Formats to Most Compatible.' : '';
     return NextResponse.json({ error: `.${ext || '?'} files can't be attached here — use PDF, Word, Excel, CSV, JPG, PNG or WebP.${hint}` }, { status: 400 });
   }
-  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
+  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.').slice(-120);
   const storagePath = `client-${clientId}/${Date.now()}_${safeName}`;
   const { data, error } = await adminClient().storage.from(BUCKET).createSignedUploadUrl(storagePath);
   if (error || !data) {

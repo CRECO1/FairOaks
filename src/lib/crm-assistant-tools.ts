@@ -258,7 +258,7 @@ async function loadDealForWrite(db: SupabaseClient, ctx: AgentCtx, dealId: strin
  */
 async function fileBytesOnto(db: SupabaseClient, ctx: AgentCtx, buf: Buffer, fileName: string, target: { deal_id?: string; listing_id?: string }): Promise<string> {
   const j = (v: unknown) => JSON.stringify(v);
-  const safe = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
+  const safe = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.').slice(-120);
   const ext = (fileName.split('.').pop() ?? '').toLowerCase();
   const MIME: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', csv: 'text/csv', txt: 'text/plain' };
   const contentType = MIME[ext];
@@ -1254,7 +1254,7 @@ async function runToolRaw(name: string, input: Record<string, any>, ctx: AgentCt
         if (bytes.length > 15 * 1024 * 1024) return j({ error: 'That file is over 15 MB — too large to build into the letter.' });
 
         const exId = Math.random().toString(16).slice(2, 10);
-        const path = `loi-exhibits/${input.submission_id}/${exId}__${fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80).replace(/\.[a-z]+$/i, '')}.${storeExt}`;
+        const path = `loi-exhibits/${input.submission_id}/${exId}__${fileName.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.').slice(-80).replace(/\.[a-z]+$/i, '')}.${storeExt}`;
         const { error: upErr } = await db.storage.from(ATT_BUCKET).upload(path, bytes, { contentType: kind === 'pdf' ? 'application/pdf' : `image/${storeExt === 'jpg' ? 'jpeg' : 'png'}`, upsert: false });
         if (upErr) return j({ error: upErr.message });
         const title = (String(input.title ?? '').trim() || fileName.replace(/\.[a-z0-9]+$/i, '').replace(/[_]+/g, ' ')).replace(/^exhibit\s+[a-z0-9]+\s*[-–—:]\s*/i, '').trim().slice(0, 100) || 'Attachment';
