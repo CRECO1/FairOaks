@@ -13,6 +13,7 @@ import SettingsPage from './SettingsPage';
 import { needsSecondFactor, hasVerifiedFactor } from '@/lib/mfa';
 import { CRM_TOKENS_CSS } from '@/components/crm/crm-tokens-css';
 import { isDone } from '@/lib/tasks-view';
+import { readWithRetry } from '@/lib/retry-read';
 import ComposeDock, { type ComposeRequest } from './ComposeDock';
 import EmailsSection, { type EmailsTab } from './EmailsSection';
 import type { ContactMatch } from './GmailMailbox';
@@ -1898,6 +1899,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Contacts pagination
   const [contactsTotal, setContactsTotal] = useState(0);
   const [contactsPage, setContactsPage] = useState(0);
+  // Where the contact list stands, so an empty list can say WHY it is empty: still loading, the read failed, or there
+  // really are none. A failed read used to look exactly like an empty book ("No clients yet").
+  const [clientsState, setClientsState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const CONTACTS_PAGE_SIZE = 100;
 
   // New deal form
@@ -2788,28 +2792,53 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (st.inflight && st.unit === businessUnit) return st.inflight;
     if (!force && st.unit === businessUnit && Date.now() - st.at < 90_000) return;
     st.unit = businessUnit;
+    const hadList = st.at > 0;   // a list is already on screen: a failed refresh keeps it instead of emptying the page
+    if (!hadList) setClientsState('loading');
+    // The read gave up. With a list on screen it stays; a refresh the user asked for (import, add, Refresh) says it did
+    // not happen. With nothing loaded the Contacts page says the load failed and offers Try again. Either way it is
+    // reported to the server log (audit_logs, action client_error) so it can be counted later.
+    const fail = (msg: string) => {
+      console.error('loadClients error:', msg);
+      if (hadList) { if (force) showToast('Couldn’t refresh contacts just now — the list shown is from a moment ago.'); }
+      else setClientsState('failed');
+      void (async () => {
+        try {
+          const { data } = await supabase.auth.getSession();
+          const token = data.session?.access_token;
+          if (!token) return;
+          await fetch('/api/crm/client-error', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ message: `Contacts did not load after 3 tries (${hadList ? 'refresh' : 'first load'}): ${msg}`, url: location.href, ua: navigator.userAgent }),
+          });
+        } catch { /* reporting is best-effort */ }
+      })();
+    };
     const run = (async () => {
+    try {
     const BATCH = 1000;
     // PostgREST returns at most 1000 rows, so a 3,300-contact book is four reads. They used to run
     // one after another, each re-counting the table (`count: exact`), ~4s end to end. Page 1
     // carries the count; the rest are known from it and go out together. `id` is the tiebreak so a
     // bulk import (identical created_at) can't be split across pages, which dropped/duplicated rows.
-    const page = (i: number, withCount: boolean) => {
+    const read = (i: number, withCount: boolean) => {
       const q = supabase.from('crm_clients').select('*', withCount ? { count: 'exact' } : undefined)
         .eq('business_unit', businessUnit)
         .order('created_at', { ascending: false }).order('id')
         .range(i * BATCH, i * BATCH + BATCH - 1);
       return q;
     };
+    // A read can fail for a moment (the database cancels a slow statement, the connection drops), so each page gets
+    // three tries before the load gives up. One hiccup used to leave the whole list empty until a reload.
+    const page = (i: number, withCount: boolean) => readWithRetry(() => read(i, withCount));
     const first = await page(0, true);
-    if (first.error) { console.error('loadClients error:', first.error.message); return; }
+    if (first.error) { fail(first.error.message); return; }
     let all = (first.data ?? []) as Client[];
     const total = first.count ?? all.length;
     if (all.length >= BATCH && total > BATCH) {
       const more = Math.ceil(total / BATCH) - 1;
       const rest = await Promise.all(Array.from({ length: more }, (_, k) => page(k + 1, false)));
       for (const r of rest) {
-        if (r.error) { console.error('loadClients error:', r.error.message); return; }
+        if (r.error) { fail(r.error.message); return; }
         all = all.concat((r.data ?? []) as Client[]);
       }
       const seen = new Set<string>();
@@ -2818,7 +2847,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setClients(all);
     setContactsTotal(total);
     setContactsPage(0);
+    setClientsState('ready');
     st.at = Date.now();
+    } catch (e) { fail(e instanceof Error ? e.message : String(e)); }
     })();
     st.inflight = run.finally(() => { if (st.inflight === wrapped) st.inflight = null; });
     const wrapped = st.inflight;
@@ -7480,7 +7511,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* ── Prospects ── */}
           {page === 'contacts' && (
             <div>
-              {clients.length === 0 ? (
+              {clients.length === 0 && clientsState !== 'ready' ? (
+                // Empty because the list has not arrived (or did not arrive) — never "No clients yet", which reads as lost data.
+                <div role="status" style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--k-fff)', borderRadius: 10, border: '1px solid var(--k-e0e0e0)' }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>{clientsState === 'failed' ? '⚠️' : '👥'}</div>
+                  <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, color: 'var(--k-111)', marginBottom: 8 }}>{clientsState === 'failed' ? 'Your contacts didn’t load' : 'Loading your contacts…'}</div>
+                  {clientsState === 'failed' && (<>
+                    <div style={{ fontSize: 14, color: 'var(--k-6b7280)', marginBottom: 20, maxWidth: 460, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.5 }}>Nothing is lost. The list didn’t come through after three tries — usually a slow moment on the connection or the database.</div>
+                    <button className="crm-btn crm-btn-gold" onClick={() => { void loadClients(profile ?? undefined, 0, true); }}>Try again</button>
+                  </>)}
+                </div>
+              ) : clients.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--k-fff)', borderRadius: 10, border: '1px solid var(--k-e0e0e0)' }}>
                   <div style={{ fontSize: 48, marginBottom: 16 }}>👥</div>
                   <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, color: 'var(--k-111)', marginBottom: 8 }}>No clients yet</div>
@@ -12984,7 +13025,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Client selector */}
               <div style={{ marginBottom: 18 }}>
                 <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Select Client *</label>
-                {clients.length === 0 ? (
+                {clients.length === 0 && clientsState !== 'ready' ? (
+                  <div role="status" style={{ marginTop: 8, padding: '14px 16px', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 8, fontSize: 14, color: 'var(--k-92400e)' }}>
+                    {clientsState === 'failed' ? (<>Your contacts didn’t load.{' '}
+                      <button onClick={() => { void loadClients(profile ?? undefined, 0, true); }}
+                        style={{ background: 'none', border: 'none', color: '#c9922c', fontWeight: 600, cursor: 'pointer', fontSize: 14, textDecoration: 'underline', padding: 0 }}>
+                        Try again
+                      </button></>) : 'Loading your contacts…'}
+                  </div>
+                ) : clients.length === 0 ? (
                   <div style={{ marginTop: 8, padding: '14px 16px', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 8, fontSize: 14, color: 'var(--k-92400e)' }}>
                     No clients yet.{' '}
                     <button onClick={() => { setShowAddDeal(false); setShowAddClient(true); }}
