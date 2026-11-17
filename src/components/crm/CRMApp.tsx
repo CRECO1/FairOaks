@@ -9,6 +9,7 @@ import { sanitizeHtml, sanitizeEmailHtml } from '@/lib/sanitize';
 import EmailComposer, { loadFollowUp, type Suggestion } from './EmailComposer';
 import MfaChallenge from './MfaChallenge';
 import MfaSettings from './MfaSettings';
+import SettingsPage from './SettingsPage';
 import { needsSecondFactor, hasVerifiedFactor } from '@/lib/mfa';
 import { CRM_TOKENS_CSS } from '@/components/crm/crm-tokens-css';
 import { isDone } from '@/lib/tasks-view';
@@ -1019,7 +1020,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'emails', 'teamchat'] as const;
+  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution', 'plaza-site', 'emails', 'teamchat', 'settings'] as const;
   // The sidebar says "Marketing" but the page is called 'campaigns', so a
   // #marketing link silently left you wherever you already were.
   const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties', 'calling-log': 'calls', calling: 'calls', phone: 'calls', 'sent-mail': 'emails', sent: 'emails', inbox: 'emails', drafts: 'emails', email: 'emails' };
@@ -5864,7 +5865,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
     'lead-attribution': 'Lead Attribution', 'plaza-site': 'Plaza Site', emails: 'Emails',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'My Drive', teamchat: 'Team Chat', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'My Drive', teamchat: 'Team Chat', settings: 'Settings', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -6480,6 +6481,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
             </div>
+            <button className="crm-icon-btn" onClick={() => setPage('settings')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 15 }} title="Settings" aria-label="Settings">⚙</button>
             <button className="crm-icon-btn" onClick={() => setShowMfa(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 15 }} title="2-step verification" aria-label="2-step verification">🔒</button>
             <button className="crm-icon-btn" onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 16 }} title="Sign out">⏻</button>
           </div>
@@ -6612,6 +6614,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <Ico n="receipt" />Billing <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>↗</span>
                   </a>
                 )}
+                <button className={`crm-nav${page === 'settings' ? ' active' : ''}`} onClick={() => { setPage('settings'); setMobileMenuOpen(false); }}><Ico n="pen" />Settings</button>
                 <button className="crm-nav" onClick={() => setCrmTheme(t => (t === 'dark' ? 'light' : 'dark'))}><Ico n={crmTheme === 'dark' ? 'sun' : 'moon'} />{crmTheme === 'dark' ? 'Light theme' : 'Dark theme'}</button>
                 <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
                 {isSuperAdmin && <button className="crm-nav" onClick={() => { setBackupStatusOpen(true); setMobileMenuOpen(false); }}><Ico n="file" />Backups</button>}
@@ -6652,6 +6655,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
                   </div>
+                  <button className="crm-icon-btn" onClick={() => { setPage('settings'); setMobileMenuOpen(false); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 16 }} title="Settings" aria-label="Settings">⚙</button>
                   <button className="crm-icon-btn" onClick={() => setShowMfa(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 16 }} title="2-step verification" aria-label="2-step verification">🔒</button>
                   <button className="crm-icon-btn" onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 18 }} title="Sign out">⏻</button>
                 </div>
@@ -11821,6 +11825,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button onClick={e => { e.stopPropagation(); setChatPop(null); }} aria-label="Dismiss" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: 0 }}>×</button>
               </div>
               <div style={{ fontSize: 12, marginTop: 1, opacity: .85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chatPop.text}</div>
+            </div>
+          )}
+          {page === 'settings' && profile && session && (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <SettingsPage supabase={supabase} profile={{ ...profile, role: String(profile.role) }} onProfileChange={patch => setProfile(p => (p ? { ...p, first_name: patch.first_name ?? p.first_name, last_name: patch.last_name ?? p.last_name, phone: patch.phone ?? p.phone, license: patch.license ?? p.license } : p))}
+                token={session.access_token} userId={session.user.id} businessUnit={businessUnit} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} isMobile={isMobile}
+                gmailAccounts={gmailAccounts} onDisconnectGmail={disconnectGmailAccount} onSyncSignature={syncGmailSignature}
+                callGoal={callGoal} onSaveCallGoal={saveCallGoal} theme={crmTheme} onTheme={setCrmTheme}
+                hasMfa={hasMfa} onOpenMfa={() => setShowMfa(true)} onSignOut={signOut} notify={showToast} />
             </div>
           )}
           {page === 'teamchat' && profile && (
