@@ -39,6 +39,7 @@ const nameOf = (p: DrivePerson) => [p.first_name, p.last_name].filter(Boolean).j
 
 const statusOf = (r: Req) => secureState({ ...r, fileCount: r.files.length });
 const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv';
+const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;   // the same test the server applies before it sends
 // A password that is easy to read out over the phone and hard to guess: two plain words and four digits.
 const WORDS = ['Maple', 'River', 'Cedar', 'Stone', 'Amber', 'Field', 'Harbor', 'Canyon', 'Meadow', 'Summit', 'Prairie', 'Juniper', 'Copper', 'Willow', 'Falcon', 'Garnet', 'Lantern', 'Orchard', 'Pebble', 'Quartz', 'Ranch', 'Saddle', 'Timber', 'Valley', 'Wagon', 'Yarrow', 'Bluff', 'Creek', 'Dune', 'Ember', 'Grove', 'Mesa'];
 function makePassword(): string {
@@ -76,6 +77,12 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
   const [pwFor, setPwFor] = useState<string | null>(null);
   const [pwText, setPwText] = useState('');
   const [pwView, setPwView] = useState(true);
+  // Small in-card forms for a stand-alone folder: who to email its link to (mailFor = its id), and a new name (renameFor).
+  const [mailFor, setMailFor] = useState<string | null>(null);
+  const [mailTo, setMailTo] = useState('');
+  const [mailBusy, setMailBusy] = useState(false);
+  const [renameFor, setRenameFor] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
   // An agent adding their own files to a folder.
   const [adding, setAdding] = useState<Record<string, string>>({});
   const [dropOn, setDropOn] = useState<string | null>(null);
@@ -93,7 +100,7 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
     } catch { setReqs([]); }
   }, [clientId, dealId, requestId, auth]);
   // Reset only when the card is for a DIFFERENT contact/deal. (A login-token refresh changes `load` too — that must reload the list, never close a form someone is filling in.)
-  useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); setTextFor(null); setPwFor(null); }, [clientId, dealId, requestId]);
+  useEffect(() => { setReqs(null); setCreating(false); setLogs({}); setSharing(null); setTextFor(null); setPwFor(null); setMailFor(null); setRenameFor(null); }, [clientId, dealId, requestId]);
   useEffect(() => { load(); }, [load]);
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -187,6 +194,20 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
 
   const savePassword = async (r: Req) => {
     if (await patch(r, { action: 'set_password', password: pwText, guestView: pwView }, 'Password saved. Give it to them by phone or text — never by email.')) { setPwFor(null); setPwText(''); }
+  };
+
+  const sendFolderLink = async (r: Req) => {
+    const to = mailTo.trim();
+    if (!EMAIL_OK.test(to) || mailBusy) return;
+    setMailBusy(true);
+    try {
+      if (await patch(r, { action: 'resend', email: to }, r.has_password ? `Link emailed to ${to}. Give them the password by phone or text.` : `Link emailed to ${to}`)) { setMailFor(null); setMailTo(''); }
+    } finally { setMailBusy(false); }
+  };
+  const saveName = async (r: Req) => {
+    const n = renameText.trim();
+    if (!n) return;
+    if (n === (r.name ?? '') || await patch(r, { action: 'rename', name: n }, 'Renamed')) setRenameFor(null);
   };
 
   const openFile = async (f: SFile, preview: boolean) => {
@@ -381,10 +402,9 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
                       <button type="button" style={{ ...btn, color: '#a06a12', borderColor: '#f0e2c4', background: 'var(--k-fdf6e9)' }} disabled={!!adding[r.id]} onClick={() => { addTarget.current = r; addInput.current?.click(); }}>＋ Add files</button>
                       {r.files.length > 1 && <button type="button" style={btn} disabled={zipping === r.id} onClick={() => downloadAll(r)}>{zipping === r.id ? 'Preparing…' : `↓ Download all (${r.files.length})`}</button>}
                       {live && <button type="button" style={btn} onClick={() => copy(r.link)}>Copy link</button>}
-                      {live && <button type="button" style={btn} onClick={() => {
+                      {live && <button type="button" style={btn} aria-expanded={r.client_id ? undefined : mailFor === r.id} onClick={() => {
                         if (r.client_id) { void patch(r, { action: 'resend' }, 'Link emailed'); return; }
-                        const to = window.prompt('Email address to send this folder’s link to:');
-                        if (to && to.trim()) void patch(r, { action: 'resend', email: to.trim() }, r.has_password ? 'Link emailed — give them the password by phone or text' : 'Link emailed');
+                        setMailTo(r.recipient_email ?? ''); setRenameFor(null); setMailFor(m => (m === r.id ? null : r.id));
                       }}>{r.sent_at ? 'Resend email' : 'Email link'}</button>}
                       {live && contact && <button type="button" style={btn} onClick={() => setTextFor(t => (t === r.id ? null : r.id))}>💬 Text link</button>}
                       {live ? <button type="button" style={btn} onClick={() => patch(r, { action: 'revoke' }, 'Link closed')}>Close link</button>
@@ -393,13 +413,43 @@ export default function SecureDocs({ clientId, dealId, requestId, onChanged, aut
                       {live && <button type="button" style={btn} onClick={() => patch(r, { action: 'extend' }, 'Link extended 14 days')}>Extend</button>}
                       <button type="button" style={btn} onClick={() => patch(r, { action: r.keep_files ? 'unkeep' : 'keep' }, r.keep_files ? 'Auto-delete back on' : 'Files will be kept')}>{r.keep_files ? 'Turn auto-delete on' : 'Keep files'}</button>
                       {mayShare(r) && <button type="button" style={btn} onClick={() => setSharing(s => (s === r.id ? null : r.id))}>Who can see</button>}
-                      {isFolder && mayShare(r) && <button type="button" style={btn} onClick={() => { const n = window.prompt('Folder name:', r.name ?? ''); if (n && n.trim() && n.trim() !== r.name) void patch(r, { action: 'rename', name: n.trim() }, 'Renamed'); }}>Rename</button>}
+                      {isFolder && mayShare(r) && <button type="button" style={btn} aria-expanded={renameFor === r.id} onClick={() => { setRenameText(r.name ?? ''); setMailFor(null); setRenameFor(x => (x === r.id ? null : r.id)); }}>Rename</button>}
                       <button type="button" style={btn} onClick={() => showLog(r)}>{log ? 'Hide activity' : 'Activity'}</button>
                       <button type="button" style={{ ...btn, color: '#b91c1c' }} onClick={() => delAll(r)}>Delete folder</button>
                     </div>
                   )}
                   {r.purged_at && <div style={{ marginTop: 8 }}><button type="button" style={btn} onClick={() => showLog(r)}>{log ? 'Hide activity' : 'Activity'}</button></div>}
 
+                  {mailFor === r.id && live && !r.client_id && (
+                    <form onSubmit={e => { e.preventDefault(); void sendFolderLink(r); }} style={{ marginTop: 8, background: 'var(--k-f9fafb, #f9fafb)', borderRadius: 8, padding: 10 }}>
+                      <label htmlFor={`mail-${r.id}`} style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 6 }}>Email this folder’s link to</label>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <input id={`mail-${r.id}`} autoFocus value={mailTo} onChange={e => setMailTo(e.target.value)} type="email" inputMode="email" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="name@example.com"
+                          onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setMailFor(null); } }}
+                          style={{ flex: '1 1 200px', minWidth: 0, padding: 9, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: touch ? 16 : 14, boxSizing: 'border-box' }} />
+                        <button type="submit" disabled={mailBusy || !EMAIL_OK.test(mailTo.trim())} style={{ ...btn, background: !mailBusy && EMAIL_OK.test(mailTo.trim()) ? '#111' : 'var(--k-e5e7eb)', color: !mailBusy && EMAIL_OK.test(mailTo.trim()) ? '#fff' : 'var(--k-9ca3af)', border: 'none' }}>{mailBusy ? 'Sending…' : 'Send link'}</button>
+                        <button type="button" style={btn} onClick={() => setMailFor(null)}>Cancel</button>
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginTop: 8, lineHeight: 1.5 }}>
+                        {r.sent_at && r.recipient_email ? `Last emailed to ${r.recipient_email}. ` : ''}The link works until {day(r.expires_at)}.
+                        {r.has_password
+                          ? <span style={{ color: 'var(--k-a06a12)' }}> The password is not in the email. Give it to them by phone or text.</span>
+                          : ' With no password, they can add files but not open any.'}
+                      </div>
+                    </form>
+                  )}
+                  {renameFor === r.id && isFolder && !r.purged_at && (
+                    <form onSubmit={e => { e.preventDefault(); void saveName(r); }} style={{ marginTop: 8, background: 'var(--k-f9fafb, #f9fafb)', borderRadius: 8, padding: 10 }}>
+                      <label htmlFor={`name-${r.id}`} style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 6 }}>Folder name</label>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <input id={`name-${r.id}`} autoFocus onFocus={e => e.currentTarget.select()} value={renameText} onChange={e => setRenameText(e.target.value)} maxLength={80} autoComplete="off"
+                          onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setRenameFor(null); } }}
+                          style={{ flex: '1 1 200px', minWidth: 0, padding: 9, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', fontSize: touch ? 16 : 14, boxSizing: 'border-box' }} />
+                        <button type="submit" disabled={!renameText.trim()} style={{ ...btn, background: renameText.trim() ? '#111' : 'var(--k-e5e7eb)', color: renameText.trim() ? '#fff' : 'var(--k-9ca3af)', border: 'none' }}>Save name</button>
+                        <button type="button" style={btn} onClick={() => setRenameFor(null)}>Cancel</button>
+                      </div>
+                    </form>
+                  )}
                   {pwFor === r.id && !r.purged_at && (
                     <div style={{ marginTop: 8, background: 'var(--k-f9fafb, #f9fafb)', borderRadius: 8, padding: 10 }}>
                       <div style={{ fontSize: 12, color: 'var(--k-6b7280)', marginBottom: 6, lineHeight: 1.5 }}>
