@@ -6609,11 +6609,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               { id: 'dashboard', label: 'Home', ico: 'home', go: () => setPage('dashboard') },
               { id: 'tasks', label: 'Tasks', ico: 'check', badge: overdueCt, go: () => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); } },
               { id: 'deals', label: 'Deals', ico: 'deals', go: () => { setPage('deals'); setFilter(''); } },
+              { id: 'calls', label: 'Calls', ico: 'phone', go: () => { setPage('calls'); if (!clients.length) loadClients(); } },
               { id: 'contacts', label: 'Contacts', ico: 'users', go: () => { setPage('contacts'); setNoInfoOnly(false); loadClients(); loadSmartLists(); } },
               { id: 'calendar', label: 'Calendar', ico: 'calendar', go: () => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); } },
               { id: 'campaigns', label: 'Marketing', ico: 'megaphone', on: ['campaigns', 'action-plans', 'social'].includes(page), go: () => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); } },
               { id: 'properties', label: 'Properties', ico: 'building', go: () => setPage('properties') },
-              { id: 'calls', label: 'Calls', ico: 'phone', go: () => { setPage('calls'); if (!clients.length) loadClients(); } },
               { id: 'esign', label: 'E-Sign', ico: 'pen', go: () => setPage('esign') },
               { id: 'transaction-docs', label: 'Drive', ico: 'file', go: () => setPage('transaction-docs') },
             ];
