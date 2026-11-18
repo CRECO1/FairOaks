@@ -43,7 +43,8 @@ export async function pushBellNotification(
   try {
     const { data: who } = await db.from('crm_profiles').select('business_unit').eq('id', n.recipientId).maybeSingle();
     const page = PAGE_FOR_ENTITY[n.entityType ?? ''] ?? 'dashboard';
-    const open = n.entityType && n.entityId ? { type: n.entityType, id: n.entityId } : undefined;
+    // calls/task alerts open their Tasks tab even when the row has no id (a synthetic call-list task).
+    const open = n.entityType && (n.entityId || n.entityType === 'calls' || n.entityType === 'task') ? { type: n.entityType, id: n.entityId } : undefined;
     await sendPushToProfiles([n.recipientId], {
       title: n.type === 'assignment' ? 'Assigned to you' : n.type === 'share' ? 'Shared with you' : 'You were tagged',
       body: n.message,

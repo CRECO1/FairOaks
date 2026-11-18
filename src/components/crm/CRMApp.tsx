@@ -1,5 +1,6 @@
 'use client';
 
+import { parseAlertLink } from '@/lib/alert-link';
 import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { Session } from '@supabase/supabase-js';
@@ -2475,17 +2476,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const openEntityRef = useRef<(type: string | null | undefined, id: string | null | undefined) => boolean>(() => true);
   const [pendingOpen, setPendingOpen] = useState<{ type: string; id: string; at: number } | null>(null);
   const handleCrmLink = useCallback((raw: string) => {
-    let u: URL;
-    try { u = new URL(raw, window.location.origin); } catch { return; }
-    if (!u.pathname.startsWith('/crm')) return;
-    const hash = u.hash.slice(1);
-    const pg = PAGE_ALIASES[hash] ?? hash;
+    const link = parseAlertLink(raw, window.location.origin);
+    if (!link) return;
+    const pg = PAGE_ALIASES[link.hash] ?? link.hash;
     if ((VALID_PAGES as readonly string[]).includes(pg)) setPage(pg as PageType);
-    const m = /^([a-z_]+)(?::([0-9a-f-]{36}))?$/i.exec(u.searchParams.get('open') ?? '');
-    if (m && (m[2] || m[1] === 'calls' || m[1] === 'task')) setPendingOpen({ type: m[1], id: m[2] ?? '', at: Date.now() });
+    if (link.open) setPendingOpen({ type: link.open.type, id: link.open.id, at: Date.now() });
     // A Team chat alert opens that very conversation.
-    const room = u.searchParams.get('chat') ?? '';
-    if (/^(team|dm:[0-9a-f-]{36}:[0-9a-f-]{36})$/i.test(room)) { setChatOpenRoom(room); setPage('teamchat'); }
+    if (link.chat) { setChatOpenRoom(link.chat); setPage('teamchat'); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const alertLinkDone = useRef(false);
   useEffect(() => {
