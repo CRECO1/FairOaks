@@ -148,6 +148,9 @@ function buildMimeEmail(headers: string[], htmlBody: string, attachments: Attach
   return parts.join('\r\n');
 }
 
+// A 400 from the send pipeline: log the reason (Vercel logs only keep the status code) so "why won't it send" can be answered later.
+const bad = (error: string) => { console.warn('[gmail/send] 400:', error); return NextResponse.json({ error }, { status: 400 }); };
+
 // The whole send pipeline. The /api/gmail/send route calls it with the signed-in caller's request; the scheduled-send cron
 // calls it with a stored request and the agent's context (so a scheduled email goes through exactly the same path).
 export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
@@ -177,13 +180,13 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
     const ccList = addrList(ccRaw).filter(a => !toList.some(t => t.toLowerCase() === a.toLowerCase()));
     const bccList = addrList(bccRaw).filter(a => !toList.some(t => t.toLowerCase() === a.toLowerCase()) && !ccList.some(c => c.toLowerCase() === a.toLowerCase()));
     const badAddr = [...toList, ...ccList, ...bccList].find(a => !EMAIL_RE.test(a));
-    if (badAddr) return NextResponse.json({ error: `"${badAddr}" isn't a valid email address` }, { status: 400 });
-    if (toList.length + ccList.length + bccList.length > 20) return NextResponse.json({ error: 'Too many recipients (20 max)' }, { status: 400 });
+    if (badAddr) return bad(`"${badAddr}" isn't a valid email address`);
+    if (toList.length + ccList.length + bccList.length > 20) return bad('Too many recipients (20 max)');
     const to = toList.join(', ');
     // resolveClient: "write to anyone" from the global Compose window — link the email to the matching CRM
     // contact (or make one) so it is still logged, tracked and shows on that contact's card.
     if (!userId || (!dealId && !clientId && resolveClient !== true) || !to || !subject || !body) {
-      return NextResponse.json({ error: 'userId, (dealId or clientId), to, subject, body are required' }, { status: 400 });
+      return bad(`userId, (dealId or clientId), to, subject, body are required (missing: ${[!userId && 'userId', !dealId && !clientId && resolveClient !== true && 'dealId/clientId', !to && 'to', !subject && 'subject', !body && 'body'].filter(Boolean).join(', ')})`);
     }
     if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 
@@ -213,8 +216,8 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
 
     // dealId / clientId go into a service-role REST URL and onto the logged row: they must be real UUIDs,
     // and the deal / client must be in the caller's workspace (and the deal visible to them).
-    if (dealId && (typeof dealId !== 'string' || !UUID_RE.test(dealId))) return NextResponse.json({ error: 'dealId is invalid' }, { status: 400 });
-    if (clientId && (typeof clientId !== 'string' || !UUID_RE.test(clientId))) return NextResponse.json({ error: 'clientId is invalid' }, { status: 400 });
+    if (dealId && (typeof dealId !== 'string' || !UUID_RE.test(dealId))) return bad('dealId is invalid');
+    if (clientId && (typeof clientId !== 'string' || !UUID_RE.test(clientId))) return bad('clientId is invalid');
     if (dealId && !(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
     if (clientId && !(await assertOwnsResource('crm_clients', clientId, ctx))) return notFound('Client not found');
 
@@ -229,14 +232,14 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
 
     // Attachments: validated type, base64 payload, capped size. Names are stripped of line breaks
     // (attachmentParam also quotes them).
-    if (attachments !== undefined && attachments !== null && !Array.isArray(attachments)) return NextResponse.json({ error: 'attachments is invalid' }, { status: 400 });
-    if (Array.isArray(attachments) && attachments.length > MAX_ATTACHMENTS) return NextResponse.json({ error: `Too many attachments (${MAX_ATTACHMENTS} max)` }, { status: 400 });
+    if (attachments !== undefined && attachments !== null && !Array.isArray(attachments)) return bad('attachments is invalid');
+    if (Array.isArray(attachments) && attachments.length > MAX_ATTACHMENTS) return bad(`Too many attachments (${MAX_ATTACHMENTS} max)`);
     const attList: Attachment[] = [];
     const uploadPaths: string[] = []; // big files uploaded straight to storage for this email: cleared once it has gone out
     let totalB64 = 0;
     for (const a of (Array.isArray(attachments) ? attachments : []) as Partial<Attachment>[]) {
       const data = typeof a?.data === 'string' ? a.data.replace(/\s+/g, '') : '';
-      if (!data || data.length % 4 !== 0 || !BASE64_RE.test(data)) return NextResponse.json({ error: 'An attachment is not valid base64 data' }, { status: 400 });
+      if (!data || data.length % 4 !== 0 || !BASE64_RE.test(data)) return bad('An attachment is not valid base64 data');
       totalB64 += data.length;
       if (data.length > MAX_ATTACHMENT_B64 || totalB64 > MAX_TOTAL_B64) return NextResponse.json({ error: tooLarge(data.length > MAX_ATTACHMENT_B64) }, { status: 413 });
       attList.push({
@@ -251,12 +254,12 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
     // The property whose flyer is attached (if any): the logged email is filed against it so it flows to that property's Prospects list and tracker.
     let linkedListingId: string | null = null;
     if (crmAttachments !== undefined && crmAttachments !== null) {
-      if (!Array.isArray(crmAttachments)) return NextResponse.json({ error: 'crmAttachments is invalid' }, { status: 400 });
+      if (!Array.isArray(crmAttachments)) return bad('crmAttachments is invalid');
       const refs = (crmAttachments as Array<{ kind?: unknown; id?: unknown }>)
         .filter(r => typeof r?.id === 'string' && (CRM_ATTACH_KINDS as string[]).includes(String(r?.kind)) && (r.kind === 'email_att' ? EMAIL_ATT_ID.test(r.id) : r.kind === 'gmail_att' ? GMAIL_ATT_ID.test(r.id) : r.kind === 'upload' ? UPLOAD_ID.test(r.id) : UUID_RE.test(r.id)))
         .map(r => ({ kind: r.kind as CrmAttachKind, id: r.id as string }));
-      if (refs.length !== crmAttachments.length) return NextResponse.json({ error: 'crmAttachments is invalid' }, { status: 400 });
-      if (attList.length + refs.length > MAX_ATTACHMENTS) return NextResponse.json({ error: `Too many attachments (${MAX_ATTACHMENTS} max)` }, { status: 400 });
+      if (refs.length !== crmAttachments.length) return bad(`crmAttachments is invalid (${crmAttachments.length - refs.length} of ${crmAttachments.length} rejected; kinds: ${(crmAttachments as Array<{ kind?: unknown }>).map(r => String(r?.kind)).join(',')})`);
+      if (attList.length + refs.length > MAX_ATTACHMENTS) return bad(`Too many attachments (${MAX_ATTACHMENTS} max)`);
       for (const r of refs) if (r.kind === 'upload') uploadPaths.push(r.id);
       if (refs.length) {
         const got = await resolveCrmAttachments(refs, ctx);
