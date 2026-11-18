@@ -228,12 +228,14 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
     const t0 = Date.parse(r.started_at);
     const leg = all
       .filter(x => x.source === 'talkroute' && x.kind === 'call' && x.direction === 'inbound' && x.business_unit === r.business_unit
-        && !x.answered_by_bot && !x.answered_by && !claimed.has(x.id) && last10(x.from_number) === last10(r.from_number)
+        && !x.answered_by && !claimed.has(x.id) && last10(x.from_number) === last10(r.from_number)
         && Date.parse(x.started_at) <= t0 + 2_000 && Date.parse(x.started_at) >= t0 - 120_000
         && Date.parse(x.started_at) + (x.duration_sec ?? 0) * 1000 >= t0 - 10_000)
       .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))[0];
     if (!leg) continue;
     claimed.add(leg.id);
+    // Already hidden (an earlier run, or Talkroute's own bot event): this bot row has its leg — never go on to hide another.
+    if (leg.answered_by_bot) continue;
     await write(leg.id, { answered_by_bot: true, ...(leg.needs_follow_up && !leg.handled_at ? { needs_follow_up: false } : {}), updated_at: now });
     leg.answered_by_bot = true; out.bot_legs++;
     if (leg.needs_follow_up && !leg.handled_at && !r.needs_follow_up && !r.handled_at) {
