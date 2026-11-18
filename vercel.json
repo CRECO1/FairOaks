@@ -72,6 +72,10 @@
       "schedule": "5 14 * * 1-5"
     },
     {
+      "path": "/api/cron/market-report",
+      "schedule": "0 15 * * *"
+    },
+    {
       "path": "/api/cron/attention-digest",
       "schedule": "10 13,14,21,22 * * 1-5"
     },
