@@ -1,11 +1,12 @@
 // Heuristic "does this email look like a scam?" check for the CRM inbox. Pure and client-safe (no imports).
-// It only WARNS — nothing is hidden, moved or deleted. Each signal has a weight; a warning shows at 3+ points (loosened 2026-11-18: Reply-To mismatch and failed sender checks, both common on legit newsletters/forwards, now count 1 each).
+// It only WARNS — nothing is hidden, moved or deleted. Each signal has a weight; a warning shows at 3+ points (loosened 2026-11-18: Reply-To mismatch and failed sender checks, both common on legit newsletters/forwards, now count 1 each; bulk/marketing mail ignores Reply-To and tracked-link mismatches, and known click-tracker hosts never count).
 export type PhishInput = {
   from: string; subject?: string; text?: string; html?: string; replyTo?: string; authFail?: boolean;
   attachments?: { name: string }[];
   teamNames?: string[];          // display names of people on our team (impersonation check)
   ownDomains?: string[];         // domains that are really ours
   senderKnown?: boolean;         // sender is a contact/deal in the CRM
+  bulk?: boolean;                // marketing/automated mail (List-Unsubscribe or a no-reply style sender): a different Reply-To and tracked links are normal there
 };
 export type PhishResult = { score: number; reasons: string[] };
 
@@ -31,6 +32,8 @@ const MONEY = [
 ];
 const GENERIC_LABEL = /^(?:[*"'\s]*)(requires?\s+action|action\s+required|urgent|important|alert|notice|final\s+notice|security\s+(alert|team|notice)|admin(istrator)?|help\s*desk|it\s+support|support\s+team|account\s+(team|services|security)|verification|invoice|payment\s+(due|notice)|mail\s+(delivery|server)|voicemail)[\s*"'!:.-]*$/i;
 
+// Hosts that legitimately sit between the visible link text and the destination: email-marketing click trackers and mail-security link rewriters.
+const TRACKERS = /(^|\.)(rs6\.net|constantcontact\.com|ccsend\.com|cmail\d*\.com|mailchimp\.com|list-manage\.com|mcsv\.net|campaign-archive\.com|sendgrid\.net|sendgrid\.com|mailgun\.org|brevo\.com|sendinblue\.com|hubspotlinks\.com|hs-sites\.com|hubspotemail\.net|hubspot\.com|createsend\.com|cmail19\.com|klaviyo\.com|exct\.net|marketo\.com|mktotrk\.com|e2ma\.net|avanan\.click|safelinks\.protection\.outlook\.com|urldefense\.com|urldefense\.proofpoint\.com|mimecast\.com|barracudanetworks\.com|linkedin\.com|lnkd\.in)$/i;
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const domainOf = (email: string) => (email.split('@')[1] ?? '').toLowerCase().replace(/[>\s]/g, '');
 const parse = (raw: string) => {
@@ -58,7 +61,7 @@ export function assessEmail(i: PhishInput): PhishResult {
     const hit = (i.teamNames ?? []).find(t => { const x = norm(t); return x.length > 3 && (nn === x || nn.includes(x)); });
     if (hit) add(3, `The display name matches ${hit}, but the address is ${email}${FREE.test(dom) ? ' (a free personal account)' : ''}, not ours.`);
   }
-  if (i.replyTo) {
+  if (i.replyTo && !i.bulk) {
     const r = parse(i.replyTo).email, rd = domainOf(r);
     if (rd && dom && baseDomain(rd) !== baseDomain(dom)) add(1, `Replies would go to a different address (${r}) than the one it was sent from.`);
   }
@@ -70,7 +73,7 @@ export function assessEmail(i: PhishInput): PhishResult {
     let host = ''; try { host = new URL(m[1]).hostname; } catch { continue; }
     const shown = m[2].replace(/<[^>]*>/g, '').trim();
     const sh = /^(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[\/\s]|$)/i.exec(shown)?.[1];
-    if (sh && baseDomain(sh) !== baseDomain(host) && !seen.has(host)) { seen.add(host); add(3, `A link says "${sh}" but actually goes to ${host}.`); }
+    if (sh && baseDomain(sh) !== baseDomain(host) && !seen.has(host) && !TRACKERS.test(host) && !i.bulk) { seen.add(host); add(3, `A link says "${sh}" but actually goes to ${host}.`); }
     else if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) && !seen.has(host)) { seen.add(host); add(3, `A link goes straight to a numeric address (${host}).`); }
     else if (SHORTENERS.test(host) && !seen.has(host)) { seen.add(host); add(1, `A link uses a link-shortener (${host}) that hides where it goes.`); }
   }

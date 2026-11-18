@@ -1501,7 +1501,8 @@ function ThreadReader(p: {
         const lastO = [...msgs].reverse().find(m => parseAddr(m.from).email.toLowerCase() !== me);
         if (!lastO) return null;
         const r = assessEmail({ from: lastO.from, subject: lastO.subject, text: lastO.text, html: lastO.html, replyTo: lastO.replyTo, authFail: lastO.authFail,
-          attachments: lastO.attachments, teamNames: p.teammates.map(m => m.name), senderKnown: !!threadTarget });
+          attachments: lastO.attachments, teamNames: p.teammates.map(m => m.name), senderKnown: !!threadTarget,
+          bulk: !!lastO.unsubscribe || /(^|[._-])(no-?reply|do-?not-?reply|newsletter|news|marketing|notifications?|mailer)([._-]|@)/i.test(parseAddr(lastO.from).email) });
         if (!looksSuspicious(r)) return null;
         return (
           <div role="alert" style={{ marginBottom: 12, padding: '11px 14px', background: 'var(--k-fef2f2)', border: '1px solid #fca5a5', borderRadius: 10 }}>
