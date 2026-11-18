@@ -1,5 +1,5 @@
 // Heuristic "does this email look like a scam?" check for the CRM inbox. Pure and client-safe (no imports).
-// It only WARNS — nothing is hidden, moved or deleted. Each signal has a weight; a warning shows at 2+ points.
+// It only WARNS — nothing is hidden, moved or deleted. Each signal has a weight; a warning shows at 3+ points (loosened 2026-11-18: Reply-To mismatch and failed sender checks, both common on legit newsletters/forwards, now count 1 each).
 export type PhishInput = {
   from: string; subject?: string; text?: string; html?: string; replyTo?: string; authFail?: boolean;
   attachments?: { name: string }[];
@@ -50,19 +50,19 @@ export function assessEmail(i: PhishInput): PhishResult {
 
   if (isOwn && !i.authFail) return { score: 0, reasons: [] };   // a real colleague, passed sender checks
 
-  if (MOVE_TO_TEXT.some(r => r.test(body))) add(2, 'Asks to move the conversation to text or a different phone number — the usual first step of a scam.');
-  if (MONEY.some(r => r.test(body))) add(2, 'Mentions gift cards, wires, crypto, changed bank details or an urgent payment.');
+  if (MOVE_TO_TEXT.some(r => r.test(body))) add(3, 'Asks to move the conversation to text or a different phone number — the usual first step of a scam.');
+  if (MONEY.some(r => r.test(body))) add(3, 'Mentions gift cards, wires, crypto, changed bank details or an urgent payment.');
   if (name && GENERIC_LABEL.test(name)) add(1, `The sender's display name is just a label ("${name}"), not a person or company.`);
   const nn = norm(name);
   if (nn && !isOwn) {
     const hit = (i.teamNames ?? []).find(t => { const x = norm(t); return x.length > 3 && (nn === x || nn.includes(x)); });
-    if (hit) add(2, `The display name matches ${hit}, but the address is ${email}${FREE.test(dom) ? ' (a free personal account)' : ''}, not ours.`);
+    if (hit) add(3, `The display name matches ${hit}, but the address is ${email}${FREE.test(dom) ? ' (a free personal account)' : ''}, not ours.`);
   }
   if (i.replyTo) {
     const r = parse(i.replyTo).email, rd = domainOf(r);
-    if (rd && dom && baseDomain(rd) !== baseDomain(dom)) add(2, `Replies would go to a different address (${r}) than the one it was sent from.`);
+    if (rd && dom && baseDomain(rd) !== baseDomain(dom)) add(1, `Replies would go to a different address (${r}) than the one it was sent from.`);
   }
-  if (i.authFail) add(2, "The sender's identity checks failed (SPF/DKIM/DMARC) — it may not be from who it says.");
+  if (i.authFail) add(isOwn ? 3 : 1,"The sender's identity checks failed (SPF/DKIM/DMARC) — it may not be from who it says.");
 
   // Links whose visible text names one site but go to another, raw-IP links, shorteners.
   const seen = new Set<string>();
@@ -70,8 +70,8 @@ export function assessEmail(i: PhishInput): PhishResult {
     let host = ''; try { host = new URL(m[1]).hostname; } catch { continue; }
     const shown = m[2].replace(/<[^>]*>/g, '').trim();
     const sh = /^(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[\/\s]|$)/i.exec(shown)?.[1];
-    if (sh && baseDomain(sh) !== baseDomain(host) && !seen.has(host)) { seen.add(host); add(2, `A link says "${sh}" but actually goes to ${host}.`); }
-    else if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) && !seen.has(host)) { seen.add(host); add(2, `A link goes straight to a numeric address (${host}).`); }
+    if (sh && baseDomain(sh) !== baseDomain(host) && !seen.has(host)) { seen.add(host); add(3, `A link says "${sh}" but actually goes to ${host}.`); }
+    else if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) && !seen.has(host)) { seen.add(host); add(3, `A link goes straight to a numeric address (${host}).`); }
     else if (SHORTENERS.test(host) && !seen.has(host)) { seen.add(host); add(1, `A link uses a link-shortener (${host}) that hides where it goes.`); }
   }
   for (const a of i.attachments ?? []) {
@@ -80,4 +80,4 @@ export function assessEmail(i: PhishInput): PhishResult {
   }
   return { score, reasons };
 }
-export const looksSuspicious = (r: PhishResult) => r.score >= 2;
+export const looksSuspicious = (r: PhishResult) => r.score >= 3;
