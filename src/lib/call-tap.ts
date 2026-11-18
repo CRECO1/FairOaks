@@ -18,14 +18,33 @@ export interface PendingCall {
   at: number;
 }
 
-const KEY = 'crm:pending-call';
-const MAX_AGE_MS = 6 * 3600_000;
+const KEY = 'crm:pending-calls';
+const OLD_KEY = 'crm:pending-call';   // single-slot version: tapping a second number used to wipe the first
+const MAX_AGE_MS = 24 * 3600_000;
+const MAX_KEPT = 12;
 
-export function readPendingCall(): PendingCall | null {
+function readAll(): PendingCall[] {
   try {
-    const j = JSON.parse(localStorage.getItem(KEY) || 'null') as PendingCall | null;
-    return j && Date.now() - j.at < MAX_AGE_MS ? j : null;
-  } catch { return null; }
+    let list = JSON.parse(localStorage.getItem(KEY) || 'null') as PendingCall[] | null;
+    if (!Array.isArray(list)) list = [];
+    const old = JSON.parse(localStorage.getItem(OLD_KEY) || 'null') as PendingCall | null;
+    if (old) { list.push(old); localStorage.removeItem(OLD_KEY); localStorage.setItem(KEY, JSON.stringify(list)); }
+    return list.filter(p => p && Date.now() - p.at < MAX_AGE_MS).sort((a, b) => b.at - a.at);
+  } catch { return []; }
 }
-export function writePendingCall(p: PendingCall): void { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* storage blocked: the prompt just won't survive a reload */ } }
-export function clearPendingCall(): void { try { localStorage.removeItem(KEY); } catch { /* ignore */ } }
+function saveAll(list: PendingCall[]): void { try { localStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX_KEPT))); } catch { /* storage blocked: the prompt just won't survive a reload */ } }
+
+/** The newest call still waiting for an outcome. */
+export function readPendingCall(): PendingCall | null { return readAll()[0] ?? null; }
+/** Every call tapped but not yet logged, newest first (a second tap no longer wipes the first). */
+export function readPendingCalls(): PendingCall[] { return readAll(); }
+export function writePendingCall(p: PendingCall): void {
+  // Tapping the same number again replaces its own earlier tap; other numbers stay in the queue.
+  saveAll([p, ...readAll().filter(x => x.number !== p.number)]);
+}
+/** Drop one pending call (by its tap time), or the newest when none is named. */
+export function clearPendingCall(at?: number): void {
+  const list = readAll();
+  const target = at ?? list[0]?.at;
+  saveAll(list.filter(x => x.at !== target));
+}

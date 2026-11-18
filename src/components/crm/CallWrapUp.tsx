@@ -121,6 +121,8 @@ export default function CallWrapUp({ call, authToken, businessUnit, showToast, o
       onSaved({ ...j.call, contact, contact_id: contact?.id ?? null });
       showToast?.('Call wrapped up ✓');
       onClose();
+    } catch {
+      showToast?.('Could not finish saving — check your connection and try again.');
     } finally { setBusy(false); }
   }
 
