@@ -96,20 +96,9 @@ export async function pushEmailReply(
  * Devices that haven't switched on the "Email opens" alert simply don't get it (the bell row is the record either way).
  */
 export async function pushEmailOpen(
-  db: SupabaseClient,
-  n: { recipientId: string; name: string; subject: string; tag: string; open?: { type: 'deal' | 'contact'; id?: string | null } },
+  _db: SupabaseClient,
+  _n: { recipientId: string; name: string; subject: string; tag: string; open?: { type: 'deal' | 'contact'; id?: string | null } },
 ): Promise<void> {
-  try {
-    const { data: who } = await db.from('crm_profiles').select('business_unit').eq('id', n.recipientId).maybeSingle();
-    await sendPushToProfiles([n.recipientId], {
-      title: `${n.name} opened your email`,
-      body: n.subject.slice(0, 120),
-      url: crmLink(n.open?.type === 'deal' ? 'deals' : 'contacts', n.open),
-      tag: n.tag,
-      category: 'opens',
-      businessUnit: who?.business_unit ?? null,
-    }, { db });
-  } catch (e) {
-    console.error('[notify] open push failed (the bell notification is unaffected):', e);
-  }
+  // Deliberately silent (Nov 2026 usage read): opens were 188 of 465 alerts and almost all unread, which buried replies and tags.
+  // The bell row is still written, and /api/cron/attention-digest sends ONE "who opened your emails today" phone alert at 4 pm.
 }

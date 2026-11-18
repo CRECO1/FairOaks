@@ -73,6 +73,8 @@ import { DealHeader, DealCardStyles, StatTiles, STAGE_PALETTE, DealTile, TileSty
 import Ico, { type IcoName } from '@/components/crm/Ico';
 import PhoneAlerts from '@/components/crm/PhoneAlerts';
 import AlertsPrompt from '@/components/crm/AlertsPrompt';
+import NeedsYou from '@/components/crm/NeedsYou';
+import StaleDeals from '@/components/crm/StaleDeals';
 
 // Heavy CRM sections are code-split so /crm no longer ships them all in one
 // bundle — each loads its own chunk the first time its tab or modal opens
@@ -4419,6 +4421,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
   openEntityRef.current = openEntity;
 
+  // Opening a contact or deal is how you act on its reply / open alert, so those bell rows clear themselves
+  // (they used to pile up unread: 250+ replies for two people). Tags and assignments are NOT cleared here — they have to be seen.
+  useEffect(() => {
+    const id = activeClient?.id ?? activeDeal?.id;
+    if (!id || !profile?.id) return;
+    supabase.from('crm_notifications').update({ read_at: new Date().toISOString() })
+      .eq('recipient_id', profile.id).eq('entity_id', id).in('type', ['email_reply', 'email_open']).is('read_at', null)
+      .then(() => setMentions(prev => prev.map(n => (n.entity_id === id && (n.type === 'email_reply' || n.type === 'email_open') && !n.read_at ? { ...n, read_at: new Date().toISOString() } : n))));
+  }, [activeClient?.id, activeDeal?.id, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function markMentionRead(id: string) {
     await supabase.from('crm_notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
     setMentions(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
@@ -6792,6 +6804,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <button onClick={() => { try { localStorage.setItem('crm:gmail-connect-prompt', String(Date.now())); } catch { /* ignore */ } setGmailPromptHidden(true); }} style={{ fontSize: 12.5, padding: '6px 12px', borderRadius: 16, border: 'none', background: 'none', color: 'var(--k-6b7280)', cursor: 'pointer' }}>Not now</button>
                 </div>
               )}
+              <NeedsYou userId={profile?.id} onToast={showToast}
+                onOpen={(type, id) => { let n = 0; const go = () => { if (openEntityRef.current?.(type, id) === false && n++ < 12) setTimeout(go, 500); }; go(); }} />
+              <StaleDeals
+                deals={deals.filter(d => d.agent_id === profile?.id || (d.assigned_agent_ids ?? []).includes(profile?.id ?? ''))}
+                onOpen={id => { let n = 0; const go = () => { if (openEntityRef.current?.('deal', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }}
+                onTouch={id => { updateDeal(id, {}); showToast('Logged a touch ✓'); }} />
               <CallbacksWaiting authToken={session?.access_token} userId={profile?.id} businessUnit={businessUnit} onOpen={() => { setPage('tasks'); setTasksSubTab('calls'); }} />
               <ListingFollowUps authToken={session?.access_token} userId={profile?.id} onToast={showToast}
                 onOpenContact={id => { let n = 0; const go = () => { if (openEntityRef.current?.('contact', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }} />

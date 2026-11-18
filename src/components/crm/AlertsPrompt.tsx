@@ -17,8 +17,8 @@ const isStandalone = () => window.matchMedia('(display-mode: standalone)').match
 const SNOOZE = 'crm-alerts-prompt-snoozed';
 // Remembered on this device (not just this sign-in): sessionStorage is wiped every time an installed phone app is reopened, which made the card come back on every launch.
 const ASKED = 'crm-alerts-prompt-handled';   // alerts were turned on from here at least once
-const LATER = 'crm-alerts-prompt-later';      // "Not now": hidden for a week
-const WEEK = 7 * 24 * 3600 * 1000;
+const LATER = 'crm-alerts-prompt-later';      // "Not now": hidden for a day
+const WEEK = 24 * 3600 * 1000;   // "Not now" hides it for a day (was a week: Ed and Robert never got alerts on)
 const ls = {
   get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
