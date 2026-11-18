@@ -6445,6 +6445,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
           <button className={`crm-nav${page === 'deals' && !filter ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); }}><Ico n="deals" />All Deals <span style={{ marginLeft: 'auto', background: '#c9922c', color: 'var(--k-111)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span></button>
           <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}><Ico n="file" />My Drive</button>
+          <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}><Ico n="phone" />Calling Log</button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>People</div>
@@ -6453,6 +6454,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
+          <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}><Ico n="pen" />E-Sign</button>
+          <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}><Ico n="building" />Properties</button>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}><Ico n="calendar" />Calendar</button>
           <button className={`crm-nav${['campaigns', 'action-plans', 'social'].includes(page) ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadCampaignProjects(); loadProfiles(); setCampaignAgentFilter(null); }}><Ico n="megaphone" />Marketing</button>
           {/* Billing — links to the CRECO billing surface (crecotx.com),
@@ -6483,9 +6486,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </span>
             </a>
           )}
-          <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}><Ico n="building" />Properties</button>
-          <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}><Ico n="pen" />E-Sign</button>
-          <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}><Ico n="phone" />Calling Log</button>
           <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
           {/* Owner-only; /api/crm/backup-runs also 403s everyone but super_admin. */}
           {isSuperAdmin && <button className="crm-nav" onClick={() => setBackupStatusOpen(true)}><Ico n="file" />Backups</button>}
