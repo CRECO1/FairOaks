@@ -5,6 +5,7 @@
  * 30 days is deleted. (A scheduled email or a long-kept draft that still points at a swept file just gets a clear
  * "attach it again" message.) Secured with CRON_SECRET.
  */
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { EMAIL_ATTACH_BUCKET } from '@/lib/email-attachments';
@@ -16,7 +17,7 @@ const KEEP_DAYS = 30;
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const st = adminClient().storage.from(EMAIL_ATTACH_BUCKET);

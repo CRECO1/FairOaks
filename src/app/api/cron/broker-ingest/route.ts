@@ -14,6 +14,7 @@
  *   ?limit=40               max messages to scan
  */
 
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { runPipeline } from '@/lib/broker-ingest';
@@ -82,7 +83,7 @@ async function sendFailureAlert(summary: string, details: string[], hint?: strin
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

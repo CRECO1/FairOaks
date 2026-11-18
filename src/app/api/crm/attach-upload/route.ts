@@ -1,3 +1,4 @@
+import { safeObjectName } from '@/lib/safe-object-name';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!rawName.trim() || !Number.isFinite(size) || size <= 0) return NextResponse.json({ error: 'name and size required' }, { status: 400 });
   if (size > MAX_BYTES) return NextResponse.json({ error: 'Files over 15 MB are too large to email — share a link instead.' }, { status: 413 });
   const safe = rawName.replace(/[\r\n]/g, ' ').replace(/[^a-zA-Z0-9._ -]/g, '_').replace(/\s+/g, ' ').trim().slice(-120) || 'file';
-  const path = `pending/${ctx.userId}/${crypto.randomUUID()}/${safe}`;
+  const path = `pending/${ctx.userId}/${crypto.randomUUID()}/${safeObjectName(rawName, 120)}`;   // the shared helper: a name like ".." can't become a path segment
   const { data, error } = await adminClient().storage.from(EMAIL_ATTACH_BUCKET).createSignedUploadUrl(path);
   if (error || !data) { console.error('[attach-upload] presign:', error); return NextResponse.json({ error: 'Could not start the upload — try again' }, { status: 500 }); }
   return NextResponse.json({ uploadUrl: data.signedUrl, path, name: safe });

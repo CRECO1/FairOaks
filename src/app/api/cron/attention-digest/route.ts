@@ -1,3 +1,4 @@
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { sendPushToProfiles, crmLink, superAdminIds } from '@/lib/push';
@@ -23,7 +24,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { hour, dow } = chicagoHourDow(new Date());
   const mode = hour === 8 ? 'morning' : hour === 16 ? 'evening' : null;
   const force = req.nextUrl.searchParams.get('force');   // lets the owner test it by hand: ?force=morning|evening

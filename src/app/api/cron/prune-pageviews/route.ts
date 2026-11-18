@@ -4,12 +4,13 @@
  * website history and the engagement reports need weeks of visitor-level data. Also trims crawler_hits to 365 days.
  * Also deletes plaza job applications (and their resumes) older than 12 months. Secured with CRON_SECRET.
  */
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const db = adminClient();

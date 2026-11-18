@@ -1,3 +1,4 @@
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { tagCampaignLinks, campaignSlug } from '@/lib/campaign-utm';
 import { createClient } from '@supabase/supabase-js';
@@ -64,7 +65,7 @@ interface EnrollmentRecord {
 export async function GET(req: NextRequest) {
   // Secure the cron endpoint
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

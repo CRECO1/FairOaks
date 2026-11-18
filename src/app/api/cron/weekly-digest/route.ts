@@ -19,6 +19,7 @@
  * A failed send is recorded through crm_integration_status like the other
  * jobs, so it surfaces on the tracking-health watchdog rather than vanishing.
  */
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { adminClient } from '@/lib/supabase-admin';
@@ -182,7 +183,7 @@ function buildHtml(d: Digest, ga: Awaited<ReturnType<typeof fetchGaReport>> | nu
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

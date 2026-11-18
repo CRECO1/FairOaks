@@ -1,3 +1,4 @@
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
@@ -20,7 +21,7 @@ const QUIET_MS = 30 * 60_000;
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!secret || !safeEqual(req.headers.get('authorization'), `Bearer ${secret}`)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const dry = req.nextUrl.searchParams.get('dry') === '1';
   const db = adminClient();
   const now = Date.now();

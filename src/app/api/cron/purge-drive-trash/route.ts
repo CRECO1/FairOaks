@@ -10,6 +10,7 @@
  *  - uploaded files lose their storage object together with their row; a document's versions, comments and links go with it, and its
  *    activity-log trail is kept (a "deleted … automatically" entry).
  */
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { logDocEvent } from '@/lib/drive-events';
@@ -23,7 +24,7 @@ const BATCH = 300;
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const dry = req.nextUrl.searchParams.get('dry') === '1';
   const db = adminClient();
   const cutoff = new Date(Date.now() - KEEP_DAYS * 86_400_000).toISOString();

@@ -378,8 +378,8 @@ export async function notifyLocked(db: SupabaseClient, r: SecureRequestRow): Pro
   try {
     const what = r.kind === 'folder' ? `“${r.name ?? 'a secure folder'}”` : `${r.recipient_name || 'a contact'}’s secure link`;
     await sendPushToProfiles(await pushRecipients(db, r), {
-      title: `🔒 Link to ${what} was closed`,
-      body: 'Too many wrong passwords. Nothing was opened. Reopen the link when you’re ready, and consider a new password.',
+      title: `🔒 Link to ${what} was locked for 24 hours`,
+      body: 'Too many wrong passwords. Nothing was opened. It unlocks by itself tomorrow — consider a new password, or reopen it sooner from the link’s settings.',
       url: crmPlace(r), tag: `secure-locked-${r.id}`, category: 'signatures', businessUnit: r.business_unit,
     }, { db });
   } catch (e) { console.error('[secure-upload] locked alert failed', e); }

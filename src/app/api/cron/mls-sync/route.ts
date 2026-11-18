@@ -10,6 +10,7 @@
  * Secured with CRON_SECRET (same one used for the campaigns cron).
  */
 
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { runMlsSync } from '@/lib/mls-sync';
 import { ACTIVE_FILTER } from '@/lib/sabor-reso';
@@ -17,7 +18,7 @@ import { ACTIVE_FILTER } from '@/lib/sabor-reso';
 export async function GET(req: NextRequest) {
   // Verify the cron secret
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

@@ -5,6 +5,7 @@
  * Super admins only; ignores per-device categories because a missed backup should always reach the owner.
  * Secured with CRON_SECRET.
  */
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { sendPushToProfiles, superAdminIds } from '@/lib/push';
@@ -13,7 +14,7 @@ const STALE_HOURS = 30;
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const db = adminClient();

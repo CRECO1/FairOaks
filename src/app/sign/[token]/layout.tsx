@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: { absolute: 'Secure e-signature' },
   robots: { index: false, follow: false },
+  referrer: 'no-referrer',   // the signing token must never leave in a Referer header
 };
 
 export default function SignLayout({ children }: { children: React.ReactNode }) {

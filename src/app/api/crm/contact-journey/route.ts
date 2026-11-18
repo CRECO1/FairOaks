@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, unauthorized, notFound, assertOwnsResource, hiddenDealIds } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, notFound, assertOwnsResource, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
@@ -17,14 +17,15 @@ export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('contact_id') ?? '';
   if (!(await assertOwnsResource('crm_clients', id, ctx))) return notFound('Contact not found');
   const db = adminClient();
+  const hiddenIds = await hiddenDealIds(ctx);   // emails and calls on a deal this person can't see must not show up in a contact's journey either
   const [{ data: c }, { data: acts }, { data: mail }, { data: calls }, { data: deals }] = await Promise.all([
     db.from('crm_clients').select('targeted_listing_ids, targeted_at, tagged_listing_ids, last_touched_at').eq('id', id).maybeSingle(),
     db.from('crm_client_activities').select('created_at, tagged_listing_ids').eq('client_id', id).order('created_at', { ascending: true }).limit(500),
-    db.from('crm_deal_emails').select('direction, email_at, email_date').eq('client_id', id).order('email_date', { ascending: true }).limit(500),
-    db.from('crm_call_log').select('started_at').eq('contact_id', id).order('started_at', { ascending: true }).limit(300),
+    excludeHiddenDeals(db.from('crm_deal_emails').select('direction, email_at, email_date').eq('client_id', id), hiddenIds).order('email_date', { ascending: true }).limit(500),
+    excludeHiddenDeals(db.from('crm_call_log').select('started_at').eq('contact_id', id), hiddenIds).order('started_at', { ascending: true }).limit(300),
     db.from('crm_deals').select('id, stage, created_at, property').eq('client_id', id).order('created_at', { ascending: true }).limit(50),
   ]);
-  const hidden = new Set(await hiddenDealIds(ctx));
+  const hidden = new Set(hiddenIds);
   const myDeals = (deals ?? []).filter(d => !hidden.has(d.id as string));
   const ms = (v: unknown) => { const t = Date.parse(String(v ?? '')); return Number.isFinite(t) ? t : null; };
   const iso = (t: number | null) => (t ? new Date(t).toISOString() : null);

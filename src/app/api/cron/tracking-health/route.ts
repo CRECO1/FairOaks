@@ -46,6 +46,7 @@
  * for de-duplication, alert on the way into trouble / on worsening / hourly
  * while still broken, one note on recovery, silence when healthy.
  */
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { adminClient } from '@/lib/supabase-admin';
@@ -115,7 +116,7 @@ async function sendAlert(subject: string, html: string) {
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

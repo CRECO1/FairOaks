@@ -13,6 +13,7 @@
  * complete without anyone having to send from the CRM. Mail sent from the CRM is already logged and is skipped
  * (same Gmail id). A message to more than 10 people, or to nobody who is a contact, is never filed.
  */
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { extractEmailText, extractEmailHtml } from '@/lib/gmail-body';
 import { adminClient } from '@/lib/supabase-admin';
@@ -155,7 +156,7 @@ const hdr = (msg: any, name: string): string => (msg?.payload?.headers ?? []).fi
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const db = adminClient();

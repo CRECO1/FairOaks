@@ -1,3 +1,4 @@
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { publishToplatform, proactiveTokenRefresh } from '@/lib/social-publish';
@@ -5,7 +6,7 @@ import { publishToplatform, proactiveTokenRefresh } from '@/lib/social-publish';
 // Called by Vercel Cron every 5 minutes: */5 * * * *
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

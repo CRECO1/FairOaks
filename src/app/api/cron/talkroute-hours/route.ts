@@ -1,3 +1,4 @@
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { getNumberDestination, isBusinessOpen, setNumberDestination, talkrouteConfigured } from '@/lib/talkroute';
 
@@ -21,7 +22,7 @@ const NUMBERS: Array<{ id: string; label: string; team: string }> = [
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!secret || !safeEqual(req.headers.get('authorization'), `Bearer ${secret}`)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!talkrouteConfigured()) return NextResponse.json({ skipped: 'TALKROUTE_API_KEY not set' });
   const open = isBusinessOpen();
   const results: Record<string, unknown> = {};

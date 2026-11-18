@@ -14,6 +14,7 @@
  * can only detect a failure — not forecast it. The true "warn before it runs dry" is
  * Anthropic console → Billing → auto-reload + low-balance email notifications.
  */
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { adminClient } from '@/lib/supabase-admin';
@@ -50,7 +51,7 @@ function alertHtml(h: IntegrationHealth) {
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

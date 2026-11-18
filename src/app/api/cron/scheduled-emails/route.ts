@@ -1,3 +1,4 @@
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { runDueScheduledEmails } from '@/lib/scheduled-emails';
 
@@ -10,7 +11,7 @@ export const maxDuration = 120;
  */
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const results = await runDueScheduledEmails();
   return NextResponse.json({ due: results.length, sent: results.filter(r => r.status === 'sent').length, retry: results.filter(r => r.status === 'retry').length, failed: results.filter(r => r.status === 'failed').length });
 }

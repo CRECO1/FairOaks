@@ -11,6 +11,7 @@
  * ?dry=1 reports what it WOULD collapse without writing.
  */
 
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { dedupeDigestDuplicates } from '@/lib/broker-ingest/dedupe';
 
@@ -19,7 +20,7 @@ export const maxDuration = 120;
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

@@ -1,3 +1,4 @@
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildMatchEmail } from '@/lib/matchmaker/email';
@@ -24,7 +25,7 @@ const MAX_EMAILS = 60;    // a guard, not a target
  */
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const dry = req.nextUrl.searchParams.get('dry') === '1';
   const only = req.nextUrl.searchParams.get('client');
   const db = adminClient();

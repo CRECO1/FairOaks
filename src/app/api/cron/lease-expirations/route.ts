@@ -1,3 +1,4 @@
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { runLeaseProspecting, runRentRollProspecting } from '@/lib/lease-prospecting';
 
@@ -9,7 +10,7 @@ export const maxDuration = 120;
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!secret || !safeEqual(req.headers.get('authorization'), `Bearer ${secret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const commercial = await runLeaseProspecting('commercial', { commit: true });

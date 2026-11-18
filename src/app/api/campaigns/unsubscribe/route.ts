@@ -5,7 +5,12 @@ import { rateLimit } from '@/lib/ratelimit';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-export async function GET(req: NextRequest) {
+// GET only shows a confirm button; POST (the button, or an RFC 8058 one-click) unsubscribes. Mail scanners and link previewers
+// fetch every URL in an email, so a GET that changed state unsubscribed people who never clicked (Nov 2026 audit).
+export async function GET(req: NextRequest) { return handle(req, false); }
+export async function POST(req: NextRequest) { return handle(req, true); }
+
+async function handle(req: NextRequest, act: boolean) {
   const rl = await rateLimit(req, 'unsubscribe');
   if (!rl.success) {
     return new Response('<h2>Too many requests</h2><p>Please wait a moment and try again.</p>', { headers: { 'Content-Type': 'text/html' }, status: 429 });
@@ -23,6 +28,11 @@ export async function GET(req: NextRequest) {
 
   if (!client) {
     return new Response(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Link not found</h2><p>This unsubscribe link is invalid or has already been used.</p></body></html>`, { headers: { 'Content-Type': 'text/html' }, status: 404 });
+  }
+
+  if (!act) {
+    const b = client.business_unit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group';
+    return new Response(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"></head><body style="font-family:sans-serif;text-align:center;padding:60px;color:#333"><h2 style="color:#1a1a2e">Unsubscribe from ${b}?</h2><p>Press the button to stop receiving campaign messages.</p><form method="POST" action="?token=${encodeURIComponent(token)}"><button type="submit" style="padding:12px 28px;font-size:16px;border:0;border-radius:8px;background:#1a1a2e;color:#fff;cursor:pointer">Yes, unsubscribe me</button></form></body></html>`, { headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } });
   }
 
   await supabase.from('crm_clients').update({ unsubscribed_at: new Date().toISOString() }).eq('id', client.id);

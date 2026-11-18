@@ -41,6 +41,8 @@ async function load(token: string) {
   return data ? { db, r: data as SecureRequestRow } : null;
 }
 
+const LONG_LOCK_MINUTES = 24 * 60;
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const rl = await rateLimitFailOpen(req, 'secure-upload');
   if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
@@ -130,10 +132,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       return NextResponse.json({ session: makeGuestSession(r), minutes: GUEST_SESSION_MINUTES });
     }
     if (n >= CLOSE_AFTER) {
-      await db.from('crm_secure_requests').update({ status: 'revoked' }).eq('id', r.id);
-      await logSecure(db, r.id, { label: 'system' }, 'locked', `link closed after ${CLOSE_AFTER} wrong passwords`, ip);
+      // Used to revoke the link for good, which let anyone holding a forwarded link kill the tenant's upload by guessing wrong 15 times.
+      // Now a 24-hour lock: the guess budget stays tiny (LOCK_AFTER per day) and the agent is told, but the link survives.
+      await db.from('crm_secure_requests').update({ locked_until: new Date(Date.now() + LONG_LOCK_MINUTES * 60_000).toISOString(), failed_attempts: CLOSE_AFTER - LOCK_AFTER }).eq('id', r.id);
+      await logSecure(db, r.id, { label: 'system' }, 'locked', `${CLOSE_AFTER} wrong passwords — locked for 24 hours`, ip);
       after(() => notifyLocked(db, r));
-      return NextResponse.json({ error: 'This link has been closed after too many wrong passwords. Please call us for a new one.' }, { status: 410 });
+      return NextResponse.json({ error: 'Too many wrong passwords. This link is locked for 24 hours — please call us if you need in sooner.', lockedMinutes: LONG_LOCK_MINUTES }, { status: 423 });
     }
     if (n % LOCK_AFTER === 0) {
       await db.from('crm_secure_requests').update({ locked_until: new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString() }).eq('id', r.id);
@@ -211,8 +215,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   if (body.action === 'remove') {
     // Only what came in through the link — never a file the team put in the folder.
+    // …and only a mistake just made: nothing already sent, and nothing older than an hour (a leaked link must not be able to wipe what the tenant submitted).
+    if (r.submitted_at) return NextResponse.json({ error: 'Those files were already sent to us. Please call us if something needs to change.' }, { status: 403 });
     const fileId = typeof body.fileId === 'string' && UUID_RE.test(body.fileId) ? body.fileId : '';
-    const { data: f } = fileId ? await db.from('crm_secure_files').select('id, name, storage_path').eq('id', fileId).eq('request_id', r.id).is('uploaded_by', null).maybeSingle() : { data: null };
+    const { data: f } = fileId ? await db.from('crm_secure_files').select('id, name, storage_path').eq('id', fileId).eq('request_id', r.id).is('uploaded_by', null).gte('created_at', new Date(Date.now() - 3600_000).toISOString()).maybeSingle() : { data: null };
     if (!f) return NextResponse.json({ error: 'File not found' }, { status: 404 });
     await db.storage.from(SECURE_BUCKET).remove([f.storage_path as string]);
     await db.from('crm_secure_files').delete().eq('id', f.id);

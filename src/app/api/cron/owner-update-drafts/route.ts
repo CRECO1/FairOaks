@@ -1,3 +1,4 @@
+import { safeEqual } from '@/lib/secret-compare';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildOwnerUpdate, saveOwnerUpdateDraft } from '@/lib/owner-update';
@@ -12,7 +13,7 @@ export const maxDuration = 60;
  */
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!cronSecret || !safeEqual(req.headers.get('authorization'), `Bearer ${cronSecret}`)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const db = adminClient();
   try {
     const { data: lst } = await db.from('crm_listings').select('id, listing_agent_id, business_unit').not('listing_agent_id', 'is', null).eq('status', 'active').limit(300);
