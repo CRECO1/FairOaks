@@ -33,6 +33,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { sendMonitored, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
+import { WEB_SYNC_TYPES, findByPhone, syncProspectExtras } from '@/lib/web-lead-sync';
 import { screenSubmission } from '@/lib/bot-guard';
 import { channelFor, parseJourney, intOrNull, visitorFields } from '@/lib/lead-context';
 import { stripClickTracking } from '@/lib/strip-click-tracking';
@@ -80,7 +81,12 @@ export async function POST(req: NextRequest) {
   const rawName = body.name as string | undefined;
   const email = body.email as string | undefined;
   const phone = body.phone as string | undefined;
+  // crecotx.com sets web_lead_sync (it no longer holds a CRM database key): also match a returning contact by phone,
+  // log the lead on email_lead_imports and open a Prospect deal. Off for every other sender. See lib/web-lead-sync.ts.
+  const webSync = body.web_lead_sync === true;
+  const labelOverride = webSync && typeof body.lead_source_label === 'string' && body.lead_source_label.trim() ? body.lead_source_label.trim().slice(0, 120) : null;
   const source = (body.source as string | undefined) ?? 'Unknown';
+  const leadSourceLabel = labelOverride ?? source;   // display label only; subscription / AI-agent checks keep using `source`
   const rawType = body.type as string | undefined;
   const message = body.message as string | undefined;
 
@@ -158,7 +164,8 @@ export async function POST(req: NextRequest) {
 
   // Validate type
   const VALID_TYPES = ['Buyer', 'Seller', 'Tenant', 'Landlord/Investor', 'Agent', 'Broker'];
-  const clientType = VALID_TYPES.includes(rawType ?? '') ? rawType! : 'Buyer';
+  const clientType = (webSync ? WEB_SYNC_TYPES : VALID_TYPES).includes(rawType ?? '') ? rawType! : 'Buyer';
+  const company = webSync && typeof body.company === 'string' ? body.company.trim().slice(0, 200) : '';
 
   const supabase = adminClient();
 
@@ -196,8 +203,9 @@ export async function POST(req: NextRequest) {
   // other email-less row, so the key has to follow whichever field we got.
   const dedupeCol = email ? 'email' : 'phone';
   const dedupeVal = email ?? phone!;
-  const { data: existing } = await supabase.from('crm_clients')
+  const { data: existingByKey } = await supabase.from('crm_clients')
     .select('id, tags, lead_source, channel, visitor_id, created_at, agent_id').eq(dedupeCol, dedupeVal).maybeSingle();
+  const existing = existingByKey ?? (webSync && email ? await findByPhone(supabase, phone) : null);
 
   let clientId: string;
   let isNew = false;
@@ -207,7 +215,7 @@ export async function POST(req: NextRequest) {
     const mergedTags = [...new Set([...(existing.tags ?? []), 'New Lead', ...extraTags])];
     await supabase.from('crm_clients').update({
       tags: mergedTags,
-      lead_source: existing.lead_source || source,
+      lead_source: existing.lead_source || leadSourceLabel,
       // Backfill attribution only when the contact has none. A returning lead
       // that arrives with a campaign shouldn't lose it just because we already
       // knew the person — but a later direct visit must not overwrite the
@@ -251,12 +259,13 @@ export async function POST(req: NextRequest) {
       last_name,
       email: email ?? '',
       phone: phone ?? '',
+      business_name: company,
       type: clientType,
       notes: leadTag.notes,
       tagged_listing_ids: leadTag.tagged_listing_ids,
       agent_id: adminId,
       assigned_agent_ids: backupId && backupId !== adminId ? [backupId] : [],
-      lead_source: source,
+      lead_source: leadSourceLabel,
       business_unit: unit,
       tags: unit === 'commercial'
         ? ['New Lead', 'CRECO', ...extraTags]
@@ -296,6 +305,11 @@ export async function POST(req: NextRequest) {
       detail: typeof message === 'string' && message ? `Message: ${message}` : null,
       ownerId: adminId,
     });
+  }
+
+  if (webSync) {
+    await syncProspectExtras(supabase, { body, clientId, agentId: (existing?.agent_id as string | null) ?? adminId ?? null,
+      firstName: first_name, lastName: last_name, email, phone, message: typeof message === 'string' ? message : '', sourceLabel: leadSourceLabel });
   }
 
   // ── Notify team via email ─────────────────────────────────────────────────
