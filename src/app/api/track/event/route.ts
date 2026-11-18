@@ -6,6 +6,7 @@
  * flushes them here in batches via sendBeacon. Stored in site_events; read only through the service-role
  * CRM APIs (lead / contact activity, engagement report, live feed).
  */
+import { redactPrivatePath } from '@/lib/track-redact';
 import { NextRequest, NextResponse, after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { rateLimit } from '@/lib/ratelimit';
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
       site, visitor_id, session_id, type,
       label: clip(e.label, 160),
       value: typeof e.value === 'number' && Number.isFinite(e.value) ? e.value : null,
-      path: clip(e.path, 300),
+      path: clip(redactPrivatePath(typeof e.path === 'string' ? e.path : null), 300),
       meta, device, created_at,
     });
   }

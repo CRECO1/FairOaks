@@ -52,7 +52,7 @@ function destinationFor(pathname: string): string | null {
 
 // The CRM and the e-sign manager are internal: an agent tapping a client's phone number there is not
 // a marketing conversion, and it queued a request to /api/track/event + a site_events row per click.
-const INTERNAL_PREFIXES = ['/crm', '/manage', '/secure'];
+const INTERNAL_PREFIXES = ['/crm', '/manage', '/secure', '/sign', '/r/', '/client/'];   // /sign, /secure, /r, /client: the URL is a bearer token — never track it
 
 export default function CtaClickTracker() {
   const pathname = usePathname();

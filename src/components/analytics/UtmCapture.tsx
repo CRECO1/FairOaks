@@ -22,7 +22,7 @@ import { useEffect } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { captureAttribution, sendPageviewBeacon } from '@/lib/attribution';
 
-const EXCLUDED_PREFIXES = ['/crm', '/manage', '/secure'];
+const EXCLUDED_PREFIXES = ['/crm', '/manage', '/secure', '/sign', '/r/', '/client/'];   // /sign, /secure, /r, /client: the URL is a bearer token — never track it
 
 export default function UtmCapture() {
   const pathname = usePathname();

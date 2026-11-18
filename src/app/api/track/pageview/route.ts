@@ -13,6 +13,7 @@
  * when the landing URL carried a signed `ctk` from one of OUR campaign emails — links this visitor to that
  * contact so their activity shows on the contact card.
  */
+import { redactPrivatePath } from '@/lib/track-redact';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { rateLimit } from '@/lib/ratelimit';
@@ -38,7 +39,8 @@ export async function POST(req: NextRequest) {
 
   const site = clip(body.site, 64);
   const session_id = clip(body.session_id, 64);
-  const path = clip(body.path, 512);
+  // A signing / secure-upload / owner-report URL is a credential: never store it (defence in depth — the client trackers skip these pages too).
+  const path = clip(redactPrivatePath(typeof body.path === 'string' ? body.path : null), 512);
   if (!site || !session_id || !path) return NO_CONTENT();
 
   const h = req.headers;
@@ -48,7 +50,7 @@ export async function POST(req: NextRequest) {
   const row = {
     site, session_id, path,
     title: clip(body.title, 300),
-    referrer: clip(body.referrer, 512),
+    referrer: clip(redactPrivatePath(typeof body.referrer === 'string' ? body.referrer : null), 512),
     utm_source: clip(body.utm_source, 128),
     utm_medium: clip(body.utm_medium, 128),
     utm_campaign: clip(body.utm_campaign, 128),
