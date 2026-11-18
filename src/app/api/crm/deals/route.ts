@@ -1,3 +1,4 @@
+import { notifyTeammates } from '@/lib/teammate-notify';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
@@ -70,6 +71,13 @@ export async function POST(req: NextRequest) {
   };
   const { data, error } = await supabase.from('crm_deals').insert([row]).select(DEAL_COLS).single();
   if (error) { console.error('[api/deals] POST', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
+  // A deal created FOR someone else is an assignment: bell + phone alert + email, same as reassigning it from the deal card.
+  if (data?.id && data.agent_id && data.agent_id !== ctx.userId) {
+    await notifyTeammates({
+      kind: 'assignment', recipientIds: [data.agent_id as string], actorId: ctx.userId, entityType: 'deal', entityId: data.id as string,
+      entityLabel: [data.client, data.property].filter(Boolean).join(' — ') || 'a deal', allowedIds: [data.agent_id as string],
+    }).catch(e => console.error('[api/deals] notify', e));
+  }
   return NextResponse.json({ deal: data });
 }
 
