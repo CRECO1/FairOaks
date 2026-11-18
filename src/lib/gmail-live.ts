@@ -13,6 +13,7 @@ export type LiveAttachment = { part: string; name: string; size: number; mime: s
 export type LiveMessage = {
   id: string; from: string; to: string; cc: string; subject: string; date: number; unread: boolean;
   rfcId: string; refs: string; html: string; text: string; attachments: LiveAttachment[];
+  replyTo: string; authFail: boolean; // Reply-To header; true when SPF/DKIM/DMARC failed (phishing warning)
   unsubscribe: string | null; // the https link from the sender's List-Unsubscribe header (mailing lists / newsletters), if any
 };
 
@@ -111,6 +112,7 @@ export async function readThread(token: string, id: string): Promise<{ ok: false
       id: m.id, from: hdr(m, 'From'), to: hdr(m, 'To'), cc: hdr(m, 'Cc'), subject: hdr(m, 'Subject') || '(no subject)',
       date: Number(m.internalDate) || 0, unread: !!m.labelIds?.includes('UNREAD'),
       rfcId: hdr(m, 'Message-ID'), refs: hdr(m, 'References'),
+      replyTo: hdr(m, 'Reply-To'), authFail: /\b(spf|dkim|dmarc)=(fail|softfail|permerror)\b/i.test(hdr(m, 'Authentication-Results')),
       html, text: extractEmailText(m.payload).slice(0, 30000), attachments: atts,
       unsubscribe: (() => { const u = /<(https?:\/\/[^>\s]+)>/i.exec(hdr(m, 'List-Unsubscribe'))?.[1]; try { return u && /^https?:$/.test(new URL(u).protocol) ? u : null; } catch { return null; } })(),
     });

@@ -1,5 +1,6 @@
 'use client';
 
+import { assessEmail, looksSuspicious } from '@/lib/phish-check';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LiveMessage, ThreadSummary, GLabel } from '@/lib/gmail-live';
 import GmailFiles from './GmailFiles';
@@ -402,6 +403,12 @@ export default function GmailMailbox(p: Props) {
   const KEEP_KEY = 'crm-gmail-triage-keep';
   const [keep, setKeep] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem('crm-gmail-triage-keep') ?? '[]') as string[]); } catch { return new Set(); } });
   const keepSender = (email: string) => setKeep(prev => { const n = new Set(prev).add(email.toLowerCase()); try { localStorage.setItem(KEEP_KEY, JSON.stringify([...n].slice(-300))); } catch { /* ignore */ } return n; });
+  // Cheap warning from what the list already has (sender, subject, snippet); the reader does the full check.
+  const sus = (t: ThreadSummary) => {
+    if (t.lastMine || p.box !== 'inbox') return null;
+    const r = assessEmail({ from: t.from, subject: t.subject, text: decodeSnippet(t.snippet), teamNames: p.teammates.map(m => m.name) });
+    return looksSuspicious(r) ? r : null;
+  };
   const triOf = (t: ThreadSummary): Tri | undefined => {
     const x = triage.get(triKey(t));
     return x && x.c === 'junk' && keep.has(otherOf(t).email.toLowerCase()) ? { c: 'fyi', why: 'you marked this sender not junk' } : x;
@@ -870,8 +877,9 @@ export default function GmailMailbox(p: Props) {
                     </div>
                     <div style={{ fontSize: 13.5, color: unread ? 'var(--k-111)' : 'var(--k-4b5563)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 400 }}>{t.subject}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decodeSnippet(t.snippet)}</div>
-                    {(match || !!triOf(t) || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30)) && (
+                    {(!!sus(t) || match || !!triOf(t) || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30)) && (
                       <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
+                        {sus(t) && <span title={'Looks like a scam: ' + sus(t)!.reasons[0]} style={{ color: 'var(--k-991b1b)', background: 'var(--k-fef2f2)', border: '1px solid #fca5a5', borderRadius: 10, padding: '0 8px' }}>⚠ Suspicious</span>}
                         {match && <span title="This sender is in your CRM" style={{ color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', borderRadius: 10, padding: '0 8px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{match.kind === 'deal' ? '💼 Deal' : `👤 ${match.role || 'Contact'}`}<span style={{ fontWeight: 500 }}> · {match.label}</span></span>}
                         {(() => { const tri = p.box === 'inbox' ? triOf(t) : undefined; if (!tri) return null;
                           const st = tri.c === 'reply' ? { color: 'var(--k-92400e)', background: 'var(--k-fdf6e8)', border: '1px solid var(--k-fde68a)' } : tri.c === 'junk' ? { color: 'var(--k-991b1b)', background: 'var(--k-fef2f2)', border: '1px solid var(--k-fecaca)' } : { color: 'var(--k-6b7280)', background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)' };
@@ -1090,6 +1098,7 @@ function ThreadReader(p: {
   notify: Props['notify']; onAddContact: Props['onAddContact'];
 }) {
   const [msgs, setMsgs] = useState<LiveMessage[] | null>(null);
+  const [dismissedWarn, setDismissedWarn] = useState(false);
   const [err, setErr] = useState('');
   const [folded, setFolded] = useState<Set<string>>(() => new Set());
   const [newestFirst, setNewestFirst] = useState(false);
@@ -1145,7 +1154,7 @@ function ThreadReader(p: {
     const cached = threadCache.get(threadKey(p.account, p.t.id, p.t.date));
     const show = (raw: LiveMessage[]) => { const list = sortMsgs(raw); setMsgs(list); setFolded(initialFolds(list)); setCur(null); }; // older, already-read messages fold like Gmail
     if (cached) { show(cached); return () => { live = false; }; }
-    setMsgs(null);
+    setMsgs(null); setDismissedWarn(false);
     loadThread(p.account, p.t.id, p.t.date).then(list => {
       if (!live) return;
       if (!list) { setErr('Could not open this conversation.'); setMsgs([]); } else show(list);
@@ -1488,6 +1497,25 @@ function ThreadReader(p: {
           )}
         </div>
       )}
+      {msgs && !dismissedWarn && (() => {
+        const lastO = [...msgs].reverse().find(m => parseAddr(m.from).email.toLowerCase() !== me);
+        if (!lastO) return null;
+        const r = assessEmail({ from: lastO.from, subject: lastO.subject, text: lastO.text, html: lastO.html, replyTo: lastO.replyTo, authFail: lastO.authFail,
+          attachments: lastO.attachments, teamNames: p.teammates.map(m => m.name), senderKnown: !!threadTarget });
+        if (!looksSuspicious(r)) return null;
+        return (
+          <div role="alert" style={{ marginBottom: 12, padding: '11px 14px', background: 'var(--k-fef2f2)', border: '1px solid #fca5a5', borderRadius: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 800, color: 'var(--k-991b1b)' }}>⚠ This email looks suspicious — it may be a scam</span>
+              <button type="button" onClick={() => setDismissedWarn(true)} style={{ border: 'none', background: 'none', color: 'var(--k-6b7280)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }} title="Hide this warning for this conversation">Hide</button>
+            </div>
+            <ul style={{ margin: '6px 0 6px 18px', padding: 0, fontSize: 13, color: 'var(--k-374151)', lineHeight: 1.5 }}>{r.reasons.map((x, k) => <li key={k}>{x}</li>)}</ul>
+            <div style={{ fontSize: 12.5, color: 'var(--k-991b1b)', fontWeight: 600, lineHeight: 1.5 }}>
+              Don’t reply, click links, open attachments or give out a phone number.{threadTarget ? ' This sender is in your CRM, so their account may be hacked — call them on a number you already have.' : ''} Not sure? Forward it to Zack.
+            </div>
+          </div>
+        );
+      })()}
       {!threadTarget && msgs && (() => {
         const lastM = msgs[msgs.length - 1], u = [...msgs].reverse().find(m => m.unsubscribe)?.unsubscribe, f = parseAddr(lastM.from);
         const bulk = !!u || /(^|[._-])(no-?reply|do-?not-?reply|newsletter|news|marketing|notifications?|mailer)([._-]|@)/i.test(f.email);
