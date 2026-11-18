@@ -6851,7 +6851,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const localDate = (ymd: string) => new Date(ymd + 'T00:00:00');
                 const t0 = iso(new Date());
                 const weekEnd = addDays(7);
-                const staleCut = addDays(-14);
 
                 // allTasks is already the current user's own OPEN tasks (agent_id = me,
                 // completed_at IS NULL) — no extra scoping needed. Lead follow-ups are
@@ -6866,11 +6865,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 // Deals are team-wide for admins, so scope to mine explicitly.
                 const myDeals = deals.filter(d => d.agent_id === profile.id || (d.assigned_agent_ids ?? []).includes(profile.id));
                 const inContract = myDeals.filter(d => d.stage === 'In Contract');
-                const stalled = myDeals.filter(d => d.stage === 'Active' && d.last_touch && d.last_touch < staleCut);
 
                 const hr = new Date().getHours();
                 const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
-                const nothing = !overdue.length && !dueToday.length && !thisWeek.length && !inContract.length && !stalled.length && !listCalls.length;
+                const nothing = !overdue.length && !dueToday.length && !thisWeek.length && !inContract.length && !listCalls.length;
 
                 const cname = (id?: string) => { const c = clients.find(x => x.id === id); return c ? `${c.first_name} ${c.last_name}` : ''; };
                 const tIcon = (t: CRMTask) => <Ico n={t.type === 'call' ? 'phone' : t.type === 'email' ? 'mail' : 'bell'} size={15} />;
@@ -7119,15 +7117,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     )}
 
-                    {stalled.length > 0 && (
-                      <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-warn-line)', padding: '16px 20px', marginBottom: 14 }}>
-                        {head('var(--c-warn-ink)', `Deals gone quiet — ${stalled.length}`)}
-                        <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--c-muted)' }}>Active deals with no touch in 2+ weeks.</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {stalled.slice(0, 5).map(d => dealRow(d, `Last touch ${d.last_touch ? new Date(d.last_touch).toLocaleDateString() : '—'}`, 'var(--c-warn-soft)', 'var(--c-warn-line)'))}
-                        </div>
-                      </div>
-                    )}
                     </div>
                     <div className="dk-side">{sideCards}</div></div>
                   </div>
