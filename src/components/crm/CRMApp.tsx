@@ -65,6 +65,7 @@ import MentionTextarea, { parseMentionContactIds, parseMentionIds } from '@/comp
 import { parseListingTagIds, listingTagLabel, listingTagToken, suggestListingTag, type TagListing } from '@/lib/listing-tags';
 import TaggedText from '@/components/crm/TaggedText';
 import ListingFollowUps from '@/components/crm/ListingFollowUps';
+import CallbacksWaiting from '@/components/crm/CallbacksWaiting';
 import TargetedFollowUps from '@/components/crm/TargetedFollowUps';
 import ContactJourney from '@/components/crm/ContactJourney';
 import DealActivityTab from '@/components/crm/deal/DealActivityTab';
@@ -6791,6 +6792,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <button onClick={() => { try { localStorage.setItem('crm:gmail-connect-prompt', String(Date.now())); } catch { /* ignore */ } setGmailPromptHidden(true); }} style={{ fontSize: 12.5, padding: '6px 12px', borderRadius: 16, border: 'none', background: 'none', color: 'var(--k-6b7280)', cursor: 'pointer' }}>Not now</button>
                 </div>
               )}
+              <CallbacksWaiting authToken={session?.access_token} userId={profile?.id} businessUnit={businessUnit} onOpen={() => { setPage('tasks'); setTasksSubTab('calls'); }} />
               <ListingFollowUps authToken={session?.access_token} userId={profile?.id} onToast={showToast}
                 onOpenContact={id => { let n = 0; const go = () => { if (openEntityRef.current?.('contact', id) === false && n++ < 12) setTimeout(go, 500); }; go(); }} />
               <TargetedFollowUps authToken={session?.access_token} onToast={showToast}
