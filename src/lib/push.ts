@@ -51,8 +51,15 @@ function setup() {
  * an unknown type, the dashboard) and leave them to hunt for what buzzed them.
  */
 export function crmLink(page: string, open?: { type: string; id?: string | null }): string {
-  const q = open?.id && /^[0-9a-f-]{36}$/i.test(open.id) ? `?open=${encodeURIComponent(open.type)}:${open.id}` : '';
+  // 'calls' and 'task' alerts are about a list, not one row: they carry no id but still open the right Tasks tab.
+  const q = open?.id && /^[0-9a-f-]{36}$/i.test(open.id) ? `?open=${encodeURIComponent(open.type)}:${open.id}`
+    : open && (open.type === 'calls' || open.type === 'task') ? `?open=${open.type}` : '';
   return `/crm/commercial${q}#${page}`;
+}
+
+/** Where tapping a Team chat alert goes: straight into that conversation ('team' or a 'dm:<id>:<id>' room), not the chat's start screen. */
+export function chatLink(room: string): string {
+  return /^(team|dm:[0-9a-f-]{36}:[0-9a-f-]{36})$/i.test(room) ? `/crm/commercial?chat=${encodeURIComponent(room)}#teamchat` : '/crm/commercial#teamchat';
 }
 
 /** Only ever send people somewhere inside the CRM. */

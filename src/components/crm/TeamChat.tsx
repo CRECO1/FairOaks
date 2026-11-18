@@ -90,6 +90,7 @@ function AttImage({ room, att, auth, mine, onOpen }: { room: string; att: Att; a
 export default function TeamChat({ token, meId, people, isMobile, onUnread, initialRoom, deals = [], contacts = [], onOpenLink }: { token?: string; meId: string; people: ChatPerson[]; isMobile: boolean; onUnread?: (n: number) => void; initialRoom?: string; deals?: ChatOption[]; contacts?: ChatOption[]; onOpenLink?: (l: Lnk) => void }) {
   const [rooms, setRooms] = useState<Record<string, RoomInfo>>({});
   const [room, setRoom] = useState<string | null>(initialRoom ?? (isMobile ? null : 'team'));
+  useEffect(() => { if (initialRoom) setRoom(initialRoom); }, [initialRoom]);   // an alert tapped while the chat is already open switches to that conversation
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);

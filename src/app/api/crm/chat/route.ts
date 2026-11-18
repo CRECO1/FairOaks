@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { sendPushToProfiles } from '@/lib/push';
+import { sendPushToProfiles, chatLink } from '@/lib/push';
 import { dmOther, MAX_BODY } from '@/lib/team-chat';
 import { roomAllowed, cleanAttachments, resolveLinks } from '@/lib/team-chat-server';
 
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       const { data: mates } = await db.from('crm_profiles').select('id, first_name').eq('business_unit', ctx.businessUnit).neq('id', ctx.userId);
       to = (mates ?? []).filter(p => p.first_name && new RegExp(`@${String(p.first_name).replace(/[^A-Za-z]/g, '')}\\b`, 'i').test(text)).map(p => p.id as string);
     }
-    if (to.length) await sendPushToProfiles(to, { title: room === 'team' ? `${who} in Team chat` : who, body: (text || (attachments.length ? `📎 ${attachments[0].name}` : links[0]?.label ?? '')).slice(0, 140), url: '/crm/commercial#teamchat', tag: `chat-${room}`, category: 'mentions', businessUnit: ctx.businessUnit }, { db });
+    if (to.length) await sendPushToProfiles(to, { title: room === 'team' ? `${who} in Team chat` : who, body: (text || (attachments.length ? `📎 ${attachments[0].name}` : links[0]?.label ?? '')).slice(0, 140), url: chatLink(room), tag: `chat-${room}`, category: 'mentions', businessUnit: ctx.businessUnit }, { db });
   } catch (e) { console.error('[chat] push failed (message was sent):', e); }
   return NextResponse.json({ message: msg });
 }

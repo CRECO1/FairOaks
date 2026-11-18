@@ -2481,16 +2481,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const hash = u.hash.slice(1);
     const pg = PAGE_ALIASES[hash] ?? hash;
     if ((VALID_PAGES as readonly string[]).includes(pg)) setPage(pg as PageType);
-    const m = /^([a-z_]+):([0-9a-f-]{36})$/i.exec(u.searchParams.get('open') ?? '');
-    if (m) setPendingOpen({ type: m[1], id: m[2], at: Date.now() });
+    const m = /^([a-z_]+)(?::([0-9a-f-]{36}))?$/i.exec(u.searchParams.get('open') ?? '');
+    if (m && (m[2] || m[1] === 'calls' || m[1] === 'task')) setPendingOpen({ type: m[1], id: m[2] ?? '', at: Date.now() });
+    // A Team chat alert opens that very conversation.
+    const room = u.searchParams.get('chat') ?? '';
+    if (/^(team|dm:[0-9a-f-]{36}:[0-9a-f-]{36})$/i.test(room)) { setChatOpenRoom(room); setPage('teamchat'); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const alertLinkDone = useRef(false);
   useEffect(() => {
     if (!session || !profile || alertLinkDone.current) return;
     alertLinkDone.current = true;
-    if (new URLSearchParams(window.location.search).get('open')) {
+    if (new URLSearchParams(window.location.search).get('open') || new URLSearchParams(window.location.search).get('chat')) {
       handleCrmLink(window.location.href);
-      const sp = new URLSearchParams(window.location.search); sp.delete('open');
+      const sp = new URLSearchParams(window.location.search); sp.delete('open'); sp.delete('chat');
       window.history.replaceState({}, '', window.location.pathname + (sp.toString() ? `?${sp}` : '') + window.location.hash);
     }
   }, [session, profile, handleCrmLink]);
