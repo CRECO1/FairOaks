@@ -9,7 +9,7 @@ import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { createClient } from '@supabase/supabase-js';
 import { resolveSignature, withBodyStyle, withSignature } from '@/lib/agent-signature';
 import { chicagoToday } from '@/lib/chicago-time';
-import { attachmentParam, encodeHeader, formatAddress, stripLineBreaks } from '@/lib/mime-header';
+import { attachmentParam, encodeHeader, formatAddress, plainAddress, stripLineBreaks } from '@/lib/mime-header';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -174,10 +174,8 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
     // sees the thread and can reply-all. Per-person open tracking isn't possible then —
     // the single pixel can't say which recipient loaded it.
     const EMAIL_RE = /^[^@\s<>,;"]+@[^@\s<>,;"]+\.[^@\s<>,;"]+$/;
-    const addrList = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : String(v ?? '').split(/[,;]/))
-      .map(x => x.replace(/[\r\n]/g, ' ').trim()).filter(Boolean)
-      // "Charlie Fulton <charlie@x.com>" (what a reply can pre-fill from a From header) -> just the address.
-      .map(x => { const m = /^(?:"?[^<>]*"?\s*)<([^<>\s,;"]+@[^<>\s,;"]+)>$/.exec(x); return m ? m[1] : x; });
+    const addrList = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : String(v ?? '').split(/[,;](?=(?:[^"]*"[^"]*")*[^"]*$)/))
+      .map(plainAddress).filter(Boolean);
     const toList = addrList(toRaw);
     const ccList = addrList(ccRaw).filter(a => !toList.some(t => t.toLowerCase() === a.toLowerCase()));
     const bccList = addrList(bccRaw).filter(a => !toList.some(t => t.toLowerCase() === a.toLowerCase()) && !ccList.some(c => c.toLowerCase() === a.toLowerCase()));

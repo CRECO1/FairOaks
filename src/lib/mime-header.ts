@@ -58,3 +58,13 @@ export function attachmentParam(param: 'name' | 'filename', fileName: string): s
   const pct = encodeURIComponent(clean).replace(/['()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
   return `${param}="${ascii}"; ${param}*=UTF-8''${pct}`;
 }
+
+
+/** One recipient as typed or pre-filled -> the bare address. "Charlie Fulton <charlie@x.com>", `"Fulton, C" <c@x.com>` and
+ *  "<c@x.com>" all become the address; a plain address passes through. Anything else is returned unchanged (and then fails the
+ *  caller's address check). Line breaks are flattened first so a value can't smuggle in another header. */
+export function plainAddress(raw: string): string {
+  const x = String(raw ?? '').replace(/[\r\n]/g, ' ').trim();
+  const m = /^(?:"?[^<>]*"?\s*)<([^<>\s,;"]+@[^<>\s,;"]+)>$/.exec(x);
+  return m ? m[1] : x;
+}
