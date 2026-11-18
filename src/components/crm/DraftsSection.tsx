@@ -260,9 +260,8 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
             const initial = (label || '✉').replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '✉';
             const crmIdx = isG ? -1 : crmShown.findIndex(x => x.key === it.key);
             const kind = !isG ? (it.d.context.kind === 'deal' ? '💼 Deal' : it.d.context.kind === 'contact' ? '👤 Contact' : '✉ New message') : '';
-            // A draft with nobody to send it to yet (e.g. prepared for a contact whose email isn't known) can't be resumed into a composer, so a click shows its full text instead.
-            const noRecipient = !isG && !it.d.to.trim() && !it.d.moreTo.trim();
-            const open = () => (isG ? void editGmail(it.g) : noRecipient ? setPreviewKey(k => (k === it.d.key ? null : it.d.key)) : onResume(it.d));
+            // (A draft with nobody to send it to still opens in the composer — add the recipient there; the 👁 button previews it.)
+            const open = () => (isG ? void editGmail(it.g) : onResume(it.d));
             const previewing = !isG && previewKey === it.d.key;
             const gLink = isG ? `https://mail.google.com/mail/${gm.account ? `?authuser=${encodeURIComponent(gm.account)}` : ''}#drafts?compose=${it.g.messageId}` : '';
             return (
@@ -352,7 +351,7 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
                     </div>
                     {files.length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{files.map(f => <span key={f.name} style={pill('var(--k-fdf6e8)', 'var(--k-92400e)', 'var(--k-fde68a)')}>📎 {f.name}{f.size ? ` (${kb(f.size)})` : ''}</span>)}</div>}
                     <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {!noRecipient && <button type="button" onClick={() => onResume(it.d)} style={{ ...btn, borderColor: '#c9922c', color: '#92400e' }}>Open to edit &amp; send</button>}
+                      <button type="button" onClick={() => onResume(it.d)} style={{ ...btn, borderColor: '#c9922c', color: '#92400e' }}>Open to edit &amp; send</button>
                       <button type="button" onClick={() => setPreviewKey(null)} style={btn}>Close preview</button>
                     </div>
                   </div>
