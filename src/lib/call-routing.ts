@@ -159,7 +159,7 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
   const rows = (data ?? []) as Row[];
   const { data: profileRows } = await db.from('crm_profiles').select('id, email, first_name, last_name, role');
   const profiles = (profileRows ?? []) as Profile[];
-  const out = { answered: 0, bot_legs: 0, linked: 0, junk_closed: 0, returned_closed: 0, assigned: 0, dated: 0, internal_wrapped: 0 };
+  const out = { answered: 0, bot_legs: 0, linked: 0, junk_closed: 0, returned_closed: 0, assigned: 0, dated: 0, internal_wrapped: 0, redials_merged: 0 };
   const now = new Date().toISOString();
   const plan: Array<{ id: string; patch: Record<string, unknown> }> = [];
   // dryRun: record what would change instead of writing it.
@@ -273,6 +273,46 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
     const { data: st } = await db.from('crm_voicebot_settings').select('business_unit, missed_call_assignee');
     for (const s of st ?? []) if (s.missed_call_assignee && profiles.some(p => p.id === s.missed_call_assignee)) routeTo.set(s.business_unit as string, s.missed_call_assignee as string);
   } catch { /* column not migrated yet — fall back to the ownership rules */ }
+  // 3a. Rapid redials: the same caller ringing again within 5 minutes of their own earlier open call-back is ONE
+  // person wanting a call back, not several. Keep the call-back on the LATEST call and close the earlier ones
+  // (handled_at set, handled_by left empty so the history line does not count it as "reached"). The latest row
+  // gets a note saying how many times they rang. Chains count: 1:00, 1:03, 1:06 collapse into the 1:06 row.
+  {
+    const open = rows.filter(r => r.needs_follow_up && !r.handled_at && !r.answered_by_bot && !junkKind(r) && r.direction === 'inbound' && last10(r.callback_number || theirNumber(r)).length === 10);
+    const byCaller = new Map<string, Row[]>();
+    for (const r of open) {
+      const k = `${r.business_unit}:${last10(r.callback_number || theirNumber(r))}`;
+      (byCaller.get(k) ?? byCaller.set(k, []).get(k)!).push(r);
+    }
+    for (const list of byCaller.values()) {
+      list.sort((a, b) => Date.parse(a.started_at) - Date.parse(b.started_at));
+      let chain: Row[] = [];
+      const flush = async () => {
+        if (chain.length > 1) {
+          const latest = chain[chain.length - 1];
+          const spanSec = Math.round((Date.parse(latest.started_at) - Date.parse(chain[0].started_at)) / 1000);
+          const span = spanSec < 90 ? `${spanSec}s` : `${Math.round(spanSec / 60)} min`;
+          for (const e of chain.slice(0, -1)) {
+            await write(e.id, {
+              handled_at: now,
+              notes: [e.notes, 'Merged: they rang again right after — one call-back kept on their latest call.'].filter(Boolean).join('\n'),
+              updated_at: now,
+            });
+            e.handled_at = now; out.redials_merged++;
+          }
+          const tag = `Rang ${chain.length} times within ${span} — one call-back.`;
+          if (!(latest.notes ?? '').includes('times within')) await write(latest.id, { notes: [latest.notes, tag].filter(Boolean).join('\n'), updated_at: now });
+        }
+        chain = [];
+      };
+      for (const r of list) {
+        if (chain.length && Date.parse(r.started_at) - Date.parse(chain[chain.length - 1].started_at) > 5 * 60_000) await flush();
+        chain.push(r);
+      }
+      await flush();
+    }
+  }
+
   for (const r of rows) {
     if (!r.needs_follow_up || r.handled_at) continue;
     const tail = last10(r.callback_number || theirNumber(r));
