@@ -6804,7 +6804,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <button onClick={() => { try { localStorage.setItem('crm:gmail-connect-prompt', String(Date.now())); } catch { /* ignore */ } setGmailPromptHidden(true); }} style={{ fontSize: 12.5, padding: '6px 12px', borderRadius: 16, border: 'none', background: 'none', color: 'var(--k-6b7280)', cursor: 'pointer' }}>Not now</button>
                 </div>
               )}
-              <NeedsYou userId={profile?.id} onToast={showToast}
+              <NeedsYou userId={profile?.id} authToken={session?.access_token} businessUnit={businessUnit} onToast={showToast}
                 onOpen={(type, id) => { let n = 0; const go = () => { if (openEntityRef.current?.(type, id) === false && n++ < 12) setTimeout(go, 500); }; go(); }} />
               <StaleDeals
                 deals={deals.filter(d => d.agent_id === profile?.id || (d.assigned_agent_ids ?? []).includes(profile?.id ?? ''))}
