@@ -134,7 +134,7 @@ type Row = {
   from_number: string | null; to_number: string | null; callback_number: string | null; contact_id: string | null;
   started_at: string; summary: string | null; intent: string | null; ai_meta: Record<string, unknown> | null;
   needs_follow_up: boolean; handled_at: string | null; follow_up_assignee: string | null; follow_up_due: string | null;
-  answered_by: string | null; answered_by_bot: boolean; outcome: string | null; notes: string | null; raw: { events?: Array<{ description?: string }> } | null;
+  answered_by: string | null; answered_by_bot: boolean; duration_sec?: number | null; outcome: string | null; notes: string | null; raw: { events?: Array<{ description?: string }> } | null;
 };
 
 const theirNumber = (r: Pick<Row, 'direction' | 'from_number' | 'to_number'>) => (r.direction === 'outbound' ? r.to_number : r.from_number);
@@ -151,7 +151,7 @@ const theirNumber = (r: Pick<Row, 'direction' | 'from_number' | 'to_number'>) =>
 export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; callIds?: string[]; dryRun?: boolean } = {}): Promise<{ counts: Record<string, number>; plan?: Array<{ id: string; patch: Record<string, unknown> }> }> {
   const since = new Date(Date.now() - (opts.days ?? 120) * 86_400_000).toISOString();
   let q = db.from('crm_call_log')
-    .select('id, business_unit, source, kind, direction, result, from_number, to_number, callback_number, contact_id, started_at, summary, intent, ai_meta, needs_follow_up, handled_at, follow_up_assignee, follow_up_due, answered_by, answered_by_bot, outcome, notes, raw')
+    .select('id, business_unit, source, kind, direction, result, from_number, to_number, callback_number, contact_id, started_at, summary, intent, ai_meta, needs_follow_up, handled_at, follow_up_assignee, follow_up_due, answered_by, answered_by_bot, duration_sec, outcome, notes, raw')
     .gte('started_at', since).order('started_at');
   if (opts.callIds?.length) q = q.in('id', opts.callIds);
   const { data, error } = await q;
@@ -170,7 +170,7 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
 
   // For opts.callIds runs, step 3/4 still need the neighbouring calls.
   const all = opts.callIds?.length
-    ? ((await db.from('crm_call_log').select('id, direction, result, from_number, to_number, started_at, answered_by, outcome, source').gte('started_at', since)).data ?? []) as Row[]
+    ? ((await db.from('crm_call_log').select('id, business_unit, kind, direction, result, from_number, to_number, started_at, duration_sec, answered_by, answered_by_bot, needs_follow_up, handled_at, follow_up_assignee, follow_up_due, outcome, source').gte('started_at', since)).data ?? []) as Row[]
     : rows;
 
   // 1. Answerer
@@ -215,6 +215,31 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
     if (!leg) continue;
     await write(r.id, { from_number: leg.from_number, ai_meta: { ...(r.ai_meta ?? {}), caller_id_recovered: true }, updated_at: now });
     r.from_number = leg.from_number; out.linked++;
+  }
+
+  // 1d. A caller who hangs up or gets no answer while the call rolls to the bot never shows up as "answered by the bot"
+  // in Talkroute, so step 1 leaves that leg visible next to the bot's own row (the same call twice). Match each bot row
+  // to the ONE Talkroute leg from the same caller that was running when the bot picked up (started up to 2 min before,
+  // and ended no more than 10 s before) and hide the leg. Redials are separate legs and stay. If the leg held the
+  // call-back task and the bot row has none, the task moves to the bot row so it is not lost.
+  const claimed = new Set<string>();
+  for (const r of rows) {
+    if (r.source !== 'voicebot' || r.direction !== 'inbound' || last10(r.from_number).length < 10) continue;
+    const t0 = Date.parse(r.started_at);
+    const leg = all
+      .filter(x => x.source === 'talkroute' && x.kind === 'call' && x.direction === 'inbound' && x.business_unit === r.business_unit
+        && !x.answered_by_bot && !x.answered_by && !claimed.has(x.id) && last10(x.from_number) === last10(r.from_number)
+        && Date.parse(x.started_at) <= t0 + 2_000 && Date.parse(x.started_at) >= t0 - 120_000
+        && Date.parse(x.started_at) + (x.duration_sec ?? 0) * 1000 >= t0 - 10_000)
+      .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))[0];
+    if (!leg) continue;
+    claimed.add(leg.id);
+    await write(leg.id, { answered_by_bot: true, ...(leg.needs_follow_up && !leg.handled_at ? { needs_follow_up: false } : {}), updated_at: now });
+    leg.answered_by_bot = true; out.bot_legs++;
+    if (leg.needs_follow_up && !leg.handled_at && !r.needs_follow_up && !r.handled_at) {
+      await write(r.id, { needs_follow_up: true, follow_up_assignee: r.follow_up_assignee ?? leg.follow_up_assignee, follow_up_due: r.follow_up_due ?? leg.follow_up_due, updated_at: now });
+      r.needs_follow_up = true;
+    }
   }
 
   // 2. Contacts
