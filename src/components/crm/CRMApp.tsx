@@ -3343,10 +3343,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }).catch(() => showToast('Task saved'));
   }
 
-  async function completeTask(taskId: string) {
+  async function completeTask(taskId: string): Promise<boolean> {
     const task = allTasks.find(t => t.id === taskId);
     const now = new Date().toISOString();
-    await supabase.from('crm_tasks').update({ completed_at: now, status: 'done' }).eq('id', taskId);
+    const { error: doneErr } = await supabase.from('crm_tasks').update({ completed_at: now, status: 'done' }).eq('id', taskId);
+    if (doneErr) { showToast('Could not mark that task done — it is still open. Try again.'); return false; }
     setAllTasks(prev => prev.filter(t => t.id !== taskId));
     showToast('Task completed ✓');
     // Log a touch on the linked contact
@@ -3354,6 +3355,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       logActivity(task.client_id, 'note', `✅ Task completed: ${task.title}`);
       if (activeClient?.id === task.client_id) loadClientTasks(task.client_id);
     }
+    return true;
   }
 
   // Push a task to a later day from the Dashboard — the due date moves, nothing else changes. A task that is
@@ -3510,6 +3512,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // Who comes after this one — captured BEFORE the queue changes, so auto-advance never skips or repeats.
       const qi = callQueue.findIndex(t => t.id === task.id);
       const upNext = qi >= 0 ? (callQueue[qi + 1] ?? null) : null;
+      const failedSaves: string[] = [];   // anything that did not write — said out loud at the end instead of failing silently
       const undo: { taskId?: string; cbId?: string; cbPrevDue?: string | null; callLogId?: string; prospectClientId?: string; nextTaskId?: string; dncPrevTags?: string[] } = {};
       if (cb) undo.cbPrevDue = cb.follow_up_due ?? null;
       if (task.id.startsWith('p:')) undo.prospectClientId = task.client_id;
@@ -3517,7 +3520,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       else undo.taskId = task.id;
       if (task.id.startsWith('p:')) setCallProspectDoneIds(prev => new Set(prev).add(task.client_id));
       else if (cb) { /* a call-back lives in the Calling Log — resolved below, not a task */ }
-      else await completeTask(task.id);
+      else if (!(await completeTask(task.id))) failedSaves.push('closing the call task');
 
       // 2) Log the call activity on the client's timeline (fold in the agent's note)
       const dispLabel = disposition === 'not_interested' ? 'Not interested' : disposition === 'call_back' ? 'Connected — call back requested' : disposition === 'connected' ? 'Connected' : disposition === 'voicemail' ? 'Left voicemail' : disposition === 'wrong_number' ? 'Wrong number' : 'No answer';
@@ -3529,7 +3532,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         base += ` — ⚡ First contact ${fmtMins(businessMinutesBetween(task.created_at))} after the lead came in`;
       }
       // Property-based prospecting calls have no linked contact — skip the timeline log.
-      if (task.client_id) await logActivity(task.client_id, 'call', jotted ? `${base} — ${jotted}` : base);
+      if (task.client_id && !(await logActivity(task.client_id, 'call', jotted ? `${base} — ${jotted}` : base))) failedSaves.push('the timeline entry and note');
       else if (jotted) {
         // No contact to log on, so logActivity (which notifies) never runs — ping tagged teammates here.
         const who = parseMentionIds(jotted, profiles);
@@ -3546,7 +3549,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             undo.dncPrevTags = cl.tags ?? [];
             setClients(prev => prev.map(x => x.id === cl.id ? { ...x, tags: nextTags } : x));
             setActiveClient(prev => prev && prev.id === cl.id ? { ...prev, tags: nextTags } : prev);
-          } else showToast('Logged, but could not mark Do Not Call');
+          } else { showToast('Logged, but could not mark Do Not Call'); failedSaves.push('the Do Not Call tag'); }
         }
       }
 
@@ -3563,7 +3566,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         const nextTitle = task.client_id ? baseTitle : `${baseTitle} — ${(task.title || '').replace(/^🏢\s*/, '').slice(0, 90)}`;
         const d = new Date(); d.setDate(d.getDate() + addDays);
         const nextDue = d.toISOString().slice(0, 10);
-        const { data: nt } = await supabase.from('crm_tasks').insert([{
+        const { data: nt, error: ntErr } = await supabase.from('crm_tasks').insert([{
           client_id: task.client_id,
           // Keep the follow-up in the SAME agent's queue (an admin may be working someone else's calls).
           agent_id: task.agent_id ?? profile!.id,
@@ -3575,6 +3578,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           status: 'open',
         }]).select('id').single();
         if (nt?.id) undo.nextTaskId = nt.id as string;
+        else { console.error('Follow-up task error:', ntErr?.message); failedSaves.push('the follow-up task'); }
       }
 
       // 3b) The Calling Log gets the call too (it used to hold only calls the phone system saw). For a
@@ -3604,7 +3608,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           });
           const pj = await postRes.json().catch(() => null);
           if (pj?.call?.id) undo.callLogId = pj.call.id as string;
-        } catch { /* the activity above is saved; the log entry can be added from the Calling Log */ }
+          else failedSaves.push('the Calling Log entry');
+        } catch { failedSaves.push('the Calling Log entry'); }
       }
       if (cb) { setCallbackDoneIds(prev => new Set(prev).add(cb.id)); loadCallbacks(); }
       window.dispatchEvent(new Event('crm:calls-changed'));   // the Calling Log refreshes itself
@@ -3617,6 +3622,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       try { navigator.vibrate?.(25); } catch { /* not supported */ }
       try { document.querySelector('.crm-page-scroll')?.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* ignore */ }
       if (callViewAgentId) await loadCallView(callViewAgentId); else await loadAllTasks();
+
+      if (failedSaves.length) {
+        showToast(`Heads up: ${failedSaves.join(', ')} did not save for ${nameOfClient(task.client_id) || 'this contact'}. Check the contact and redo it if needed.`);
+        try { fetch('/api/crm/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) }, body: JSON.stringify({ message: `Call Queue partial save (${disposition}): ${failedSaves.join(', ')}`, source: 'call-queue' }) }).catch(() => {}); } catch { /* best effort */ }
+      }
 
       // Auto-advance: land on the call that followed this one, and say so — with Undo for any outcome.
       const labelOf = (t: CRMTask) => callListMeta.get(t.id)?.business || callListMeta.get(t.id)?.contactName || callbackMeta.get(t.id)?.contact?.name || callbackMeta.get(t.id)?.caller_name || nameOfClient(t.client_id) || (t.title || 'next call').replace(/^🏢\s*/, '');
@@ -4214,13 +4224,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     );
   }
 
-  async function logActivity(clientId: string, type: CRMActivity['type'], note: string) {
+  async function logActivity(clientId: string, type: CRMActivity['type'], note: string): Promise<boolean> {
     // Idempotent: an identical touch for the same contact within 30s is a double-click / double-submit, not a
     // second event (the feed had triples of the same call and meeting logged in one second).
     const dupKey = `${clientId}|${type}|${note}`;
     const nowMs = Date.now();
     const seen = recentActivityRef.current.get(dupKey);
-    if (seen && nowMs - seen < 30_000) return;
+    if (seen && nowMs - seen < 30_000) return true;
     recentActivityRef.current.set(dupKey, nowMs);
     if (recentActivityRef.current.size > 200) {
       for (const [k, t] of recentActivityRef.current) if (nowMs - t > 30_000) recentActivityRef.current.delete(k);
@@ -4251,7 +4261,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         setActiveClient(prev => prev && prev.id === clientId ? { ...prev, tagged_contact_ids: merged } : prev);
       }
     }
-    if (error) { console.error('Activity log error:', error.message); }
+    if (error) { console.error('Activity log error:', error.message); recentActivityRef.current.delete(dupKey); showToast('Could not save that note on the contact’s timeline. Try again.'); }
     else {
       const who = parseMentionIds(note, profiles);
       if (who.length) {
@@ -4267,6 +4277,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadClientActivities(clientId);
       setActiveClient(prev => prev ? { ...prev, last_touched_at: now } : prev);
     }
+    return !error;
   }
 
   // ── @mention notifications ────────────────────────────────────────────────
