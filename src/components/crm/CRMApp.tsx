@@ -9089,6 +9089,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {/* ── Agents (admin only) ── */}
           {page === 'agents' && isAdmin && (<>
+            <style>{`
+              .ag-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+              .ag-sum{position:relative;background:var(--k-fff);border:1px solid #eef0f2;border-radius:14px;padding:13px 16px 12px 20px;overflow:hidden;
+                box-shadow:0 1px 2px rgba(0,0,0,.04);animation:ag-rise .3s ease-out both;font-family:'DM Sans',sans-serif}
+              .ag-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--ag-dot)}
+              .ag-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
+              .ag-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
+              .ag-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
+              .ag-card{transition:box-shadow .15s,transform .15s}
+              .ag-card:hover{box-shadow:0 8px 20px rgba(0,0,0,.09);transform:translateY(-1px)}
+              @keyframes ag-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+              @media (max-width:700px){.ag-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.ag-sum .v{font-size:23px}}
+              @media (prefers-reduced-motion:reduce){.ag-sum{animation:none}.ag-card{transition:none}.ag-card:hover{transform:none}}
+            `}</style>
+            {(() => {
+              const act = deals.filter(d => !!d.agent_id && ['Active', 'LOI', 'In Contract'].includes(d.stage)).length;
+              const won = deals.filter(d => !!d.agent_id && d.stage === 'Closed').length;
+              const logged = activityReport.reduce((t, r) => t + (r.calls || 0) + (r.emails || 0) + (r.meetings || 0) + (r.notes || 0), 0);
+              const tiles = [
+                { label: 'Team', big: String(profiles.length), sub: 'brokers & agents', dot: '#c9922c' },
+                { label: 'Active deals', big: String(act), sub: 'active, LOI or in contract', dot: '#3b82f6' },
+                { label: 'Closed deals', big: String(won), sub: 'all time', dot: '#22c55e' },
+                { label: 'Activity logged', big: logged.toLocaleString(), sub: `last ${activityReportDays} days`, dot: '#8b5cf6' },
+              ];
+              return (
+                <div className="ag-sumrow">
+                  {tiles.map((t, i) => (
+                    <div key={t.label} className="ag-sum" style={{ ['--ag-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}>
+                      <div className="l">{t.label}</div>
+                      <div className="v">{t.big}</div>
+                      <div className="s">{t.sub}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 16 }}>
               {profiles.map(a => {
                 const agDeals = deals.filter(d => d.agent_id === a.id);
@@ -9096,7 +9132,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const closed = agDeals.filter(d => d.stage === 'Closed').length;
                 const isEditing = editingAgentId === a.id;
                 return (
-                  <div key={a.id} style={{ background: 'var(--k-fff)', borderRadius: 10, padding: 20, border: `1px solid ${isEditing ? '#c9922c' : 'var(--k-e0e0e0)'}` }}>
+                  <div key={a.id} className="ag-card" style={{ background: 'var(--k-fff)', borderRadius: 14, padding: 22, border: `1px solid ${isEditing ? '#c9922c' : 'var(--k-e0e0e0)'}`, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                     {/* Header row with avatar + name + edit toggle */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
                       <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>
@@ -9218,7 +9254,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ marginTop: 32 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <div>
-                    <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: 'var(--k-111)', marginBottom: 2 }}>Activity Report</h3>
+                    <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: 'var(--k-111)', marginBottom: 2 }}>Activity Report</h3>
                     <p style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>Calls, emails, meetings & notes logged by each agent</p>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -9235,7 +9271,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 ) : activityReport.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 30, color: 'var(--k-9ca3af)', background: 'var(--k-f9fafb)', borderRadius: 10, border: '1px dashed var(--k-e5e7eb)' }}>No activity logged in the last {activityReportDays} days.</div>
                 ) : (
-                  <div style={{ background: 'var(--k-fff)', borderRadius: 10, border: '1px solid var(--k-e5e7eb)', overflow: 'hidden' }}>
+                  <div style={{ background: 'var(--k-fff)', borderRadius: 14, border: '1px solid var(--k-e5e7eb)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                     <div className="mobile-table-scroll">
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
@@ -9298,7 +9334,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: 'var(--k-111)', marginBottom: 2 }}>Commission Breakdown — {thisYear}</h3>
                     <p style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>Year-to-date commissions by agent</p>
                   </div>
-                  <div style={{ background: 'var(--k-fff)', borderRadius: 10, border: '1px solid var(--k-e8dcc8)', overflow: 'hidden' }}>
+                  <div style={{ background: 'var(--k-fff)', borderRadius: 14, border: '1px solid var(--k-e8dcc8)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                     <div className="mobile-table-scroll">
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
