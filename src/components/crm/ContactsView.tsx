@@ -265,7 +265,7 @@ export default function ContactsView(p: ContactsViewProps) {
       `}</style>
       <div className="ct-sumrow">
         {[
-          { label: 'Contacts', big: typeCounts.all.toLocaleString(), sub: 'in your book', dot: '#c9922c', on: false, click: () => clearAll() },
+          { label: 'Contacts', big: p.clients.length.toLocaleString(), sub: 'in your book', dot: '#c9922c', on: false, click: () => clearAll() },
           { label: 'Needs a touch', big: counts.touch.toLocaleString(), sub: 'quiet or overdue', dot: '#ef4444', on: p.needsTouchOnly, click: () => p.setNeedsTouchOnly(!p.needsTouchOnly) },
           { label: 'Has a deal', big: counts.deal.toLocaleString(), sub: 'in the pipeline', dot: '#3b82f6', on: p.dealOnly, click: () => p.setDealOnly(!p.dealOnly) },
           { label: 'In a campaign', big: counts.campaign.toLocaleString(), sub: 'getting emails', dot: '#8b5cf6', on: p.campaignOnly, click: () => p.setCampaignOnly(!p.campaignOnly) },
