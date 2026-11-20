@@ -85,6 +85,34 @@ export default function EmailsSection(p: Props) {
   const tabs: Array<[EmailsTab, string, number]> = [['inbox', 'Inbox', p.unread], ['drafts', 'Drafts', p.draftCount + gmailDrafts], ['sent', 'Sent', 0]];
   return (
     <div style={{ maxWidth: source === 'gmail' && p.tab !== 'drafts' ? 1400 : 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
+      <style>{`
+        .em-sumrow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+        .em-sum{position:relative;background:var(--k-fff);border:1px solid var(--k-e5e7eb);border-radius:14px;padding:13px 16px 12px 20px;overflow:hidden;text-align:left;
+          box-shadow:0 1px 2px rgba(0,0,0,.04);animation:em-rise .3s ease-out both;font-family:'DM Sans',sans-serif;cursor:pointer;transition:box-shadow .15s,transform .15s}
+        .em-sum:hover{box-shadow:0 8px 20px rgba(0,0,0,.1);transform:translateY(-1px)}
+        .em-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--em-dot)}
+        .em-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
+        .em-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
+        .em-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
+        @keyframes em-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        @media (max-width:700px){.em-sumrow{grid-template-columns:repeat(3,1fr);gap:8px}.em-sum{padding:10px 10px 9px 14px}.em-sum .v{font-size:22px}.em-sum .s{display:none}}
+        @media (prefers-reduced-motion:reduce){.em-sum{animation:none;transition:none}.em-sum:hover{transform:none}}
+      `}</style>
+      {!(p.isMobile && reading) && (
+        <div className="em-sumrow">
+          {[
+            { label: 'Unread replies', big: p.unread, sub: p.unread ? 'waiting for you' : 'all caught up', dot: '#c9922c', click: () => p.setTab('inbox') },
+            { label: 'Drafts', big: p.draftCount + gmailDrafts, sub: 'saved, not sent', dot: '#3b82f6', click: () => p.setTab('drafts') },
+            { label: 'Write', big: '✉', sub: 'new email  ·  press c', dot: '#22c55e', click: () => p.onCompose() },
+          ].map((t, i) => (
+            <button key={t.label} type="button" className="em-sum" style={{ ['--em-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }} onClick={t.click}>
+              <div className="l">{t.label}</div>
+              <div className="v">{t.big}</div>
+              <div className="s">{t.sub}</div>
+            </button>
+          ))}
+        </div>
+      )}
       {!(p.isMobile && reading && p.tab !== 'drafts') && <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, borderBottom: '1px solid var(--k-e5e7eb)', marginBottom: 16 }}>
       <div role="tablist" aria-label="Emails" className="crm-tabs-scroll" style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto' }}>
         {tabs.map(([id, label, n]) => {

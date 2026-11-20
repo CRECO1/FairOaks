@@ -783,7 +783,7 @@ export default function GmailMailbox(p: Props) {
       : err ? <Empty title="Couldn’t load your mail" sub={err} />
       : visible.length === 0 ? <Empty title={term || contactsOnly || filter !== 'all' ? 'Nothing matches' : p.box === 'inbox' ? 'You’re all caught up 🎉' : 'No sent mail yet'} sub={contactsOnly && threads.length ? 'None of the loaded conversations are with people in your CRM — try “Load older mail”.' : term ? 'Try different words, or clear a filter.' : filter !== 'all' ? 'Nothing matches this filter. Choose “All” to see everything.' : p.box === 'inbox' ? 'No new mail right now. Enjoy the quiet.' : 'Emails you send from the CRM or Gmail show up here.'} />
       : (
-        <div className={`gm-list${sel.size ? ' gm-sel' : ''}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
+        <div className={`gm-list${sel.size ? ' gm-sel' : ''}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
           {visible.map((t, i) => {
             const a = otherOf(t);
             const name = a.name || a.email || '(unknown)';
