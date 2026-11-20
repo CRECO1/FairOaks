@@ -307,11 +307,22 @@ export function StatTiles({ items }: { items: { label: string; value: string; co
 export function TileStyles() {
   return (
     <style>{`
-      .dc-tile{position:relative;background:var(--c-surface,#fff);border:1px solid var(--c-line,#e5e7eb);border-radius:12px;padding:11px 13px 11px 16px;cursor:pointer;
-        box-shadow:0 1px 2px rgba(0,0,0,.04);transition:box-shadow .15s,transform .15s,opacity .15s;user-select:none;overflow:hidden}
+      .dc-tile{position:relative;background:var(--c-surface,#fff);border:1px solid var(--c-line,#e5e7eb);border-radius:12px;padding:12px 13px 11px 17px;cursor:pointer;
+        box-shadow:0 1px 3px rgba(0,0,0,.06);transition:box-shadow .15s,transform .15s,opacity .15s;user-select:none;overflow:hidden}
       .dc-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--dc-dot,#9ca3af)}
       .dc-tile:hover{box-shadow:0 8px 20px rgba(0,0,0,.1);transform:translateY(-1px)}
-      @media (prefers-reduced-motion:reduce){.dc-tile{transition:none}.dc-tile:hover{transform:none}}
+      .dc-tile:active{cursor:grabbing}
+      .dc-colbody{scrollbar-width:thin}
+      .dc-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+      .dc-sum{position:relative;background:var(--c-surface,#fff);border:1px solid var(--c-line,#e5e7eb);border-radius:14px;padding:14px 16px 13px 20px;overflow:hidden;
+        box-shadow:0 1px 2px rgba(0,0,0,.04);animation:dc-rise .3s ease-out both}
+      .dc-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--dc-dot)}
+      .dc-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--c-faint,#9ca3af);font-weight:700}
+      .dc-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--c-ink,#111);line-height:1.1;margin-top:3px}
+      .dc-sum .s{font-size:12px;color:var(--c-muted,#6b7280);margin-top:2px}
+      .dc-toolbar{background:var(--c-surface,#fff);border:1px solid var(--c-line,#e5e7eb);border-radius:14px;padding:10px 12px}
+      @media (max-width:700px){.dc-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.dc-sum .v{font-size:23px}}
+      @media (prefers-reduced-motion:reduce){.dc-tile{transition:none}.dc-tile:hover{transform:none}.dc-sum{animation:none}}
     `}</style>
   );
 }

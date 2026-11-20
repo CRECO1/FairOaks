@@ -858,31 +858,34 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
             onDragOver={e => { e.preventDefault(); if (dragOverStage !== stage) setDragOverStage(stage); }}
             onDragLeave={e => { if (e.currentTarget === e.target) setDragOverStage(null); }}
             onDrop={() => handleDrop(stage)}
+            className="dc-col"
             style={{
               minWidth: 0,
               background: isDragOver ? col.bg : 'var(--k-f8fafc)',
               border: `1px solid ${isDragOver ? col.dot : 'var(--k-e5e7eb)'}`,
-              borderRadius: 12,
+              borderRadius: 14,
               overflow: 'hidden',
-              transition: 'border-color .12s, background .12s',
+              transition: 'border-color .12s, background .12s, box-shadow .12s',
+              boxShadow: isDragOver ? `0 0 0 3px ${col.dot}33` : 'none',
+              display: 'flex', flexDirection: 'column',
+              maxHeight: 'calc(100vh - 300px)', minHeight: 220,
             }}
           >
             {/* Column header */}
-            <div style={{ padding: '11px 14px', borderBottom: `3px solid ${col.dot}` }}>
+            <div style={{ padding: '12px 14px 11px', background: `linear-gradient(180deg, ${col.bg} 0%, transparent 100%)`, borderBottom: '1px solid var(--k-e5e7eb)', position: 'relative', flexShrink: 0 }}>
+              <span aria-hidden style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: col.dot }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', background: col.dot, flexShrink: 0 }} />
-                <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>{stage}</span>
-                <span style={{ marginLeft: 'auto', background: 'var(--k-fff)', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 600, color: 'var(--k-9ca3af)' }}>{stageDeals.length}</span>
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: col.dot, flexShrink: 0, boxShadow: `0 0 0 3px ${col.dot}26` }} />
+                <span style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif", letterSpacing: .2 }}>{stage}</span>
+                <span style={{ marginLeft: 'auto', background: col.dot, color: '#fff', borderRadius: 999, padding: '1px 9px', fontSize: 11.5, fontWeight: 700, minWidth: 22, textAlign: 'center' }}>{stageDeals.length}</span>
               </div>
-              {totalVal > 0 && (
-                <div style={{ fontSize: 11.5, color: 'var(--k-6b7280)', paddingLeft: 18, marginTop: 3, fontWeight: 600 }}>
-                  ${totalVal.toLocaleString()}
-                </div>
-              )}
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 19, fontWeight: 700, color: totalVal > 0 ? 'var(--k-111)' : 'var(--k-9ca3af)', paddingLeft: 17, marginTop: 4, lineHeight: 1.1 }}>
+                {totalVal > 0 ? `$${totalVal.toLocaleString()}` : '—'}
+              </div>
             </div>
 
             {/* Cards */}
-            <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 80 }}>
+            <div className="dc-colbody" style={{ padding: 9, display: 'flex', flexDirection: 'column', gap: 9, minHeight: 80, overflowY: 'auto', flex: 1 }}>
               {stageDeals.map(deal => (
                 <DealTile key={deal.id} deal={deal} ownerName={agentName(deal.agent_id)} showOwner={isAdmin} valueLabel={fmtVal(deal)}
                   typeStyle={Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map((x: string) => x.split(':'))) as React.CSSProperties}
@@ -7485,7 +7488,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* ── Deals ── */}
           {page === 'deals' && (
             <div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              {(() => {
+                const OPEN = ['Prospect', 'Active', 'LOI', 'In Contract'];
+                const sum = (f: (d: Deal) => boolean) => filteredDeals.filter(f).reduce((t, d) => t + (Number(d.value) || 0), 0);
+                const money = (n: number) => n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${Math.round(n / 1_000)}K` : `$${n}`;
+                const tiles = [
+                  { label: 'Open pipeline', big: money(sum(d => OPEN.includes(d.stage))), sub: `${filteredDeals.filter(d => OPEN.includes(d.stage)).length} open deals`, dot: '#3b82f6' },
+                  { label: 'In contract', big: money(sum(d => d.stage === 'In Contract')), sub: `${filteredDeals.filter(d => d.stage === 'In Contract').length} pending close`, dot: '#f59e0b' },
+                  { label: 'Closed won', big: money(sum(d => d.stage === 'Closed')), sub: `${filteredDeals.filter(d => d.stage === 'Closed').length} closed`, dot: '#22c55e' },
+                  { label: 'Needs a touch', big: String(filteredDeals.filter(d => OPEN.includes(d.stage) && (daysAgo(d.last_touch) ?? 0) > 14).length), sub: 'open, quiet 14+ days', dot: '#ef4444' },
+                ];
+                return (
+                  <div className="dc-sumrow">
+                    {tiles.map(t => (
+                      <div key={t.label} className="dc-sum" style={{ ['--dc-dot' as string]: t.dot }}>
+                        <div className="l">{t.label}</div>
+                        <div className="v">{t.big}</div>
+                        <div className="s">{t.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+              <div className="dc-toolbar" style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
                 {['', ...DEAL_TYPES].map(t => (
                   <button key={t} onClick={() => setFilter(t)}
                     style={{ padding: '5px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', background: filter === t ? '#111' : 'var(--k-fff)', color: filter === t ? '#fff' : 'var(--k-6b7280)', borderColor: filter === t ? '#111' : 'var(--k-ddd)', fontFamily: "'DM Sans',sans-serif" }}>
