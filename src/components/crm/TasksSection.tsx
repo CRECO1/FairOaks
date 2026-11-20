@@ -650,7 +650,7 @@ function TaskRow({ t, isMobile, selectMode, isSelected, showOwner, owner, contac
 
   return (
     <div className="tk-row" role="button" tabIndex={0} onClick={onOpen} onKeyDown={e => { if (e.key === 'Enter') onOpen(); }}
-      style={{ display: 'grid', gridTemplateColumns: `32px minmax(0,1fr) minmax(0,190px) 64px 132px${showOwner ? ' 30px' : ''}`, alignItems: 'center', gap: 10, padding: '5px 14px 5px 8px', borderTop: '1px solid var(--k-f3f4f6)', cursor: 'pointer', background: isSelected ? 'var(--k-fdf6e8)' : undefined }}>
+      style={{ display: 'grid', gridTemplateColumns: `32px minmax(0,1fr) minmax(0,190px) 64px 132px${showOwner ? ' 30px' : ''}`, alignItems: 'center', gap: 10, padding: '8px 14px 8px 8px', borderTop: '1px solid var(--k-f3f4f6)', cursor: 'pointer', background: isSelected ? 'var(--k-fdf6e8)' : undefined }}>
       <CompleteCircle done={done} selectMode={selectMode} selected={isSelected} big={false} onComplete={onComplete} onSelect={onSelect} />
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
         {icon && <span title={icon.label} style={{ flexShrink: 0, fontSize: 13 }}>{icon.icon}</span>}
@@ -1067,14 +1067,14 @@ export default function TasksSection({
           const shown = isDoneSec ? items.slice(0, doneShown) : items;
           const allSel = items.length > 0 && items.every(t => selected.has(t.id));
           return (
-            <div key={sec.key} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderLeft: `3px solid ${sec.color}`, borderRadius: 12, overflow: 'hidden', marginBottom: 12 }}>
+            <div key={sec.key} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderLeft: `4px solid ${sec.color}`, borderRadius: 14, overflow: 'hidden', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
               <div role="button" tabIndex={0} aria-expanded={open}
                 onClick={() => { if (!forceOpen) setSectionOpen(s => ({ ...s, [sec.key]: !open })); }}
                 onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !forceOpen) { e.preventDefault(); setSectionOpen(s => ({ ...s, [sec.key]: !open })); } }}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: isMobile ? '12px 12px' : '10px 14px', cursor: forceOpen ? 'default' : 'pointer', minHeight: isMobile ? 44 : undefined, userSelect: 'none' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: isMobile ? '12px 12px' : '10px 14px', cursor: forceOpen ? 'default' : 'pointer', minHeight: isMobile ? 44 : undefined, userSelect: 'none', background: open ? 'var(--k-f9fafb)' : undefined }}>
                 <span style={{ width: 10, fontSize: 10, color: 'var(--k-9ca3af)', visibility: forceOpen ? 'hidden' : 'visible' }}>{open ? '▾' : '▸'}</span>
-                <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--k-111)' }}>{sec.label}</span>
-                <span style={{ fontSize: 11, color: 'var(--k-6b7280)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px', fontWeight: 700 }}>{items.length}</span>
+                <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--k-111)', letterSpacing: .2 }}>{sec.label}</span>
+                <span style={{ fontSize: 11.5, color: '#fff', background: sec.color, borderRadius: 999, padding: '1px 9px', fontWeight: 700, minWidth: 22, textAlign: 'center' }}>{items.length}</span>
                 {isDoneSec && items.length > 0 && <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>{doneRecent} in the last 7 days</span>}
                 {sec.key === 'calllist' && <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>carried over — work them in the Call Queue</span>}
                 {selectMode && items.length > 1 && (
@@ -1263,7 +1263,39 @@ export default function TasksSection({
         .tk-circle:hover .tk-dot{border-color:#22c55e;}
         .tk-scroll{scrollbar-width:none;-webkit-overflow-scrolling:touch;}
         .tk-scroll::-webkit-scrollbar{display:none;}
+        .tk-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+        .tk-sum{position:relative;background:var(--k-fff);border:1px solid var(--k-e5e7eb);border-radius:14px;padding:13px 16px 12px 20px;overflow:hidden;
+          box-shadow:0 1px 2px rgba(0,0,0,.04);animation:tk-rise .3s ease-out both;text-align:left;font-family:'DM Sans',sans-serif}
+        button.tk-sum{cursor:pointer;transition:box-shadow .15s,transform .15s}
+        button.tk-sum:hover{box-shadow:0 8px 20px rgba(0,0,0,.1);transform:translateY(-1px)}
+        .tk-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--tk-dot)}
+        .tk-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
+        .tk-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
+        .tk-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
+        @keyframes tk-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        @media (max-width:700px){.tk-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.tk-sum .v{font-size:23px}}
+        @media (prefers-reduced-motion:reduce){.tk-sum{animation:none}button.tk-sum{transition:none}button.tk-sum:hover{transform:none}}
       `}</style>
+
+      {/* At a glance — the four numbers that say what needs doing; tap one to jump to that section */}
+      {view === 'list' && !tasksLoading && (
+        <div className="tk-sumrow">
+          {([
+            { key: 'overdue', label: 'Overdue', n: byBucket.overdue.length, sub: byBucket.overdue.length ? 'needs attention now' : 'nothing late', dot: '#ef4444' },
+            { key: 'today', label: 'Due today', n: byBucket.today.length, sub: byBucket.today.length ? 'on today\'s list' : 'clear for today', dot: '#c9922c' },
+            { key: 'week', label: 'This week', n: byBucket.week.length, sub: 'coming up', dot: '#3b82f6' },
+            { key: 'done', label: 'Done · 7 days', n: doneRecent, sub: 'finished recently', dot: '#22c55e' },
+          ] as const).map((t, i) => (
+            <button key={t.key} type="button" className="tk-sum" style={{ ['--tk-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}
+              onClick={() => setFocus(focus === t.key ? '' : t.key)} aria-pressed={focus === t.key}
+              title={focus === t.key ? 'Show all sections' : `Show only ${t.label.toLowerCase()}`}>
+              <div className="l">{t.label}</div>
+              <div className="v">{t.n}</div>
+              <div className="s">{t.sub}</div>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Whose tasks — Mine by default, a chip per teammate with how many they have open */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
