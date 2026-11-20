@@ -312,7 +312,9 @@ export function TileStyles() {
       .dc-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--dc-dot,#9ca3af)}
       .dc-tile:hover{box-shadow:0 8px 20px rgba(0,0,0,.1);transform:translateY(-1px)}
       .dc-tile:active{cursor:grabbing}
-      .dc-colbody{scrollbar-width:thin}
+      .dc-colbody{scrollbar-width:thin;min-height:0}
+      .dc-colbody>*{flex-shrink:0}
+      .dc-tile{flex-shrink:0}
       .dc-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
       .dc-sum{position:relative;background:var(--c-surface,#fff);border:1px solid var(--c-line,#e5e7eb);border-radius:14px;padding:14px 16px 13px 20px;overflow:hidden;
         box-shadow:0 1px 2px rgba(0,0,0,.04);animation:dc-rise .3s ease-out both}
