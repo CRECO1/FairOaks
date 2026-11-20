@@ -249,8 +249,38 @@ export default function ContactsView(p: ContactsViewProps) {
 
   return (
     <div>
+      <style>{`
+        .ct-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+        .ct-sum{position:relative;background:var(--k-fff);border:1px solid #eef0f2;border-radius:14px;padding:13px 16px 12px 20px;overflow:hidden;text-align:left;
+          box-shadow:0 1px 2px rgba(0,0,0,.04);animation:ct-rise .3s ease-out both;font-family:'DM Sans',sans-serif;cursor:pointer;transition:box-shadow .15s,transform .15s}
+        .ct-sum:hover{box-shadow:0 8px 20px rgba(0,0,0,.1);transform:translateY(-1px)}
+        .ct-sum.on{border-color:var(--ct-dot)}
+        .ct-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--ct-dot)}
+        .ct-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
+        .ct-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
+        .ct-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
+        @keyframes ct-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        @media (max-width:700px){.ct-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.ct-sum .v{font-size:23px}}
+        @media (prefers-reduced-motion:reduce){.ct-sum{animation:none;transition:none}.ct-sum:hover{transform:none}}
+      `}</style>
+      <div className="ct-sumrow">
+        {[
+          { label: 'Contacts', big: typeCounts.all.toLocaleString(), sub: 'in your book', dot: '#c9922c', on: false, click: () => clearAll() },
+          { label: 'Needs a touch', big: counts.touch.toLocaleString(), sub: 'quiet or overdue', dot: '#ef4444', on: p.needsTouchOnly, click: () => p.setNeedsTouchOnly(!p.needsTouchOnly) },
+          { label: 'Has a deal', big: counts.deal.toLocaleString(), sub: 'in the pipeline', dot: '#3b82f6', on: p.dealOnly, click: () => p.setDealOnly(!p.dealOnly) },
+          { label: 'In a campaign', big: counts.campaign.toLocaleString(), sub: 'getting emails', dot: '#8b5cf6', on: p.campaignOnly, click: () => p.setCampaignOnly(!p.campaignOnly) },
+        ].map((t, i) => (
+          <button key={t.label} type="button" className={`ct-sum${t.on ? ' on' : ''}`} style={{ ['--ct-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}
+            onClick={t.click} aria-pressed={t.on} title={t.label === 'Contacts' ? 'Clear all filters' : `Filter to: ${t.label.toLowerCase()}`}>
+            <div className="l">{t.label}</div>
+            <div className="v">{t.big}</div>
+            <div className="s">{t.sub}</div>
+          </button>
+        ))}
+      </div>
+
       {/* Toolbar */}
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: isMobile ? 10 : 12 }}>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, padding: isMobile ? 10 : 12, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: '1 1 320px', minWidth: 0 }}>
             <input type="search" aria-label="Search contacts" placeholder={isMobile ? 'Search contacts…' : 'Search name, company, email, phone or tag…'} value={p.search} onChange={e => p.setSearch(e.target.value)}
@@ -367,7 +397,7 @@ export default function ContactsView(p: ContactsViewProps) {
             const tags = (c.tags ?? []).slice(0, 2);
             return (
               <div key={c.id} onClick={() => p.onOpen(c)} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') p.onOpen(c); }}
-                style={{ background: p.selected.has(c.id) ? 'var(--k-fef9f0)' : 'var(--k-fff)', border: `1px solid ${p.selected.has(c.id) ? '#f0d9a8' : '#eef0f2'}`, borderRadius: 12, padding: '12px 12px', cursor: 'pointer' }}>
+                style={{ background: p.selected.has(c.id) ? 'var(--k-fef9f0)' : 'var(--k-fff)', border: `1px solid ${p.selected.has(c.id) ? '#f0d9a8' : '#eef0f2'}`, borderRadius: 14, padding: '13px 13px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                   {isAdmin && (
                     <label onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, margin: '-8px -8px -8px -10px', flexShrink: 0, cursor: 'pointer' }}>
@@ -395,9 +425,9 @@ export default function ContactsView(p: ContactsViewProps) {
           })}
         </div>
       ) : (
-        <div style={{ border: '1px solid #eef0f2', borderRadius: 12, background: 'var(--k-fff)', overflowX: 'auto' }}>
+        <div style={{ border: '1px solid #eef0f2', borderRadius: 14, background: 'var(--k-fff)', overflowX: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
           <div style={{ minWidth: p.canChangeOwner ? 1040 : 960 }}>
-            <div role="row" style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, alignItems: 'center', padding: '10px 16px', fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', borderBottom: '1px solid #eef0f2', position: 'sticky', top: 0, background: 'var(--k-fff)', zIndex: 2, borderRadius: '12px 12px 0 0' }}>
+            <div role="row" style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, alignItems: 'center', padding: '10px 16px', fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', borderBottom: '2px solid #eef0f2', position: 'sticky', top: 0, background: 'var(--k-f9fafb)', zIndex: 2, borderRadius: '14px 14px 0 0' }}>
               {isAdmin && <input type="checkbox" aria-label="Select all" checked={allSelected} ref={el => { if (el) el.indeterminate = p.selected.size > 0 && !allSelected; }} onChange={e => p.setSelected(e.target.checked ? new Set(filtered.map(c => c.id)) : new Set())} style={{ width: 15, height: 15, accentColor: '#c9922c', cursor: 'pointer' }} />}
               <div>{sortHeader('Contact', 'az', 'za')}</div>
               <div>{sortHeader('Type', 'type')}</div>
@@ -416,7 +446,7 @@ export default function ContactsView(p: ContactsViewProps) {
               const sub = [nameOf(c) ? c.business_name : '', ...tags].filter(Boolean).join(' · ');
               return (
                 <div key={c.id} role="row" onClick={() => p.onOpen(c)}
-                  style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, alignItems: 'center', padding: '9px 16px', borderTop: '1px solid var(--k-f4f5f7)', cursor: 'pointer', background: sel ? 'var(--k-fef9f0)' : 'var(--k-fff)' }}
+                  style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, alignItems: 'center', padding: '11px 16px', borderTop: '1px solid var(--k-f4f5f7)', cursor: 'pointer', background: sel ? 'var(--k-fef9f0)' : 'var(--k-fff)' }}
                   onMouseEnter={e => { if (!sel) e.currentTarget.style.background = 'var(--k-fbf8f1)'; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'var(--k-fff)'; }}>
                   {isAdmin && <input type="checkbox" checked={sel} onClick={e => e.stopPropagation()} onChange={e => toggleOne(c.id, e.target.checked)} aria-label={`Select ${displayName(c)}`} style={{ width: 15, height: 15, accentColor: '#c9922c', cursor: 'pointer' }} />}
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
