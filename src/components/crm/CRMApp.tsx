@@ -814,7 +814,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, paddingLeft: 10, borderLeft: `3px solid ${col.dot}` }}>
                 <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--k-111)' }}>{stage}</span>
                 <span style={{ background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 600, color: 'var(--k-9ca3af)' }}>{stageDeals.length}</span>
-                {totalVal > 0 && <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--k-6b7280)', fontWeight: 600 }}>${totalVal.toLocaleString()}</span>}
+                {totalVal > 0 && <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--k-6b7280)', fontWeight: 600 }}>${Math.round(totalVal).toLocaleString()}</span>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {stageDeals.map(deal => (
@@ -880,7 +880,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                 <span style={{ marginLeft: 'auto', background: col.dot, color: '#fff', borderRadius: 999, padding: '1px 9px', fontSize: 11.5, fontWeight: 700, minWidth: 22, textAlign: 'center' }}>{stageDeals.length}</span>
               </div>
               <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 19, fontWeight: 700, color: totalVal > 0 ? 'var(--k-111)' : 'var(--k-9ca3af)', paddingLeft: 17, marginTop: 4, lineHeight: 1.1 }}>
-                {totalVal > 0 ? `$${totalVal.toLocaleString()}` : '—'}
+                {totalVal > 0 ? `$${Math.round(totalVal).toLocaleString()}` : '—'}
               </div>
             </div>
 
