@@ -422,9 +422,9 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             { label: 'Voicemails', value: stats.voicemail, sub: 'last 7 days', pick: 'voicemail' as const },
             { label: 'Texts to answer', value: threads.filter(t => t.unanswered).length, sub: `${threads.length} thread${threads.length === 1 ? '' : 's'}`, tone: threads.some(t => t.unanswered) ? 'var(--k-b91c1c)' : undefined, pick: 'texts' as const },
           ].map(c => (
-            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ minWidth: 0, ...(mob ? { flex: '0 0 124px' } : {}), background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : 'var(--k-eef0f3)'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ minWidth: 0, ...(mob ? { flex: '0 0 124px' } : {}), background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : 'var(--k-eef0f3)'}`, borderLeft: `4px solid ${c.tone || 'var(--k-d1d5db)'}`, borderRadius: 14, padding: '11px 13px 10px 14px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
               <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--k-9ca3af)', fontWeight: 700 }}>{c.label}</div>
-              <div style={{ fontSize: 21, fontWeight: 700, marginTop: 3, color: c.tone || 'var(--k-111827)' }}>{c.value}</div>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, lineHeight: 1.1, marginTop: 3, color: c.tone || 'var(--k-111827)' }}>{c.value}</div>
               <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{c.sub}</div>
             </button>
           ))}
@@ -637,7 +637,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
               const di = pending ? dueInfo(c) : null;
               const hot = urgent || (di?.overdue ?? false);   // urgent OR past-due → the row goes red
               return (
-                <div key={c.id} style={{ background: 'var(--k-fff)', border: `1px solid ${pending ? (hot ? 'var(--k-fca5a5)' : '#f3e4c4') : '#eef0f2'}`, borderLeft: `4px solid ${pending ? (hot ? '#ef4444' : '#c9922c') : 'var(--k-e5e7eb)'}`, borderRadius: 12, padding: '12px 14px' }}>
+                <div key={c.id} style={{ background: 'var(--k-fff)', border: `1px solid ${pending ? (hot ? 'var(--k-fca5a5)' : '#f3e4c4') : '#eef0f2'}`, borderLeft: `4px solid ${pending ? (hot ? '#ef4444' : '#c9922c') : 'var(--k-e5e7eb)'}`, borderRadius: 14, padding: '13px 15px', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 6 }}>
                     <span style={{ fontSize: 20, flexShrink: 0 }} title={c.source}>{kindIcon(c)}</span>
                     <div style={{ flex: '1 1 200px', minWidth: 0 }}>
