@@ -12087,7 +12087,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {page === 'properties' && (
             <div>
               {/* Sub-tabs */}
-              <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--k-f0f0f0)', marginBottom: isMobile ? 16 : 24 }}>
+              {isMobile && (
+                <div className="m-pills" role="tablist" aria-label="Properties">
+                  {([['listings', '🏢 Listings'], ['propertydb', `🗂️ Property DB${propertyDbCount != null ? ` · ${propertyDbCount}` : ''}`], ['matchmaker', '🎯 Matchmaker'], ['floorplan', '📐 Floor Plan']] as const).map(([k, label]) => (
+                    <button key={k} type="button" role="tab" aria-selected={propertiesTab === k} className={`m-pill${propertiesTab === k ? ' on' : ''}`} onClick={() => setPropertiesTab(k)}>{label}</button>
+                  ))}
+                </div>
+              )}
+              <div className="crm-tabs-scroll" style={{ display: isMobile ? 'none' : 'flex', gap: 0, borderBottom: '2px solid var(--k-f0f0f0)', marginBottom: isMobile ? 16 : 24 }}>
                 {[{ k: 'listings', label: '🏢 Listings' }, { k: 'propertydb', label: '🗂️ Property DB' }, { k: 'matchmaker', label: '🎯 Matchmaker' }, { k: 'floorplan', label: '📐 Floor Plan' }].map(t => (
                   <button key={t.k} onClick={() => setPropertiesTab(t.k as 'propertydb' | 'listings' | 'floorplan' | 'matchmaker')}
                     style={{ padding: isMobile ? '12px 14px' : '10px 22px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: propertiesTab === t.k ? '#c9922c' : 'var(--k-6b7280)', borderBottom: `2px solid ${propertiesTab === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -2, transition: 'all .15s' }}>

@@ -472,13 +472,13 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
                 </button>
               ))}
             </div>
-            <label title="Hide lease expiry dates on screen and in the PDF"
+            <label title="Hide lease expiry dates on screen and in the PDF" className="fp-ctl"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 12px', border: '1px solid #d7dadf', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#243140', fontFamily: 'inherit' }}>
               <input type="checkbox" checked={showExp} onChange={e => setShowExp(e.target.checked)}
                 style={{ accentColor: '#c9922c', width: 15, height: 15, cursor: 'pointer' }} />
               Lease dates
             </label>
-            <button onClick={downloadPdf} title="Download both floors of this building as PDF"
+            <button onClick={downloadPdf} title="Download both floors of this building as PDF" className="fp-ctl"
               style={{ border: '1px solid #d7dadf', background: '#fff', cursor: 'pointer', padding: '8px 14px', borderRadius: 8, fontSize: 14, fontWeight: 600, fontFamily: 'inherit', color: '#243140' }}>
               ⬇ PDF
             </button>
@@ -494,7 +494,13 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
           .fp-sum .v{font:700 28px 'Cormorant Garamond',serif;color:#111;line-height:1.1;margin-top:3px}
           .fp-sum .s{font-size:12px;color:#6b7280;margin-top:2px}
           @keyframes fp-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-          @media (max-width:700px){.fp-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.fp-sum .v{font-size:23px}}
+          @media (max-width:700px){.fp-sumrow{grid-template-columns:repeat(2,1fr);gap:10px}.fp-sum .v{font-size:28px}
+            .fp-sum{border-radius:18px;padding:13px 14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}
+            .fp-sum::before{display:none}
+            .fp-sum::after{content:'';position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--fp-dot),transparent 70%);opacity:.22;pointer-events:none}
+            .fp-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:#6b7280}
+            .fp-card{border-radius:22px!important;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.06)!important}
+            .fp-ctl{border-radius:22px!important;min-height:44px}}
           @media (prefers-reduced-motion:reduce){.fp-sum{animation:none}}
         `}</style>
         {(() => {
@@ -520,7 +526,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
           );
         })()}
 
-        <div style={{ background: '#fff', border: '1px solid #e6e8eb', borderRadius: 14, padding: 8, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+        <div className="fp-card" style={{ background: '#fff', border: '1px solid #e6e8eb', borderRadius: 14, padding: 8, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
           {renderFloor(building, floor, true)}
         </div>
       </div>
