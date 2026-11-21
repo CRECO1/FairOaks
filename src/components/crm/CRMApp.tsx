@@ -9528,7 +9528,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             { label: 'Must File 1099', val: String(needsFiling.length), note: '≥ $600 threshold' },
                             { label: 'Total Compensation', val: fmt(totalPaid), note: 'agent net paid' },
                           ].map(s => (
-                            <div key={s.label} style={{ background: 'var(--k-f9f5ef)', border: '1px solid var(--k-e8dcc8)', borderRadius: 8, padding: '12px 16px' }}>
+                            <div key={s.label} style={{ background: 'var(--k-f9f5ef)', border: '1px solid var(--k-e8dcc8)', borderLeft: '5px solid #c9922c', borderRadius: 14, padding: '13px 16px 12px 18px', boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}>
                               <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 500, marginBottom: 4 }}>{s.label}</div>
                               <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--k-111)', fontFamily: "'Cormorant Garamond',serif" }}>{s.val}</div>
                               <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>{s.note}</div>
@@ -9541,7 +9541,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           {agentTotals.map(r => {
                             const mustFile = r.total >= 600;
                             return (
-                              <div key={r.profile.id} style={{ background: 'var(--k-fff)', border: `1px solid ${mustFile ? 'var(--k-fde68a)' : 'var(--k-e5e7eb)'}`, borderLeft: `4px solid ${mustFile ? '#c9922c' : '#9ca3af'}`, borderRadius: 8, padding: '16px 20px' }}>
+                              <div key={r.profile.id} style={{ background: 'var(--k-fff)', border: `1px solid ${mustFile ? 'var(--k-fde68a)' : 'var(--k-e5e7eb)'}`, borderLeft: `5px solid ${mustFile ? '#c9922c' : '#9ca3af'}`, borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)', padding: '16px 20px' }}>
                                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
                                   <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -9617,6 +9617,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
             return (
               <div>
+                <style>{`
+                  .cm-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+                  .cm-sum{position:relative;background:var(--k-fff);border:1px solid #eef0f2;border-radius:14px;padding:13px 16px 12px 20px;overflow:hidden;
+                    box-shadow:0 1px 2px rgba(0,0,0,.04);animation:cm-rise .3s ease-out both;font-family:'DM Sans',sans-serif}
+                  .cm-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--cm-dot)}
+                  .cm-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
+                  .cm-sum .v{font:700 28px 'Cormorant Garamond',serif;line-height:1.1;margin-top:3px}
+                  .cm-row{transition:background .12s}
+                  .cm-row:hover{background:var(--k-f9f5ef)!important}
+                  @keyframes cm-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+                  @media (max-width:700px){.cm-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.cm-sum .v{font-size:23px}}
+                  @media (prefers-reduced-motion:reduce){.cm-sum{animation:none}}
+                `}</style>
                 {/* Header */}
                 <div style={{ marginBottom: 20 }}>
                   <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: 'var(--k-111)', marginBottom: 4 }}>Deal commissions</h2>
@@ -9624,7 +9637,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
 
                 {/* Filters */}
-                <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                   <select className="crm-input" style={{ width: 'auto', minWidth: 110 }} value={commissionFilterYear} onChange={e => setCommissionFilterYear(e.target.value)}>
                     <option value="">All Years</option>
                     {years.map(y => <option key={y} value={y!}>{y}</option>)}
@@ -9649,16 +9662,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 {/* Summary stat row */}
                 {filtered.length > 0 && (
-                  <div className="stats-4col" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 18 }}>
+                  <div className="cm-sumrow">
                     {[
-                      { label: 'Deals', val: String(filtered.length), color: 'var(--k-111)' },
-                      { label: 'Gross GCI', val: fmt(totalGCI), color: '#c9922c' },
-                      { label: 'Agent Net', val: fmt(totalAgentNet), color: 'var(--k-059669)' },
-                      { label: 'Brokerage Net', val: fmt(totalBrokerNet), color: 'var(--k-374151)' },
-                    ].map(s => (
-                      <div key={s.label} style={{ background: 'var(--k-fff)', borderRadius: 8, padding: '14px 16px', border: '1px solid var(--k-e8dcc8)', borderLeft: '4px solid #c9922c' }}>
-                        <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 500, marginBottom: 4 }}>{s.label}</div>
-                        <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "'Cormorant Garamond',serif" }}>{s.val}</div>
+                      { label: 'Deals', val: String(filtered.length), color: 'var(--k-111)', dot: '#3b82f6' },
+                      { label: 'Gross GCI', val: fmt(totalGCI), color: '#c9922c', dot: '#c9922c' },
+                      { label: 'Agent Net', val: fmt(totalAgentNet), color: 'var(--k-059669)', dot: '#22c55e' },
+                      { label: 'Brokerage Net', val: fmt(totalBrokerNet), color: 'var(--k-374151)', dot: '#8b5cf6' },
+                    ].map((t, i) => (
+                      <div key={t.label} className="cm-sum" style={{ ['--cm-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}>
+                        <div className="l">{t.label}</div>
+                        <div className="v" style={{ color: t.color }}>{t.val}</div>
                       </div>
                     ))}
                   </div>
@@ -9726,7 +9739,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   </div>
                 ) : (
-                  <div style={{ background: 'var(--k-fff)', borderRadius: 10, border: '1px solid var(--k-e5e7eb)', overflow: 'hidden' }}>
+                  <div style={{ background: 'var(--k-fff)', borderRadius: 14, border: '1px solid var(--k-e5e7eb)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                     <div className="mobile-table-scroll">
                       <table className="commission-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
@@ -9738,7 +9751,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </thead>
                         <tbody>
                           {filtered.map((c, i) => (
-                            <tr key={c.id} style={{ borderBottom: '1px solid var(--k-f3f4f6)', background: i % 2 === 0 ? 'var(--k-fff)' : 'var(--k-fafafa)', cursor: 'pointer' }}
+                            <tr key={c.id} className="cm-row" style={{ borderBottom: '1px solid var(--k-f3f4f6)', background: i % 2 === 0 ? 'var(--k-fff)' : 'var(--k-fafafa)', cursor: 'pointer' }}
                               onClick={() => { if (c.deal_id) { const d = deals.find(x => x.id === c.deal_id); if (d) { setPage('deals'); openDeal(d); setDealTab('commission'); } } }}>
                               <td style={{ padding: '11px 14px', minWidth: 160 }}>
                                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)' }}>{c.deal?.client ?? '—'}</div>
