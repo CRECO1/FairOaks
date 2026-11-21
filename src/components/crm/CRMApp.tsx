@@ -6834,6 +6834,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const entries: MoreEntry[] = pages.filter(x => !bar.includes(x.id)).map(x => ({ id: x.id, ico: x.ico, label: x.label, on: x.on, badge: x.badge, onClick: go(x.go) }));
                 if (isAdmin) entries.push({ id: 'agents', ico: 'briefcase', label: 'Broker / Agents', on: page === 'agents', onClick: go(() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); }) });
                 entries.push({ id: 'settings', ico: 'pen', label: 'Settings', on: page === 'settings', onClick: go(() => setPage('settings')) });
+                // Owner/admin tools live in the same grid. Each is added only for the role that may use it: isSuperAdmin is role === 'super_admin' (Zack only), isAdmin is admin ∪ super_admin. The server routes behind them check the role again.
+                if (isAdmin) entries.push({ id: 'activity', ico: 'eye', label: isSuperAdmin ? 'Agent Activity' : 'My Activity', onClick: go(() => setCopilotActivityOpen(true)) });
+                if (isSuperAdmin) entries.push({ id: 'billing', ico: 'receipt', label: 'Billing', href: 'https://www.crecotx.com/billing/' });
+                if (isSuperAdmin) entries.push({ id: 'lead-attribution', ico: 'chart', label: 'Lead Attribution', on: page === 'lead-attribution', onClick: go(() => setPage('lead-attribution')) });
+                if (isAdmin) entries.push({ id: 'plaza-site', ico: 'tree', label: 'Plaza Site', on: page === 'plaza-site', badge: plazaPending, onClick: go(() => setPage('plaza-site')) });
+                if (isSuperAdmin) entries.push({ id: 'backups', ico: 'file', label: 'Backups', onClick: go(() => setBackupStatusOpen(true)) });
+                if (isAdmin) entries.push({ id: 'failed-uploads', ico: 'file', label: 'Failed uploads', onClick: go(() => setUploadFailuresOpen(true)) });
+                if (isSuperAdmin) entries.push({ id: 'deleted', ico: 'trash', label: 'Recently Deleted', onClick: go(() => setDeletedItemsOpen(true)) });
                 return renderMoreGrid('main', entries);
               })()}
 
@@ -6849,22 +6857,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </div>
 
 
-
-              {(isAdmin || isSuperAdmin) && (
-                <>
-                  <div className="crm-more-h">Admin</div>
-                  {(() => {
-                    const entries: MoreEntry[] = [{ id: 'activity', ico: 'eye', label: isSuperAdmin ? 'Agent Activity' : 'My Activity', onClick: go(() => setCopilotActivityOpen(true)) }];
-                    if (isSuperAdmin) entries.push({ id: 'billing', ico: 'receipt', label: 'Billing', href: 'https://www.crecotx.com/billing/' });
-                    if (isSuperAdmin) entries.push({ id: 'lead-attribution', ico: 'chart', label: 'Lead Attribution', on: page === 'lead-attribution', onClick: go(() => setPage('lead-attribution')) });
-                    if (isAdmin) entries.push({ id: 'plaza-site', ico: 'tree', label: 'Plaza Site', on: page === 'plaza-site', badge: plazaPending, onClick: go(() => setPage('plaza-site')) });
-                    if (isSuperAdmin) entries.push({ id: 'backups', ico: 'file', label: 'Backups', onClick: go(() => setBackupStatusOpen(true)) });
-                    if (isAdmin) entries.push({ id: 'failed-uploads', ico: 'file', label: 'Failed uploads', onClick: go(() => setUploadFailuresOpen(true)) });
-                    if (isSuperAdmin) entries.push({ id: 'deleted', ico: 'trash', label: 'Recently Deleted', onClick: go(() => setDeletedItemsOpen(true)) });
-                    return renderMoreGrid('admin', entries);
-                  })()}
-                </>
-              )}
 
               {isAdmin && businessUnit === 'residential' && (
                 <button
