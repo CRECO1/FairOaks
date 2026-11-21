@@ -1245,7 +1245,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {showTagReview && <TagSuggestions onOpenContact={onOpenContact} authToken={authToken} onClose={() => { setShowTagReview(false); setCountsKey(k => k + 1); }} onToast={onToast} onChanged={() => setCountsKey(k => k + 1)} />}
 
       <InquiryAlertPrompt authToken={authToken} onToast={onToast} />
-      {isAdmin && <LeadTagHealth authToken={authToken} onOpenContact={onOpenContact} />}
+      {isAdmin && <div className="ls-health"><LeadTagHealth authToken={authToken} onOpenContact={onOpenContact} /></div>}
 
       {/* At a glance — tap a status to filter the list */}
       <style>{`
@@ -1260,7 +1260,15 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         .ls-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
         .ls-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
         @keyframes ls-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-        @media (max-width:700px){.ls-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.ls-sum .v{font-size:23px}}
+        @media (max-width:700px){.ls-sumrow{grid-template-columns:repeat(2,1fr);gap:10px}.ls-sum .v{font-size:28px}
+          .ls-sum{border-radius:18px;padding:13px 14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}
+          .ls-sum::before{display:none}
+          .ls-sum::after{content:'';position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--ls-dot),transparent 70%);opacity:.22;pointer-events:none}
+          .ls-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--k-6b7280)}
+          .ls-bar input,.ls-bar select,.ls-bar button{border-radius:22px!important;min-height:44px;padding-left:16px!important;padding-right:16px!important}
+          .ls-card{border-radius:22px!important;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.06)!important}
+          .ls-health{background:var(--k-fff);border:1px solid var(--k-e5e7eb);border-radius:20px;padding:10px 14px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}
+          .ls-health:empty{display:none}}
         @media (prefers-reduced-motion:reduce){.ls-sum{animation:none;transition:none}button.ls-sum:hover{transform:none}}
       `}</style>
       {!loading && listings.length > 0 && (
@@ -1286,7 +1294,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       )}
 
       {/* Top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div className="ls-bar" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search listings…"
           style={{ ...INP, flex: 1, minWidth: 160, fontSize: 16 }} />
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
@@ -1351,7 +1359,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             const tc = TYPE_COLORS[l.type ?? ''] ?? { bg: 'var(--k-f1f5f9)', color: 'var(--k-475569)' };
             const agent = profiles.find(p => p.id === l.listing_agent_id);
             return (
-              <div key={l.id} onClick={() => openListing(l)}
+              <div key={l.id} className="ls-card" onClick={() => openListing(l)}
                 style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,.05)', transition: 'box-shadow .15s, transform .1s' }}
                 onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,.1)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
                 onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,.05)'; e.currentTarget.style.transform = 'none'; }}>
