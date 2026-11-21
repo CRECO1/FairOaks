@@ -452,7 +452,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
         {/* Header / switchers / export */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#243140' }}>8000 Fair Oaks Pkwy</div>
+            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#243140' }}>8000 Fair Oaks Pkwy</div>
             <div style={{ fontSize: 13, color: '#8a8f98' }}>{isAdmin ? 'Click any suite to edit tenant, status, color & details.' : 'Floor plan (view only).'}</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -485,14 +485,49 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
           </div>
         </div>
 
-        <div style={{ background: '#fff', border: '1px solid #e6e8eb', borderRadius: 12, padding: 8 }}>
+        <style>{`
+          .fp-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+          .fp-sum{position:relative;background:#fff;border:1px solid #eef0f2;border-radius:14px;padding:12px 14px 11px 19px;overflow:hidden;
+            box-shadow:0 1px 2px rgba(0,0,0,.04);animation:fp-rise .3s ease-out both;font-family:'DM Sans',sans-serif}
+          .fp-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--fp-dot)}
+          .fp-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#9ca3af;font-weight:700}
+          .fp-sum .v{font:700 28px 'Cormorant Garamond',serif;color:#111;line-height:1.1;margin-top:3px}
+          .fp-sum .s{font-size:12px;color:#6b7280;margin-top:2px}
+          @keyframes fp-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+          @media (max-width:700px){.fp-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.fp-sum .v{font-size:23px}}
+          @media (prefers-reduced-motion:reduce){.fp-sum{animation:none}}
+        `}</style>
+        {(() => {
+          const defs = SUITES.filter(d => d.building === building);
+          const st = defs.map(d => current(d).status);
+          const bl = BUILDINGS.find(b => b.key === building)?.label ?? 'this building';
+          const tiles = [
+            { label: 'Suites', n: defs.length, sub: `${bl}, both floors`, dot: '#c9922c' },
+            { label: 'Occupied', n: st.filter(x => x === 'occupied').length, sub: 'leased suites', dot: '#22c55e' },
+            { label: 'Vacant', n: st.filter(x => x === 'vacant').length, sub: 'available to lease', dot: '#ef4444' },
+            { label: 'Reserved', n: st.filter(x => x === 'reserved').length, sub: 'held or pending', dot: '#f59e0b' },
+          ];
+          return (
+            <div className="fp-sumrow">
+              {tiles.map((t, i) => (
+                <div key={t.label} className="fp-sum" style={{ ['--fp-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}>
+                  <div className="l">{t.label}</div>
+                  <div className="v">{t.n}</div>
+                  <div className="s">{t.sub}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        <div style={{ background: '#fff', border: '1px solid #e6e8eb', borderRadius: 14, padding: 8, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
           {renderFloor(building, floor, true)}
         </div>
       </div>
 
       {/* Editor panel */}
       {isAdmin && selectedDef && (
-        <div style={{ flex: '0 0 320px', width: 320, background: '#fff', border: '1px solid #e6e8eb', borderRadius: 12, padding: 18 }}>
+        <div style={{ flex: '0 0 320px', width: 320, background: '#fff', border: '1px solid #e6e8eb', borderRadius: 14, padding: 18, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#243140' }}>Edit Suite</div>
             <button onClick={() => setSelKey(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#9aa0a8' }}>✕</button>
