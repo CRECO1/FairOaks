@@ -195,7 +195,7 @@ export default function ContactsView(p: ContactsViewProps) {
     );
   };
 
-  const actionBtn: React.CSSProperties = { width: isMobile ? 44 : 30, height: isMobile ? 44 : 30, flexShrink: 0, border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 14, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, textDecoration: 'none' };
+  const actionBtn: React.CSSProperties = { width: isMobile ? 44 : 30, height: isMobile ? 44 : 30, flexShrink: 0, border: '1px solid var(--k-e5e7eb)', borderRadius: isMobile ? 22 : 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 14, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, textDecoration: 'none' };
 
   const rowActions = (c: ContactRow) => {
     const phone = phoneOf(c);
@@ -217,7 +217,7 @@ export default function ContactsView(p: ContactsViewProps) {
     return (
       <select aria-label={`Owner of ${displayName(c)}`} value={c.agent_id ?? ''} title="Assign this contact to an agent — its open call tasks and Prospect deal move with it"
         onClick={e => e.stopPropagation()} onChange={e => p.onChangeOwner?.(c, e.target.value)}
-        style={{ width: '100%', maxWidth: compact ? 130 : undefined, boxSizing: 'border-box', minHeight: compact ? 30 : 44, padding: '0 6px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: compact ? 13 : 15, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
+        style={{ width: isMobile && !compact ? 'auto' : '100%', maxWidth: compact ? 130 : isMobile ? 210 : undefined, boxSizing: 'border-box', minHeight: compact ? 30 : isMobile ? 40 : 44, padding: isMobile && !compact ? '0 14px' : '0 6px', border: '1px solid var(--k-e5e7eb)', borderRadius: isMobile && !compact ? 20 : 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: compact ? 13 : isMobile ? 14 : 15, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
         {!c.agent_id && <option value="">Unassigned</option>}
         {c.agent_id && !known && <option value={c.agent_id}>{ownerFirst.get(c.agent_id) || 'Former agent'}</option>}
         {agents.map(a => <option key={a.id} value={a.id}>{`${a.first_name ?? ''} ${(a.last_name ?? '').slice(0, 1) ? `${(a.last_name ?? '').slice(0, 1)}.` : ''}`.trim()}</option>)}
@@ -260,7 +260,11 @@ export default function ContactsView(p: ContactsViewProps) {
         .ct-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
         .ct-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
         @keyframes ct-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-        @media (max-width:700px){.ct-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.ct-sum .v{font-size:23px}}
+        @media (max-width:700px){.ct-sumrow{grid-template-columns:repeat(2,1fr);gap:10px}.ct-sum .v{font-size:28px}
+          .ct-sum{border-radius:18px;padding:13px 14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}
+          .ct-sum::before{display:none}
+          .ct-sum::after{content:'';position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--ct-dot),transparent 70%);opacity:.22;pointer-events:none}
+          .ct-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--k-6b7280)}}
         @media (prefers-reduced-motion:reduce){.ct-sum{animation:none;transition:none}.ct-sum:hover{transform:none}}
       `}</style>
       <div className="ct-sumrow">
@@ -280,11 +284,11 @@ export default function ContactsView(p: ContactsViewProps) {
       </div>
 
       {/* Toolbar */}
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, padding: isMobile ? 10 : 12, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: isMobile ? 20 : 14, padding: isMobile ? 12 : 12, boxShadow: isMobile ? '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.05)' : '0 1px 3px rgba(0,0,0,.05)' }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: '1 1 320px', minWidth: 0 }}>
             <input type="search" aria-label="Search contacts" placeholder={isMobile ? 'Search contacts…' : 'Search name, company, email, phone or tag…'} value={p.search} onChange={e => p.setSearch(e.target.value)}
-              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 40px 9px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: isMobile ? 16 : 14, minHeight: isMobile ? 44 : undefined, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)' }} />
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 40px 9px 14px', border: '1px solid var(--k-e5e7eb)', borderRadius: isMobile ? 14 : 8, fontSize: isMobile ? 16 : 14, minHeight: isMobile ? 48 : undefined, fontFamily: "'DM Sans',sans-serif", background: 'var(--k-fff)', color: 'var(--k-111)' }} />
             {p.search && <button onClick={() => p.setSearch('')} aria-label="Clear search" style={{ position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)', width: 40, height: 40, border: 'none', background: 'transparent', color: 'var(--k-9ca3af)', fontSize: 18, cursor: 'pointer' }}>×</button>}
           </div>
           {p.savedLists}
@@ -371,7 +375,7 @@ export default function ContactsView(p: ContactsViewProps) {
         {p.saveListControls}
         <span style={{ flex: 1 }} />
         {isMobile && (
-          <select aria-label="Sort" value={p.sort} onChange={e => p.setSort(e.target.value as ContactSort)} style={{ minHeight: 44, padding: '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 14, background: 'var(--k-fff)', color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>
+          <select aria-label="Sort" value={p.sort} onChange={e => p.setSort(e.target.value as ContactSort)} style={{ minHeight: 44, padding: '0 14px', border: '1px solid var(--k-e5e7eb)', borderRadius: 22, fontSize: 14, background: 'var(--k-fff)', color: 'var(--k-111)', fontFamily: "'DM Sans',sans-serif" }}>
             <option value="recent">Most recent</option><option value="never">Never contacted</option><option value="az">Name A → Z</option><option value="za">Name Z → A</option><option value="added">Newest added</option><option value="type">Type</option>{isAdmin && <option value="owner">Owner</option>}
           </select>
         )}
@@ -386,7 +390,7 @@ export default function ContactsView(p: ContactsViewProps) {
           {activeCount > 0 && <div style={{ marginTop: 14 }}><button onClick={clearAll} style={{ minHeight: 44, padding: '0 20px', border: 'none', borderRadius: 10, background: '#c9922c', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Clear all filters</button></div>}
         </div>
       ) : isMobile ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {isAdmin && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--k-6b7280)', minHeight: 44 }}>
               <input type="checkbox" checked={allSelected} onChange={e => p.setSelected(e.target.checked ? new Set(filtered.map(c => c.id)) : new Set())} style={{ width: 20, height: 20, accentColor: '#c9922c' }} /> Select all {filtered.length.toLocaleString()}
@@ -397,16 +401,16 @@ export default function ContactsView(p: ContactsViewProps) {
             const tags = (c.tags ?? []).slice(0, 2);
             return (
               <div key={c.id} onClick={() => p.onOpen(c)} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') p.onOpen(c); }}
-                style={{ background: p.selected.has(c.id) ? 'var(--k-fef9f0)' : 'var(--k-fff)', border: `1px solid ${p.selected.has(c.id) ? '#f0d9a8' : '#eef0f2'}`, borderRadius: 14, padding: '13px 13px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+                style={{ background: p.selected.has(c.id) ? 'var(--k-fef9f0)' : 'var(--k-fff)', border: `1px solid ${p.selected.has(c.id) ? '#f0d9a8' : '#eef0f2'}`, borderRadius: 20, padding: '15px 14px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.06)' }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                   {isAdmin && (
                     <label onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, margin: '-8px -8px -8px -10px', flexShrink: 0, cursor: 'pointer' }}>
                       <input type="checkbox" checked={p.selected.has(c.id)} onChange={e => toggleOne(c.id, e.target.checked)} aria-label={`Select ${displayName(c)}`} style={{ width: 22, height: 22, accentColor: '#c9922c' }} />
                     </label>
                   )}
-                  {avatar(c, 38)}
+                  {avatar(c, 46)}
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(c)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(c)}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[nameOf(c) ? c.business_name : '', ...tags].filter(Boolean).join(' · ') || (phoneOf(c) ? p.phoneDisp(phoneOf(c)) : c.email || 'No contact info yet')}</div>
                   </div>
                   <span style={{ fontSize: 10.5, fontWeight: 700, borderRadius: 10, padding: '2px 9px', background: ta.bg, color: ta.color, whiteSpace: 'nowrap' }}>{ta.label}</span>
@@ -416,7 +420,7 @@ export default function ContactsView(p: ContactsViewProps) {
                   {rowActions(c)}
                 </div>
                 {p.canChangeOwner && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12.5, color: 'var(--k-9ca3af)', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--k-f0f0f0)', fontSize: 12.5, color: 'var(--k-9ca3af)', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
                     Owner {ownerSelect(c, false)}
                   </label>
                 )}
