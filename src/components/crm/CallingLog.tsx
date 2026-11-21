@@ -404,7 +404,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
         <div style={mob ? { display: 'flex', gap: 8, width: '100%', overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 2, scrollbarWidth: 'none' as const } : { display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 'auto' }}>
         {isAdmin && conn?.talkroute && <button onClick={syncNow} disabled={busy === 'sync'} style={{ ...miniR, flexShrink: 0, whiteSpace: 'nowrap', color: 'var(--k-9ca3af)' }}>{busy === 'sync' ? '⏳ Syncing…' : '⟳ Sync Talkroute'}</button>}
         <button onClick={() => setShowLog(v => !v)} style={{ ...miniR, flexShrink: 0, whiteSpace: 'nowrap' }}>＋ Log a call</button>
-        <button onClick={() => setShowBlocked(v => !v)} style={{ ...miniR, flexShrink: 0, whiteSpace: 'nowrap', background: showBlocked ? '#111' : 'var(--k-fff)', color: showBlocked ? '#fff' : 'var(--k-374151)' }}>🚫 Blocked numbers</button>
+        {isAdmin && <button onClick={() => setShowBlocked(v => !v)} style={{ ...miniR, flexShrink: 0, whiteSpace: 'nowrap', background: showBlocked ? '#111' : 'var(--k-fff)', color: showBlocked ? '#fff' : 'var(--k-374151)' }}>🚫 Blocked numbers</button>}
         {isAdmin && <button onClick={() => setShowSetup(v => !v)} style={{ ...miniR, flexShrink: 0, whiteSpace: 'nowrap', background: showSetup ? '#111' : 'var(--k-fff)', color: showSetup ? '#fff' : 'var(--k-374151)' }}>⚙ Setup &amp; voice bot</button>}
         </div>
       </div>
@@ -448,7 +448,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
         />
       )}
 
-      {showBlocked && <BlockedNumbersPanel authToken={authToken} businessUnit={businessUnit} isAdmin={isAdmin} showToast={showToast} onChanged={load} />}
+      {isAdmin && showBlocked && <BlockedNumbersPanel authToken={authToken} businessUnit={businessUnit} isAdmin={isAdmin} showToast={showToast} onChanged={load} />}
 
       {/* ── Setup & voice bot (admins) ── */}
       {isAdmin && showSetup && (
@@ -690,9 +690,9 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                             <button onClick={() => setCbMenu(cbMenu === c.id ? null : c.id)} disabled={busy === c.id} style={{ ...miniR, color: 'var(--k-9ca3af)' }} title="Flag for a call back — pick when to be reminded" aria-haspopup="menu" aria-expanded={cbMenu === c.id}>🔔</button>
                             {cbMenu === c.id && <CallbackTimeMenu busy={busy === c.id} onPick={iso => flagWithTime(c, iso)} onClose={() => setCbMenu(null)} />}
                           </span>}
-                      {c.direction !== 'outbound' && !c.contact && c.from_number && (c.blocked
+                      {isAdmin && c.direction !== 'outbound' && !c.contact && c.from_number && (c.blocked
                         ? <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={miniR} title="Let this number through again">Unblock</button>
-                        : <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={{ ...miniR, color: 'var(--k-991b1b)' }} title="Hang up on this number if it calls the bot line again">🚫 Block this number</button>)}
+                        : <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={{ ...miniR, color: 'var(--k-991b1b)' }} title="Hang up on this number if it calls the bot line again">🚫 Block</button>)}
                       {!c.contact && !needsWrap(c) && c.outcome !== 'spam' && (c.from_number || c.to_number || c.callback_number) && <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} disabled={busy === c.id} style={miniR} title="Save this caller as a contact, or link them to one">＋ Contact</button>}
                       {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...miniR, color: '#e5b4b4', borderColor: 'var(--k-f3e4e4)' }} title="Delete this record">✕</button>}
                     </div>

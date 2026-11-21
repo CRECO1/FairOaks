@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, unauthorized, notFound, dbError } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, forbidden, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { addBlock, belongsToContact, blockKey, isOurNumber } from '@/lib/call-blocklist';
 
@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx || !STAFF.includes(ctx.role ?? '')) return unauthorized();
+  if (!isAdminRole(ctx.role)) return forbidden('Only the broker or an admin can block or unblock a number.');   // agents can see the list but not change it
   const b = await req.json().catch(() => ({}));
   const db = adminClient();
   let number = typeof b.number === 'string' ? b.number : '';
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx || !STAFF.includes(ctx.role ?? '')) return unauthorized();
+  if (!isAdminRole(ctx.role)) return forbidden('Only the broker or an admin can block or unblock a number.');   // agents can see the list but not change it
   const db = adminClient();
   const sp = req.nextUrl.searchParams;
   const id = sp.get('id');
