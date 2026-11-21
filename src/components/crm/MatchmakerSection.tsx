@@ -411,7 +411,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   const inp: React.CSSProperties = { padding: '8px 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: isMobile ? 16 : 14, minHeight: isMobile ? 44 : undefined, width: '100%', boxSizing: 'border-box', fontFamily: "'DM Sans',sans-serif" };
   const lbl: React.CSSProperties = { fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 6 };
   const ghost: React.CSSProperties = { minHeight: isMobile ? 44 : 32, padding: '0 14px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
-  const card: React.CSSProperties = { background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 14, padding: isMobile ? 14 : 16, boxShadow: '0 1px 3px rgba(0,0,0,.05)' };
+  const card: React.CSSProperties = { background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: isMobile ? 22 : 14, padding: isMobile ? 14 : 16, boxShadow: isMobile ? '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.06)' : '0 1px 3px rgba(0,0,0,.05)' };
   const tenantFirst = sel ? (sel.first_name || buyerName(sel)) : '';
   const theirs = tenantFirst ? possessive(tenantFirst) : 'their';
 
@@ -461,7 +461,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     const sent = emailed[p.id];
     const btn: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, borderRadius: 7, padding: isMobile ? '12px 14px' : '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' };
     return (
-      <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: wideRows ? 'nowrap' : 'wrap', background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 10, padding: '10px 12px 10px 14px', opacity: isHidden ? .5 : 1 }}>
+      <div key={p.id} className="mm-card" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: wideRows ? 'nowrap' : 'wrap', background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 10, padding: '10px 12px 10px 14px', opacity: isHidden ? .5 : 1 }}>
         <div style={{ flex: wideRows ? '1 1 0' : '1 1 100%', minWidth: 0 }}>
           <div title={propertyTitle(p)} style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>{propertyTitle(p)}</div>
           <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 2 }}>
@@ -514,7 +514,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ marginBottom: 14 }}>
-        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: 'var(--k-111)', marginBottom: 4 }}>🎯 Matchmaker</h2>
+        <h2 className="mm-title" style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: 'var(--k-111)', marginBottom: 4 }}>🎯 Matchmaker</h2>
         <p style={{ fontSize: 14, color: 'var(--k-6b7280)' }}>
           Pick a tenant or buyer, say what they need, and see what fits — then email them the best.{' '}
           <span style={{ color: 'var(--k-9ca3af)' }}>
@@ -533,7 +533,13 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
         .mm-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
         .mm-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
         @keyframes mm-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-        @media (max-width:700px){.mm-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.mm-sum .v{font-size:23px}}
+        @media (max-width:700px){.mm-sumrow{grid-template-columns:repeat(2,1fr);gap:10px}.mm-sum .v{font-size:28px}
+          .mm-sum{border-radius:18px;padding:13px 14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}
+          .mm-sum::before{display:none}
+          .mm-sum::after{content:'';position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--mm-dot),transparent 70%);opacity:.22;pointer-events:none}
+          .mm-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--k-6b7280)}
+          .mm-title{display:none}
+          .mm-card{border-radius:20px!important;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.06)!important}}
         @media (prefers-reduced-motion:reduce){.mm-sum{animation:none}}
       `}</style>
       {!(loadingPeople && loadingProps) && (

@@ -388,7 +388,14 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         .pd-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
         .pd-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
         @keyframes pd-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-        @media (max-width:700px){.pd-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.pd-sum .v{font-size:23px}}
+        @media (max-width:700px){.pd-sumrow{grid-template-columns:repeat(2,1fr);gap:10px}.pd-sum .v{font-size:28px}
+          .pd-sum{border-radius:18px;padding:13px 14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}
+          .pd-sum::before{display:none}
+          .pd-sum::after{content:'';position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--pd-dot),transparent 70%);opacity:.22;pointer-events:none}
+          .pd-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--k-6b7280)}
+          .pd-bar{border-radius:22px!important;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)!important}
+          .pd-bar input[type=search],.pd-bar input[type=text]{border-radius:22px!important}
+          .pd-card{border-radius:20px!important;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.06)!important}}
         @media (prefers-reduced-motion:reduce){.pd-sum{animation:none}}
       `}</style>
       {!loading && properties.length > 0 && (
@@ -408,7 +415,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         </div>
       )}
       {/* Toolbar — search + view on top, then one-tap chips. Everything else lives behind "Filters". */}
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, padding: isMobile ? 10 : 12, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+      <div className="pd-bar" style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, padding: isMobile ? 10 : 12, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: '1 1 300px', minWidth: 0 }}>
             <input
@@ -587,7 +594,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               return (
                 <div key={p.id} style={{ position: 'relative' }}>
                 <button onClick={() => setActive(p)}
-                  style={{ textAlign: 'left', width: '100%', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderLeft: `4px solid ${as.color}`, borderRadius: 14, padding: '14px 15px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+                  className="pd-card" style={{ textAlign: 'left', width: '100%', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderLeft: `4px solid ${as.color}`, borderRadius: 14, padding: '14px 15px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                   <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start', paddingRight: 38 }}>
                     <div style={{ width: 54, height: 54, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
                       <PropertyThumb p={p} height={54} />
@@ -721,7 +728,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
           const price = p.listing_type === 'Sale' || p.sale_price ? fmt$(p.sale_price) : fmtRate(p.asking_rate);
           return (
             <div key={p.id} style={{ position: 'relative' }}>
-            <button
+            <button className="pd-card"
               onClick={() => setActive(p)}
               style={{
                 display: 'block', width: '100%', height: '100%', textAlign: 'left', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14,
