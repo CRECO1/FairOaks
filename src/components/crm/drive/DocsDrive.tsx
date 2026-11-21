@@ -593,7 +593,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     const snippet = (it as DriveDoc).snippet;
     const t = tone(kind, it);
     return (
-      <div key={`${kind}${it.id}`} className="dd-row" {...dragProps(kind, it)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '5px 10px 5px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 60 : 54, ...(isSel(kind, it) ? { background: 'var(--k-fdf6e9)' } : {}) }}>
+      <div key={`${kind}${it.id}`} className="dd-row" {...dragProps(kind, it)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '6px 4px 6px 12px' : '6px 10px 6px 14px', borderBottom: '1px solid var(--k-f0f0f0)', minHeight: isMobile ? 60 : 58, ...(isSel(kind, it) ? { background: 'var(--k-fdf6e9)' } : {}) }}>
         {chk(kind, it)}
         <button type="button" onClick={() => openItem(kind, it)} {...hover.bind(kind, it as HoverItem)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           <Tile n={t.icon} color={t.color} />
@@ -642,7 +642,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     const t = tone(kind, it);
     const snippet = (it as DriveDoc).snippet;
     return (
-      <div key={`${kind}${it.id}`} className="dd-card dd-gcard" {...dragProps(kind, it)} style={{ border: `1px solid ${isSel(kind, it) ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 12, background: isSel(kind, it) ? 'var(--k-fdf6e9)' : 'var(--k-fff)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div key={`${kind}${it.id}`} className="dd-card dd-gcard" {...dragProps(kind, it)} style={{ border: `1px solid ${isSel(kind, it) ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)', background: isSel(kind, it) ? 'var(--k-fdf6e9)' : 'var(--k-fff)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ position: 'relative' }}>
           <button type="button" onClick={() => openItem(kind, it)} {...hover.bind(kind, it as HoverItem)} aria-label={`Open ${title}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 112, border: 'none', borderBottom: '1px solid var(--k-f0f0f0)', background: `${t.color}0d`, padding: snippet ? '12px 14px' : 0, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
             {snippet
@@ -667,7 +667,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const folderCard = (f: DriveFolder) => {
     const t = tone('folder', f);
     return (
-      <div key={`folder${f.id}`} className="dd-card" {...dragProps('folder', f)} {...dropProps(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 6px 10px 12px', border: `1px solid ${isSel('folder', f) || dragHover === f.id ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 12, background: isSel('folder', f) || dragHover === f.id ? 'var(--k-fdf6e9)' : 'var(--k-fff)', minHeight: 62, ...(dragHover === f.id ? { boxShadow: `0 0 0 2px ${GOLD}55` } : {}) }}>
+      <div key={`folder${f.id}`} className="dd-card" {...dragProps('folder', f)} {...dropProps(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 6px 10px 12px', border: `1px solid ${isSel('folder', f) || dragHover === f.id ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)', background: isSel('folder', f) || dragHover === f.id ? 'var(--k-fdf6e9)' : 'var(--k-fff)', minHeight: 62, ...(dragHover === f.id ? { boxShadow: `0 0 0 2px ${GOLD}55` } : {}) }}>
         {chk('folder', f)}
         <button type="button" onClick={() => openItem('folder', f)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           <Tile n={t.icon} color={t.color} size={38} />
@@ -701,7 +701,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           ))}
         </div>
       ) : (
-        <nav aria-label="Folders" style={{ width: 230, flexShrink: 0, background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, padding: 8, maxHeight: '72vh', overflowY: 'auto' }}>
+        <nav aria-label="Folders" style={{ width: 230, flexShrink: 0, background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 14, padding: 8, maxHeight: '72vh', overflowY: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
           {navBtn('All files', view === 'folder' && folderId === null, () => go(null), 'grid', true)}
           {navBtn('Recent', view === 'recent', () => { setQ(''); setView('recent'); }, 'clock')}
           {navBtn('Starred', view === 'starred', () => { setQ(''); setView('starred'); }, 'star')}
@@ -788,6 +788,44 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>{suggested.map(d => gridCard('doc', d))}</div>
             </div>
           )}
+          {view === 'folder' && data && (
+            <>
+              <style>{`
+                .dd-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+                .dd-sum{position:relative;background:var(--k-fff);border:1px solid #eef0f2;border-radius:14px;padding:11px 14px 10px 19px;overflow:hidden;text-align:left;
+                  box-shadow:0 1px 2px rgba(0,0,0,.04);animation:dd-rise .3s ease-out both;font-family:'DM Sans',sans-serif;transition:box-shadow .15s,transform .15s}
+                button.dd-sum{cursor:pointer}
+                button.dd-sum:hover{box-shadow:0 8px 20px rgba(0,0,0,.1);transform:translateY(-1px)}
+                .dd-sum.on{border-color:var(--dd-dot)}
+                .dd-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--dd-dot)}
+                .dd-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
+                .dd-sum .v{font:700 26px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:2px}
+                @keyframes dd-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+                @media (max-width:700px){.dd-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.dd-sum .v{font-size:22px}}
+                @media (prefers-reduced-motion:reduce){.dd-sum{animation:none;transition:none}button.dd-sum:hover{transform:none}}
+              `}</style>
+              <div className="dd-sumrow">
+                {([
+                  { label: 'Folders', n: (data.folders ?? []).length, dot: '#c9922c', chip: 'folder' as Chip | null },
+                  { label: 'Documents', n: (data.docs ?? []).filter(d => d.kind !== 'sheet').length, dot: '#3b82f6', chip: 'doc' as Chip },
+                  { label: 'Spreadsheets', n: (data.docs ?? []).filter(d => d.kind === 'sheet').length, dot: '#22c55e', chip: 'sheet' as Chip },
+                  { label: 'Files', n: (data.files ?? []).length, dot: '#8b5cf6', chip: null },
+                ]).map((t, i) => t.chip === null ? (
+                  <div key={t.label} className="dd-sum" style={{ ['--dd-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}>
+                    <div className="l">{t.label}</div>
+                    <div className="v">{t.n}</div>
+                  </div>
+                ) : (
+                  <button key={t.label} type="button" className={`dd-sum${chip === t.chip ? ' on' : ''}`} aria-pressed={chip === t.chip}
+                    style={{ ['--dd-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}
+                    onClick={() => setChip(c => (c === t.chip ? 'all' : t.chip as Chip))} title={chip === t.chip ? 'Show everything' : `Show only: ${t.label.toLowerCase()}`}>
+                    <div className="l">{t.label}</div>
+                    <div className="v">{t.n}</div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           {!inTrash && view !== 'templates' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
               <div role="group" aria-label="Filter" style={{ display: 'flex', gap: 6, flex: '1 1 auto', overflowX: 'auto', paddingBottom: 2 }}>
@@ -846,7 +884,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                   {files.map(f => gridCard('file', f))}
                 </div>
               ) : (
-              <div className="dd-list" style={{ background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, overflow: 'hidden', containerType: 'inline-size' }}>
+              <div className="dd-list" style={{ background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 14, overflow: 'hidden', containerType: 'inline-size', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                 {!isMobile && (
                   <div style={{ display: 'flex', gap: 10, padding: '9px 10px 9px 14px', borderBottom: '1px solid var(--k-eef0f2)', background: 'var(--k-fafafa)', fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700 }}>
                     <span style={{ width: 22, flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select everything in this list" style={{ width: 16, height: 16, margin: 0, accentColor: GOLD, cursor: 'pointer' }} /></span>
