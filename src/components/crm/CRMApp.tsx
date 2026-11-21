@@ -815,7 +815,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                 <span className="dot" />
                 <span className="n">{stage}</span>
                 <span className="c">{stageDeals.length}</span>
-                {totalVal > 0 && <span className="t">${Math.round(totalVal).toLocaleString()}</span>}
+                {totalVal > 0 && <span className="t">{totalVal >= 1_000_000 ? `$${(totalVal / 1_000_000).toFixed(1)}M` : totalVal >= 1_000 ? `$${Math.round(totalVal / 1_000)}K` : `$${Math.round(totalVal)}`}</span>}
                 <span className="chev" aria-hidden>▾</span>
               </summary>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 10px 12px' }}>
@@ -6806,7 +6806,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             const sub: Partial<Record<typeof page, string>> = {
               deals: `${deals.length} deal${deals.length === 1 ? '' : 's'} from first call to close`,
               contacts: `${clients.length.toLocaleString()} people in your book`,
-              tasks: od > 0 ? `${od} overdue — start there` : 'Nothing overdue. Nice.',
+              tasks: od > 0 ? `${od} overdue — start there` : 'Your to-dos and call queue',
               emails: 'Your inbox, drafts and sent mail',
               calls: 'Every call in and out',
               calendar: 'Meetings, tours and deadlines',
