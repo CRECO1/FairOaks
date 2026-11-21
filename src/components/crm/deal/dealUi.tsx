@@ -353,7 +353,7 @@ export function DealTile({ deal, ownerName, valueLabel, typeStyle, dragging, onC
         <span style={{ ...typeStyle, display: 'inline-block', padding: '1px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{deal.type.split(' ')[0]}</span>
         {deal.value > 0 && <span style={{ fontSize: 12.5, color: 'var(--c-ink,#111)', fontWeight: 700 }}>{valueLabel}</span>}
         {deal.earned_commission != null && deal.earned_commission > 0 && (
-          <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
+          <span style={{ fontSize: 12, color: '#15803d', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
         )}
       </div>
       {((deal.tags ?? []).length > 0 || touched != null) && (

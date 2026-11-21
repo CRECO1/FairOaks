@@ -1266,6 +1266,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           .ls-sum::after{content:'';position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--ls-dot),transparent 70%);opacity:.22;pointer-events:none}
           .ls-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--k-6b7280)}
           .ls-bar input,.ls-bar select,.ls-bar button{border-radius:22px!important;min-height:44px;padding-left:16px!important;padding-right:16px!important}
+          .ls-bar>button{flex:1 1 auto!important}
+          .ls-bar select{color:var(--k-374151)!important}
+          .ls-bar input::placeholder{color:var(--k-6b7280)}
           .ls-card{border-radius:22px!important;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.06)!important}
           .ls-health{background:var(--k-fff);border:1px solid var(--k-e5e7eb);border-radius:20px;padding:10px 14px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}
           .ls-health:empty{display:none}}

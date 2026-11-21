@@ -202,8 +202,8 @@ export default function ContactsView(p: ContactsViewProps) {
     const pending = p.pendingTasksByClient.get(c.id) ?? 0;
     return (
       <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
-        {phone ? <a href={`tel:${phone}`} title={`Call ${p.phoneDisp(phone)}`} aria-label="Call" style={actionBtn}>☎</a> : <span title="No phone on file" style={{ ...actionBtn, opacity: 0.35, cursor: 'default' }}>☎</span>}
-        {c.email ? <a href={`mailto:${c.email}`} title={`Email ${c.email}`} aria-label="Email" style={actionBtn} onClick={e => { if (p.onEmail) { e.preventDefault(); p.onEmail(c); } }}>✉</a> : <span title="No email on file" style={{ ...actionBtn, opacity: 0.35, cursor: 'default' }}>✉</span>}
+        {phone ? <a href={`tel:${phone}`} title={`Call ${p.phoneDisp(phone)}`} aria-label="Call" style={actionBtn}>☎</a> : <span title="No phone on file" style={{ ...actionBtn, opacity: 0.5, cursor: 'default', borderStyle: 'dashed', background: 'transparent' }}>☎</span>}
+        {c.email ? <a href={`mailto:${c.email}`} title={`Email ${c.email}`} aria-label="Email" style={actionBtn} onClick={e => { if (p.onEmail) { e.preventDefault(); p.onEmail(c); } }}>✉</a> : <span title="No email on file" style={{ ...actionBtn, opacity: 0.5, cursor: 'default', borderStyle: 'dashed', background: 'transparent' }}>✉</span>}
         {p.onSecure && <button onClick={() => p.onSecure?.(c)} title="Request documents securely (application, ID, bank statements…)" aria-label="Request secure documents" style={actionBtn}>🔒</button>}
         <button onClick={() => p.onAddTask(c)} title={pending > 0 ? `${pending} open task${pending === 1 ? '' : 's'} — add another` : 'Add a task'} aria-label="Add a task"
           style={{ ...actionBtn, ...(pending > 0 ? { background: 'var(--k-fdf6e8)', borderColor: '#f0e2c4', color: '#a06a12', fontWeight: 700 } : {}) }}>{pending > 0 ? pending : '✓'}</button>

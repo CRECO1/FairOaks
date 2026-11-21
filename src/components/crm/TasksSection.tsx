@@ -313,7 +313,7 @@ function DuePill({ value, text, tone, disabled, onChange }: { value?: string; te
   const pick = (n: number) => { onChange(addDaysYmd(n)); setPos(null); };
   const tc = DUE_TONE[tone];
   const label = <>📅 {text}</>;
-  const base: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 6, border: '1px solid transparent', background: tc.bg, color: tc.color, fontSize: 12, fontWeight: tc.weight, fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' };
+  const base: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, border: '1px solid transparent', background: tc.bg, color: tc.color, fontSize: 12, fontWeight: tc.weight, fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' };
   if (disabled) return <span style={base}>{label}</span>;
   return (
     <div ref={ref} style={{ display: 'inline-block' }} onClick={e => e.stopPropagation()}>
@@ -618,7 +618,7 @@ function TaskRow({ t, isMobile, selectMode, isSelected, showOwner, owner, contac
   const TAG: React.CSSProperties = { flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 8, background: 'var(--k-f1f5f9)', color: 'var(--k-64748b)', whiteSpace: 'nowrap', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' };
   const contactBtn = contact && (
     <button onClick={e => { e.stopPropagation(); onContact(); }} title={`${contact.name} — contact details`}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--k-f1f5f9)', border: 'none', borderRadius: 6, padding: isMobile ? '5px 9px' : '3px 8px', minWidth: 0, maxWidth: '100%', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--k-f1f5f9)', border: 'none', borderRadius: 12, padding: isMobile ? '5px 9px' : '3px 8px', minWidth: 0, maxWidth: '100%', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
       <span style={{ fontSize: 10, flexShrink: 0 }}>👤</span>
       <span style={{ fontSize: isMobile ? 12 : 11.5, color: 'var(--k-374151)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</span>
     </button>
@@ -1160,7 +1160,7 @@ export default function TasksSection({
                   const icon = t.type && TYPE_META[t.type] ? TYPE_META[t.type] : null;
                   const contactChip = contact && (
                     <button onClick={e => { e.stopPropagation(); openContactPopup(contact.id); }}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--k-f1f5f9)', border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", maxWidth: '100%' }}>
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--k-f1f5f9)', border: 'none', borderRadius: 12, padding: '2px 7px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", maxWidth: '100%' }}>
                       <span style={{ fontSize: 10 }}>👤</span>
                       <span style={{ fontSize: 11, color: 'var(--k-374151)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</span>
                     </button>

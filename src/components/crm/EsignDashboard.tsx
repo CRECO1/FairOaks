@@ -475,6 +475,8 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           .es-sum::after{content:'';position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--es-dot),transparent 70%);opacity:.22;pointer-events:none}
           .es-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--k-6b7280)}
           .es-head-title h2{display:none}
+          .es-card .es-status{flex:1 1 100%!important;text-align:left!important;margin-top:2px}
+          .es-card>span[aria-hidden]{display:none}
           .es-head-actions{width:100%}
           .es-head-actions button{flex:1;border-radius:22px!important;min-height:46px!important}
           .es-card{border-radius:20px!important;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.06)!important}
@@ -713,7 +715,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1 }}>{[dealName, env.sent_by, env.created_at ? `sent ${ago(env.created_at)}` : null, more > 0 ? `+${more} earlier cop${more === 1 ? 'y' : 'ies'}` : null].filter(Boolean).join(' · ')}</div>
                   </div>
                   {signerChips(env)}
-                  <div style={{ flex: '0 1 230px', minWidth: 130, textAlign: 'right' }}>
+                  <div className="es-status" style={{ flex: '0 1 230px', minWidth: 130, textAlign: 'right' }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, color: st.color }}>{st.text}</div>
                     <div style={{ fontSize: 11.5, color: 'var(--k-9ca3af)' }}>{sg.filter(s => s.status === 'signed' || s.signed_at).length} of {sg.length} signed</div>
                   </div>

@@ -456,7 +456,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
             <div style={{ fontSize: 13, color: '#8a8f98' }}>{isAdmin ? 'Click any suite to edit tenant, status, color & details.' : 'Floor plan (view only).'}</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <div style={{ display: 'inline-flex', background: '#eceef1', borderRadius: 8, padding: 3 }}>
+            <div className="fp-seg" style={{ display: 'inline-flex', background: '#eceef1', borderRadius: 8, padding: 3 }}>
               {BUILDINGS.map(b => (
                 <button key={b.key} onClick={() => { setBuilding(b.key); setFloor(1); setSelKey(null); }}
                   style={{ border: 'none', cursor: 'pointer', padding: '7px 14px', borderRadius: 6, fontSize: 14, fontWeight: 600, fontFamily: 'inherit', background: building === b.key ? '#243140' : 'transparent', color: building === b.key ? '#fff' : '#5b6776' }}>
@@ -464,7 +464,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
                 </button>
               ))}
             </div>
-            <div style={{ display: 'inline-flex', background: '#eceef1', borderRadius: 8, padding: 3 }}>
+            <div className="fp-seg" style={{ display: 'inline-flex', background: '#eceef1', borderRadius: 8, padding: 3 }}>
               {[1, 2].map(f => (
                 <button key={f} onClick={() => { setFloor(f as 1 | 2); setSelKey(null); }}
                   style={{ border: 'none', cursor: 'pointer', padding: '7px 16px', borderRadius: 6, fontSize: 14, fontWeight: 600, fontFamily: 'inherit', background: floor === f ? '#243140' : 'transparent', color: floor === f ? '#fff' : '#5b6776' }}>
@@ -500,7 +500,9 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
             .fp-sum::after{content:'';position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--fp-dot),transparent 70%);opacity:.22;pointer-events:none}
             .fp-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:#6b7280}
             .fp-card{border-radius:22px!important;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.06)!important}
-            .fp-ctl{border-radius:22px!important;min-height:44px}}
+            .fp-ctl{border-radius:22px!important;min-height:44px}
+            .fp-seg{border-radius:22px!important;padding:4px!important}
+            .fp-seg button{border-radius:18px!important;min-height:40px}}
           @media (prefers-reduced-motion:reduce){.fp-sum{animation:none}}
         `}</style>
         {(() => {
