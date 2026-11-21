@@ -6610,7 +6610,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
               {businessUnit === 'commercial' ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src="/icon-192.png?v=2" alt="CRECO" width={58} height={58} style={{ width: 58, height: 58, borderRadius: '50%', flexShrink: 0, display: 'block' }} />
+                <img src="/creco-logo.png" alt="CRECO — Commercial Real Estate Company" width={134} height={46} style={{ height: 48, width: 'auto', maxWidth: '100%', flexShrink: 1, display: 'block', objectFit: 'contain', ...(crmTheme === 'dark' ? { background: '#fff', borderRadius: 12, padding: '4px 8px', height: 50, boxSizing: 'border-box' } : {}) }} />
               ) : (
                 <span style={{ width: 58, height: 58, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, flexShrink: 0, border: '2px solid #c9922c' }}>{brand.shortName.slice(0, 1)}</span>
               )}
