@@ -469,7 +469,21 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
         .es-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
         .es-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
         @keyframes es-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-        @media (max-width:700px){.es-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.es-sum .v{font-size:23px}}
+        @media (max-width:700px){.es-sumrow{grid-template-columns:repeat(2,1fr);gap:10px}.es-sum .v{font-size:28px}
+          .es-sum{border-radius:18px;padding:13px 14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}
+          .es-sum::before{display:none}
+          .es-sum::after{content:'';position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--es-dot),transparent 70%);opacity:.22;pointer-events:none}
+          .es-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--k-6b7280)}
+          .es-head-title h2{display:none}
+          .es-head-actions{width:100%}
+          .es-head-actions button{flex:1;border-radius:22px!important;min-height:46px!important}
+          .es-card{border-radius:20px!important;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.06)!important}
+          .es-tabrow{border-bottom:none!important}
+          .es-tabs{flex-wrap:nowrap!important;overflow-x:auto;gap:8px!important;scrollbar-width:none}
+          .es-tabs::-webkit-scrollbar{display:none}
+          .es-tabs button{flex:none;border:1px solid var(--k-e5e7eb)!important;border-radius:99px!important;padding:0 16px!important;min-height:42px;background:var(--k-fff)!important;white-space:nowrap}
+          .es-tabs button[aria-selected=true]{background:rgba(201,146,44,.2)!important;border-color:rgba(201,146,44,.6)!important}
+          .es-tabrow select,.es-tabrow input{border-radius:22px!important;min-height:44px;padding:0 16px!important;margin-bottom:0!important}}
         @media (prefers-reduced-motion:reduce){.es-sum{animation:none;transition:none}.es-sum:hover{transform:none}}
       `}</style>
       <div className="es-sumrow">
@@ -500,7 +514,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {attention.map(a => (
-              <div key={a.env.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: a.tone === 'bad' ? 'var(--k-fef6f6)' : 'var(--k-fffaf0)', border: `1px solid ${a.tone === 'bad' ? 'var(--k-f8d7d7)' : 'var(--k-f6e3b8)'}`, borderLeft: `4px solid ${a.tone === 'bad' ? '#ef4444' : '#c9922c'}`, borderRadius: 12, padding: '10px 14px' }}>
+              <div key={a.env.id} className="es-card" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: a.tone === 'bad' ? 'var(--k-fef6f6)' : 'var(--k-fffaf0)', border: `1px solid ${a.tone === 'bad' ? 'var(--k-f8d7d7)' : 'var(--k-f6e3b8)'}`, borderLeft: `4px solid ${a.tone === 'bad' ? '#ef4444' : '#c9922c'}`, borderRadius: 12, padding: '10px 14px' }}>
                 <div style={{ flex: '1 1 240px', minWidth: 0 }}>
                   <div className="es-title" title={a.env.title || undefined} style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prettyTitle(a.env.title)}</div>
                   <div style={{ fontSize: 12.5, color: a.tone === 'bad' ? 'var(--k-b91c1c)' : 'var(--k-92400e)' }}>{a.text}</div>
@@ -515,7 +529,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       )}
 
       {/* ── Tabs + search ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', rowGap: 8, borderBottom: '1px solid #eef0f2', marginBottom: 14 }}>
+      <div className="es-tabrow" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', rowGap: 8, borderBottom: '1px solid #eef0f2', marginBottom: 14 }}>
         <div className="es-tabs" style={{ display: 'flex', gap: 2, flexWrap: 'wrap', flex: '1 1 auto' }} role="tablist">
           {tabs.map(t => (
             <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}
@@ -598,7 +612,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           {tab === 'drafts' && (draftRows.length === 0
             ? <Empty title="No drafts" body="Upload a PDF or pull one from a deal to start a request." />
             : draftRows.map(({ doc: d, dupes }) => (
-              <div key={d.id} style={{ ...rowStyle, cursor: 'default' }}>
+              <div key={d.id} className="es-card" style={{ ...rowStyle, cursor: 'default' }}>
                 <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                   <div className="es-title" title={d.title || undefined} style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prettyTitle(d.title)}</div>
                   <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1 }}>
@@ -636,7 +650,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
               return months.map(m => (
                 <div key={m.label} style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', margin: '6px 2px' }}>{m.label} · {m.items.length}</div>
-                  <div style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+                  <div className="es-card" style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                     {m.items.map((env, i) => {
                       const names = (env.crm_envelope_signers || []).map(x => x.name).filter(Boolean).join(', ');
                       const dealName = env.crm_deals?.property || env.crm_deals?.client;
@@ -693,7 +707,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
               const dealName = env.crm_deals?.property || env.crm_deals?.client;
               const more = tab === 'closed' && tidy ? (copies.get(keyOf(env)) ?? 0) : 0;
               return (
-                <button key={env.id} onClick={() => setOpenId(env.id)} style={rowStyle}>
+                <button key={env.id} className="es-card" onClick={() => setOpenId(env.id)} style={rowStyle}>
                   <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                     <div className="es-title" title={env.title || 'Document'} style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prettyTitle(env.title)}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1 }}>{[dealName, env.sent_by, env.created_at ? `sent ${ago(env.created_at)}` : null, more > 0 ? `+${more} earlier cop${more === 1 ? 'y' : 'ies'}` : null].filter(Boolean).join(' · ')}</div>
