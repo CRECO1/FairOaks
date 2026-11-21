@@ -1017,7 +1017,7 @@ export default function TasksSection({
     fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap',
   });
   const count = (n: number, active: boolean) => <span style={{ fontSize: 11, fontWeight: 700, color: active ? 'var(--k-a8741a)' : 'var(--k-9ca3af)' }}>{n}</span>;
-  const FIELD: React.CSSProperties = { padding: '0 10px', minHeight: isMobile ? 40 : 34, border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: 12.5, background: 'var(--k-fff)', fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' };
+  const FIELD: React.CSSProperties = { padding: isMobile ? '0 14px' : '0 10px', minHeight: isMobile ? 44 : 34, border: '1px solid var(--k-e5e7eb)', borderRadius: isMobile ? 22 : 8, fontSize: 12.5, background: 'var(--k-fff)', fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' };
   // Floating bars: full width on phones (a box pinned at left:50% can only grow to half the screen and squeezes into a tall stack), centred on a desktop.
   const dock: React.CSSProperties = isMobile ? { left: 12, right: 12 } : { left: '50%', transform: 'translateX(-50%)', width: 'max-content', maxWidth: 'calc(100vw - 48px)' };
   const openTask = (t: Task) => setDetailTask(t);
@@ -1067,7 +1067,7 @@ export default function TasksSection({
           const shown = isDoneSec ? items.slice(0, doneShown) : items;
           const allSel = items.length > 0 && items.every(t => selected.has(t.id));
           return (
-            <div key={sec.key} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderLeft: `4px solid ${sec.color}`, borderRadius: 14, overflow: 'hidden', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+            <div key={sec.key} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderLeft: `4px solid ${sec.color}`, borderRadius: isMobile ? 20 : 14, overflow: 'hidden', marginBottom: 14, boxShadow: isMobile ? '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.06)' : '0 1px 3px rgba(0,0,0,.05)' }}>
               <div role="button" tabIndex={0} aria-expanded={open}
                 onClick={() => { if (!forceOpen) setSectionOpen(s => ({ ...s, [sec.key]: !open })); }}
                 onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !forceOpen) { e.preventDefault(); setSectionOpen(s => ({ ...s, [sec.key]: !open })); } }}
@@ -1273,7 +1273,11 @@ export default function TasksSection({
         .tk-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
         .tk-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
         @keyframes tk-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-        @media (max-width:700px){.tk-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.tk-sum .v{font-size:23px}}
+        @media (max-width:700px){.tk-sumrow{grid-template-columns:repeat(2,1fr);gap:10px}.tk-sum .v{font-size:28px}
+          .tk-sum{border-radius:18px;padding:13px 14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}
+          .tk-sum::before{display:none}
+          .tk-sum::after{content:'';position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--tk-dot),transparent 70%);opacity:.22;pointer-events:none}
+          .tk-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--k-6b7280)}}
         @media (prefers-reduced-motion:reduce){.tk-sum{animation:none}button.tk-sum{transition:none}button.tk-sum:hover{transform:none}}
       `}</style>
 
