@@ -1392,7 +1392,7 @@ function ThreadReader(p: {
     <div style={p.isMobile ? { paddingBottom: 76 } : undefined}>
       {p.isMobile && last && (
         // Phone: Reply / Reply all / Forward live in a bar just above the tab bar, like Gmail's, so they are always one tap away.
-        <div role="group" aria-label="Reply" style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(62px + env(safe-area-inset-bottom))', zIndex: 30, display: 'flex', gap: 8, padding: '8px 12px', background: 'var(--c-canvas)', borderTop: '1px solid var(--c-line)' }}>
+        <div role="group" aria-label="Reply" style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(62px + env(safe-area-inset-bottom))', zIndex: 30, display: 'flex', gap: 8, padding: '8px 12px', background: 'color-mix(in srgb, var(--c-canvas) 55%, transparent)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderTop: '1px solid var(--c-line)' }}>
           <button type="button" onClick={() => p.onReply(last, p.t.id, false, p.account)} style={{ flex: '1 1 0', minHeight: 48, borderRadius: 24, border: 'none', background: '#c9922c', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>↩ Reply</button>
           <button type="button" onClick={() => p.onReply(last, p.t.id, true, p.account)} style={{ flex: '1 1 0', minHeight: 48, borderRadius: 24, border: '1px solid var(--c-line)', background: 'var(--c-surface)', color: 'var(--c-ink)', fontWeight: 600, fontSize: 14.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>↩↩ Reply all</button>
           <button type="button" onClick={() => p.onForward(last, p.t.id, p.account)} style={{ flex: '1 1 0', minHeight: 48, borderRadius: 24, border: '1px solid var(--c-line)', background: 'var(--c-surface)', color: 'var(--c-ink)', fontWeight: 600, fontSize: 14.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>↪ Forward</button>
@@ -1402,7 +1402,7 @@ function ThreadReader(p: {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         {p.isMobile ? (
           // Phone: a slim top bar like Gmail's (round back arrow on the left, the change icons on the right) that stays put while you read.
-          <div style={{ position: 'sticky', top: 0, zIndex: 6, flexBasis: 'calc(100% + 52px)', display: 'flex', alignItems: 'center', gap: 8, margin: '-12px -26px 4px', padding: '8px 14px 8px 14px', background: 'var(--c-canvas)', borderBottom: '1px solid var(--c-line)' }}>
+          <div style={{ position: 'sticky', top: 0, zIndex: 6, flexBasis: 'calc(100% + 52px)', display: 'flex', alignItems: 'center', gap: 8, margin: '-12px -26px 4px', padding: '8px 14px 8px 14px', background: 'color-mix(in srgb, var(--c-canvas) 55%, transparent)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderBottom: '1px solid var(--c-line)' }}>
             {!p.embedded && <button type="button" onClick={p.onBack} aria-label="Back to the list" style={{ ...btn, width: 44, height: 44, padding: 0, borderRadius: 22, fontSize: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>←</button>}
             {changeGroup}
           </div>
