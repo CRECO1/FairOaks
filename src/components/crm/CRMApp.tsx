@@ -72,6 +72,7 @@ import ContactJourney from '@/components/crm/ContactJourney';
 import DealActivityTab from '@/components/crm/deal/DealActivityTab';
 import { DealHeader, DealCardStyles, StatTiles, STAGE_PALETTE, DealTile, TileStyles, Icon, daysAgo } from '@/components/crm/deal/dealUi';
 import Ico, { type IcoName } from '@/components/crm/Ico';
+import { MHead, MPills } from '@/components/crm/MobileKit';
 import PhoneAlerts from '@/components/crm/PhoneAlerts';
 import AlertsPrompt from '@/components/crm/AlertsPrompt';
 import NeedsYou from '@/components/crm/NeedsYou';
@@ -2040,10 +2041,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (showSearch) setTimeout(() => searchRef.current?.focus(), 50);
   }, [showSearch]);
 
-  // Phone/tablet section strip: keep the current section scrolled into view when the page changes.
-  useEffect(() => {
-    document.querySelector('.crm-topnav-item[data-active="1"]')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-  }, [page]);
 
   // Sync URL hash → page state on browser back/forward
   useEffect(() => {
@@ -5985,8 +5982,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   }
                   setShowNotifications(n => !n); loadMentions();
                 }} title="Notifications"
-                  aria-label="Notifications" style={{ position: 'relative', width: compact ? 44 : 38, height: compact ? 44 : 38, flexShrink: 0, borderRadius: 8, border: compact ? `1px solid ${totalAlerts > 0 ? 'rgba(201,146,44,.6)' : 'rgba(255,255,255,.15)'}` : `1px solid ${totalAlerts > 0 ? 'var(--c-warn-line)' : 'var(--c-line)'}`, background: compact ? (showNotifications || totalAlerts > 0 ? 'rgba(201,146,44,.18)' : 'rgba(255,255,255,.1)') : (showNotifications ? 'var(--c-warn-soft)' : totalAlerts > 0 ? 'var(--c-warn-soft)' : 'var(--c-surface-2)'), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all .15s' }}>
-                  <Ico n="bell" size={17} style={{ color: compact ? 'rgba(255,255,255,.85)' : 'var(--c-ink-2)' }} />
+                  aria-label="Notifications" style={{ position: 'relative', width: compact ? 44 : 38, height: compact ? 44 : 38, flexShrink: 0, borderRadius: compact ? 12 : 8, border: compact ? `1px solid ${totalAlerts > 0 ? 'rgba(201,146,44,.6)' : 'var(--c-line)'}` : `1px solid ${totalAlerts > 0 ? 'var(--c-warn-line)' : 'var(--c-line)'}`, background: compact ? (showNotifications || totalAlerts > 0 ? 'rgba(201,146,44,.18)' : 'var(--c-surface-2)') : (showNotifications ? 'var(--c-warn-soft)' : totalAlerts > 0 ? 'var(--c-warn-soft)' : 'var(--c-surface-2)'), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all .15s' }}>
+                  <Ico n="bell" size={17} style={{ color: 'var(--c-ink-2)' }} />
                   {totalAlerts > 0 && (
                     <span style={{ position: 'absolute', top: 3, right: 3, width: 15, height: 15, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: compact ? '1.5px solid #111' : '1.5px solid var(--k-fff)' }}>
                       {totalAlerts > 9 ? '9+' : totalAlerts}
@@ -6171,12 +6168,39 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell *::-webkit-scrollbar-track{background:transparent;}
         /* Phone / tablet navigation: a swipeable tab bar pinned to the bottom of the screen (thumb reach). It is the last flex child of the
            column shell (order), so page content and sticky bars end above it; safe-area padding clears the home indicator. */
-        .crm-app-shell .crm-topnav{display:flex;gap:2px;overflow-x:auto;overflow-y:hidden;flex-shrink:0;order:99;background:#111;border-top:1px solid rgba(201,146,44,.25);padding:0 6px env(safe-area-inset-bottom);scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;}
-        .crm-app-shell .crm-topnav::-webkit-scrollbar{display:none;}
-        .crm-topnav-item{position:relative;flex:none;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0 12px;min-width:72px;min-height:58px;background:none;border:none;border-top:3px solid transparent;color:rgba(255,255,255,.62);font:600 11.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:color .15s,border-color .15s;}
-        .crm-topnav-item:hover{color:#fff;}
-        .crm-topnav-item.on{color:#c9922c;border-top-color:#c9922c;}
-        .crm-topnav-badge{position:absolute;top:5px;left:calc(50% + 6px);min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;}
+        .crm-app-shell .crm-topnav{display:flex;gap:0;flex-shrink:0;order:99;background:var(--c-surface);border-top:1px solid var(--c-line);padding:4px 6px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(0,0,0,.06);}
+        .crm-topnav-item{position:relative;flex:1 1 0;min-width:0;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 2px;min-height:54px;background:none;border:none;color:var(--c-muted);font:600 11.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:color .15s;}
+        .crm-topnav-item .ic{display:flex;align-items:center;justify-content:center;width:52px;height:30px;border-radius:99px;transition:background .15s;}
+        .crm-topnav-item:hover{color:var(--c-ink);}
+        .crm-topnav-item.on{color:#a06a12;}
+        .crm-app-shell[data-crm-theme="dark"] .crm-topnav-item.on{color:#e3b14f;}
+        .crm-topnav-item.on .ic{background:rgba(201,146,44,.18);}
+        .crm-topnav-badge{position:absolute;top:2px;left:calc(50% + 8px);min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--c-surface);box-sizing:content-box;}
+        .crm-more-sheet{position:fixed;left:0;right:0;bottom:0;z-index:9999;max-height:88dvh;overflow-y:auto;background:var(--c-surface);color:var(--c-ink);border-radius:24px 24px 0 0;border-top:1px solid var(--c-line);box-shadow:0 -16px 50px rgba(0,0,0,.35);padding:10px 16px calc(16px + env(safe-area-inset-bottom));animation:crmSheetUp .25s ease;}
+        @keyframes crmSheetUp{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+        .crm-more-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+        .crm-more-item{position:relative;display:flex;align-items:center;gap:10px;min-height:52px;padding:10px 12px;border-radius:16px;border:1px solid var(--c-line);background:var(--c-surface-2);color:var(--c-ink);font:600 14px 'DM Sans',sans-serif;text-align:left;cursor:pointer;text-decoration:none;width:100%;}
+        .crm-more-item.on{border-color:rgba(201,146,44,.55);background:rgba(201,146,44,.14);}
+        .crm-more-item svg{flex-shrink:0;color:var(--c-muted);}
+        .crm-more-item .bd{margin-left:auto;background:#c9922c;color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;}
+        .crm-more-h{font:700 11px 'DM Sans',sans-serif;letter-spacing:1.4px;text-transform:uppercase;color:var(--c-faint);margin:16px 4px 8px;}
+        .m-head{margin:2px 0 14px;}
+        .m-head h1{font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;line-height:1.05;color:var(--c-ink);margin:0;}
+        .m-head p{margin:5px 0 0;font-size:14px;color:var(--c-muted);line-height:1.4;}
+        .m-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px;}
+        .m-tile{position:relative;overflow:hidden;text-align:left;font-family:inherit;background:var(--c-surface);border:1px solid var(--c-line);border-radius:18px;padding:13px 14px;min-width:0;cursor:default;}
+        .m-tile.tap{cursor:pointer;}
+        .m-tile::after{content:'';position:absolute;right:-30px;top:-30px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--m-glow,rgba(201,146,44,.16)),transparent 70%);pointer-events:none;}
+        .m-tile .l{font-size:12.5px;font-weight:600;color:var(--c-muted);}
+        .m-tile .v{font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:700;line-height:1.1;color:var(--c-ink);margin-top:3px;font-variant-numeric:tabular-nums;}
+        .m-tile .s{font-size:12px;color:var(--c-faint);margin-top:2px;}
+        .m-tile.warn .v{color:#dc2626;}
+        .m-tile.good{--m-glow:rgba(16,185,129,.16);} .m-tile.warn{--m-glow:rgba(239,68,68,.14);} .m-tile.blue{--m-glow:rgba(59,130,246,.14);}
+        .m-pills{display:flex;gap:8px;overflow-x:auto;margin:0 -14px 14px;padding:0 14px;scrollbar-width:none;}
+        .m-pills::-webkit-scrollbar{display:none;}
+        .m-pill{flex:none;min-height:40px;padding:0 15px;border-radius:99px;border:1px solid var(--c-line);background:var(--c-surface);color:var(--c-ink-2);font:600 13.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;}
+        .m-pill.on{background:rgba(201,146,44,.2);border-color:rgba(201,146,44,.6);color:#8a5a0c;}
+        .crm-app-shell[data-crm-theme="dark"] .m-pill.on{color:#e3b14f;}
         @media(prefers-reduced-motion:reduce){.overlay,.modal,.crm-sheet,.crm-sheet-panel,.crm-toast,.sk{animation:none!important;}.crm-app-shell *{transition-duration:.01ms!important;}}
         @media(min-width:1181px){.dk-side{position:sticky;top:0;}}
         .dk-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start;}
@@ -6566,179 +6590,138 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* Main */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* Mobile/tablet top header */}
+        {/* Mobile/tablet top header: brand mark + the quick actions. The page title lives in the page header below. */}
         {isTabletOrMobile && (
           <>
-          <div style={{ background: '#111', color: '#fff', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid rgba(201,146,44,.25)' }}>
-            {/* Hamburger → opens full menu sheet */}
-            <button onClick={() => setMobileMenuOpen(true)} aria-label="Open menu"
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.8)', cursor: 'pointer', padding: '4px 6px', flexShrink: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 4, lineHeight: 0, minWidth: 44, minHeight: 44, marginLeft: -6 }}>
-              <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
-              <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
-              <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
-            </button>
-            {/* Brand + page title */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-              <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>{brand.shortName}</span>
-              <span style={{ color: 'rgba(255,255,255,.25)', flexShrink: 0 }}>›</span>
-              <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pageLabel[page]}</span>
+          <div style={{ background: 'var(--c-header)', color: 'var(--c-ink)', padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid var(--c-line)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+              <span style={{ width: 34, height: 34, borderRadius: 10, background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, flexShrink: 0, border: '1px solid rgba(201,146,44,.5)' }}>{brand.shortName.slice(0, 1)}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: 'var(--c-ink)', lineHeight: 1.1 }}>{brand.shortName}</div>
+                <div style={{ fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: 'var(--c-faint)', fontWeight: 600 }}>CRM</div>
+              </div>
             </div>
-            {/* Right actions */}
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-              {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Add</button>}
-              {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Deal</button>}
-              {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' }); }} style={{ padding: '6px 12px', fontSize: 13 }}>+ New</button>}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
               {!assistantOpen && (
                 <button onClick={() => setAssistantOpen(true)} aria-label="Open CRECO Copilot" title="CRECO Copilot"
-                  style={{ background: 'rgba(201,146,44,.16)', border: '1px solid rgba(201,146,44,.5)', borderRadius: 8, color: '#c9922c', cursor: 'pointer', fontSize: 19, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✦</button>
+                  style={{ background: 'rgba(201,146,44,.16)', border: '1px solid rgba(201,146,44,.5)', borderRadius: 12, color: '#c9922c', cursor: 'pointer', fontSize: 19, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✦</button>
               )}
               <button onClick={() => { setShowSearch(true); setSearchQuery(''); }} aria-label="Search"
-                style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🔍</button>
-              {!isMobile && (
-                <button onClick={() => setCrmTheme(t => (t === 'dark' ? 'light' : 'dark'))} aria-label={crmTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} title={crmTheme === 'dark' ? 'Light theme' : 'Dark theme'}
-                  style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.85)', cursor: 'pointer', padding: 0, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Ico n={crmTheme === 'dark' ? 'sun' : 'moon'} size={17} />
-                </button>
-              )}
+                style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-line)', borderRadius: 12, color: 'var(--c-ink-2)', cursor: 'pointer', padding: 0, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ico n="search" size={18} /></button>
               {renderBell(true)}
             </div>
           </div>
-          {/* Section tab bar: the phone/tablet navigation is pinned to the bottom (CSS order) — one swipeable row,
-              the current page highlighted and scrolled into view. The ☰ in the header still opens everything else. */}
+          {/* Bottom tab bar: four main tabs + More (everything else). Pinned to the bottom by CSS order. */}
           {(() => {
             const overdueCt = overdueMine(tasks, profile?.id);
-            type Tab = { id: typeof page; label: string; ico: IcoName; on?: boolean; badge?: number; go: () => void };
-            const tabs: Tab[] = [
-              { id: 'esign', label: 'E-Sign', ico: 'pen', go: () => setPage('esign') },
-              { id: 'properties', label: 'Properties', ico: 'building', go: () => setPage('properties') },
-              { id: 'dashboard', label: 'Home', ico: 'home', go: () => setPage('dashboard') },
-              { id: 'tasks', label: 'Tasks', ico: 'check', badge: overdueCt, go: () => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); } },
-              { id: 'deals', label: 'Deals', ico: 'deals', go: () => { setPage('deals'); setFilter(''); } },
-              { id: 'calls', label: 'Calls', ico: 'phone', go: () => { setPage('calls'); if (!clients.length) loadClients(); } },
-              { id: 'contacts', label: 'Contacts', ico: 'users', go: () => { setPage('contacts'); setNoInfoOnly(false); loadClients(); loadSmartLists(); } },
-              { id: 'calendar', label: 'Calendar', ico: 'calendar', go: () => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); } },
-              { id: 'campaigns', label: 'Marketing', ico: 'megaphone', on: ['campaigns', 'action-plans', 'social'].includes(page), go: () => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); } },
-              { id: 'transaction-docs', label: 'Drive', ico: 'file', go: () => setPage('transaction-docs') },
+            const moreBadge = emailBadge + chatUnread;
+            type Tab = { id: string; label: string; ico: IcoName; on: boolean; badge?: number; go: () => void };
+            const main: Tab[] = [
+              { id: 'dashboard', label: 'Home', ico: 'home', on: page === 'dashboard', go: () => setPage('dashboard') },
+              { id: 'tasks', label: 'Tasks', ico: 'check', on: page === 'tasks', badge: overdueCt, go: () => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); } },
+              { id: 'deals', label: 'Deals', ico: 'deals', on: page === 'deals', go: () => { setPage('deals'); setFilter(''); } },
+              { id: 'contacts', label: 'Contacts', ico: 'users', on: page === 'contacts', go: () => { setPage('contacts'); setNoInfoOnly(false); loadClients(); loadSmartLists(); } },
             ];
+            const moreOn = !main.some(t => t.on);
             return (
-              <nav className="crm-tabs-scroll crm-topnav" aria-label="Sections">
-                {tabs.map(t => {
-                  const active = t.on ?? page === t.id;
-                  return (
-                    <button key={t.id} ref={el => { if (el && active) el.dataset.active = '1'; else if (el) delete el.dataset.active; }}
-                      className={`crm-topnav-item${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} onClick={t.go}>
-                      <Ico n={t.ico} size={20} />
-                      <span>{t.label}</span>
-                      {!!t.badge && t.badge > 0 && <span className="crm-topnav-badge">{t.badge > 9 ? '9+' : t.badge}</span>}
-                    </button>
-                  );
-                })}
+              <nav className="crm-topnav" aria-label="Sections">
+                {main.map(t => (
+                  <button key={t.id} className={`crm-topnav-item${t.on ? ' on' : ''}`} aria-current={t.on ? 'page' : undefined} onClick={() => { setMobileMenuOpen(false); t.go(); }}>
+                    <span className="ic"><Ico n={t.ico} size={22} /></span>
+                    <span>{t.label}</span>
+                    {!!t.badge && t.badge > 0 && <span className="crm-topnav-badge">{t.badge > 9 ? '9+' : t.badge}</span>}
+                  </button>
+                ))}
+                <button className={`crm-topnav-item${moreOn || mobileMenuOpen ? ' on' : ''}`} aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}>
+                  <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg></span>
+                  <span>More</span>
+                  {moreBadge > 0 && <span className="crm-topnav-badge">{moreBadge > 9 ? '9+' : moreBadge}</span>}
+                </button>
               </nav>
             );
           })()}
           </>
         )}
 
-        {/* ── Mobile full-screen nav sheet ── */}
-        {isTabletOrMobile && mobileMenuOpen && (
+        {/* ── Mobile "More" bottom sheet ── */}
+        {isTabletOrMobile && mobileMenuOpen && (() => {
+          const go = (fn: () => void) => () => { setMobileMenuOpen(false); fn(); };
+          const Item = ({ ico, label, on, badge, onClick }: { ico: IcoName; label: string; on?: boolean; badge?: number; onClick: () => void }) => (
+            <button type="button" className={`crm-more-item${on ? ' on' : ''}`} onClick={onClick}><Ico n={ico} size={20} />{label}{!!badge && badge > 0 && <span className="bd">{badge > 99 ? '99+' : badge}</span>}</button>
+          );
+          return (
           <>
-            {/* Backdrop */}
-            <div onClick={() => setMobileMenuOpen(false)}
-              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 9998, animation: 'fadeIn .2s ease' }} />
-            {/* Drawer */}
-            <div style={{
-              position: 'fixed', left: 0, top: 0, bottom: 0, width: Math.min(290, windowWidth - 40),
-              background: '#111', zIndex: 9999, display: 'flex', flexDirection: 'column',
-              overflowY: 'auto', boxShadow: '4px 0 24px rgba(0,0,0,.4)',
-              transform: 'translateX(0)', animation: 'slideRight .25s ease',
-            }}>
-              {/* Drawer header */}
-              <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid rgba(201,146,44,.3)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, color: '#c9922c', lineHeight: 1.2 }}>{brand.name}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 3 }}>{brand.tagline}</div>
-                </div>
-                <button onClick={() => setMobileMenuOpen(false)} aria-label="Close menu"
-                  style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, color: 'rgba(255,255,255,.6)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
-              </div>
-
-              {/* Workspace switcher (admin; not for a locked profile) */}
+            <div onClick={() => setMobileMenuOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9998, animation: 'fadeIn .2s ease' }} />
+            <div className="crm-more-sheet" role="dialog" aria-label="More">
+              <div style={{ width: 40, height: 4, borderRadius: 99, background: 'var(--c-line)', margin: '0 auto 14px' }} aria-hidden />
               {isAdmin && !profile.unit_locked && (
-                <div style={{ padding: '10px 14px 0' }}>
-                  <a href={businessUnit === 'residential' ? '/crm/commercial' : '/crm/residential'}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, padding: '8px 12px', textDecoration: 'none' }}>
-                    <span style={{ fontSize: 16 }}>{businessUnit === 'residential' ? '🏢' : '🏡'}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,.45)', letterSpacing: 1, textTransform: 'uppercase' }}>Switch to</div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,.9)' }}>{businessUnit === 'residential' ? 'CRECO' : 'Fair Oaks'}</div>
-                    </div>
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>→</span>
-                  </a>
-                </div>
+                <a href={businessUnit === 'residential' ? '/crm/commercial' : '/crm/residential'} className="crm-more-item" style={{ marginBottom: 10 }}>
+                  <span style={{ fontSize: 16 }}>{businessUnit === 'residential' ? '🏢' : '🏡'}</span>
+                  <span>Switch to {businessUnit === 'residential' ? 'CRECO' : 'Fair Oaks'}</span>
+                  <span style={{ marginLeft: 'auto', color: 'var(--c-faint)' }}>→</span>
+                </a>
               )}
-
-              {/* More — only what the top section strip doesn't already show (the strip carries Home, Tasks, Deals,
-                  Contacts, Calendar, Marketing, Properties, Calls, E-Sign and Docs, so they are not repeated here). */}
-              <div style={{ padding: '16px 12px 4px' }}>
-                <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>More</div>
-                <button className={`crm-nav${page === 'emails' ? ' active' : ''}`} onClick={() => { setPage('emails'); setEmailsTab('inbox'); setMobileMenuOpen(false); }}><Ico n="mail" />Emails{emailBadge > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{emailBadge > 99 ? '99+' : emailBadge}</span>}</button>
-                <button className={`crm-nav${page === 'teamchat' ? ' active' : ''}`} onClick={() => { setPage('teamchat'); loadProfiles(); if (!clients.length) loadClients(); setMobileMenuOpen(false); }}><Ico n="users" />Team Chat{chatUnread > 0 && <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{chatUnread > 99 ? '99+' : chatUnread}</span>}</button>
-                {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}><Ico n="briefcase" />Broker / Agents</button>}
-                {isSuperAdmin && (
-                  <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
-                    <Ico n="receipt" />Billing <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>↗</span>
-                  </a>
-                )}
-                <button className={`crm-nav${page === 'settings' ? ' active' : ''}`} onClick={() => { setPage('settings'); setMobileMenuOpen(false); }}><Ico n="pen" />Settings</button>
-                <button className="crm-nav" onClick={() => setCrmTheme(t => (t === 'dark' ? 'light' : 'dark'))}><Ico n={crmTheme === 'dark' ? 'sun' : 'moon'} />{crmTheme === 'dark' ? 'Light theme' : 'Dark theme'}</button>
-                <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}><Ico n="eye" />{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
-                {isSuperAdmin && <button className="crm-nav" onClick={() => { setBackupStatusOpen(true); setMobileMenuOpen(false); }}><Ico n="file" />Backups</button>}
-                {isAdmin && <button className="crm-nav" onClick={() => { setUploadFailuresOpen(true); setMobileMenuOpen(false); }}><Ico n="file" />Failed uploads</button>}
-                {isSuperAdmin && <button className="crm-nav" onClick={() => { setDeletedItemsOpen(true); setMobileMenuOpen(false); }}><Ico n="trash" />Recently Deleted</button>}
-                {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => { setPage('lead-attribution'); setMobileMenuOpen(false); }}><Ico n="chart" />Lead Attribution</button>}
-                {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => { setPage('plaza-site'); setMobileMenuOpen(false); }}><Ico n="tree" />Plaza Site{plazaPending > 0 && <span style={{ marginLeft: 8, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>{plazaPending}</span>}</button>}
+              <div className="crm-more-grid">
+                <Item ico="mail" label="Emails" on={page === 'emails'} badge={emailBadge} onClick={go(() => { setPage('emails'); setEmailsTab('inbox'); })} />
+                <Item ico="phone" label="Calls" on={page === 'calls'} onClick={go(() => { setPage('calls'); if (!clients.length) loadClients(); })} />
+                <Item ico="calendar" label="Calendar" on={page === 'calendar'} onClick={go(() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); })} />
+                <Item ico="building" label="Properties" on={page === 'properties'} onClick={go(() => setPage('properties'))} />
+                <Item ico="pen" label="E-Sign" on={page === 'esign'} onClick={go(() => setPage('esign'))} />
+                <Item ico="file" label="My Drive" on={page === 'transaction-docs'} onClick={go(() => setPage('transaction-docs'))} />
+                <Item ico="megaphone" label="Marketing" on={['campaigns', 'action-plans', 'social'].includes(page)} onClick={go(() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); })} />
+                <Item ico="users" label="Team Chat" on={page === 'teamchat'} badge={chatUnread} onClick={go(() => { setPage('teamchat'); loadProfiles(); if (!clients.length) loadClients(); })} />
+                {isAdmin && <Item ico="briefcase" label="Broker / Agents" on={page === 'agents'} onClick={go(() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); })} />}
+                <Item ico="pen" label="Settings" on={page === 'settings'} onClick={go(() => setPage('settings'))} />
               </div>
+
+              {(isAdmin || isSuperAdmin) && (
+                <>
+                  <div className="crm-more-h">Admin</div>
+                  <div className="crm-more-grid">
+                    <Item ico="eye" label={isSuperAdmin ? 'Agent Activity' : 'My Activity'} onClick={go(() => setCopilotActivityOpen(true))} />
+                    {isSuperAdmin && <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-more-item" onClick={() => setMobileMenuOpen(false)}><Ico n="receipt" size={20} />Billing<span style={{ marginLeft: 'auto', color: 'var(--c-faint)', fontSize: 12 }}>↗</span></a>}
+                    {isSuperAdmin && <Item ico="chart" label="Lead Attribution" on={page === 'lead-attribution'} onClick={go(() => setPage('lead-attribution'))} />}
+                    {isAdmin && <Item ico="tree" label="Plaza Site" on={page === 'plaza-site'} badge={plazaPending} onClick={go(() => setPage('plaza-site'))} />}
+                    {isSuperAdmin && <Item ico="file" label="Backups" onClick={go(() => setBackupStatusOpen(true))} />}
+                    {isAdmin && <Item ico="file" label="Failed uploads" onClick={go(() => setUploadFailuresOpen(true))} />}
+                    {isSuperAdmin && <Item ico="trash" label="Recently Deleted" onClick={go(() => setDeletedItemsOpen(true))} />}
+                  </div>
+                </>
+              )}
 
               {isAdmin && businessUnit === 'residential' && (
-                <div style={{ padding: '10px 12px 4px' }}>
-                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>MLS</div>
-                  <button
-                    onClick={async () => {
-                      setMlsSyncing(true);
-                      try {
-                        const res = await fetch('/api/mls/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) } });
-                        const data = await res.json();
-                        if (!res.ok) showToast('MLS sync failed: ' + (data.error ?? res.status));
-                        else showToast(`✅ MLS sync done — ${data.synced} listings updated`);
-                      } catch { showToast('MLS sync error — check console'); }
-                      finally { setMlsSyncing(false); }
-                    }}
-                    disabled={mlsSyncing}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6, cursor: mlsSyncing ? 'default' : 'pointer', border: '1px solid rgba(201,146,44,.3)', background: 'rgba(201,146,44,.08)', color: 'rgba(255,255,255,.85)', fontSize: 14, fontFamily: "'DM Sans',sans-serif", width: '100%', opacity: mlsSyncing ? 0.7 : 1 }}>
-                    <span>{mlsSyncing ? '⏳' : '🏠'}</span>
-                    <span>{mlsSyncing ? 'Syncing…' : '↻ Sync MLS Listings'}</span>
-                  </button>
-                </div>
+                <button
+                  onClick={async () => {
+                    setMlsSyncing(true);
+                    try {
+                      const res = await fetch('/api/mls/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) } });
+                      const data = await res.json();
+                      if (!res.ok) showToast('MLS sync failed: ' + (data.error ?? res.status));
+                      else showToast(`✅ MLS sync done — ${data.synced} listings updated`);
+                    } catch { showToast('MLS sync error — check console'); }
+                    finally { setMlsSyncing(false); }
+                  }}
+                  disabled={mlsSyncing} className="crm-more-item" style={{ marginTop: 10, opacity: mlsSyncing ? 0.7 : 1 }}>
+                  <span>{mlsSyncing ? '⏳' : '🏠'}</span><span>{mlsSyncing ? 'Syncing…' : '↻ Sync MLS Listings'}</span>
+                </button>
               )}
 
-              <div style={{ marginTop: 'auto', padding: '0 14px 12px' }}>{businessUnit === 'commercial' && <PhoneAlerts token={session?.access_token} tone="dark" visitors={isSuperAdmin} />}</div>
+              <div style={{ marginTop: 14 }}>{businessUnit === 'commercial' && <PhoneAlerts token={session?.access_token} tone="theme" visitors={isSuperAdmin} />}</div>
 
-              {/* Profile + sign out */}
-              <div style={{ padding: '14px 14px', borderTop: '1px solid rgba(255,255,255,.07)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', background: 'rgba(255,255,255,.05)', borderRadius: 8 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'var(--k-111)', flexShrink: 0 }}>{initials}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
-                  </div>
-                  <button className="crm-icon-btn" onClick={() => { setPage('settings'); setMobileMenuOpen(false); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 16 }} title="Settings" aria-label="Settings">⚙</button>
-                  <button className="crm-icon-btn" onClick={() => setShowMfa(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 16 }} title="2-step verification" aria-label="2-step verification">🔒</button>
-                  <button className="crm-icon-btn" onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 18 }} title="Sign out">⏻</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--c-line)' }}>
+                <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#111', flexShrink: 0 }}>{initials}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--c-faint)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
                 </div>
+                <button onClick={() => setCrmTheme(t => (t === 'dark' ? 'light' : 'dark'))} aria-label={crmTheme === 'dark' ? 'Light theme' : 'Dark theme'} style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid var(--c-line)', background: 'var(--c-surface-2)', color: 'var(--c-ink-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ico n={crmTheme === 'dark' ? 'sun' : 'moon'} size={18} /></button>
+                <button onClick={() => setShowMfa(true)} aria-label="2-step verification" style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid var(--c-line)', background: 'var(--c-surface-2)', cursor: 'pointer', fontSize: 16 }}>🔒</button>
+                <button onClick={signOut} style={{ minHeight: 44, padding: '0 14px', borderRadius: 12, border: '1px solid var(--c-line)', background: 'var(--c-surface-2)', color: 'var(--c-ink)', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>Sign out</button>
               </div>
             </div>
           </>
-        )}
+          );
+        })()}
 
         {/* Desktop topbar */}
         {!isTabletOrMobile && <div style={{ background: 'var(--c-header)', borderBottom: '1px solid var(--c-line)', padding: '13px 26px', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -6796,6 +6779,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
         {/* Content */}
         <div className="crm-page-scroll" style={{ flex: 1, background: 'var(--c-canvas)', overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' || page === 'action-plans' ? 0 : isMobile ? 14 : isTabletOrMobile ? 20 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
+
+          {/* Phone/tablet page header (the top bar no longer carries the title): big title, one line of context, and the page's add button. */}
+          {isTabletOrMobile && page !== 'dashboard' && (() => {
+            const od = overdueMine(tasks, profile?.id);
+            const sub: Partial<Record<typeof page, string>> = {
+              deals: `${deals.length} deal${deals.length === 1 ? '' : 's'} from first call to close`,
+              contacts: `${clients.length.toLocaleString()} people in your book`,
+              tasks: od > 0 ? `${od} overdue — start there` : 'Nothing overdue. Nice.',
+              emails: 'Your inbox, drafts and sent mail',
+              calls: 'Every call in and out',
+              calendar: 'Meetings, tours and deadlines',
+              properties: 'Listings and spaces you manage',
+              esign: 'Send, track and sign documents',
+              'transaction-docs': 'Your files, docs and sheets',
+              campaigns: 'Email campaigns and marketing',
+              teamchat: 'Talk with your team',
+              agents: 'Brokers, agents and their activity',
+              settings: 'Your account and preferences',
+            };
+            const action = page === 'contacts' ? <button className="crm-btn crm-btn-gold" onClick={() => setShowAddClient(true)} style={{ minHeight: 44, padding: '0 16px', borderRadius: 14 }}>+ Add</button>
+              : page === 'deals' ? <button className="crm-btn crm-btn-gold" onClick={() => setShowAddDeal(true)} style={{ minHeight: 44, padding: '0 16px', borderRadius: 14 }}>+ Deal</button>
+              : page === 'campaigns' ? <button className="crm-btn crm-btn-gold" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' }); }} style={{ minHeight: 44, padding: '0 16px', borderRadius: 14 }}>+ New</button>
+              : undefined;
+            const flush = page === 'calendar' || page === 'campaigns' || page === 'action-plans';
+            return <div style={flush ? { padding: '14px 14px 0' } : undefined}><MHead title={pageLabel[page]} sub={sub[page]} action={action} /></div>;
+          })()}
 
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
@@ -8179,6 +8188,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* ── Tasks tab: sub-tab toggle (Tasks | Call Queue) ── */}
           {page === 'tasks' && (() => {
             const callDue = allTasks.filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= today()).length;
+            if (isMobile) return (
+              <MPills value={tasksSubTab} onChange={(id) => { setTasksSubTab(id); if (id === 'calls') { loadAllTasks(); loadClients(); } }}
+                items={[{ id: 'tasks', label: 'Tasks' }, { id: 'calls', label: callDue > 0 ? `Call Queue · ${callDue}` : 'Call Queue' }, { id: 'leases', label: 'Lease Renewals' }]} />
+            );
             return (
               <div style={{ display: 'flex', gap: 8, marginBottom: 18, borderBottom: '1px solid var(--k-eee)' }}>
                 <button onClick={() => setTasksSubTab('tasks')}
