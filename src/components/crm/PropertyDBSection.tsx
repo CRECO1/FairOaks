@@ -379,8 +379,36 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
 
   return (
     <div>
+      <style>{`
+        .pd-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+        .pd-sum{position:relative;background:var(--k-fff);border:1px solid #eef0f2;border-radius:14px;padding:13px 16px 12px 20px;overflow:hidden;text-align:left;
+          box-shadow:0 1px 2px rgba(0,0,0,.04);animation:pd-rise .3s ease-out both;font-family:'DM Sans',sans-serif}
+        .pd-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--pd-dot)}
+        .pd-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
+        .pd-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
+        .pd-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
+        @keyframes pd-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        @media (max-width:700px){.pd-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.pd-sum .v{font-size:23px}}
+        @media (prefers-reduced-motion:reduce){.pd-sum{animation:none}}
+      `}</style>
+      {!loading && properties.length > 0 && (
+        <div className="pd-sumrow">
+          {[
+            { label: 'In the database', n: properties.length, sub: 'properties', dot: '#c9922c' },
+            { label: 'Showing now', n: filtered.length, sub: filtered.length === properties.length ? 'no filters on' : 'match your filters', dot: '#3b82f6' },
+            { label: 'Updated this week', n: properties.filter(p => { const t = p.updated_at ?? p.created_at; return t ? Date.now() - new Date(t as string).getTime() < 7 * 864e5 : false; }).length, sub: 'new or changed', dot: '#22c55e' },
+            { label: 'Property types', n: assetTypes.length, sub: 'asset classes', dot: '#8b5cf6' },
+          ].map((t, i) => (
+            <div key={t.label} className="pd-sum" style={{ ['--pd-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}>
+              <div className="l">{t.label}</div>
+              <div className="v">{t.n.toLocaleString()}</div>
+              <div className="s">{t.sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
       {/* Toolbar — search + view on top, then one-tap chips. Everything else lives behind "Filters". */}
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: isMobile ? 10 : 12 }}>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, padding: isMobile ? 10 : 12, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: '1 1 300px', minWidth: 0 }}>
             <input
@@ -559,7 +587,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               return (
                 <div key={p.id} style={{ position: 'relative' }}>
                 <button onClick={() => setActive(p)}
-                  style={{ textAlign: 'left', width: '100%', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderLeft: `4px solid ${as.color}`, borderRadius: 12, padding: '14px 15px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+                  style={{ textAlign: 'left', width: '100%', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderLeft: `4px solid ${as.color}`, borderRadius: 14, padding: '14px 15px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                   <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start', paddingRight: 38 }}>
                     <div style={{ width: 54, height: 54, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
                       <PropertyThumb p={p} height={54} />
@@ -597,7 +625,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
       )}
 
       {view === 'rows' && !loading && filtered.length > 0 && !isMobile && (
-        <div style={{ overflowX: 'auto', border: '1px solid #eef0f2', borderRadius: 12, background: 'var(--k-fff)' }}>
+        <div style={{ overflowX: 'auto', border: '1px solid #eef0f2', borderRadius: 14, background: 'var(--k-fff)', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
           <table style={{ width: '100%', minWidth: 1040, borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'DM Sans',sans-serif" }}>
             <colgroup>
               <col style={{ width: '24%' }} />
@@ -610,7 +638,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               <col style={{ width: '10%' }} />
             </colgroup>
             <thead>
-              <tr style={{ textAlign: 'left', fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', borderBottom: '1px solid #eef0f2' }}>
+              <tr style={{ textAlign: 'left', fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', borderBottom: '2px solid #eef0f2', background: 'var(--k-f9fafb)' }}>
                 {sortTh('name', 'Property')}
                 {sortTh('submarket', 'Submarket')}
                 {sortTh('type', 'Type')}
@@ -696,7 +724,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
             <button
               onClick={() => setActive(p)}
               style={{
-                display: 'block', width: '100%', height: '100%', textAlign: 'left', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12,
+                display: 'block', width: '100%', height: '100%', textAlign: 'left', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14,
                 padding: 0, cursor: 'pointer', overflow: 'hidden', fontFamily: "'DM Sans',sans-serif",
                 boxShadow: '0 1px 2px rgba(0,0,0,.04)', transition: 'box-shadow .15s, transform .15s',
               }}
