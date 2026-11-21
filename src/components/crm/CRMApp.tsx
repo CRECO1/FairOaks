@@ -6609,9 +6609,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div style={{ background: 'var(--c-header)', color: 'var(--c-ink)', padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid var(--c-line)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
               {/* The app icon stretched into an oval: black, double gold ring, CRECO with the gold rule under it. Drawn in CSS so the letters never distort. */}
-              <div role="img" aria-label={brand.shortName} style={{ height: 50, minWidth: 132, padding: '0 22px', borderRadius: 999, background: '#111', border: '3px solid #c9922c', boxShadow: 'inset 0 0 0 3px #111, inset 0 0 0 4px rgba(201,146,44,.55)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, flexShrink: 0 }}>
+              <div role="img" aria-label={brand.shortName} style={{ height: 52, minWidth: 132, padding: '0 22px', borderRadius: 999, background: '#111', border: '3px solid #c9922c', boxShadow: 'inset 0 0 0 3px #111, inset 0 0 0 4px rgba(201,146,44,.55)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, flexShrink: 0 }}>
                 <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 21, fontWeight: 800, letterSpacing: 2.6, color: '#fff', lineHeight: 1, marginRight: -2.6 }}>{businessUnit === 'commercial' ? 'CRECO' : brand.shortName.toUpperCase()}</span>
-                <span aria-hidden style={{ width: 46, height: 2, background: '#c9922c', borderRadius: 2 }} />
+                <span aria-hidden style={{ color: '#c9922c', fontSize: 9, lineHeight: 1, letterSpacing: 5, marginRight: -5 }}>★★★</span>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
