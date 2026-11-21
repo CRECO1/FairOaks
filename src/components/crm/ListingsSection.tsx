@@ -1247,6 +1247,44 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       <InquiryAlertPrompt authToken={authToken} onToast={onToast} />
       {isAdmin && <LeadTagHealth authToken={authToken} onOpenContact={onOpenContact} />}
 
+      {/* At a glance — tap a status to filter the list */}
+      <style>{`
+        .ls-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+        .ls-sum{position:relative;background:var(--k-fff);border:1px solid #eef0f2;border-radius:14px;padding:13px 16px 12px 20px;overflow:hidden;text-align:left;
+          box-shadow:0 1px 2px rgba(0,0,0,.04);animation:ls-rise .3s ease-out both;font-family:'DM Sans',sans-serif;transition:box-shadow .15s,transform .15s}
+        button.ls-sum{cursor:pointer}
+        button.ls-sum:hover{box-shadow:0 8px 20px rgba(0,0,0,.1);transform:translateY(-1px)}
+        .ls-sum.on{border-color:var(--ls-dot)}
+        .ls-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--ls-dot)}
+        .ls-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
+        .ls-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
+        .ls-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
+        @keyframes ls-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        @media (max-width:700px){.ls-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.ls-sum .v{font-size:23px}}
+        @media (prefers-reduced-motion:reduce){.ls-sum{animation:none;transition:none}button.ls-sum:hover{transform:none}}
+      `}</style>
+      {!loading && listings.length > 0 && (
+        <div className="ls-sumrow">
+          {([
+            { label: 'Listings', n: listings.length, sub: 'in the database', dot: '#c9922c', st: '' },
+            { label: 'Active', n: listings.filter(l => (l.status ?? 'active') === 'active').length, sub: 'on the market', dot: '#22c55e', st: 'active' },
+            { label: 'Pending', n: listings.filter(l => l.status === 'pending').length, sub: 'under contract', dot: '#f59e0b', st: 'pending' },
+            { label: 'Leased / sold', n: listings.filter(l => l.status === 'leased' || l.status === 'sold').length, sub: 'closed deals', dot: '#3b82f6', st: null },
+          ] as const).map((t, i) => t.st === null ? (
+            <div key={t.label} className="ls-sum" style={{ ['--ls-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}>
+              <div className="l">{t.label}</div><div className="v">{t.n}</div><div className="s">{t.sub}</div>
+            </div>
+          ) : (
+            <button key={t.label} type="button" className={`ls-sum${statusFilter === t.st && t.st !== '' ? ' on' : ''}`}
+              style={{ ['--ls-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}
+              onClick={() => setStatusFilter(statusFilter === t.st ? '' : t.st)}
+              title={t.st === '' ? 'Show all statuses' : `Show only: ${t.label.toLowerCase()}`}>
+              <div className="l">{t.label}</div><div className="v">{t.n}</div><div className="s">{t.sub}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search listings…"
@@ -1387,8 +1425,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         const section = (title: string, items: Listing[], hint: string) => (
           <div style={{ marginBottom: 26 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
-              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: 'var(--k-111)' }}>{title}</div>
-              <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{items.length}</span>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 21, fontWeight: 700, color: 'var(--k-111)' }}>{title}</div>
+              <span style={{ fontSize: 11.5, color: '#fff', background: '#c9922c', borderRadius: 999, padding: '1px 9px', fontWeight: 700, minWidth: 22, textAlign: 'center' }}>{items.length}</span>
             </div>
             {items.length === 0
               ? <div style={{ fontSize: 13, color: 'var(--k-9ca3af)', fontStyle: 'italic', padding: '4px 0' }}>{hint}</div>
