@@ -6614,10 +6614,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               ) : (
                 <span style={{ width: 42, height: 42, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, flexShrink: 0, border: '2px solid #c9922c' }}>{brand.shortName.slice(0, 1)}</span>
               )}
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: 'var(--c-ink)', lineHeight: 1.1 }}>CRM</div>
-                <div style={{ fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: 'var(--c-faint)', fontWeight: 600 }}>{brand.shortName}</div>
-              </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
               {!assistantOpen && (
