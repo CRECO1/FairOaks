@@ -8157,7 +8157,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {/* ── Calendar ── */}
           {page === 'calendar' && (
-            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: isMobile ? 'auto' : '100%', overflow: isMobile ? 'visible' : 'hidden' }}>
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: isMobile ? 'auto' : '100%', overflow: isMobile ? 'visible' : 'hidden', ...(isMobile ? { gap: 14, padding: '0 14px 16px' } : {}) }}>
               {!gmailConnected ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, padding: 40 }}>
                   <div style={{ fontSize: 56 }}>📅</div>
@@ -8218,18 +8218,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 return (
                   <>
                     {/* Left: Month Grid */}
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: isMobile ? 'none' : '1px solid var(--k-e5e7eb)', borderBottom: isMobile ? '1px solid var(--k-e5e7eb)' : 'none', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: isMobile ? 'none' : '1px solid var(--k-e5e7eb)', borderBottom: isMobile ? 'none' : 'none', overflow: 'hidden', ...(isMobile ? { borderRadius: 22, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', boxShadow: '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.06)' } : {}) }}>
                       {/* Month header */}
                       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', padding: isMobile ? '12px 14px' : '16px 24px', borderBottom: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', gap: isMobile ? 8 : 12 }}>
                         <button onClick={() => setCalViewMonth(new Date(year, month - 1, 1))}
-                          style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, flexShrink: 0, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, cursor: 'pointer', background: 'var(--k-fff)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+                          style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, flexShrink: 0, border: '1px solid var(--k-e5e7eb)', borderRadius: isMobile ? 22 : 6, cursor: 'pointer', background: 'var(--k-fff)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
                         <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, color: 'var(--k-111)', flex: 1, textAlign: 'center' }}>{monthName}</span>
                         <button onClick={() => setCalViewMonth(new Date(year, month + 1, 1))}
-                          style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, flexShrink: 0, border: '1px solid var(--k-e5e7eb)', borderRadius: 6, cursor: 'pointer', background: 'var(--k-fff)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                          style={{ width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, flexShrink: 0, border: '1px solid var(--k-e5e7eb)', borderRadius: isMobile ? 22 : 6, cursor: 'pointer', background: 'var(--k-fff)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
                         <button onClick={() => { setCalViewMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setCalSelectedDate(today.toDateString()); }}
-                          style={{ padding: '5px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, cursor: 'pointer', background: 'var(--k-fff)', fontSize: 12, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}>Today</button>
+                          style={{ padding: isMobile ? '0 16px' : '5px 12px', minHeight: isMobile ? 44 : undefined, border: '1px solid var(--k-e5e7eb)', borderRadius: isMobile ? 22 : 6, cursor: 'pointer', background: 'var(--k-fff)', fontSize: 12, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}>Today</button>
                         <button onClick={() => loadCalendarEvents(90)}
-                          style={{ padding: '5px 12px', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, cursor: 'pointer', background: 'var(--k-fff)', fontSize: 12, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif" }}>↻ Refresh</button>
+                          style={{ padding: isMobile ? '0 16px' : '5px 12px', minHeight: isMobile ? 44 : undefined, border: '1px solid var(--k-e5e7eb)', borderRadius: isMobile ? 22 : 6, cursor: 'pointer', background: 'var(--k-fff)', fontSize: 12, color: 'var(--k-374151)', fontFamily: "'DM Sans',sans-serif" }}>↻ Refresh</button>
                         <div style={{ display: 'flex', gap: 6, width: isMobile ? '100%' : undefined }}>
                           <button onClick={() => setCalShowTasks(v => !v)} aria-pressed={calShowTasks}
                             style={{ padding: isMobile ? '9px 12px' : '5px 11px', borderRadius: 16, border: `1px solid ${calShowTasks ? '#c9922c' : 'var(--k-e5e7eb)'}`, background: calShowTasks ? 'var(--k-fdf6e8)' : 'var(--k-fff)', color: calShowTasks ? 'var(--k-a8741a)' : 'var(--k-6b7280)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✓ Tasks</button>
@@ -8310,7 +8310,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
 
                     {/* Right: Event Detail Panel */}
-                    <div style={{ width: isMobile ? '100%' : 320, flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)', overflow: 'hidden', maxHeight: isMobile ? 300 : undefined }}>
+                    <div style={{ width: isMobile ? '100%' : 320, flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)', overflow: 'hidden', maxHeight: isMobile ? 420 : undefined, ...(isMobile ? { borderRadius: 22, border: '1px solid var(--k-e5e7eb)', boxShadow: '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.06)' } : {}) }}>
                       <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--k-e5e7eb)' }}>
                         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: 'var(--k-111)' }}>
                           {calSelectedDate ? (() => {
@@ -8334,7 +8334,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           const endTime = ev.allDay ? '' : ev.end ? new Date(ev.end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
                           const matchedDeal = deals.find(d => d.client_email && ev.attendees.some(a => a.email.toLowerCase() === d.client_email?.toLowerCase()));
                           return (
-                            <div key={ev.id} style={{ background: 'var(--k-f9fafb)', borderRadius: 10, padding: '13px 14px', border: '1px solid var(--k-e5e7eb)', borderLeft: '4px solid #1a365d' }}>
+                            <div key={ev.id} style={{ background: 'var(--k-f9fafb)', borderRadius: isMobile ? 16 : 10, padding: '13px 14px', border: '1px solid var(--k-e5e7eb)', borderLeft: '4px solid #1a365d' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
                                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--k-111)', lineHeight: 1.3 }}>{ev.title}</div>
                                 {ev.htmlLink && (
