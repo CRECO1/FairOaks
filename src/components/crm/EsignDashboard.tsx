@@ -434,7 +434,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     return { text: `${cur.in_person ? 'In person: ' : 'Waiting on '}${cur.name}${cur.sent_at && !cur.in_person ? ` · ${ago(cur.sent_at)}` : ''}`, color: 'var(--k-1d4ed8)' };
   };
 
-  const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 14, rowGap: 8, flexWrap: 'wrap', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, padding: '12px 16px', cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: "'DM Sans',sans-serif" };
+  const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 14, rowGap: 8, flexWrap: 'wrap', background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, padding: '14px 18px', cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' };
 
   return (
     <div className="es-touch" style={{ maxWidth: 940, margin: '0 auto', fontFamily: "'DM Sans',sans-serif", ...(dragging ? { outline: '2px dashed #c9922c', outlineOffset: 6, borderRadius: 12 } : {}) }}
@@ -457,6 +457,38 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
         </div>
       </div>
 
+      {/* ── At a glance — tap a tile to jump to that list ── */}
+      <style>{`
+        .es-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+        .es-sum{position:relative;background:var(--k-fff);border:1px solid #eef0f2;border-radius:14px;padding:13px 16px 12px 20px;overflow:hidden;text-align:left;
+          box-shadow:0 1px 2px rgba(0,0,0,.04);animation:es-rise .3s ease-out both;font-family:'DM Sans',sans-serif;cursor:pointer;transition:box-shadow .15s,transform .15s}
+        .es-sum:hover{box-shadow:0 8px 20px rgba(0,0,0,.1);transform:translateY(-1px)}
+        .es-sum.on{border-color:var(--es-dot)}
+        .es-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--es-dot)}
+        .es-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
+        .es-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
+        .es-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
+        @keyframes es-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        @media (max-width:700px){.es-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.es-sum .v{font-size:23px}}
+        @media (prefers-reduced-motion:reduce){.es-sum{animation:none;transition:none}.es-sum:hover{transform:none}}
+      `}</style>
+      <div className="es-sumrow">
+        {([
+          { key: 'out', label: 'Out for signature', n: activeEnvs.length, sub: 'waiting on signers', dot: '#3b82f6' },
+          { key: 'drafts', label: 'Drafts', n: queue.length, sub: 'ready to send', dot: '#c9922c' },
+          { key: 'signed', label: 'Signed', n: completedEnvs.length, sub: 'completed', dot: '#22c55e' },
+          { key: 'out', label: 'Needs attention', n: attention.length, sub: attention.length ? 'declined, bounced or quiet' : 'nothing stalled', dot: '#ef4444' },
+        ] as const).map((t, i) => (
+          <button key={t.label} type="button" className={`es-sum${tab === t.key && t.label !== 'Needs attention' ? ' on' : ''}`}
+            style={{ ['--es-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }} onClick={() => setTab(t.key)}
+            title={`Show: ${t.label.toLowerCase()}`}>
+            <div className="l">{t.label}</div>
+            <div className="v">{t.n}</div>
+            <div className="s">{t.sub}</div>
+          </button>
+        ))}
+      </div>
+
       {/* ── Needs attention ── */}
       {attention.length > 0 && (
         <div style={{ marginBottom: 18 }}>
@@ -468,7 +500,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {attention.map(a => (
-              <div key={a.env.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: a.tone === 'bad' ? 'var(--k-fef6f6)' : 'var(--k-fffaf0)', border: `1px solid ${a.tone === 'bad' ? 'var(--k-f8d7d7)' : 'var(--k-f6e3b8)'}`, borderRadius: 10, padding: '9px 13px' }}>
+              <div key={a.env.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: a.tone === 'bad' ? 'var(--k-fef6f6)' : 'var(--k-fffaf0)', border: `1px solid ${a.tone === 'bad' ? 'var(--k-f8d7d7)' : 'var(--k-f6e3b8)'}`, borderLeft: `4px solid ${a.tone === 'bad' ? '#ef4444' : '#c9922c'}`, borderRadius: 12, padding: '10px 14px' }}>
                 <div style={{ flex: '1 1 240px', minWidth: 0 }}>
                   <div className="es-title" title={a.env.title || undefined} style={{ fontSize: 13, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prettyTitle(a.env.title)}</div>
                   <div style={{ fontSize: 12.5, color: a.tone === 'bad' ? 'var(--k-b91c1c)' : 'var(--k-92400e)' }}>{a.text}</div>
@@ -604,7 +636,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
               return months.map(m => (
                 <div key={m.label} style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', margin: '6px 2px' }}>{m.label} · {m.items.length}</div>
-                  <div style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ background: 'var(--k-fff)', border: '1px solid #eef0f2', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                     {m.items.map((env, i) => {
                       const names = (env.crm_envelope_signers || []).map(x => x.name).filter(Boolean).join(', ');
                       const dealName = env.crm_deals?.property || env.crm_deals?.client;
