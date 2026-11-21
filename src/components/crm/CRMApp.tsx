@@ -1822,12 +1822,37 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Phone tab bar: each agent can hold a tab and drag it to a new spot. The order is remembered on this device, per login.
   const [tabOrder, setTabOrder] = useState<string[]>([]);
   const [dragTab, setDragTab] = useState<string | null>(null);
+  const [dragRemove, setDragRemove] = useState(false);
   const tabDrag = useRef<{ timer: ReturnType<typeof setTimeout> | null; active: boolean; sx: number; sy: number; justDragged: boolean }>({ timer: null, active: false, sx: 0, sy: 0, justDragged: false });
   useEffect(() => {
     if (!profile?.id) return;
     try { const v = JSON.parse(localStorage.getItem(`crm-tab-order:${profile.id}`) || 'null'); if (Array.isArray(v)) setTabOrder(v.filter((x): x is string => typeof x === 'string')); } catch { /* ignore */ }
   }, [profile?.id]);
   const saveTabOrder = (ids: string[]) => { setTabOrder(ids); try { if (profile?.id) { if (ids.length) localStorage.setItem(`crm-tab-order:${profile.id}`, JSON.stringify(ids)); else localStorage.removeItem(`crm-tab-order:${profile.id}`); } } catch { /* ignore */ } };
+  // Every page an agent may pin to the phone tab bar (the rest live in the More sheet).
+  const DEFAULT_TABS = ['dashboard', 'contacts', 'deals', 'emails'];
+  const MAX_TABS = 5;
+  type PhonePage = { id: string; label: string; ico: IcoName; on: boolean; badge?: number; go: () => void };
+  const phonePages = (): PhonePage[] => [
+    { id: 'dashboard', label: 'Home', ico: 'home', on: page === 'dashboard', go: () => setPage('dashboard') },
+    { id: 'tasks', label: 'Tasks', ico: 'check', on: page === 'tasks', badge: overdueMine(tasks, profile?.id), go: () => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); } },
+    { id: 'contacts', label: 'Contacts', ico: 'users', on: page === 'contacts', go: () => { setPage('contacts'); setNoInfoOnly(false); loadClients(); loadSmartLists(); } },
+    { id: 'deals', label: 'Deals', ico: 'deals', on: page === 'deals', go: () => { setPage('deals'); setFilter(''); } },
+    { id: 'emails', label: 'Email', ico: 'mail', on: page === 'emails', badge: emailBadge, go: () => { setPage('emails'); setEmailsTab('inbox'); } },
+    { id: 'calls', label: 'Calls', ico: 'phone', on: page === 'calls', go: () => { setPage('calls'); if (!clients.length) loadClients(); } },
+    { id: 'calendar', label: 'Calendar', ico: 'calendar', on: page === 'calendar', go: () => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); } },
+    { id: 'properties', label: 'Properties', ico: 'building', on: page === 'properties', go: () => setPage('properties') },
+    { id: 'esign', label: 'E-Sign', ico: 'pen', on: page === 'esign', go: () => setPage('esign') },
+    { id: 'transaction-docs', label: 'Drive', ico: 'file', on: page === 'transaction-docs', go: () => setPage('transaction-docs') },
+    { id: 'campaigns', label: 'Marketing', ico: 'megaphone', on: ['campaigns', 'action-plans', 'social'].includes(page), go: () => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); } },
+    { id: 'teamchat', label: 'Team Chat', ico: 'users', on: page === 'teamchat', badge: chatUnread, go: () => { setPage('teamchat'); loadProfiles(); if (!clients.length) loadClients(); } },
+  ];
+  const phoneBarIds = (pages: PhonePage[]) => { const v = tabOrder.filter((id, i) => pages.some(x => x.id === id) && tabOrder.indexOf(id) === i); return v.length ? v.slice(0, MAX_TABS) : DEFAULT_TABS; };
+  const toggleBarTab = (id: string) => {
+    const cur = phoneBarIds(phonePages());
+    if (cur.includes(id)) { if (cur.length <= 1) { showToast('Keep at least one tab on the bar.'); return; } saveTabOrder(cur.filter(x => x !== id)); }
+    else { if (cur.length >= MAX_TABS) { showToast(`The bar holds ${MAX_TABS} tabs. Remove one first.`); return; } saveTabOrder([...cur, id]); }
+  };
 
   // Email preview
   const [showEmailPreview, setShowEmailPreview] = useState(false);
@@ -6181,6 +6206,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell .crm-topnav{display:flex;gap:0;flex-shrink:0;order:99;background:var(--c-surface);border-top:1px solid var(--c-line);padding:4px 6px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(0,0,0,.06);position:relative;z-index:10000;}
         .crm-topnav-item{position:relative;flex:1 1 0;min-width:0;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 2px;min-height:54px;background:none;border:none;color:var(--c-muted);font:600 11.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:color .15s;}
         .crm-topnav-item{touch-action:none;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;}
+        .crm-topnav-item.drag.rm{background:rgba(220,38,38,.16);color:#dc2626;}
         .crm-topnav-item.drag{transform:scale(1.14);z-index:2;background:rgba(201,146,44,.16);border-radius:16px;box-shadow:0 6px 18px rgba(0,0,0,.25);}
         .crm-topnav-item .ic{display:flex;align-items:center;justify-content:center;width:52px;height:30px;border-radius:99px;transition:background .15s;}
         .crm-topnav-item:hover{color:var(--c-ink);}
@@ -6639,45 +6665,56 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {renderBell(true)}
             </div>
           </div>
-          {/* Bottom tab bar: four main tabs + More (everything else). Pinned to the bottom by CSS order. */}
+          {/* Bottom tab bar: the agent's own tabs (default Home, Contacts, Deals, Email) + More. Hold a tab and drag to reorder; drag it up off the bar to remove it. */}
           {(() => {
-            const overdueCt = overdueMine(tasks, profile?.id);
-            const moreBadge = overdueCt + chatUnread;
-            type Tab = { id: string; label: string; ico: IcoName; on: boolean; badge?: number; go: () => void };
-            const main: Tab[] = [
-              { id: 'dashboard', label: 'Home', ico: 'home', on: page === 'dashboard', go: () => setPage('dashboard') },
-              { id: 'contacts', label: 'Contacts', ico: 'users', on: page === 'contacts', go: () => { setPage('contacts'); setNoInfoOnly(false); loadClients(); loadSmartLists(); } },
-              { id: 'deals', label: 'Deals', ico: 'deals', on: page === 'deals', go: () => { setPage('deals'); setFilter(''); } },
-              { id: 'emails', label: 'Email', ico: 'mail', on: page === 'emails', badge: emailBadge, go: () => { setPage('emails'); setEmailsTab('inbox'); } },
-            ];
-            const rank = (id: string, i: number) => { const k = tabOrder.indexOf(id); return k === -1 ? 100 + i : k; };
-            const ordered = main.map((t, i) => ({ t, r: rank(t.id, i) })).sort((x, y) => x.r - y.r).map(x => x.t);
-            const moreOn = !main.some(t => t.on);
+            const pages = phonePages();
+            const barIds = phoneBarIds(pages);
+            const ordered = barIds.map(id => pages.find(x => x.id === id)!).filter(Boolean);
+            const moreBadge = pages.filter(x => !barIds.includes(x.id)).reduce((n, x) => n + (x.badge ?? 0), 0);
+            const moreOn = !ordered.some(t => t.on);
             const d = tabDrag.current;
-            const endDrag = () => { if (d.timer) clearTimeout(d.timer); d.timer = null; if (d.active) { d.active = false; d.justDragged = true; setTimeout(() => { d.justDragged = false; }, 60); setDragTab(null); } };
+            const endDrag = (commit: boolean) => {
+              if (d.timer) clearTimeout(d.timer); d.timer = null;
+              if (!d.active) return;
+              d.active = false; d.justDragged = true; setTimeout(() => { d.justDragged = false; }, 60);
+              const id = dragTab; setDragTab(null);
+              if (!commit) return;
+              if (dragRemove && id && ordered.length > 1) saveTabOrder(ordered.filter(x => x.id !== id).map(x => x.id));
+              else saveTabOrder(ordered.map(x => x.id));
+              setDragRemove(false);
+            };
             return (
+              <>
+              {dragTab && (
+                <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(84px + env(safe-area-inset-bottom))', zIndex: 10001, padding: '9px 16px', borderRadius: 99, fontSize: 13.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", background: dragRemove ? '#dc2626' : '#111', color: '#fff', boxShadow: '0 6px 20px rgba(0,0,0,.35)', whiteSpace: 'nowrap' }}>
+                  {dragRemove ? (ordered.length > 1 ? 'Let go to remove this tab' : 'Keep at least one tab') : 'Drag sideways to reorder · up to remove'}
+                </div>
+              )}
               <nav className="crm-topnav" aria-label="Sections">
                 {ordered.map(t => (
-                  <button key={t.id} className={`crm-topnav-item${t.on ? ' on' : ''}${dragTab === t.id ? ' drag' : ''}`} aria-current={t.on ? 'page' : undefined}
+                  <button key={t.id} className={`crm-topnav-item${t.on ? ' on' : ''}${dragTab === t.id ? ' drag' : ''}${dragTab === t.id && dragRemove ? ' rm' : ''}`} aria-current={t.on ? 'page' : undefined}
                     onContextMenu={e => e.preventDefault()}
                     onPointerDown={e => {
                       if (e.pointerType === 'mouse' && e.button !== 0) return;
                       const el = e.currentTarget; const pid = e.pointerId;
                       d.sx = e.clientX; d.sy = e.clientY; d.active = false;
                       if (d.timer) clearTimeout(d.timer);
-                      d.timer = setTimeout(() => { d.active = true; setDragTab(t.id); try { el.setPointerCapture(pid); } catch { /* ignore */ } try { navigator.vibrate?.(15); } catch { /* ignore */ } }, 380);
+                      d.timer = setTimeout(() => { d.active = true; setDragTab(t.id); setDragRemove(false); try { el.setPointerCapture(pid); } catch { /* ignore */ } try { navigator.vibrate?.(15); } catch { /* ignore */ } }, 380);
                     }}
                     onPointerMove={e => {
                       if (!d.active) { if (d.timer && (Math.abs(e.clientX - d.sx) > 12 || Math.abs(e.clientY - d.sy) > 12)) { clearTimeout(d.timer); d.timer = null; } return; }
                       const nav = e.currentTarget.parentElement; if (!nav) return;
                       const r = nav.getBoundingClientRect();
+                      const up = r.top - e.clientY > 46;
+                      if (up !== dragRemove) setDragRemove(up);
+                      if (up) return;
                       const slot = r.width / (ordered.length + 1);
                       const to = Math.max(0, Math.min(ordered.length - 1, Math.floor((e.clientX - r.left) / slot)));
                       const ids = ordered.map(x => x.id); const from = ids.indexOf(t.id);
                       if (to !== from) { ids.splice(to, 0, ids.splice(from, 1)[0]); setTabOrder(ids); }
                     }}
-                    onPointerUp={() => { const was = d.active; endDrag(); if (was) saveTabOrder(ordered.map(x => x.id)); }}
-                    onPointerCancel={() => { const was = d.active; endDrag(); if (was) saveTabOrder(ordered.map(x => x.id)); }}
+                    onPointerUp={() => endDrag(true)}
+                    onPointerCancel={() => endDrag(false)}
                     onClick={() => { if (d.justDragged) return; setMobileMenuOpen(false); t.go(); }}>
                     <span className="ic"><Ico n={t.ico} size={22} /></span>
                     <span>{t.label}</span>
@@ -6690,6 +6727,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {moreBadge > 0 && <span className="crm-topnav-badge">{moreBadge > 9 ? '9+' : moreBadge}</span>}
                 </button>
               </nav>
+              </>
             );
           })()}
           </>
@@ -6720,22 +6758,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </a>
               )}
               <div className="crm-more-grid">
-                <Item ico="check" label="Tasks" on={page === 'tasks'} badge={overdueMine(tasks, profile?.id)} onClick={go(() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); })} />
-                <Item ico="phone" label="Calls" on={page === 'calls'} onClick={go(() => { setPage('calls'); if (!clients.length) loadClients(); })} />
-                <Item ico="calendar" label="Calendar" on={page === 'calendar'} onClick={go(() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); })} />
-                <Item ico="building" label="Properties" on={page === 'properties'} onClick={go(() => setPage('properties'))} />
-                <Item ico="pen" label="E-Sign" on={page === 'esign'} onClick={go(() => setPage('esign'))} />
-                <Item ico="file" label="My Drive" on={page === 'transaction-docs'} onClick={go(() => setPage('transaction-docs'))} />
-                <Item ico="megaphone" label="Marketing" on={['campaigns', 'action-plans', 'social'].includes(page)} onClick={go(() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); })} />
-                <Item ico="users" label="Team Chat" on={page === 'teamchat'} badge={chatUnread} onClick={go(() => { setPage('teamchat'); loadProfiles(); if (!clients.length) loadClients(); })} />
+                {(() => { const pages = phonePages(); const bar = phoneBarIds(pages); return pages.filter(x => !bar.includes(x.id)).map(x => <Item key={x.id} ico={x.ico} label={x.label} on={x.on} badge={x.badge} onClick={go(x.go)} />); })()}
                 {isAdmin && <Item ico="briefcase" label="Broker / Agents" on={page === 'agents'} onClick={go(() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); })} />}
                 <Item ico="pen" label="Settings" on={page === 'settings'} onClick={go(() => setPage('settings'))} />
               </div>
 
-              <div style={{ margin: '12px 2px 0', fontSize: 12.5, color: 'var(--c-faint)', lineHeight: 1.4 }}>
-                Tip: press and hold a tab on the bottom bar, then drag it to put your tabs in your own order.
-                {tabOrder.length > 0 && <> <button type="button" onClick={() => saveTabOrder([])} style={{ background: 'none', border: 'none', padding: 0, color: '#a06a12', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>Reset order</button></>}
+              <div className="crm-more-h">Your tab bar</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {(() => { const pages = phonePages(); const bar = phoneBarIds(pages); return pages.map(x => { const inBar = bar.includes(x.id); return (
+                  <button key={x.id} type="button" className={`m-pill${inBar ? ' on' : ''}`} aria-pressed={inBar} onClick={() => toggleBarTab(x.id)}>{inBar ? '✓ ' : '+ '}{x.label}</button>
+                ); }); })()}
               </div>
+              <div style={{ margin: '10px 2px 0', fontSize: 12.5, color: 'var(--c-faint)', lineHeight: 1.45 }}>
+                Tap to add or remove a tab (up to {MAX_TABS}). On the bar, press and hold a tab to drag it into a new spot, or drag it up off the bar to remove it.
+                {tabOrder.length > 0 && <> <button type="button" onClick={() => saveTabOrder([])} style={{ background: 'none', border: 'none', padding: 0, color: '#a06a12', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>Reset to default</button></>}
+              </div>
+
+
 
               {(isAdmin || isSuperAdmin) && (
                 <>
