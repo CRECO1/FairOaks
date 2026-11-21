@@ -783,7 +783,7 @@ export default function GmailMailbox(p: Props) {
       : err ? <Empty title="Couldn’t load your mail" sub={err} />
       : visible.length === 0 ? <Empty title={term || contactsOnly || filter !== 'all' ? 'Nothing matches' : p.box === 'inbox' ? 'You’re all caught up 🎉' : 'No sent mail yet'} sub={contactsOnly && threads.length ? 'None of the loaded conversations are with people in your CRM — try “Load older mail”.' : term ? 'Try different words, or clear a filter.' : filter !== 'all' ? 'Nothing matches this filter. Choose “All” to see everything.' : p.box === 'inbox' ? 'No new mail right now. Enjoy the quiet.' : 'Emails you send from the CRM or Gmail show up here.'} />
       : (
-        <div className={`gm-list${sel.size ? ' gm-sel' : ''}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+        <div className={`gm-list${sel.size ? ' gm-sel' : ''}`} style={p.isMobile ? { background: 'transparent' } : { background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
           {visible.map((t, i) => {
             const a = otherOf(t);
             const name = a.name || a.email || '(unknown)';
@@ -794,7 +794,7 @@ export default function GmailMailbox(p: Props) {
             const showHeader = i === 0 || groupLabel(visible[i - 1].date) !== label;
             const gi = sentGroup.get(t.id), gOpen = gi ? openGroups.has(gi.gid) : true;
             if (gi && !gOpen && gi.idx > 0) return null;   // folded into the group row above
-            const dayHdr = showHeader ? <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div> : null;
+            const dayHdr = showHeader ? <div style={p.isMobile ? { padding: '14px 6px 8px', fontSize: 12, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--k-9ca3af)' } : { padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div> : null;
             const groupEl = gi && gi.idx === 0 ? (() => {
               const opened = gi.members.filter(x => tracking.get(x.id)?.opened).length;
               const toggle = () => setOpenGroups(prev => { const n = new Set(prev); if (n.has(gi.gid)) n.delete(gi.gid); else n.add(gi.gid); return n; });
@@ -824,9 +824,9 @@ export default function GmailMailbox(p: Props) {
             if (groupEl && !gOpen) return <React.Fragment key={t.id}>{dayHdr}{groupEl}</React.Fragment>;
             return (
               <React.Fragment key={t.id}>
-                {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div>}
+                {showHeader && <div style={p.isMobile ? { padding: '14px 6px 8px', fontSize: 12, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--k-9ca3af)' } : { padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div>}
                 {groupEl}
-                <div style={{ position: 'relative', overflow: p.isMobile ? 'hidden' : undefined }}>
+                <div style={p.isMobile ? { position: 'relative', overflow: 'hidden', marginBottom: 10, borderRadius: 18, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', boxShadow: '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.05)' } : { position: 'relative' }}>
                 {p.isMobile && canModify && swipe?.id === t.id && swipe.dx !== 0 && (
                   <div aria-hidden style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: swipe.dx < 0 ? 'flex-end' : 'flex-start', padding: '0 22px', background: swipe.dx < 0 ? (p.box === 'inbox' ? '#b45309' : '#b91c1c') : '#2563eb', color: '#fff', fontWeight: 800, fontSize: 14, opacity: Math.min(1, Math.abs(swipe.dx) / 90) }}>
                     {swipe.dx < 0 ? (p.box === 'inbox' ? 'Archive' : 'Trash') : (isUnread(t) ? 'Mark read' : 'Mark unread')}
@@ -846,7 +846,7 @@ export default function GmailMailbox(p: Props) {
                   onTouchEnd={() => { clearTimeout(lp.current.t); swipeEnd(t); }} onTouchCancel={() => { clearTimeout(lp.current.t); sw.current = null; setSwipe(null); }}
                   onContextMenu={e => { if (p.isMobile) e.preventDefault(); }}
                   onMouseEnter={() => { if (!p.isMobile) void loadThread(account, t.id, t.date); }}
-                  style={{ transform: swipe?.id === t.id ? `translateX(${swipe.dx}px)` : undefined, transition: swipe?.id === t.id ? 'none' : 'transform .18s', touchAction: p.isMobile && canModify ? 'pan-y' : undefined, position: 'relative', WebkitTouchCallout: p.isMobile ? 'none' : undefined, userSelect: p.isMobile ? 'none' : undefined, display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: sel.has(t.id) ? 'var(--k-fdf6e8)' : selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
+                  style={{ transform: swipe?.id === t.id ? `translateX(${swipe.dx}px)` : undefined, transition: swipe?.id === t.id ? 'none' : 'transform .18s', touchAction: p.isMobile && canModify ? 'pan-y' : undefined, position: 'relative', WebkitTouchCallout: p.isMobile ? 'none' : undefined, userSelect: p.isMobile ? 'none' : undefined, display: 'flex', gap: 12, alignItems: 'flex-start', padding: p.isMobile ? '14px' : '11px 14px', borderTop: !p.isMobile && !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: sel.has(t.id) ? 'var(--k-fdf6e8)' : selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
                   <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
                     <div className="gm-av"><Avatar name={name} email={a.email} warm={!!match} /></div>
                     {p.isMobile && sel.has(t.id) && <div aria-label="Selected" style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800 }}>✓</div>}
@@ -1400,7 +1400,7 @@ function ThreadReader(p: {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         {p.isMobile ? (
           // Phone: a slim top bar like Gmail's (round back arrow on the left, the change icons on the right) that stays put while you read.
-          <div style={{ position: 'sticky', top: 0, zIndex: 6, flexBasis: '100%', display: 'flex', alignItems: 'center', gap: 8, margin: '-12px -26px 4px', padding: '8px 14px 8px 14px', background: 'var(--c-canvas)', borderBottom: '1px solid var(--c-line)' }}>
+          <div style={{ position: 'sticky', top: 0, zIndex: 6, flexBasis: 'calc(100% + 52px)', display: 'flex', alignItems: 'center', gap: 8, margin: '-12px -26px 4px', padding: '8px 14px 8px 14px', background: 'var(--c-canvas)', borderBottom: '1px solid var(--c-line)' }}>
             {!p.embedded && <button type="button" onClick={p.onBack} aria-label="Back to the list" style={{ ...btn, width: 44, height: 44, padding: 0, borderRadius: 22, fontSize: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>←</button>}
             {changeGroup}
           </div>
@@ -1577,9 +1577,9 @@ function ThreadReader(p: {
       {msgs === null && <div style={{ color: 'var(--k-9ca3af)', fontSize: 14, padding: 24 }}>Opening conversation…</div>}
       {err && <div style={{ color: 'var(--k-dc2626)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
       {chrono.length > 1 && (
-        <div style={{ position: p.isMobile ? 'static' : 'sticky', top: p.embedded ? 0 : 58, zIndex: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '0 0 10px', padding: '6px 8px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 10px 0 var(--k-fff)' }}>
+        <div style={p.isMobile ? { display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 12px', padding: '0 2px' } : { position: 'sticky', top: p.embedded ? 0 : 58, zIndex: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '0 0 10px', padding: '6px 8px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, boxShadow: '0 10px 0 var(--k-fff)' }}>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--k-374151)', marginRight: 2 }}>{p.embedded ? chrono.length : `${chrono.length} messages`}</span>
-          {chrono.length <= (p.embedded ? 6 : 14) ? (
+          {p.isMobile ? null : chrono.length <= (p.embedded ? 6 : 14) ? (
             <div role="group" aria-label="Jump to a message" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               {ordered.map(m => {
                 const n = chrono.findIndex(x => x.id === m.id) + 1, open = !folded.has(m.id), isCur = cur !== null && ordered[cur]?.id === m.id, f = parseAddr(m.from);
@@ -1599,12 +1599,12 @@ function ThreadReader(p: {
             </select>
           )}
           <span style={{ flex: 1 }} />
-          <button type="button" onClick={toggleAll} title="Open or fold every message (o)" style={{ height: 30, padding: '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{allOpen ? (p.embedded ? '▴ Fold' : '▴ Collapse all') : (p.embedded ? '▾ Open' : '▾ Expand all')}</button>
-          <button type="button" onClick={flip} title="Which end of the conversation comes first" style={{ height: 30, padding: '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{newestFirst ? (p.embedded ? '↑ Newest' : '↑ Newest first') : (p.embedded ? '↓ Oldest' : '↓ Oldest first')}</button>
+          <button type="button" onClick={toggleAll} title="Open or fold every message (o)" style={{ height: p.isMobile ? 38 : 30, padding: p.isMobile ? '0 14px' : '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: p.isMobile ? 19 : 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: p.isMobile ? 13.5 : 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{allOpen ? (p.embedded ? '▴ Fold' : '▴ Collapse all') : (p.embedded ? '▾ Open' : '▾ Expand all')}</button>
+          <button type="button" onClick={flip} title="Which end of the conversation comes first" style={{ height: p.isMobile ? 38 : 30, padding: p.isMobile ? '0 14px' : '0 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: p.isMobile ? 19 : 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: p.isMobile ? 13.5 : 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{newestFirst ? (p.embedded ? '↑ Newest' : '↑ Newest first') : (p.embedded ? '↓ Oldest' : '↓ Oldest first')}</button>
         </div>
       )}
       {newestFirst && quickEl && <div style={{ marginBottom: 10 }}>{quickEl}</div>}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: p.isMobile ? 12 : 10 }}>
         {ordered.map(m => {
           const num = chrono.findIndex(x => x.id === m.id) + 1; // its place in the conversation (1 = first)
           const from = parseAddr(m.from);
@@ -1612,6 +1612,25 @@ function ThreadReader(p: {
           const mine = !!me && from.email.toLowerCase() === me;
           const isFolded = folded.has(m.id);
           const match = from.email ? p.contactFor(from.email) : null;
+          if (isFolded && p.isMobile) {
+            const preview = m.text.replace(/\s+/g, ' ').slice(0, 160);
+            return (
+              <div key={m.id} id={`gm-msg-${m.id}`} role="button" tabIndex={0} aria-expanded={false} aria-label={`Message ${num} of ${chrono.length} from ${mine ? 'me' : name} — open`}
+                onClick={() => { setFolded(prev => { const n = new Set(prev); n.delete(m.id); return n; }); setCur(ordered.findIndex(x => x.id === m.id)); }}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFolded(prev => { const n = new Set(prev); n.delete(m.id); return n; }); } }}
+                style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderLeft: m.unread ? '4px solid #c9922c' : '1px solid var(--k-e5e7eb)', borderRadius: 18, boxShadow: '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.05)', cursor: 'pointer', scrollMarginTop: 12 }}>
+                <Avatar name={name} email={from.email} size={44} warm={!!match} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 15.5, fontWeight: m.unread ? 800 : 700, color: 'var(--k-111)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mine ? 'Me' : name}</span>
+                    {m.attachments.length > 0 && <span aria-label="Has attachments" style={{ fontSize: 12 }}>📎</span>}
+                    <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', flexShrink: 0 }}>{when(m.date)}</span>
+                  </div>
+                  <div style={{ fontSize: 14, color: 'var(--k-6b7280)', marginTop: 3, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }}>{preview || '(no text)'}</div>
+                </div>
+              </div>
+            );
+          }
           if (isFolded) {
             return (
               <div key={m.id} id={`gm-msg-${m.id}`} role="button" tabIndex={0} aria-expanded={false} aria-label={`Message ${num} of ${chrono.length} from ${mine ? 'me' : name} — open`}
@@ -1632,7 +1651,7 @@ function ThreadReader(p: {
           const other = mine ? parseAddr(m.to) : from;
           const target = other.email ? p.contactFor(other.email) : null;
           return (
-            <div key={m.id} id={`gm-msg-${m.id}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: p.isMobile ? '12px' : '14px 16px', boxShadow: '0 1px 2px rgba(0,0,0,.04)', scrollMarginTop: p.isMobile ? 12 : p.embedded ? 64 : 122 }}>
+            <div key={m.id} id={`gm-msg-${m.id}`} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: p.isMobile ? 18 : 12, padding: p.isMobile ? '16px 14px' : '14px 16px', boxShadow: p.isMobile ? '0 2px 4px rgba(0,0,0,.06), 0 12px 28px rgba(0,0,0,.08)' : '0 1px 2px rgba(0,0,0,.04)', scrollMarginTop: p.isMobile ? 12 : p.embedded ? 64 : 122 }}>
               <div style={{ display: 'flex', gap: '8px 12px', alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
                 <Avatar name={name} email={from.email} size={40} warm={!!match} />
                 <div style={{ flex: '1 1 190px', minWidth: 0 }}>
