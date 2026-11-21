@@ -6606,13 +6606,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         {/* Mobile/tablet top header: brand mark + the quick actions. The page title lives in the page header below. */}
         {isTabletOrMobile && (
           <>
-          <div style={{ background: 'var(--c-header)', color: 'var(--c-ink)', padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid var(--c-line)' }}>
+          <div style={{ background: 'var(--c-header)', color: 'var(--c-ink)', padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid var(--c-line)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
               {businessUnit === 'commercial' ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src="/icon-192.png?v=2" alt="CRECO" width={42} height={42} style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, display: 'block' }} />
+                <img src="/icon-192.png?v=2" alt="CRECO" width={58} height={58} style={{ width: 58, height: 58, borderRadius: '50%', flexShrink: 0, display: 'block' }} />
               ) : (
-                <span style={{ width: 42, height: 42, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, flexShrink: 0, border: '2px solid #c9922c' }}>{brand.shortName.slice(0, 1)}</span>
+                <span style={{ width: 58, height: 58, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, flexShrink: 0, border: '2px solid #c9922c' }}>{brand.shortName.slice(0, 1)}</span>
               )}
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
