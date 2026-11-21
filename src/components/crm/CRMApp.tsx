@@ -6169,7 +6169,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell *::-webkit-scrollbar-track{background:transparent;}
         /* Phone / tablet navigation: a swipeable tab bar pinned to the bottom of the screen (thumb reach). It is the last flex child of the
            column shell (order), so page content and sticky bars end above it; safe-area padding clears the home indicator. */
-        .crm-app-shell .crm-topnav{display:flex;gap:0;flex-shrink:0;order:99;background:var(--c-surface);border-top:1px solid var(--c-line);padding:4px 6px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(0,0,0,.06);}
+        .crm-app-shell .crm-topnav{display:flex;gap:0;flex-shrink:0;order:99;background:var(--c-surface);border-top:1px solid var(--c-line);padding:4px 6px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(0,0,0,.06);position:relative;z-index:10000;}
         .crm-topnav-item{position:relative;flex:1 1 0;min-width:0;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 2px;min-height:54px;background:none;border:none;color:var(--c-muted);font:600 11.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:color .15s;}
         .crm-topnav-item .ic{display:flex;align-items:center;justify-content:center;width:52px;height:30px;border-radius:99px;transition:background .15s;}
         .crm-topnav-item:hover{color:var(--c-ink);}
@@ -6177,7 +6177,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell[data-crm-theme="dark"] .crm-topnav-item.on{color:#e3b14f;}
         .crm-topnav-item.on .ic{background:rgba(201,146,44,.18);}
         .crm-topnav-badge{position:absolute;top:2px;left:calc(50% + 8px);min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--c-surface);box-sizing:content-box;}
-        .crm-more-sheet{position:fixed;left:0;right:0;bottom:0;z-index:9999;max-height:88dvh;overflow-y:auto;background:var(--c-surface);color:var(--c-ink);border-radius:24px 24px 0 0;border-top:1px solid var(--c-line);box-shadow:0 -16px 50px rgba(0,0,0,.35);padding:10px 16px calc(16px + env(safe-area-inset-bottom));animation:crmSheetUp .25s ease;}
+        .crm-more-sheet{position:fixed;left:0;right:0;bottom:0;z-index:9999;max-height:calc(100dvh - 130px);overflow-y:auto;overscroll-behavior:contain;background:var(--c-surface);color:var(--c-ink);border-radius:24px 24px 0 0;border-top:1px solid var(--c-line);box-shadow:0 -16px 50px rgba(0,0,0,.35);padding:0 16px calc(84px + env(safe-area-inset-bottom));animation:crmSheetUp .25s ease;}
         @keyframes crmSheetUp{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
         .crm-more-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
         .crm-more-item{position:relative;display:flex;align-items:center;gap:10px;min-height:52px;padding:10px 12px;border-radius:16px;border:1px solid var(--c-line);background:var(--c-surface-2);color:var(--c-ink);font:600 14px 'DM Sans',sans-serif;text-align:left;cursor:pointer;text-decoration:none;width:100%;}
@@ -6646,7 +6646,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {!!t.badge && t.badge > 0 && <span className="crm-topnav-badge">{t.badge > 9 ? '9+' : t.badge}</span>}
                   </button>
                 ))}
-                <button className={`crm-topnav-item${moreOn || mobileMenuOpen ? ' on' : ''}`} aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}>
+                <button className={`crm-topnav-item${moreOn || mobileMenuOpen ? ' on' : ''}`} aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(o => !o)}>
                   <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg></span>
                   <span>More</span>
                   {moreBadge > 0 && <span className="crm-topnav-badge">{moreBadge > 9 ? '9+' : moreBadge}</span>}
@@ -6667,7 +6667,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <>
             <div onClick={() => setMobileMenuOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9998, animation: 'fadeIn .2s ease' }} />
             <div className="crm-more-sheet" role="dialog" aria-label="More">
-              <div style={{ width: 40, height: 4, borderRadius: 99, background: 'var(--c-line)', margin: '0 auto 14px' }} aria-hidden />
+              <div style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--c-surface)', margin: '0 -16px 8px', padding: '10px 16px 8px', touchAction: 'none' }}
+                onTouchStart={e => { (e.currentTarget as HTMLElement).dataset.y0 = String(e.touches[0].clientY); }}
+                onTouchMove={e => { const y0 = Number((e.currentTarget as HTMLElement).dataset.y0 ?? 0); if (e.touches[0].clientY - y0 > 50) setMobileMenuOpen(false); }}>
+                <div style={{ width: 44, height: 5, borderRadius: 99, background: 'var(--c-line-2, var(--c-line))', margin: '0 auto', boxShadow: 'inset 0 0 0 1px var(--c-line)' }} aria-hidden />
+                <button type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Close menu"
+                  style={{ position: 'absolute', right: 10, top: 4, width: 44, height: 44, borderRadius: 12, border: 'none', background: 'none', color: 'var(--c-muted)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+              </div>
               {isAdmin && !profile.unit_locked && (
                 <a href={businessUnit === 'residential' ? '/crm/commercial' : '/crm/residential'} className="crm-more-item" style={{ marginBottom: 10 }}>
                   <span style={{ fontSize: 16 }}>{businessUnit === 'residential' ? '🏢' : '🏡'}</span>
