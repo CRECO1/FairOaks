@@ -323,7 +323,12 @@ export function TileStyles() {
       .dc-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--c-ink,#111);line-height:1.1;margin-top:3px}
       .dc-sum .s{font-size:12px;color:var(--c-muted,#6b7280);margin-top:2px}
       .dc-toolbar{background:var(--c-surface,#fff);border:1px solid var(--c-line,#e5e7eb);border-radius:14px;padding:10px 12px}
-      @media (max-width:700px){.dc-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.dc-sum .v{font-size:23px}}
+      @media (max-width:700px){.dc-sumrow{grid-template-columns:repeat(2,1fr);gap:10px}.dc-sum .v{font-size:28px}
+        .dc-sum{border-radius:18px;padding:13px 14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}
+        .dc-sum::before{display:none}
+        .dc-sum::after{content:"";position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,var(--dc-dot),transparent 70%);opacity:.22;pointer-events:none}
+        .dc-sum .l{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--c-muted,#6b7280)}
+        .dc-tile{border-radius:18px;overflow:hidden;padding:14px 14px 12px 18px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05)}}
       @media (prefers-reduced-motion:reduce){.dc-tile{transition:none}.dc-tile:hover{transform:none}.dc-sum{animation:none}}
     `}</style>
   );

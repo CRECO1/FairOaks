@@ -6240,7 +6240,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .m-tile .s{font-size:12px;color:var(--c-faint);margin-top:2px;}
         .m-tile.warn .v{color:#dc2626;}
         .m-tile.good{--m-glow:rgba(16,185,129,.16);} .m-tile.warn{--m-glow:rgba(239,68,68,.14);} .m-tile.blue{--m-glow:rgba(59,130,246,.14);}
-        .m-fold{background:var(--c-surface);border:1px solid var(--c-line);border-left:4px solid var(--m-dot,#c9922c);border-radius:16px;overflow:hidden;}
+        .m-fold{background:var(--c-surface);border:1px solid var(--c-line);border-left:4px solid var(--m-dot,#c9922c);border-radius:20px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05);}
         .m-fold>summary{display:flex;align-items:center;gap:8px;min-height:52px;padding:0 14px;cursor:pointer;list-style:none;font:700 14px 'DM Sans',sans-serif;color:var(--c-ink);}
         .m-fold>summary::-webkit-details-marker{display:none;}
         .m-fold .dot{width:9px;height:9px;border-radius:50%;background:var(--m-dot,#c9922c);flex-shrink:0;}
