@@ -6632,13 +6632,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* Bottom tab bar: four main tabs + More (everything else). Pinned to the bottom by CSS order. */}
           {(() => {
             const overdueCt = overdueMine(tasks, profile?.id);
-            const moreBadge = emailBadge + chatUnread;
+            const moreBadge = overdueCt + chatUnread;
             type Tab = { id: string; label: string; ico: IcoName; on: boolean; badge?: number; go: () => void };
             const main: Tab[] = [
               { id: 'dashboard', label: 'Home', ico: 'home', on: page === 'dashboard', go: () => setPage('dashboard') },
-              { id: 'tasks', label: 'Tasks', ico: 'check', on: page === 'tasks', badge: overdueCt, go: () => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); } },
-              { id: 'deals', label: 'Deals', ico: 'deals', on: page === 'deals', go: () => { setPage('deals'); setFilter(''); } },
               { id: 'contacts', label: 'Contacts', ico: 'users', on: page === 'contacts', go: () => { setPage('contacts'); setNoInfoOnly(false); loadClients(); loadSmartLists(); } },
+              { id: 'deals', label: 'Deals', ico: 'deals', on: page === 'deals', go: () => { setPage('deals'); setFilter(''); } },
+              { id: 'emails', label: 'Email', ico: 'mail', on: page === 'emails', badge: emailBadge, go: () => { setPage('emails'); setEmailsTab('inbox'); } },
             ];
             const moreOn = !main.some(t => t.on);
             return (
@@ -6680,7 +6680,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </a>
               )}
               <div className="crm-more-grid">
-                <Item ico="mail" label="Emails" on={page === 'emails'} badge={emailBadge} onClick={go(() => { setPage('emails'); setEmailsTab('inbox'); })} />
+                <Item ico="check" label="Tasks" on={page === 'tasks'} badge={overdueMine(tasks, profile?.id)} onClick={go(() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); })} />
                 <Item ico="phone" label="Calls" on={page === 'calls'} onClick={go(() => { setPage('calls'); if (!clients.length) loadClients(); })} />
                 <Item ico="calendar" label="Calendar" on={page === 'calendar'} onClick={go(() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); })} />
                 <Item ico="building" label="Properties" on={page === 'properties'} onClick={go(() => setPage('properties'))} />
