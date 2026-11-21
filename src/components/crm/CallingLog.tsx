@@ -392,18 +392,20 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   };
 
   const mob = typeof window !== 'undefined' && window.innerWidth < 768;
+  // Phone: the small buttons become round pills with a bigger tap target (same card standard as the rest of the phone CRM).
+  const miniR: React.CSSProperties = mob ? { ...mini, borderRadius: 22, minHeight: 44, padding: '0 16px' } : mini;
   const light = (ok: boolean) => <span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 9, background: ok ? '#22c55e' : '#ef4444', marginRight: 6, verticalAlign: 'middle' }} />;
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap', rowGap: 8 }}>
-        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: 'var(--k-111)', whiteSpace: 'nowrap' }}>📞 Calling Log</h2>
+        {!mob && <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: 'var(--k-111)', whiteSpace: 'nowrap' }}>📞 Calling Log</h2>}
         <span style={{ fontSize: 13, color: 'var(--k-9ca3af)' }}>{loading ? '' : `${list.length} ${filter === 'follow_up' ? 'waiting on a call back' : filter === 'all' ? `calls · last ${days} days` : 'calls'}`}</span>
         <div style={mob ? { display: 'flex', gap: 8, width: '100%', overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 2, scrollbarWidth: 'none' as const } : { display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 'auto' }}>
-        {isAdmin && conn?.talkroute && <button onClick={syncNow} disabled={busy === 'sync'} style={{ ...mini, flexShrink: 0, whiteSpace: 'nowrap', color: 'var(--k-9ca3af)' }}>{busy === 'sync' ? '⏳ Syncing…' : '⟳ Sync Talkroute'}</button>}
-        <button onClick={() => setShowLog(v => !v)} style={{ ...mini, flexShrink: 0, whiteSpace: 'nowrap' }}>＋ Log a call</button>
-        <button onClick={() => setShowBlocked(v => !v)} style={{ ...mini, flexShrink: 0, whiteSpace: 'nowrap', background: showBlocked ? '#111' : 'var(--k-fff)', color: showBlocked ? '#fff' : 'var(--k-374151)' }}>🚫 Blocked numbers</button>
-        {isAdmin && <button onClick={() => setShowSetup(v => !v)} style={{ ...mini, flexShrink: 0, whiteSpace: 'nowrap', background: showSetup ? '#111' : 'var(--k-fff)', color: showSetup ? '#fff' : 'var(--k-374151)' }}>⚙ Setup &amp; voice bot</button>}
+        {isAdmin && conn?.talkroute && <button onClick={syncNow} disabled={busy === 'sync'} style={{ ...miniR, flexShrink: 0, whiteSpace: 'nowrap', color: 'var(--k-9ca3af)' }}>{busy === 'sync' ? '⏳ Syncing…' : '⟳ Sync Talkroute'}</button>}
+        <button onClick={() => setShowLog(v => !v)} style={{ ...miniR, flexShrink: 0, whiteSpace: 'nowrap' }}>＋ Log a call</button>
+        <button onClick={() => setShowBlocked(v => !v)} style={{ ...miniR, flexShrink: 0, whiteSpace: 'nowrap', background: showBlocked ? '#111' : 'var(--k-fff)', color: showBlocked ? '#fff' : 'var(--k-374151)' }}>🚫 Blocked numbers</button>
+        {isAdmin && <button onClick={() => setShowSetup(v => !v)} style={{ ...miniR, flexShrink: 0, whiteSpace: 'nowrap', background: showSetup ? '#111' : 'var(--k-fff)', color: showSetup ? '#fff' : 'var(--k-374151)' }}>⚙ Setup &amp; voice bot</button>}
         </div>
       </div>
       {!mob && <p style={{ fontSize: 13, color: 'var(--k-6b7280)', marginTop: 0, marginBottom: 14 }}>
@@ -422,8 +424,8 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             { label: 'Voicemails', value: stats.voicemail, sub: 'last 7 days', pick: 'voicemail' as const },
             { label: 'Texts to answer', value: threads.filter(t => t.unanswered).length, sub: `${threads.length} thread${threads.length === 1 ? '' : 's'}`, tone: threads.some(t => t.unanswered) ? 'var(--k-b91c1c)' : undefined, pick: 'texts' as const },
           ].map(c => (
-            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ minWidth: 0, ...(mob ? { flex: '0 0 124px' } : {}), background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : 'var(--k-eef0f3)'}`, borderLeft: `4px solid ${c.tone || 'var(--k-d1d5db)'}`, borderRadius: 14, padding: '11px 13px 10px 14px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
-              <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--k-9ca3af)', fontWeight: 700 }}>{c.label}</div>
+            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ minWidth: 0, ...(mob ? { flex: '0 0 124px' } : {}), background: 'var(--k-fff)', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : 'var(--k-eef0f3)'}`, ...(mob ? { borderLeft: '1px solid var(--k-eef0f3)', borderRadius: 20, padding: '13px 14px', backgroundImage: `radial-gradient(circle at 100% 0%, color-mix(in srgb, ${c.tone || '#c9922c'} 22%, transparent), transparent 62%)`, boxShadow: '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.05)' } : { borderLeft: `4px solid ${c.tone || 'var(--k-d1d5db)'}`, borderRadius: 14, padding: '11px 13px 10px 14px', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }), textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+              <div style={{ fontSize: mob ? 12.5 : 10.5, textTransform: mob ? 'none' : 'uppercase', letterSpacing: mob ? 0 : '.06em', color: mob ? 'var(--k-6b7280)' : 'var(--k-9ca3af)', fontWeight: mob ? 600 : 700 }}>{c.label}</div>
               <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, lineHeight: 1.1, marginTop: 3, color: c.tone || 'var(--k-111827)' }}>{c.value}</div>
               <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{c.sub}</div>
             </button>
@@ -460,9 +462,9 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             <div title={knowledge?.titles?.join('\n')}>{light(!!knowledge?.configured && (knowledge?.count ?? 0) > 0)} Website listings {knowledge?.configured ? <span style={{ color: 'var(--k-6b7280)' }}>— the bot knows {knowledge.count} of our own listing{knowledge.count === 1 ? '' : 's'}{businessUnit === 'residential' ? ' and can look up any home on the MLS by address, MLS number, area, beds or budget' : ' from crecotx.com'}, refreshed every 5 min</span> : <span style={{ color: 'var(--k-9ca3af)' }}>— not connected for this workspace</span>}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-            <button onClick={() => settingsAction('test_talkroute')} disabled={!conn?.talkroute || busy === 'test_talkroute'} style={{ ...mini, opacity: conn?.talkroute ? 1 : .5 }}>Test Talkroute connection</button>
-            <button onClick={() => settingsAction('add_forwarding_number')} disabled={!conn?.talkroute || !settings?.twilio_number || busy === 'add_forwarding_number'} style={{ ...mini, opacity: conn?.talkroute && settings?.twilio_number ? 1 : .5 }} title="Adds the bot line to Talkroute's Forwarding Numbers so you can route calls to it">Add bot line to Talkroute</button>
-            <button onClick={() => settingsAction('register_webhooks')} disabled={!conn?.talkroute || !conn?.talkroute_webhook_secret || busy === 'register_webhooks'} style={{ ...mini, opacity: conn?.talkroute && conn?.talkroute_webhook_secret ? 1 : .5 }} title="Tells Talkroute to push new calls and voicemails here the moment they happen">Register Talkroute webhooks</button>
+            <button onClick={() => settingsAction('test_talkroute')} disabled={!conn?.talkroute || busy === 'test_talkroute'} style={{ ...miniR, opacity: conn?.talkroute ? 1 : .5 }}>Test Talkroute connection</button>
+            <button onClick={() => settingsAction('add_forwarding_number')} disabled={!conn?.talkroute || !settings?.twilio_number || busy === 'add_forwarding_number'} style={{ ...miniR, opacity: conn?.talkroute && settings?.twilio_number ? 1 : .5 }} title="Adds the bot line to Talkroute's Forwarding Numbers so you can route calls to it">Add bot line to Talkroute</button>
+            <button onClick={() => settingsAction('register_webhooks')} disabled={!conn?.talkroute || !conn?.talkroute_webhook_secret || busy === 'register_webhooks'} style={{ ...miniR, opacity: conn?.talkroute && conn?.talkroute_webhook_secret ? 1 : .5 }} title="Tells Talkroute to push new calls and voicemails here the moment they happen">Register Talkroute webhooks</button>
           </div>
 
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', marginBottom: 8 }}>How the bot answers</div>
@@ -498,7 +500,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
           <div style={{ marginTop: 12 }}><span style={label}>Greeting (leave blank for the default)</span><textarea style={{ ...input, minHeight: 56 }} value={draft.greeting ?? ''} onChange={e => setDraft(d => ({ ...d, greeting: e.target.value }))} placeholder={`Thanks for calling ${draft.company_name || 'CRECO'}, this is ${draft.bot_name || 'Ava'}. Our agents are with other clients right now, but I can take the details and have someone call you back. May I have your name?`} /></div>
           <div style={{ marginTop: 12 }}><span style={label}>Instructions for the bot</span><textarea style={{ ...input, minHeight: 90 }} value={draft.instructions ?? ''} onChange={e => setDraft(d => ({ ...d, instructions: e.target.value }))} placeholder={"Office hours are Mon–Fri 9–5 Central. For 8000 Fair Oaks Parkway tenant issues, ask for the suite number. Never quote lease rates."} /></div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
-            <button onClick={saveSettings} disabled={busy === 'settings'} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>{busy === 'settings' ? 'Saving…' : 'Save settings'}</button>
+            <button onClick={saveSettings} disabled={busy === 'settings'} style={{ ...miniR, background: '#c9922c', color: '#fff', border: 'none' }}>{busy === 'settings' ? 'Saving…' : 'Save settings'}</button>
             {settings && <span style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>Bot is {settings.enabled ? 'on' : 'off'}{settings.twilio_number ? ` · line ${pretty(settings.twilio_number)}` : ' · no bot line set yet'}</span>}
           </div>
         </div>
@@ -513,8 +515,8 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
           <div style={{ gridColumn: '1 / -1' }}><span style={label}>What was it about</span><input style={input} value={manual.summary} onChange={e => setManual(m => ({ ...m, summary: e.target.value }))} /></div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}><input type="checkbox" checked={manual.needs_follow_up} onChange={e => setManual(m => ({ ...m, needs_follow_up: e.target.checked }))} /> Needs a call back</label>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={() => setShowLog(false)} style={mini}>Cancel</button>
-            <button onClick={logManual} disabled={busy === 'manual'} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Save call</button>
+            <button onClick={() => setShowLog(false)} style={miniR}>Cancel</button>
+            <button onClick={logManual} disabled={busy === 'manual'} style={{ ...miniR, background: '#c9922c', color: '#fff', border: 'none' }}>Save call</button>
           </div>
         </div>
       )}
@@ -523,12 +525,12 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
         <div style={mob ? { display: 'flex', gap: 8, width: '100%', overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 2, scrollbarWidth: 'none' as const } : { display: 'contents' }}>
         {([['all', 'All'], ['follow_up', '🔔 Needs call back'], ['wrapup', '📝 Needs a note'], ['bot', '🤖 Bot'], ['voicemail', '📼 Voicemail'], ['missed', 'Missed'], ['newcaller', `➕ Not in contacts${(filter === 'all' || filter === 'newcaller') && newCallers.length ? ` (${newCallers.length})` : ''}`], ['texts', '💬 Texts']] as const).map(([k, t]) => (
-          <button key={k} onClick={() => setFilter(k)} style={{ ...mini, flexShrink: 0, whiteSpace: 'nowrap', minHeight: 32, padding: '6px 11px', background: filter === k ? '#111' : 'var(--k-fff)', color: filter === k ? '#fff' : 'var(--k-374151)', borderColor: filter === k ? '#111' : 'var(--k-e5e7eb)' }}>{t}</button>
+          <button key={k} onClick={() => setFilter(k)} style={{ ...miniR, flexShrink: 0, whiteSpace: 'nowrap', minHeight: mob ? 40 : 32, padding: mob ? '6px 16px' : '6px 11px', background: filter === k ? '#111' : 'var(--k-fff)', color: filter === k ? '#fff' : 'var(--k-374151)', borderColor: filter === k ? '#111' : 'var(--k-e5e7eb)' }}>{t}</button>
         ))}
         </div>
-        <input value={qLive} onChange={e => setQLive(e.target.value)} placeholder="Search name, number, what they wanted…" style={{ ...input, flex: '1 1 200px', width: 'auto', minHeight: 32, padding: '6px 10px' }} />
-        {(internalHidden > 0 || showInternal) && <button onClick={() => setShowInternal(v => !v)} title="Calls between our own lines, the team's phones and the phones Talkroute forwards to" style={{ ...mini, minHeight: 32, padding: '6px 11px', background: showInternal ? '#111' : 'var(--k-fff)', color: showInternal ? '#fff' : 'var(--k-6b7280)', borderColor: showInternal ? '#111' : 'var(--k-e5e7eb)' }}>👥 {showInternal ? 'Hiding none' : `Internal hidden (${internalHidden})`}</button>}
-        <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ ...input, width: 'auto', minHeight: 32, padding: '6px 8px', fontSize: 12.5 }}>
+        <input value={qLive} onChange={e => setQLive(e.target.value)} placeholder="Search name, number, what they wanted…" style={{ ...input, flex: '1 1 200px', width: 'auto', minHeight: mob ? 44 : 32, padding: mob ? '6px 16px' : '6px 10px', ...(mob ? { borderRadius: 22 } : {}) }} />
+        {(internalHidden > 0 || showInternal) && <button onClick={() => setShowInternal(v => !v)} title="Calls between our own lines, the team's phones and the phones Talkroute forwards to" style={{ ...miniR, minHeight: mob ? 40 : 32, padding: mob ? '6px 16px' : '6px 11px', background: showInternal ? '#111' : 'var(--k-fff)', color: showInternal ? '#fff' : 'var(--k-6b7280)', borderColor: showInternal ? '#111' : 'var(--k-e5e7eb)' }}>👥 {showInternal ? 'Hiding none' : `Internal hidden (${internalHidden})`}</button>}
+        <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ ...input, width: 'auto', minHeight: mob ? 44 : 32, padding: mob ? '6px 14px' : '6px 8px', fontSize: 12.5, ...(mob ? { borderRadius: 22 } : {}) }}>
           {[7, 30, 90, 365].map(d => <option key={d} value={d}>Last {d} days</option>)}
         </select>
       </div>
@@ -567,11 +569,11 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         {!openNow && <div style={{ fontSize: 13, color: 'var(--k-374151)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.last.direction === 'outbound' ? '↩ You: ' : ''}{t.last.body || (t.last.attachments?.length ? '📎 Attachment' : '')}</div>}
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
-                        {t.number && <a href={`tel:${t.number}`} style={{ ...mini, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call them">📞</a>}
-                        <button onClick={() => openTextThread(t)} style={mini}>{openNow ? '▾ Close' : '▸ Open thread'}</button>
+                        {t.number && <a href={`tel:${t.number}`} style={{ ...miniR, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call them">📞</a>}
+                        <button onClick={() => openTextThread(t)} style={miniR}>{openNow ? '▾ Close' : '▸ Open thread'}</button>
                         {t.unanswered
-                          ? <button onClick={() => handleThread(t, true)} disabled={busy === t.conversation_id} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }} title="No reply needed">✓ Handled</button>
-                          : <button onClick={() => handleThread(t, false)} disabled={busy === t.conversation_id} style={{ ...mini, color: 'var(--k-9ca3af)' }} title="Flag for a reply">🔔</button>}
+                          ? <button onClick={() => handleThread(t, true)} disabled={busy === t.conversation_id} style={{ ...miniR, background: '#c9922c', color: '#fff', border: 'none' }} title="No reply needed">✓ Handled</button>
+                          : <button onClick={() => handleThread(t, false)} disabled={busy === t.conversation_id} style={{ ...miniR, color: 'var(--k-9ca3af)' }} title="Flag for a reply">🔔</button>}
                       </div>
                     </div>
                     {openNow && (
@@ -591,7 +593,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'flex-end' }}>
                           <textarea value={reply[t.conversation_id] ?? ''} onChange={e => setReply(rp => ({ ...rp, [t.conversation_id]: e.target.value }))} placeholder={`Reply to ${who}…`} style={{ ...input, minHeight: 44, flex: 1 }}
                             onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') sendReply(t); }} />
-                          <button onClick={() => sendReply(t)} disabled={busy === t.conversation_id || !(reply[t.conversation_id] || '').trim()} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>{busy === t.conversation_id ? 'Sending…' : 'Send'}</button>
+                          <button onClick={() => sendReply(t)} disabled={busy === t.conversation_id || !(reply[t.conversation_id] || '').trim()} style={{ ...miniR, background: '#c9922c', color: '#fff', border: 'none' }}>{busy === t.conversation_id ? 'Sending…' : 'Send'}</button>
                         </div>
                       </div>
                     )}
@@ -623,8 +625,8 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)' }}>{list.length} answered call{list.length === 1 ? '' : 's'} with no note</div>
                   <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', marginTop: 2 }}>Step through them one at a time — one tap each — or clear the old ones nobody can remember.</div>
                 </div>
-                <button onClick={() => setQueueOpen(true)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none', minHeight: 44, flex: '1 1 150px' }}>▶ Start wrap-up queue</button>
-                {isAdmin && <button onClick={skipOld} disabled={busy === 'skipold'} style={{ ...mini, minHeight: 44, flex: '1 1 150px' }} title="Marks calls older than 14 days as done without a note. Nothing is deleted.">{busy === 'skipold' ? 'Working…' : 'Clear ones older than 14 days'}</button>}
+                <button onClick={() => setQueueOpen(true)} style={{ ...miniR, background: '#c9922c', color: '#fff', border: 'none', minHeight: 44, flex: '1 1 150px' }}>▶ Start wrap-up queue</button>
+                {isAdmin && <button onClick={skipOld} disabled={busy === 'skipold'} style={{ ...miniR, minHeight: 44, flex: '1 1 150px' }} title="Marks calls older than 14 days as done without a note. Nothing is deleted.">{busy === 'skipold' ? 'Working…' : 'Clear ones older than 14 days'}</button>}
               </div>
             )}
             {list.map(c => {
@@ -637,7 +639,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
               const di = pending ? dueInfo(c) : null;
               const hot = urgent || (di?.overdue ?? false);   // urgent OR past-due → the row goes red
               return (
-                <div key={c.id} style={{ background: 'var(--k-fff)', border: `1px solid ${pending ? (hot ? 'var(--k-fca5a5)' : '#f3e4c4') : '#eef0f2'}`, borderLeft: `4px solid ${pending ? (hot ? '#ef4444' : '#c9922c') : 'var(--k-e5e7eb)'}`, borderRadius: 14, padding: '13px 15px', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+                <div key={c.id} style={{ background: 'var(--k-fff)', border: `1px solid ${pending ? (hot ? 'var(--k-fca5a5)' : '#f3e4c4') : '#eef0f2'}`, borderLeft: `4px solid ${pending ? (hot ? '#ef4444' : '#c9922c') : 'var(--k-e5e7eb)'}`, borderRadius: mob ? 20 : 14, padding: mob ? '15px 14px' : '13px 15px', boxShadow: mob ? '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.06)' : '0 1px 3px rgba(0,0,0,.05)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 6 }}>
                     <span style={{ fontSize: 20, flexShrink: 0 }} title={c.source}>{kindIcon(c)}</span>
                     <div style={{ flex: '1 1 200px', minWidth: 0 }}>
@@ -676,23 +678,23 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                     </div>
                     {/* maxWidth/shrink (not flexShrink:0): on a phone this group is wider than the screen if it can't wrap. */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: '0 1 auto', maxWidth: '100%', minWidth: 0 }}>
-                      {needsWrap(c) && wrapFor !== c.id && <button onClick={() => setWrapFor(c.id)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }} title="Ten seconds: what it was, a note, and who it was">📝 Wrap up</button>}
-                      {num && <a href={`tel:${num}`} data-call-id={c.id} data-contact-id={c.contact?.id ?? ''} data-name={c.contact?.name || c.caller_name || ''} data-pending={pending ? '1' : '0'} style={{ ...mini, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call back">📞</a>}
-                      {num && <button onClick={() => setTextFor(textFor === c.id ? null : c.id)} style={{ ...mini, background: textFor === c.id ? '#111' : undefined, color: textFor === c.id ? '#fff' : undefined }} title="Text them from the office line">💬 Text</button>}
-                      {c.has_recording && <button onClick={() => play(c)} disabled={busy === c.id} style={mini} title="Play recording">{audio[c.id] ? '🔊' : '▶'}</button>}
-                      {(c.summary || c.transcript || c.source === 'voicebot' || c.notes) && <button onClick={() => toggleOpen(c)} style={mini}>{openNow ? '▾ Less' : '▸ Details'}</button>}
+                      {needsWrap(c) && wrapFor !== c.id && <button onClick={() => setWrapFor(c.id)} style={{ ...miniR, background: '#c9922c', color: '#fff', border: 'none' }} title="Ten seconds: what it was, a note, and who it was">📝 Wrap up</button>}
+                      {num && <a href={`tel:${num}`} data-call-id={c.id} data-contact-id={c.contact?.id ?? ''} data-name={c.contact?.name || c.caller_name || ''} data-pending={pending ? '1' : '0'} style={{ ...miniR, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call back">📞</a>}
+                      {num && <button onClick={() => setTextFor(textFor === c.id ? null : c.id)} style={{ ...miniR, background: textFor === c.id ? '#111' : undefined, color: textFor === c.id ? '#fff' : undefined }} title="Text them from the office line">💬 Text</button>}
+                      {c.has_recording && <button onClick={() => play(c)} disabled={busy === c.id} style={miniR} title="Play recording">{audio[c.id] ? '🔊' : '▶'}</button>}
+                      {(c.summary || c.transcript || c.source === 'voicebot' || c.notes) && <button onClick={() => toggleOpen(c)} style={miniR}>{openNow ? '▾ Less' : '▸ Details'}</button>}
                       {pending
-                        ? <button onClick={() => patch(c, { handled: true }, 'Marked as handled ✓')} disabled={busy === c.id} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>✓ Handled</button>
-                        : c.handled_at ? <button onClick={() => patch(c, { handled: false, needs_follow_up: true })} disabled={busy === c.id} style={{ ...mini, color: 'var(--k-9ca3af)' }} title="Put it back in the queue">↩</button>
+                        ? <button onClick={() => patch(c, { handled: true }, 'Marked as handled ✓')} disabled={busy === c.id} style={{ ...miniR, background: '#c9922c', color: '#fff', border: 'none' }}>✓ Handled</button>
+                        : c.handled_at ? <button onClick={() => patch(c, { handled: false, needs_follow_up: true })} disabled={busy === c.id} style={{ ...miniR, color: 'var(--k-9ca3af)' }} title="Put it back in the queue">↩</button>
                         : <span style={{ position: 'relative', display: 'inline-flex' }}>
-                            <button onClick={() => setCbMenu(cbMenu === c.id ? null : c.id)} disabled={busy === c.id} style={{ ...mini, color: 'var(--k-9ca3af)' }} title="Flag for a call back — pick when to be reminded" aria-haspopup="menu" aria-expanded={cbMenu === c.id}>🔔</button>
+                            <button onClick={() => setCbMenu(cbMenu === c.id ? null : c.id)} disabled={busy === c.id} style={{ ...miniR, color: 'var(--k-9ca3af)' }} title="Flag for a call back — pick when to be reminded" aria-haspopup="menu" aria-expanded={cbMenu === c.id}>🔔</button>
                             {cbMenu === c.id && <CallbackTimeMenu busy={busy === c.id} onPick={iso => flagWithTime(c, iso)} onClose={() => setCbMenu(null)} />}
                           </span>}
                       {c.direction !== 'outbound' && !c.contact && c.from_number && (c.blocked
-                        ? <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={mini} title="Let this number through again">Unblock</button>
-                        : <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={{ ...mini, color: 'var(--k-991b1b)' }} title="Hang up on this number if it calls the bot line again">🚫 Block this number</button>)}
-                      {!c.contact && !needsWrap(c) && c.outcome !== 'spam' && (c.from_number || c.to_number || c.callback_number) && <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} disabled={busy === c.id} style={mini} title="Save this caller as a contact, or link them to one">＋ Contact</button>}
-                      {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...mini, color: '#e5b4b4', borderColor: 'var(--k-f3e4e4)' }} title="Delete this record">✕</button>}
+                        ? <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={miniR} title="Let this number through again">Unblock</button>
+                        : <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={{ ...miniR, color: 'var(--k-991b1b)' }} title="Hang up on this number if it calls the bot line again">🚫 Block this number</button>)}
+                      {!c.contact && !needsWrap(c) && c.outcome !== 'spam' && (c.from_number || c.to_number || c.callback_number) && <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} disabled={busy === c.id} style={miniR} title="Save this caller as a contact, or link them to one">＋ Contact</button>}
+                      {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...miniR, color: '#e5b4b4', borderColor: 'var(--k-f3e4e4)' }} title="Delete this record">✕</button>}
                     </div>
                   </div>
                   {textFor === c.id && num && (
@@ -761,7 +763,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                             const fresh = parseMentionIds(next, agents).filter(id => !before.has(id));
                             if (fresh.length) onMention(fresh, c, next);
                           }
-                        }} disabled={busy === c.id} style={{ ...mini, marginTop: 6 }}>Save note</button>}
+                        }} disabled={busy === c.id} style={{ ...miniR, marginTop: 6 }}>Save note</button>}
                       </div>
                     </div>
                   )}
