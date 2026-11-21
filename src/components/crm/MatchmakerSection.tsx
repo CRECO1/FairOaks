@@ -411,7 +411,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   const inp: React.CSSProperties = { padding: '8px 10px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, fontSize: isMobile ? 16 : 14, minHeight: isMobile ? 44 : undefined, width: '100%', boxSizing: 'border-box', fontFamily: "'DM Sans',sans-serif" };
   const lbl: React.CSSProperties = { fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 700, marginBottom: 6 };
   const ghost: React.CSSProperties = { minHeight: isMobile ? 44 : 32, padding: '0 14px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
-  const card: React.CSSProperties = { background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 12, padding: isMobile ? 14 : 16 };
+  const card: React.CSSProperties = { background: 'var(--k-fff)', border: '1px solid var(--k-eef0f2)', borderRadius: 14, padding: isMobile ? 14 : 16, boxShadow: '0 1px 3px rgba(0,0,0,.05)' };
   const tenantFirst = sel ? (sel.first_name || buyerName(sel)) : '';
   const theirs = tenantFirst ? possessive(tenantFirst) : 'their';
 
@@ -523,6 +523,35 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
         </p>
         {failed && <p style={{ fontSize: 13, color: '#9a6a00', marginTop: 4 }}>Part of the list did not load — reload the page to try again.</p>}
       </div>
+
+      <style>{`
+        .mm-sumrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+        .mm-sum{position:relative;background:var(--k-fff);border:1px solid #eef0f2;border-radius:14px;padding:13px 16px 12px 20px;overflow:hidden;text-align:left;
+          box-shadow:0 1px 2px rgba(0,0,0,.04);animation:mm-rise .3s ease-out both;font-family:'DM Sans',sans-serif}
+        .mm-sum::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--mm-dot)}
+        .mm-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
+        .mm-sum .v{font:700 28px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:3px}
+        .mm-sum .s{font-size:12px;color:var(--k-6b7280);margin-top:2px}
+        @keyframes mm-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        @media (max-width:700px){.mm-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.mm-sum .v{font-size:23px}}
+        @media (prefers-reduced-motion:reduce){.mm-sum{animation:none}}
+      `}</style>
+      {!(loadingPeople && loadingProps) && (
+        <div className="mm-sumrow">
+          {[
+            { label: 'Prospects', n: buyers.length.toLocaleString(), sub: 'tenants, buyers, investors', dot: '#c9922c' },
+            { label: 'Properties', n: props.length.toLocaleString(), sub: 'available to match', dot: '#3b82f6' },
+            { label: 'Strong matches', n: hasCriteria ? String(strongCt) : '—', sub: hasCriteria ? 'fit this search best' : 'pick someone to search', dot: '#22c55e' },
+            { label: 'Matches found', n: hasCriteria ? String(visible.length) : '—', sub: hasCriteria ? 'for this search' : 'no search yet', dot: '#8b5cf6' },
+          ].map((t, i) => (
+            <div key={t.label} className="mm-sum" style={{ ['--mm-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }}>
+              <div className="l">{t.label}</div>
+              <div className="v">{t.n}</div>
+              <div className="s">{t.sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '280px minmax(0, 1fr)', gap: 18, alignItems: 'start' }}>
         {!isMobile && (
@@ -779,7 +808,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
                         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: isMobile && foldable ? '10px 2px' : '2px 2px 8px', cursor: foldable ? 'pointer' : 'default', minHeight: isMobile && foldable ? 44 : undefined }}>
                         <span style={{ width: 9, height: 9, borderRadius: '50%', background: g.color, flexShrink: 0 }} />
                         <span style={{ fontSize: 12.5, letterSpacing: .6, textTransform: 'uppercase', fontWeight: 700, color: 'var(--k-374151)' }}>{g.label}</span>
-                        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-6b7280)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px' }}>{rows.length.toLocaleString()}</span>
+                        <span style={{ fontSize: 11.5, fontWeight: 700, color: '#fff', background: g.color, borderRadius: 999, padding: '1px 9px', minWidth: 22, textAlign: 'center' }}>{rows.length.toLocaleString()}</span>
                         {foldable && <span style={{ fontSize: 12, color: 'var(--k-a8741a)', fontWeight: 600 }}>{open ? 'Hide' : 'Show'}</span>}
                       </div>
                       {open && (
