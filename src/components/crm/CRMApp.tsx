@@ -1823,6 +1823,70 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [tabOrder, setTabOrder] = useState<string[]>([]);
   const [dragTab, setDragTab] = useState<string | null>(null);
   const [dragRemove, setDragRemove] = useState(false);
+  // "More" sheet items can be reordered too (press and hold, then drag); one saved order per group, per login, on this device.
+  const [moreOrder, setMoreOrder] = useState<Record<string, string[]>>({});
+  const [dragMore, setDragMore] = useState<string | null>(null);
+  const moreDrag = useRef<{ timer: ReturnType<typeof setTimeout> | null; active: boolean; sx: number; sy: number; just: boolean }>({ timer: null, active: false, sx: 0, sy: 0, just: false });
+  useEffect(() => {
+    if (!profile?.id) return;
+    try { const v = JSON.parse(localStorage.getItem(`crm-more-order:${profile.id}`) || 'null'); if (v && typeof v === 'object' && !Array.isArray(v)) setMoreOrder(v as Record<string, string[]>); } catch { /* ignore */ }
+  }, [profile?.id]);
+  // Once a press-and-hold turns into a drag, stop the sheet from scrolling under the finger.
+  useEffect(() => {
+    const stop = (e: TouchEvent) => { if (moreDrag.current.active) e.preventDefault(); };
+    document.addEventListener('touchmove', stop, { passive: false });
+    return () => document.removeEventListener('touchmove', stop);
+  }, []);
+  const saveMoreOrder = (group: string, ids: string[]) => {
+    const next = { ...moreOrder, [group]: ids }; setMoreOrder(next);
+    try { if (profile?.id) localStorage.setItem(`crm-more-order:${profile.id}`, JSON.stringify(next)); } catch { /* ignore */ }
+  };
+  type MoreEntry = { id: string; ico: IcoName; label: string; on?: boolean; badge?: number; onClick?: () => void; href?: string };
+  const renderMoreGrid = (group: string, entries: MoreEntry[]) => {
+    const saved = moreOrder[group] ?? [];
+    const rank = (id: string, i: number) => { const k = saved.indexOf(id); return k === -1 ? 1000 + i : k; };
+    const items = entries.map((x, i) => ({ x, r: rank(x.id, i) })).sort((a, b) => a.r - b.r).map(o => o.x);
+    const d = moreDrag.current;
+    const end = (commit: boolean) => {
+      if (d.timer) clearTimeout(d.timer); d.timer = null;
+      if (!d.active) return;
+      d.active = false; d.just = true; setTimeout(() => { d.just = false; }, 60); setDragMore(null);
+      if (commit) saveMoreOrder(group, items.map(i => i.id));
+    };
+    return (
+      <div className="crm-more-grid">
+        {items.map(x => {
+          const common = {
+            'data-more-id': x.id,
+            className: `crm-more-item${x.on ? ' on' : ''}${dragMore === x.id ? ' drag' : ''}`,
+            onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+            onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
+              const el = e.currentTarget; const pid = e.pointerId;
+              d.sx = e.clientX; d.sy = e.clientY; d.active = false;
+              if (d.timer) clearTimeout(d.timer);
+              d.timer = setTimeout(() => { d.active = true; setDragMore(x.id); try { el.setPointerCapture(pid); } catch { /* ignore */ } try { navigator.vibrate?.(15); } catch { /* ignore */ } }, 380);
+            },
+            onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
+              if (!d.active) { if (d.timer && (Math.abs(e.clientX - d.sx) > 12 || Math.abs(e.clientY - d.sy) > 12)) { clearTimeout(d.timer); d.timer = null; } return; }
+              const over = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest('[data-more-id]')?.getAttribute('data-more-id');
+              if (!over || over === x.id) return;
+              const ids = items.map(i => i.id); const from = ids.indexOf(x.id), to = ids.indexOf(over);
+              if (from < 0 || to < 0) return;
+              ids.splice(to, 0, ids.splice(from, 1)[0]);
+              setMoreOrder(prev => ({ ...prev, [group]: ids }));
+            },
+            onPointerUp: () => end(true),
+            onPointerCancel: () => end(false),
+          };
+          const inner = (<><Ico n={x.ico} size={20} />{x.label}{x.href && <span style={{ marginLeft: 'auto', color: 'var(--c-faint)', fontSize: 12 }}>↗</span>}{!!x.badge && x.badge > 0 && <span className="bd">{x.badge > 99 ? '99+' : x.badge}</span>}</>);
+          return x.href
+            ? <a key={x.id} {...common} href={x.href} target="_blank" rel="noopener noreferrer" onClick={e => { if (d.just) { e.preventDefault(); return; } setMobileMenuOpen(false); }}>{inner}</a>
+            : <button key={x.id} type="button" {...common} onClick={() => { if (d.just) return; x.onClick?.(); }}>{inner}</button>;
+        })}
+      </div>
+    );
+  };
   const tabDrag = useRef<{ timer: ReturnType<typeof setTimeout> | null; active: boolean; sx: number; sy: number; justDragged: boolean }>({ timer: null, active: false, sx: 0, sy: 0, justDragged: false });
   useEffect(() => {
     if (!profile?.id) return;
@@ -6218,6 +6282,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         @keyframes crmSheetUp{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
         .crm-more-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
         .crm-more-item{position:relative;display:flex;align-items:center;gap:10px;min-height:52px;padding:10px 12px;border-radius:16px;border:1px solid var(--c-line);background:var(--c-surface-2);color:var(--c-ink);font:600 14px 'DM Sans',sans-serif;text-align:left;cursor:pointer;text-decoration:none;width:100%;}
+        .crm-more-item{touch-action:pan-y;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;}
+        .crm-more-item.drag{transform:scale(1.05);z-index:3;box-shadow:0 8px 22px rgba(0,0,0,.28);border-color:rgba(201,146,44,.7);background:rgba(201,146,44,.18);}
         .crm-more-item.on{border-color:rgba(201,146,44,.55);background:rgba(201,146,44,.14);}
         .crm-more-item svg{flex-shrink:0;color:var(--c-muted);}
         .crm-more-item .bd{margin-left:auto;background:#c9922c;color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;}
@@ -6763,11 +6829,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <span style={{ marginLeft: 'auto', color: 'var(--c-faint)' }}>→</span>
                 </a>
               )}
-              <div className="crm-more-grid">
-                {(() => { const pages = phonePages(); const bar = phoneBarIds(pages); return pages.filter(x => !bar.includes(x.id)).map(x => <Item key={x.id} ico={x.ico} label={x.label} on={x.on} badge={x.badge} onClick={go(x.go)} />); })()}
-                {isAdmin && <Item ico="briefcase" label="Broker / Agents" on={page === 'agents'} onClick={go(() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); })} />}
-                <Item ico="pen" label="Settings" on={page === 'settings'} onClick={go(() => setPage('settings'))} />
-              </div>
+              {(() => {
+                const pages = phonePages(); const bar = phoneBarIds(pages);
+                const entries: MoreEntry[] = pages.filter(x => !bar.includes(x.id)).map(x => ({ id: x.id, ico: x.ico, label: x.label, on: x.on, badge: x.badge, onClick: go(x.go) }));
+                if (isAdmin) entries.push({ id: 'agents', ico: 'briefcase', label: 'Broker / Agents', on: page === 'agents', onClick: go(() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); }) });
+                entries.push({ id: 'settings', ico: 'pen', label: 'Settings', on: page === 'settings', onClick: go(() => setPage('settings')) });
+                return renderMoreGrid('main', entries);
+              })()}
 
               <div className="crm-more-h">Your tab bar</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -6776,7 +6844,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 ); }); })()}
               </div>
               <div style={{ margin: '10px 2px 0', fontSize: 12.5, color: 'var(--c-faint)', lineHeight: 1.45 }}>
-                Tap to add or remove a tab (up to {MAX_TABS}). On the bar, press and hold a tab to drag it into a new spot, or drag it up off the bar to remove it.
+                Tap to add or remove a tab (up to {MAX_TABS}). On the bar, press and hold a tab to drag it into a new spot, or drag it up off the bar to remove it. Items in this sheet can be reordered the same way: press, hold, drag.
                 {tabOrder.length > 0 && <> <button type="button" onClick={() => saveTabOrder([])} style={{ background: 'none', border: 'none', padding: 0, color: '#a06a12', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>Reset to default</button></>}
               </div>
 
@@ -6785,15 +6853,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {(isAdmin || isSuperAdmin) && (
                 <>
                   <div className="crm-more-h">Admin</div>
-                  <div className="crm-more-grid">
-                    <Item ico="eye" label={isSuperAdmin ? 'Agent Activity' : 'My Activity'} onClick={go(() => setCopilotActivityOpen(true))} />
-                    {isSuperAdmin && <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-more-item" onClick={() => setMobileMenuOpen(false)}><Ico n="receipt" size={20} />Billing<span style={{ marginLeft: 'auto', color: 'var(--c-faint)', fontSize: 12 }}>↗</span></a>}
-                    {isSuperAdmin && <Item ico="chart" label="Lead Attribution" on={page === 'lead-attribution'} onClick={go(() => setPage('lead-attribution'))} />}
-                    {isAdmin && <Item ico="tree" label="Plaza Site" on={page === 'plaza-site'} badge={plazaPending} onClick={go(() => setPage('plaza-site'))} />}
-                    {isSuperAdmin && <Item ico="file" label="Backups" onClick={go(() => setBackupStatusOpen(true))} />}
-                    {isAdmin && <Item ico="file" label="Failed uploads" onClick={go(() => setUploadFailuresOpen(true))} />}
-                    {isSuperAdmin && <Item ico="trash" label="Recently Deleted" onClick={go(() => setDeletedItemsOpen(true))} />}
-                  </div>
+                  {(() => {
+                    const entries: MoreEntry[] = [{ id: 'activity', ico: 'eye', label: isSuperAdmin ? 'Agent Activity' : 'My Activity', onClick: go(() => setCopilotActivityOpen(true)) }];
+                    if (isSuperAdmin) entries.push({ id: 'billing', ico: 'receipt', label: 'Billing', href: 'https://www.crecotx.com/billing/' });
+                    if (isSuperAdmin) entries.push({ id: 'lead-attribution', ico: 'chart', label: 'Lead Attribution', on: page === 'lead-attribution', onClick: go(() => setPage('lead-attribution')) });
+                    if (isAdmin) entries.push({ id: 'plaza-site', ico: 'tree', label: 'Plaza Site', on: page === 'plaza-site', badge: plazaPending, onClick: go(() => setPage('plaza-site')) });
+                    if (isSuperAdmin) entries.push({ id: 'backups', ico: 'file', label: 'Backups', onClick: go(() => setBackupStatusOpen(true)) });
+                    if (isAdmin) entries.push({ id: 'failed-uploads', ico: 'file', label: 'Failed uploads', onClick: go(() => setUploadFailuresOpen(true)) });
+                    if (isSuperAdmin) entries.push({ id: 'deleted', ico: 'trash', label: 'Recently Deleted', onClick: go(() => setDeletedItemsOpen(true)) });
+                    return renderMoreGrid('admin', entries);
+                  })()}
                 </>
               )}
 
