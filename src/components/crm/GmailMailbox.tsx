@@ -1387,22 +1387,39 @@ function ThreadReader(p: {
   ) : null;
 
   return (
-    <div>
+    <div style={p.isMobile ? { paddingBottom: 76 } : undefined}>
+      {p.isMobile && last && (
+        // Phone: Reply / Reply all / Forward live in a bar just above the tab bar, like Gmail's, so they are always one tap away.
+        <div role="group" aria-label="Reply" style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(62px + env(safe-area-inset-bottom))', zIndex: 30, display: 'flex', gap: 8, padding: '8px 12px', background: 'var(--c-canvas)', borderTop: '1px solid var(--c-line)' }}>
+          <button type="button" onClick={() => p.onReply(last, p.t.id, false, p.account)} style={{ flex: '1 1 0', minHeight: 48, borderRadius: 24, border: 'none', background: '#c9922c', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>↩ Reply</button>
+          <button type="button" onClick={() => p.onReply(last, p.t.id, true, p.account)} style={{ flex: '1 1 0', minHeight: 48, borderRadius: 24, border: '1px solid var(--c-line)', background: 'var(--c-surface)', color: 'var(--c-ink)', fontWeight: 600, fontSize: 14.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>↩↩ Reply all</button>
+          <button type="button" onClick={() => p.onForward(last, p.t.id, p.account)} style={{ flex: '1 1 0', minHeight: 48, borderRadius: 24, border: '1px solid var(--c-line)', background: 'var(--c-surface)', color: 'var(--c-ink)', fontWeight: 600, fontSize: 14.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>↪ Forward</button>
+        </div>
+      )}
       {viewing && <DocPreviewModal file={viewing.files[viewing.start]} files={viewing.files} start={viewing.start} onClose={() => setViewing(null)} />}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-        {!p.embedded && <button type="button" onClick={p.onBack} title="Back to the list (Esc)" style={btn}>← Back</button>}
-        {p.isMobile && changeGroup}
-        <h2 style={{ margin: 0, flex: '1 1 240px', minWidth: 0, fontSize: p.isMobile ? 18 : 21, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
+        {p.isMobile ? (
+          // Phone: a slim top bar like Gmail's (round back arrow on the left, the change icons on the right) that stays put while you read.
+          <div style={{ position: 'sticky', top: 0, zIndex: 6, flexBasis: '100%', display: 'flex', alignItems: 'center', gap: 8, margin: '-12px -26px 4px', padding: '8px 14px 8px 14px', background: 'var(--c-canvas)', borderBottom: '1px solid var(--c-line)' }}>
+            {!p.embedded && <button type="button" onClick={p.onBack} aria-label="Back to the list" style={{ ...btn, width: 44, height: 44, padding: 0, borderRadius: 22, fontSize: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>←</button>}
+            {changeGroup}
+          </div>
+        ) : (
+          !p.embedded && <button type="button" onClick={p.onBack} title="Back to the list (Esc)" style={btn}>← Back</button>
+        )}
+        <h2 style={{ margin: 0, flex: p.isMobile ? '1 1 100%' : '1 1 240px', minWidth: 0, fontSize: p.isMobile ? 22 : 21, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
           {p.t.subject}
           {msgs && msgs.length > 1 && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{msgs.length} messages</span>}
         </h2>
         {last && (
-          <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', maxWidth: '100%' }}>
+          <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: p.isMobile ? 'nowrap' : 'wrap', maxWidth: '100%', ...(p.isMobile ? { flexBasis: '100%', overflowX: 'auto' } : {}) }}>
             <a href={`https://mail.google.com/mail/${p.account ? `?authuser=${encodeURIComponent(p.account)}` : ''}#all/${p.t.id}`} target="_blank" rel="noopener noreferrer" title="Open this conversation in Gmail (labels, trash…)"
               style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>Gmail ↗</a>
+            {!p.isMobile && (<>
             <button type="button" style={{ ...btn, background: '#c9922c', borderColor: '#c9922c', color: '#fff', fontWeight: 700 }} onClick={() => p.onReply(last, p.t.id, false, p.account)} title="Reply (r)">↩ Reply</button>
             <button type="button" style={btn} onClick={() => p.onReply(last, p.t.id, true, p.account)} title="Reply all (a)">↩↩ All</button>
             <button type="button" style={btn} onClick={() => p.onForward(last, p.t.id, p.account)} title="Forward (f)">↪ Forward</button>
+            </>)}
             <div style={{ position: 'relative' }}>
               <button type="button" style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy || !msgs?.length} onClick={() => setAiOpen(v => !v)} aria-haspopup="menu" aria-expanded={aiOpen} title="AI help with this conversation">{aiBusy ? (aiBusy === 'summarize' ? '✨ Reading…' : '✨ Writing…') : '✨ AI'}</button>
               {aiOpen && (

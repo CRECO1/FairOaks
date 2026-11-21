@@ -6800,7 +6800,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div className="crm-page-scroll" style={{ flex: 1, background: 'var(--c-canvas)', overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' || page === 'action-plans' ? 0 : isMobile ? 14 : isTabletOrMobile ? 20 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
 
           {/* Phone/tablet page header (the top bar no longer carries the title): big title, one line of context, and the page's add button. */}
-          {isTabletOrMobile && page !== 'dashboard' && (() => {
+          {isTabletOrMobile && page !== 'dashboard' && !(isMobile && page === 'emails') && (() => {
             const od = overdueMine(tasks, profile?.id);
             const sub: Partial<Record<typeof page, string>> = {
               deals: `${deals.length} deal${deals.length === 1 ? '' : 's'} from first call to close`,

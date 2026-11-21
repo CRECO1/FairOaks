@@ -98,7 +98,7 @@ export default function EmailsSection(p: Props) {
         @media (max-width:700px){.em-sumrow{grid-template-columns:repeat(3,1fr);gap:8px}.em-sum{padding:10px 10px 9px 14px}.em-sum .v{font-size:20px}.em-sum .s{display:none}}
         @media (prefers-reduced-motion:reduce){.em-sum{animation:none;transition:none}.em-sum:hover{transform:none}}
       `}</style>
-      {!(p.isMobile && reading) && (
+      {!p.isMobile && (
         <div className="em-sumrow">
           {[
             { label: 'Unread', big: p.unread, sub: p.unread ? 'waiting for you' : 'all caught up', dot: '#c9922c', click: () => p.setTab('inbox') },
@@ -113,7 +113,20 @@ export default function EmailsSection(p: Props) {
           ))}
         </div>
       )}
-      {!(p.isMobile && reading && p.tab !== 'drafts') && <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, borderBottom: '1px solid var(--k-e5e7eb)', marginBottom: 16 }}>
+      {p.isMobile && !(reading && p.tab !== 'drafts') && (
+        <div className="m-pills" role="tablist" aria-label="Emails">
+          {tabs.map(([id, label, n]) => (
+            <button key={id} type="button" role="tab" aria-selected={p.tab === id} className={`m-pill${p.tab === id ? ' on' : ''}`} onClick={() => p.setTab(id)}>{label}{n > 0 ? ` · ${n}` : ''}</button>
+          ))}
+        </div>
+      )}
+      {p.isMobile && !reading && (
+        <button type="button" onClick={p.onCompose} aria-label="Compose a new email"
+          style={{ position: 'fixed', right: 16, bottom: 'calc(78px + env(safe-area-inset-bottom))', zIndex: 30, display: 'flex', alignItems: 'center', gap: 8, height: 54, padding: '0 22px', borderRadius: 18, border: 'none', background: '#c9922c', color: '#fff', fontWeight: 700, fontSize: 15.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 8px 22px rgba(0,0,0,.28)' }}>
+          <span aria-hidden style={{ fontSize: 19 }}>✏️</span> Compose
+        </button>
+      )}
+      {!p.isMobile && <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, borderBottom: '1px solid var(--k-e5e7eb)', marginBottom: 16 }}>
       <div role="tablist" aria-label="Emails" className="crm-tabs-scroll" style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto' }}>
         {tabs.map(([id, label, n]) => {
           const on = p.tab === id;
