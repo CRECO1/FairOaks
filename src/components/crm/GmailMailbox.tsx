@@ -48,6 +48,8 @@ const initials = (s: string) => s.replace(/@.*/, '').split(/[\s._-]+/).filter(Bo
 const fmtBytes = (n: number) => n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 const AVATARS = ['#475569', '#0f766e', '#7c3aed', '#b45309', '#be123c', '#1d4ed8', '#4d7c0f', '#a21caf'];
 const colorFor = (s: string) => { let h = 0; for (const ch of s.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return AVATARS[h % AVATARS.length]; };
+// Preview text for a message or row: raw tracking links and invisible spacer characters (marketing mail like Crexi is mostly both) make a preview unreadable, so drop them.
+const cleanPreview = (t: string) => t.replace(/https?:\/\/\S+/gi, ' ').replace(/\[(?:image|https?:)[^\]]*\]/gi, ' ').replace(/[\u200b-\u200f\u2060\ufeff\u00ad\u034f\u061c\u180e]+/g, ' ').replace(/\s+/g, ' ').trim();
 const decodeSnippet = (t: string) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 const OPENED_KEY = 'crm-gmail-opened';
 const loadOpened = (): Set<string> => { try { return new Set(JSON.parse(localStorage.getItem(OPENED_KEY) ?? '[]') as string[]); } catch { return new Set(); } };
@@ -876,7 +878,7 @@ export default function GmailMailbox(p: Props) {
                       <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(t.date)}>{t.files && <span aria-label="Has attachments" title="Has attachments" style={{ marginRight: 5 }}>📎</span>}{when(t.date)}</span>
                     </div>
                     <div style={{ fontSize: 13.5, color: unread ? 'var(--k-111)' : 'var(--k-4b5563)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 400 }}>{t.subject}</div>
-                    <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decodeSnippet(t.snippet)}</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanPreview(decodeSnippet(t.snippet))}</div>
                     {(!!sus(t) || match || !!triOf(t) || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30)) && (
                       <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
                         {sus(t) && <span title={'Looks like a scam: ' + sus(t)!.reasons[0]} style={{ color: 'var(--k-991b1b)', background: 'var(--k-fef2f2)', border: '1px solid #fca5a5', borderRadius: 10, padding: '0 8px' }}>⚠ Suspicious</span>}
@@ -1613,7 +1615,7 @@ function ThreadReader(p: {
           const isFolded = folded.has(m.id);
           const match = from.email ? p.contactFor(from.email) : null;
           if (isFolded && p.isMobile) {
-            const preview = m.text.replace(/\s+/g, ' ').slice(0, 160);
+            const preview = cleanPreview(m.text).slice(0, 160);
             return (
               <div key={m.id} id={`gm-msg-${m.id}`} role="button" tabIndex={0} aria-expanded={false} aria-label={`Message ${num} of ${chrono.length} from ${mine ? 'me' : name} — open`}
                 onClick={() => { setFolded(prev => { const n = new Set(prev); n.delete(m.id); return n; }); setCur(ordered.findIndex(x => x.id === m.id)); }}
@@ -1626,7 +1628,7 @@ function ThreadReader(p: {
                     {m.attachments.length > 0 && <span aria-label="Has attachments" style={{ fontSize: 12 }}>📎</span>}
                     <span style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', flexShrink: 0 }}>{when(m.date)}</span>
                   </div>
-                  <div style={{ fontSize: 14, color: 'var(--k-6b7280)', marginTop: 3, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }}>{preview || '(no text)'}</div>
+                  <div style={{ fontSize: 14, color: 'var(--k-6b7280)', marginTop: 3, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }}>{preview || 'Mostly links and pictures — tap to read'}</div>
                 </div>
               </div>
             );

@@ -6222,6 +6222,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-more-item svg{flex-shrink:0;color:var(--c-muted);}
         .crm-more-item .bd{margin-left:auto;background:#c9922c;color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;}
         .crm-more-h{font:700 11px 'DM Sans',sans-serif;letter-spacing:1.4px;text-transform:uppercase;color:var(--c-faint);margin:16px 4px 8px;}
+        /* Phone + tablet standard canvas: a warm gold glow at the top fading into soft neutral, so white cards (soft radius + shadow) float on it instead of sitting on flat gray. */
+        @media(max-width:1023px){
+          .crm-app-shell[data-crm-theme="light"] .crm-page-scroll{background:radial-gradient(130% 50% at 50% -8%,rgba(201,146,44,.22),rgba(201,146,44,0) 64%),linear-gradient(180deg,#f7f2e7 0%,#f2efea 36%,#ebe9e5 100%)!important;}
+          .crm-app-shell[data-crm-theme="dark"] .crm-page-scroll{background:radial-gradient(130% 50% at 50% -8%,rgba(201,146,44,.17),rgba(201,146,44,0) 64%),linear-gradient(180deg,#15120d 0%,#0e0d0b 46%,#0a0908 100%)!important;}
+          .m-card{background:var(--c-surface);border:1px solid var(--c-line);border-radius:18px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 18px rgba(0,0,0,.05);}
+        }
         .m-head{margin:2px 0 14px;}
         .m-head h1{font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;line-height:1.05;color:var(--c-ink);margin:0;}
         .m-head p{margin:5px 0 0;font-size:14px;color:var(--c-muted);line-height:1.4;}
