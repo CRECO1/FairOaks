@@ -6402,7 +6402,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           .crm-page-scroll{padding-bottom:calc(88px + env(safe-area-inset-bottom))!important;}
           /* Dashboard stat tiles: one swipeable strip (about 100px tall) instead of five stacked cards (over 1,000px) that pushed
              the overdue tasks off the first screen. */
-          .dk-kpis{display:flex!important;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;margin:0 -16px 14px;padding:2px 16px 6px;scrollbar-width:none;}
+          .dk-kpis{order:-1;display:flex!important;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;margin:0 -16px 14px;padding:2px 16px 6px;scrollbar-width:none;}
           .dk-kpis::-webkit-scrollbar{display:none;}
           .dk-kpi{flex:0 0 164px;scroll-snap-align:start;padding:13px 14px;border-radius:18px;position:relative;overflow:hidden;}
           .dk-kpi::after{content:'';position:absolute;right:-28px;top:-28px;width:86px;height:86px;border-radius:50%;background:radial-gradient(circle,rgba(201,146,44,.16),transparent 70%);pointer-events:none;}
@@ -6828,7 +6828,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
-            <div>
+            <div style={isMobile ? { display: 'flex', flexDirection: 'column' } : undefined}>
               {gmailChecked && !gmailConnected && !gmailPromptHidden && session && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--k-fffbeb)', border: '1px solid var(--k-fde68a)', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
                   <span style={{ flex: '1 1 260px' }}>✉️ <b>Connect your Gmail</b> so emails send from the CRM, replies show up on the contact, and the CRM can tell when someone you reached out to writes back. It takes one tap on Google&apos;s “Allow” screen.</span>
@@ -7043,8 +7043,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 );
 
                 return (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={isMobile ? { marginBottom: 16, padding: '18px 18px 16px', borderRadius: 24, background: 'linear-gradient(135deg,#1a1814 0%,#2a2113 55%,#6b4a12 130%)', border: '1px solid rgba(201,146,44,.35)', color: '#fff' } : { marginBottom: 16 }}>
+                  <div style={isMobile ? { display: 'contents' } : { marginBottom: 20 }}>
+                    <div style={isMobile ? { order: -2, marginBottom: 16, padding: '18px 18px 16px', borderRadius: 24, background: 'linear-gradient(135deg,#1a1814 0%,#2a2113 55%,#6b4a12 130%)', border: '1px solid rgba(201,146,44,.35)', color: '#fff' } : { marginBottom: 16 }}>
                       <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 30 : 32, fontWeight: 700, color: isMobile ? '#fff' : 'var(--c-ink)', lineHeight: 1.1 }}>{greet}, {profile.first_name.replace(/\.$/, '')}.</div>
                       <div style={{ fontSize: 13, color: isMobile ? 'rgba(255,255,255,.75)' : 'var(--c-muted)', marginTop: 4 }}>
                         {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
