@@ -6228,16 +6228,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .dk-main,.dk-side{min-width:0;}
         @media(max-width:1180px){.dk-grid{grid-template-columns:1fr;}}
         .dk-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin-bottom:18px;}
-        .dk-kpi{background:var(--c-surface);border:1px solid var(--c-line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:5px;min-width:0;text-align:left;font-family:inherit;}
-        button.dk-kpi{cursor:pointer;transition:border-color .15s;}
-        button.dk-kpi:hover{border-color:#c9922c;}
-        .dk-kpi .l{font-size:12px;color:var(--c-muted);}
+        .dk-kpi{position:relative;overflow:hidden;background:var(--c-surface);border:1px solid var(--c-line);border-radius:14px;padding:14px 16px 13px 21px;display:flex;flex-direction:column;gap:5px;min-width:0;text-align:left;font-family:inherit;box-shadow:0 1px 2px rgba(0,0,0,.04);animation:dk-rise .3s ease-out both;}
+        .dk-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--dk-dot,#c9922c);}
+        .dk-kpi:nth-child(1){--dk-dot:#3b82f6}.dk-kpi:nth-child(2){--dk-dot:#ef4444;animation-delay:40ms}.dk-kpi:nth-child(3){--dk-dot:#c9922c;animation-delay:80ms}.dk-kpi:nth-child(4){--dk-dot:#8b5cf6;animation-delay:120ms}.dk-kpi:nth-child(5){--dk-dot:#22c55e;animation-delay:160ms}
+        @keyframes dk-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        @media (prefers-reduced-motion:reduce){.dk-kpi{animation:none}}
+        button.dk-kpi{cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s;}
+        button.dk-kpi:hover{border-color:#c9922c;box-shadow:0 8px 20px rgba(0,0,0,.1);transform:translateY(-1px);}
+        .dk-kpi .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700;color:var(--c-faint,#9ca3af);}
         .dk-kpi .v{font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:700;line-height:1;color:var(--c-ink);font-variant-numeric:tabular-nums;}
         .dk-kpi .s{font-size:12px;color:var(--c-muted);}
         .dk-kpi.hot .v{color:var(--c-danger);}
         .dk-seg{display:flex;height:6px;border-radius:99px;overflow:hidden;gap:2px;margin-top:1px;}
         .dk-seg i{display:block;}
-        .dk-card{background:var(--c-surface);border:1px solid var(--c-line);border-radius:12px;padding:16px 18px;margin-bottom:14px;}
+        .dk-card{background:var(--c-surface);border:1px solid var(--c-line);border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.05);}
         .dk-card h4{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;color:var(--c-muted);margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
         .dk-card h4 button{background:none;border:none;font-size:12px;letter-spacing:0;text-transform:none;color:#c9922c;cursor:pointer;font-weight:600;font-family:inherit;}
         .dk-fr{display:grid;grid-template-columns:92px minmax(0,1fr) 70px;gap:10px;align-items:center;font-size:13px;color:var(--c-ink);margin-bottom:10px;}
@@ -7102,7 +7106,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {kpis}
 
                     {nothing && (
-                      <div style={{ background: 'var(--c-ok-soft)', border: '1px solid var(--c-ok-line)', borderRadius: 10, padding: '22px 20px', textAlign: 'center', marginBottom: 16 }}>
+                      <div style={{ background: 'var(--c-ok-soft)', border: '1px solid var(--c-ok-line)', borderRadius: 14, padding: '22px 20px', textAlign: 'center', marginBottom: 16 }}>
                         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-ok-ink)' }}>🎉 Nothing needs your attention right now.</div>
                         <div style={{ fontSize: 13, color: 'var(--c-ok-ink)', marginTop: 4 }}>No tasks due, and your active deals are current.</div>
                       </div>
@@ -7117,7 +7121,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       }
                       const top = [...groups.entries()].sort((a, b) => b[1] - a[1]);
                       return (
-                        <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
+                        <div style={{ background: 'var(--c-surface)', borderRadius: 14, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                           {head('var(--c-ink-2)', `Your call list — ${listCalls.length} to go`,
                             <button onClick={() => { setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Open Call Queue →</button>)}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -7134,7 +7138,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     })()}
 
                     {overdue.length > 0 && (
-                      <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-danger-line)', padding: '16px 20px', marginBottom: 14 }}>
+                      <div style={{ background: 'var(--c-surface)', borderRadius: 14, border: '1px solid var(--c-danger-line)', borderLeft: '4px solid var(--c-danger)', padding: '16px 20px', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                         {head('var(--c-danger)', `Overdue — ${overdue.length}`, (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             {overdue.length > 1 && (
@@ -7177,7 +7181,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     )}
 
                     {dueToday.length > 0 && (
-                      <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
+                      <div style={{ background: 'var(--c-surface)', borderRadius: 14, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                         {head('var(--c-muted)', `Due today — ${dueToday.length}`, allTasksLink)}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {dueToday.map(t => taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: 'var(--c-warn-soft)', color: 'var(--c-warn-ink)', fontWeight: 700, flexShrink: 0 }}>Today</span>))}
@@ -7186,7 +7190,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     )}
 
                     {(thisWeek.length > 0 || inContract.length > 0) && (
-                      <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
+                      <div style={{ background: 'var(--c-surface)', borderRadius: 14, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                         {head('var(--c-muted)', 'This week')}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {inContract.map(d => dealRow(d, 'In contract — keep it moving to close', 'var(--c-warn-soft)', 'var(--c-warn-line)'))}
@@ -7203,7 +7207,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
               {/* ── Numbers — reporting charts, collapsed by default so the action
                      center above stays the focus. ── */}
-              <button onClick={() => setShowNumbers(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'var(--c-surface)', border: '1px solid var(--c-line)', borderRadius: 10, padding: '12px 18px', marginBottom: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+              <button onClick={() => setShowNumbers(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'var(--c-surface)', border: '1px solid var(--c-line)', borderRadius: 14, padding: '12px 18px', marginBottom: 14, cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.05)', fontFamily: "'DM Sans',sans-serif" }}>
                 <span style={{ fontSize: 13, color: 'var(--c-muted)', transition: 'transform .15s', transform: showNumbers ? 'rotate(90deg)' : 'none' }}>▸</span>
                 <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', fontWeight: 700 }}>Numbers — pipeline, commissions & trends</span>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c-faint)' }}>{showNumbers ? 'Hide' : 'Show'}</span>
@@ -7217,7 +7221,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   { label: 'Closed YTD', val: deals.filter(d => d.stage === 'Closed').length, sub: 'this year' },
                   { label: isAdmin ? 'Agents' : 'My Deals', val: isAdmin ? profiles.filter(p => p.role === 'agent').length : deals.length, sub: isAdmin ? 'active agents' : 'total' },
                 ].map(s => (
-                  <div key={s.label} style={{ background: 'var(--c-surface)', borderRadius: 10, padding: '18px 20px', border: '1px solid var(--c-line)' }}>
+                  <div key={s.label} style={{ background: 'var(--c-surface)', borderRadius: 14, padding: '18px 20px', border: '1px solid var(--c-line)', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                     <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', marginBottom: 6 }}>{s.label}</div>
                     <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 34, fontWeight: 700, color: 'var(--c-ink)', lineHeight: 1 }}>{s.val}</div>
                     <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 3 }}>{s.sub}</div>
@@ -7239,7 +7243,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 })).filter(s => s.count > 0);
                 const maxCount = Math.max(...stageCounts.map(s => s.count), 1);
                 return (
-                  <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
+                  <div style={{ background: 'var(--c-surface)', borderRadius: 14, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                       <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', fontWeight: 600 }}>📊 Pipeline by Stage</div>
                       <button onClick={() => setPage('deals')} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
@@ -7290,7 +7294,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const curKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
                 const fmtG = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${n.toFixed(0)}`;
                 return (
-                  <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
+                  <div style={{ background: 'var(--c-surface)', borderRadius: 14, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                     <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', fontWeight: 600, marginBottom: 16 }}>📈 Monthly GCI — Last 6 Months</div>
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 6 : 10, height: 90 }}>
                       {months.map(({ key, label, gci }) => {
@@ -7354,7 +7358,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const pipeGCI = activePipe.reduce((s, d) => s + d.value * RATE, 0);
                 const totalPipeVal = inContract.reduce((s, d) => s + d.value, 0) + activePipe.reduce((s, d) => s + d.value, 0);
                 return (
-                  <div style={{ background: 'var(--c-surface)', borderRadius: 10, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14 }}>
+                  <div style={{ background: 'var(--c-surface)', borderRadius: 14, border: '1px solid var(--c-line)', padding: '16px 20px', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                       <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--c-muted)', fontWeight: 600 }}>📈 Commission Pipeline Forecast</div>
                       <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>est. at 3% avg rate</span>
