@@ -802,7 +802,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
 }) {
   if (isMobile) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <TileStyles />
         {STAGES.map(stage => {
           const col = STAGE_COLORS[stage];
@@ -810,21 +810,22 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
           if (stageDeals.length === 0) return null;
           const totalVal = stageDeals.reduce((sum, d) => sum + (Number(d.value) || 0), 0);
           return (
-            <div key={stage}>
-              {/* Stage header (colored accent) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, paddingLeft: 10, borderLeft: `3px solid ${col.dot}` }}>
-                <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--k-111)' }}>{stage}</span>
-                <span style={{ background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 600, color: 'var(--k-9ca3af)' }}>{stageDeals.length}</span>
-                {totalVal > 0 && <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--k-6b7280)', fontWeight: 600 }}>${Math.round(totalVal).toLocaleString()}</span>}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <details key={stage} open={stageDeals.length <= 5} className="m-fold" style={{ ['--m-dot' as string]: col.dot }}>
+              <summary>
+                <span className="dot" />
+                <span className="n">{stage}</span>
+                <span className="c">{stageDeals.length}</span>
+                {totalVal > 0 && <span className="t">${Math.round(totalVal).toLocaleString()}</span>}
+                <span className="chev" aria-hidden>▾</span>
+              </summary>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 10px 12px' }}>
                 {stageDeals.map(deal => (
                   <DealTile key={deal.id} deal={deal} ownerName={agentName(deal.agent_id)} showOwner={isAdmin} valueLabel={fmtVal(deal)}
                     typeStyle={Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map((x: string) => x.split(':'))) as React.CSSProperties}
                     onClick={() => openDeal(deal)} />
                 ))}
               </div>
-            </div>
+            </details>
           );
         })}
         {deals.length === 0 && (
@@ -6196,6 +6197,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .m-tile .s{font-size:12px;color:var(--c-faint);margin-top:2px;}
         .m-tile.warn .v{color:#dc2626;}
         .m-tile.good{--m-glow:rgba(16,185,129,.16);} .m-tile.warn{--m-glow:rgba(239,68,68,.14);} .m-tile.blue{--m-glow:rgba(59,130,246,.14);}
+        .m-fold{background:var(--c-surface);border:1px solid var(--c-line);border-left:4px solid var(--m-dot,#c9922c);border-radius:16px;overflow:hidden;}
+        .m-fold>summary{display:flex;align-items:center;gap:8px;min-height:52px;padding:0 14px;cursor:pointer;list-style:none;font:700 14px 'DM Sans',sans-serif;color:var(--c-ink);}
+        .m-fold>summary::-webkit-details-marker{display:none;}
+        .m-fold .dot{width:9px;height:9px;border-radius:50%;background:var(--m-dot,#c9922c);flex-shrink:0;}
+        .m-fold .c{background:var(--c-surface-2);border:1px solid var(--c-line);border-radius:99px;padding:1px 9px;font-size:12px;color:var(--c-muted);}
+        .m-fold .t{margin-left:auto;font-size:13px;color:var(--c-muted);font-weight:600;}
+        .m-fold .chev{margin-left:auto;color:var(--c-faint);transition:transform .15s;} .m-fold .t+.chev{margin-left:8px;}
+        .m-fold[open] .chev{transform:rotate(180deg);}
+        .m-search{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
         .m-pills{display:flex;gap:8px;overflow-x:auto;margin:0 -14px 14px;padding:0 14px;scrollbar-width:none;}
         .m-pills::-webkit-scrollbar{display:none;}
         .m-pill{flex:none;min-height:40px;padding:0 15px;border-radius:99px;border:1px solid var(--c-line);background:var(--c-surface);color:var(--c-ink-2);font:600 13.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;}
@@ -6394,7 +6404,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
              the overdue tasks off the first screen. */
           .dk-kpis{display:flex!important;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;margin:0 -16px 14px;padding:2px 16px 6px;scrollbar-width:none;}
           .dk-kpis::-webkit-scrollbar{display:none;}
-          .dk-kpi{flex:0 0 156px;scroll-snap-align:start;padding:11px 13px;}
+          .dk-kpi{flex:0 0 164px;scroll-snap-align:start;padding:13px 14px;border-radius:18px;position:relative;overflow:hidden;}
+          .dk-kpi::after{content:'';position:absolute;right:-28px;top:-28px;width:86px;height:86px;border-radius:50%;background:radial-gradient(circle,rgba(201,146,44,.16),transparent 70%);pointer-events:none;}
+          .dk-kpi.hot::after{background:radial-gradient(circle,rgba(239,68,68,.16),transparent 70%);}
+          .dk-kpi .l{font-size:12.5px;font-weight:600;}
           .dk-kpi .v{font-size:26px;}
           .dk-kpi .s{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
           .crm-page-scroll img,.crm-page-scroll canvas,.crm-page-scroll iframe{max-width:100%;}
@@ -6595,10 +6608,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <>
           <div style={{ background: 'var(--c-header)', color: 'var(--c-ink)', padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid var(--c-line)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-              <span style={{ width: 34, height: 34, borderRadius: 10, background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, flexShrink: 0, border: '1px solid rgba(201,146,44,.5)' }}>{brand.shortName.slice(0, 1)}</span>
+              {businessUnit === 'commercial' ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/icon-192.png?v=2" alt="CRECO" width={42} height={42} style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, display: 'block' }} />
+              ) : (
+                <span style={{ width: 42, height: 42, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, flexShrink: 0, border: '2px solid #c9922c' }}>{brand.shortName.slice(0, 1)}</span>
+              )}
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: 'var(--c-ink)', lineHeight: 1.1 }}>{brand.shortName}</div>
-                <div style={{ fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: 'var(--c-faint)', fontWeight: 600 }}>CRM</div>
+                <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: 'var(--c-ink)', lineHeight: 1.1 }}>CRM</div>
+                <div style={{ fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: 'var(--c-faint)', fontWeight: 600 }}>{brand.shortName}</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
@@ -7024,13 +7042,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 return (
                   <div style={{ marginBottom: 20 }}>
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 26 : 32, fontWeight: 700, color: 'var(--c-ink)', lineHeight: 1.1 }}>{greet}, {profile.first_name.replace(/\.$/, '')}.</div>
-                      <div style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 4 }}>
+                    <div style={isMobile ? { marginBottom: 16, padding: '18px 18px 16px', borderRadius: 24, background: 'linear-gradient(135deg,#1a1814 0%,#2a2113 55%,#6b4a12 130%)', border: '1px solid rgba(201,146,44,.35)', color: '#fff' } : { marginBottom: 16 }}>
+                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 30 : 32, fontWeight: 700, color: isMobile ? '#fff' : 'var(--c-ink)', lineHeight: 1.1 }}>{greet}, {profile.first_name.replace(/\.$/, '')}.</div>
+                      <div style={{ fontSize: 13, color: isMobile ? 'rgba(255,255,255,.75)' : 'var(--c-muted)', marginTop: 4 }}>
                         {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                         {' · '}
                         {nothing ? "you're all caught up 🎉" : [overdue.length ? `${overdue.length} overdue` : '', `${dueToday.length} due today`, thisWeek.length ? `${thisWeek.length} this week` : ''].filter(Boolean).join(' · ')}
                       </div>
+                      {isMobile && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                          {([['+ Contact', () => setShowAddClient(true), true], ['+ Deal', () => setShowAddDeal(true), false], ['Calendar', () => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); }, false]] as const).map(([label, fn, gold]) => (
+                            <button key={label} type="button" onClick={fn} style={{ minHeight: 44, padding: '0 16px', borderRadius: 99, border: gold ? 'none' : '1px solid rgba(255,255,255,.28)', background: gold ? '#c9922c' : 'rgba(255,255,255,.1)', color: gold ? '#111' : '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>{label}</button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {kpis}
@@ -7519,7 +7544,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 );
               })()}
-              <div className="dc-toolbar" style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              {isMobile && (() => {
+                const n = new Map<string, number>();
+                deals.forEach(d => { if (d.agent_id) n.set(d.agent_id, (n.get(d.agent_id) ?? 0) + 1); });
+                const ids = [...n.keys()].sort((a, b) => (a === profile?.id ? -1 : b === profile?.id ? 1 : agentName(a).localeCompare(agentName(b))));
+                return (
+                  <>
+                    <div className="m-pills">
+                      {['', ...DEAL_TYPES].map(t => <button key={t} type="button" className={`m-pill${filter === t ? ' on' : ''}`} onClick={() => setFilter(t)}>{t || 'All'}</button>)}
+                    </div>
+                    {n.size >= 2 && (
+                      <div className="m-pills">
+                        {ids.map(id => { const on = dealOwnerFilter === id; return <button key={id} type="button" aria-pressed={on} className={`m-pill${on ? ' on' : ''}`} onClick={() => setDealOwnerFilter(on ? '' : id)}>{id === profile?.id ? 'My deals' : agentName(id).split(' ')[0]} · {n.get(id)}</button>; })}
+                      </div>
+                    )}
+                    <div className="m-search">
+                      <input className="crm-input" placeholder="🔍  Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ minHeight: 44, borderRadius: 14 }} />
+                      <input className="crm-input" list="crm-deal-tags" placeholder="🏷  Tag…" value={dealTagFilter} onChange={e => setDealTagFilter(e.target.value)} style={{ minHeight: 44, borderRadius: 14 }} />
+                      <datalist id="crm-deal-tags">{allKnownTags.map(t => <option key={t} value={t} />)}</datalist>
+                    </div>
+                  </>
+                );
+              })()}
+              {!isMobile && <div className="dc-toolbar" style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
                 {['', ...DEAL_TYPES].map(t => (
                   <button key={t} onClick={() => setFilter(t)}
                     style={{ padding: '5px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', background: filter === t ? '#111' : 'var(--k-fff)', color: filter === t ? '#fff' : 'var(--k-6b7280)', borderColor: filter === t ? '#111' : 'var(--k-ddd)', fontFamily: "'DM Sans',sans-serif" }}>
@@ -7551,7 +7598,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   style={{ width: isMobile ? '100%' : 150, ...(isMobile ? {} : { marginLeft: 'auto' }) }} />
                 <datalist id="crm-deal-tags">{allKnownTags.map(t => <option key={t} value={t} />)}</datalist>
                 <input className="crm-input" placeholder="🔍  Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ width: isMobile ? '100%' : 200 }} />
-              </div>
+              </div>}
               {dealTagFilter && (
                 <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--k-6b7280)' }}>
                   Showing deals tagged “{dealTagFilter}” — {filteredDeals.length} of {deals.length}
