@@ -13,7 +13,7 @@ import { readPdfText, type Item, type PageText } from '@/lib/doc-text-edit';
 export type EsignRole = 'client' | 'landlord' | 'agent' | 'seller' | 'buyer' | 'witness' | 'other';
 // `slot` = which of several same-role signers this spot is for (0 = first co-buyer / co-seller…). `text` spots are the printed
 // name / title lines under a signature; `optional` ones (a title only an entity has) don't block signing when left empty.
-export interface PrepField { id: string; type: 'initial' | 'signature' | 'date' | 'text'; page: number; fx: number; fy: number; fw: number; size: number; value: ''; signerRole: string; slot?: number; label?: string; optional?: boolean }
+export interface PrepField { id: string; type: 'initial' | 'signature' | 'date' | 'text'; page: number; fx: number; fy: number; fw: number; size: number; value: ''; signerRole: string; slot?: number; label?: string; optional?: boolean; guess?: boolean }
 export interface PrepResult { fields: PrepField[]; warnings: string[]; pages: number; found: { initialsPages: number; signatureBlocks: number } }
 
 const PARTY: Array<[RegExp, EsignRole]> = [
@@ -178,7 +178,7 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
     if (!fields.some(f => f.type === 'initial')) {
       const role = roles[0] ?? 'client';
       warnings.push('I could not find a printed “initialed for identification” line, so I put an initials box in the bottom-right corner of every page. Check they don’t cover any text.');
-      pages.forEach((_, pi) => fields.push({ id: uid('ini'), type: 'initial', page: pi + 1, fx: 0.86, fy: 0.972, fw: 0.06, size: 11, value: '', signerRole: role, slot: 0 }));
+      pages.forEach((_, pi) => fields.push({ id: uid('ini'), type: 'initial', page: pi + 1, fx: 0.86, fy: 0.972, fw: 0.06, size: 11, value: '', signerRole: role, slot: 0, guess: true }));
     }
   }
 
@@ -229,8 +229,8 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
       if ((doneCount.get(role) ?? 0) > 0 || !want.signatures) continue;
       warnings.push(`I could not find a printed signature line for the ${role}, so I put a signature box${want.dates ? ' and date' : ''} near the bottom of the last page (page ${pages.length}). Check the placement before sending.`);
       const y0 = pct(0.9 - stack * 0.07); stack++;
-      fields.push({ id: uid('sig'), type: 'signature', page: pages.length, fx: 0.12, fy: y0, fw: 0.32, size: 11, value: '', signerRole: role, slot: 0 });
-      if (want.dates) fields.push({ id: uid('date'), type: 'date', page: pages.length, fx: 0.55, fy: y0, fw: 0.14, size: 11, value: '', signerRole: role, slot: 0 });
+      fields.push({ id: uid('sig'), type: 'signature', page: pages.length, fx: 0.12, fy: y0, fw: 0.32, size: 11, value: '', signerRole: role, slot: 0, guess: true });
+      if (want.dates) fields.push({ id: uid('date'), type: 'date', page: pages.length, fx: 0.55, fy: y0, fw: 0.14, size: 11, value: '', signerRole: role, slot: 0, guess: true });
     }
   }
   return { fields, warnings, pages: pages.length, found: { initialsPages, signatureBlocks: sigBlocks } };

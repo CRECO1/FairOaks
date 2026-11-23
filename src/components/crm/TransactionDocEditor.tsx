@@ -377,11 +377,21 @@ export default function TransactionDocEditor({
   const onPageClick = useCallback((e: React.MouseEvent, pd: PageDim) => {
     if (tool === 'select') return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const fx = (e.clientX - rect.left) / rect.width;
-    const fy = (e.clientY - rect.top) / rect.height;
+    let fx = (e.clientX - rect.left) / rect.width;
+    let fy = (e.clientY - rect.top) / rect.height;
     const id = nextId();
     const isSig = tool === 'signature' || tool === 'initial' || tool === 'date';
-    const fw = tool === 'check' ? 0.03 : tool === 'initial' ? 0.07 : tool === 'date' ? 0.12 : tool === 'signature' ? 0.22 : tool === 'note' ? 0.24 : tool === 'strike' ? 0.3 : 0.28;
+    let fw = tool === 'check' ? 0.03 : tool === 'initial' ? 0.07 : tool === 'date' ? 0.12 : tool === 'signature' ? 0.22 : tool === 'note' ? 0.24 : tool === 'strike' ? 0.3 : 0.28;
+    // Snap into the printed blank nearest the click (same kind of spot, same page, not already taken by this signer), so initials land IN the
+    // footer blank and a signature sits ON its line. Click well away from any blank and it goes exactly where clicked.
+    if (isSig || tool === 'text') {
+      const mine = fieldsRef.current.filter(o => o.type === tool && o.page === pd.num && (o.signerKey ?? '') === (activeRec?.key ?? ''));
+      const near = (guidesRef.current ?? [])
+        .filter(g => g.type === tool && g.page === pd.num && !mine.some(o => Math.abs(o.fx - g.fx) < 0.02 && Math.abs(o.fy - g.fy) < 0.012))
+        .map(g => ({ g, d: Math.hypot((g.fx - fx) * pd.pw, (g.fy - fy) * pd.ph) }))
+        .filter(x => x.d < 60).sort((a, b) => a.d - b.d)[0];
+      if (near) { fx = near.g.fx; fy = near.g.fy; fw = near.g.fw; }
+    }
     if (isRedline(tool)) {
       // A redline mark belongs to nobody — it is the agent's own proposed edit.
       setFields(f => [...f, { id, page: pd.num, fx, fy, fw, value: '', size: tool === 'note' ? 9 : 11, type: tool as Field['type'],
@@ -805,6 +815,17 @@ export default function TransactionDocEditor({
   // each signature block's By / Printed Name / Title lines, a Date blank) and drops one field per blank, addressed to the signers
   // listed — so initials land IN the footer blank instead of wherever a click happened to fall. Run it again and spots already
   // there are left alone.
+  // The printed blanks on this document (any party), fetched once, so a spot dropped by hand can snap into the nearest one.
+  const guidesRef = useRef<{ page: number; fx: number; fy: number; fw: number; type: string }[] | null>(null);
+  useEffect(() => {
+    if (!submissionId || !recipients?.length || status !== 'ready' || guidesRef.current) return;
+    let dead = false;
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authTokenRef.current) h.Authorization = `Bearer ${authTokenRef.current}`;
+    fetch('/api/crm/esign-autoplace', { method: 'POST', headers: h, body: JSON.stringify({ submission_id: submissionId, guides: true }) })
+      .then(r => r.ok ? r.json() : null).then(j => { if (!dead) guidesRef.current = Array.isArray(j?.guides) ? j.guides : []; }).catch(() => { if (!dead) guidesRef.current = []; });
+    return () => { dead = true; };
+  }, [submissionId, recipients, status]);
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoNotes, setAutoNotes] = useState<string[]>([]);
   const [autoIds, setAutoIds] = useState<string[]>([]);   // what the last Auto-place added, so one click can take it back

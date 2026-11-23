@@ -25,10 +25,14 @@ export async function POST(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Missing document' }, { status: 400 });
   if (!(await assertOwnsResource('crm_form_submissions', id, ctx))) return notFound();
 
-  const signers = (Array.isArray(body.signers) ? body.signers : [])
-    .map((s: Record<string, unknown>) => ({ key: String(s?.key ?? ''), role: String(s?.role ?? '').toLowerCase() }))
+  const guides = body.guides === true;
+  const signers: { key: string; role: string }[] = guides
+    // Guides: every printed blank for any party (two of each), so a hand-placed spot can snap to the nearest one. Nothing is assigned.
+    ? ['seller', 'seller', 'buyer', 'buyer', 'landlord', 'landlord', 'client', 'client', 'agent'].map((role, i) => ({ key: `g${i}`, role }))
+    : ((Array.isArray(body.signers) ? body.signers : []) as Record<string, unknown>[])
+      .map((s) => ({ key: String(s?.key ?? ''), role: String(s?.role ?? '').toLowerCase() }))
     .filter((s: { key: string; role: string }) => s.key && ROLES.includes(s.role))
-    .slice(0, 12) as { key: string; role: string }[];
+    .slice(0, 12);
   if (!signers.length) return NextResponse.json({ error: 'Add at least one signer first.' }, { status: 400 });
 
   const db = adminClient();
@@ -66,5 +70,6 @@ export async function POST(req: NextRequest) {
     if (!key) return [];
     return [{ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, size: f.size, signerKey: key, signerRole: f.signerRole, label: f.label, optional: f.optional }];
   });
+  if (guides) return NextResponse.json({ guides: det.fields.filter(f => !f.guess).map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type })) });
   return NextResponse.json({ fields, warnings: det.warnings, pages: det.pages });
 }
