@@ -10,6 +10,7 @@ import { defaultEsignMessage } from '@/lib/esign-message';
 import EsignSavedMessages from '@/components/crm/EsignSavedMessages';
 import Skeleton from '@/components/crm/Skeleton';
 import { friendlyTitle } from '@/lib/esign-title';
+import { useConfirm } from '@/components/crm/ConfirmDialog';
 
 export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
 export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; imported?: boolean; crm_forms?: { name?: string; form_code?: string } | null }
@@ -233,6 +234,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
 export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBack, onReload }: {
   doc: Doc; env?: Envelope; authToken?: string; isSuperAdmin?: boolean; showToast?: (m: string) => void; onBack: () => void; onReload: () => void;
 }) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -271,7 +273,7 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
   // signature are kept, because the signing history of a deal is a business record.
   // Purging is the only thing that destroys anything, and only the account owner can.
   async function archive() {
-    if (!window.confirm(`Archive "${env!.title || 'this request'}"?\n\nIt moves out of your active list. The request, its signers and every signature are kept — you can restore it from “Show cancelled & completed”.`)) return;
+    if (!(await confirm(`Archive "${env!.title || 'this request'}"?\n\nIt moves out of your active list. The request, its signers and every signature are kept — you can restore it from “Show cancelled & completed”.`, { ok: "Archive", danger: false }))) return;
     setBusy(true);
     const r = await fetch(`/api/crm/envelopes?id=${env!.id}`, { method: 'DELETE', headers: authOf(authToken) });
     const j = await r.json().catch(() => ({}));
@@ -281,7 +283,7 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
     onBack();
   }
   async function purge() {
-    if (!window.confirm(`Permanently delete "${env!.title || 'this request'}"?\n\nThe request, its signers, every signature and${env!.status === 'completed' ? ' THE FULLY EXECUTED PDF' : ' any signatures collected so far'} are destroyed. This cannot be undone — Archive keeps the history instead.`)) return;
+    if (!(await confirm(`Permanently delete "${env!.title || 'this request'}"?\n\nThe request, its signers, every signature and${env!.status === 'completed' ? ' THE FULLY EXECUTED PDF' : ' any signatures collected so far'} are destroyed. This cannot be undone — Archive keeps the history instead.`, { ok: "Delete permanently", danger: true }))) return;
     setBusy(true);
     const r = await fetch(`/api/crm/envelopes?id=${env!.id}&purge=1`, { method: 'DELETE', headers: authOf(authToken) });
     const j = await r.json().catch(() => ({}));
@@ -309,6 +311,7 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
 
   return (
     <div className="es-touch" style={{ fontFamily: "'DM Sans',sans-serif" }}>
+      {confirmDialog}
       <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'var(--k-6b7280)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 8 }}>‹ Back</button>
       <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--k-1a1a1a)', marginBottom: 2 }}>{doc.title || doc.crm_forms?.name}</div>
       <div style={{ fontSize: 12.5, color: 'var(--k-1d4ed8)', marginBottom: 14 }}>📤 Out for signature · {signedCount(env)}/{signers.length} signed</div>
@@ -385,7 +388,7 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
         {doc.url && <button onClick={() => setPreview(true)} style={{ ...mini, color: 'var(--k-a06a12)', borderColor: 'var(--k-f0e2c4)', background: 'var(--k-fdf6e9)', fontWeight: 800 }}>👁 Review — who signs where</button>}
         <span style={{ flex: 1 }} />
         {env.status !== 'voided' && env.status !== 'completed' && (
-          <button disabled={busy} onClick={() => { if (window.confirm('Cancel this signature request? Signers can no longer sign; the document stays so you can edit + re-send.')) act({ action: 'void' }, 'Signature request cancelled', true); }} style={{ ...mini, color: 'var(--k-b91c1c)', borderColor: 'var(--k-fecaca)' }}>⊘ Cancel request</button>
+          <button disabled={busy} onClick={async () => { if (await confirm('Cancel this signature request?\n\nSigners can no longer sign. The document stays so you can edit + re-send.', { ok: 'Cancel request', danger: false })) act({ action: 'void' }, 'Signature request cancelled', true); }} style={{ ...mini, color: 'var(--k-b91c1c)', borderColor: 'var(--k-fecaca)' }}>⊘ Cancel request</button>
         )}
         <button disabled={busy} onClick={archive} title="File this away — the record and every signature are kept" style={{ ...mini }}>🗄 Archive</button>
         {isSuperAdmin && <button disabled={busy} onClick={purge} title="Permanently delete — destroys the signatures and the executed copy" style={{ ...mini, color: '#fff', background: '#b91c1c', border: 'none' }}>🗑 Delete forever</button>}

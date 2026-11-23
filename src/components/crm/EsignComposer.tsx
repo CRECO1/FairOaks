@@ -19,6 +19,8 @@ import type { PickContact } from '@/components/crm/EsignPanel';
 import { friendlyTitle } from '@/lib/esign-title';
 import EsignSavedMessages from '@/components/crm/EsignSavedMessages';
 import { defaultEsignMessage } from '@/lib/esign-message';
+import { emailProblem, emailWarning } from '@/lib/esign-email-check';
+import { useConfirm } from '@/components/crm/ConfirmDialog';
 
 const GOLD = '#c9922c';
 // One colour per recipient, reused by the toolbar picker and the field chips so the
@@ -144,7 +146,16 @@ export default function EsignComposer({
   const signers = useMemo(() => onlySigner
     ? [{ key: 'me', name: agentName || 'Me', email: agentEmail || '', role: 'agent' }]
     : recipients, [onlySigner, recipients, agentName, agentEmail]);
-  const valid = useMemo(() => signers.filter(r => r.name.trim() && r.email.includes('@')), [signers]);
+  const valid = useMemo(() => signers.filter(r => r.name.trim() && r.email.trim() && !emailProblem(r.email)), [signers]);
+  // Per-person notes under the email box: a hard problem (can't send to it), or a softer "are you sure" (placeholder, typo, same address twice).
+  const emailNote = useCallback((r: Recipient): { kind: 'bad' | 'warn'; text: string } | null => {
+    const bad = emailProblem(r.email); if (bad) return { kind: 'bad', text: bad };
+    const w = emailWarning(r.email); if (w) return { kind: 'warn', text: w };
+    const same = recipients.findIndex(x => x.key !== r.key && r.email.trim() && x.email.trim().toLowerCase() === r.email.trim().toLowerCase());
+    if (same >= 0) return { kind: 'warn', text: `Same address as signer ${same + 1} — each person needs their own, or they’ll be signing for each other` };
+    return null;
+  }, [recipients]);
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editorRecipients: EditorRecipient[] = useMemo(
     () => valid.map((r, i) => ({ key: r.key, name: r.name.trim(), email: r.email.trim(), role: r.role, color: COLORS[i % COLORS.length] })),
     [valid]);
@@ -286,6 +297,7 @@ export default function EsignComposer({
   return (
     <>
     {editor}
+    {confirmDialog}
     {/* Rendered here rather than inside the editor so the send flow is reachable
         without it — see the mobile path below. */}
     {review && doc?.url && (
@@ -293,7 +305,16 @@ export default function EsignComposer({
         signers={editorRecipients.map(r => ({ name: r.name, role: r.role, color: r.color }))}
         signerLabel={role => valid.find(v => v.role === role)?.name || role}
         onClose={() => setReview(false)}
-        onConfirm={async () => { await send(); setReview(false); }}
+        onConfirm={async () => {
+          // Last look before it goes out: anything that is valid but looks wrong is named, once, so a placeholder or a typo isn't found out by a bounce.
+          const notes = valid.map(r => ({ r, n: emailNote(r) })).filter(x => x.n?.kind === 'warn');
+          if (notes.length) {
+            const go = await ask({ title: 'Send anyway?', ok: 'Send anyway', cancel: 'Go back and fix',
+              body: <div>{notes.map(({ r, n }) => <div key={r.key} style={{ marginBottom: 6 }}><strong>{r.name}</strong> ({r.email.trim()}): {n!.text}</div>)}</div> });
+            if (!go) return;
+          }
+          await send(); setReview(false);
+        }}
         confirmLabel="📤 Send for signature" />
     )}
     {step === 'setup' && (
@@ -421,7 +442,9 @@ export default function EsignComposer({
                             </div>
                             <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                               <label style={LBL}>Email</label>
-                              <input value={r.email} onChange={e => set(r.key, { email: e.target.value })} placeholder="name@company.com" style={INP} />
+                              <input value={r.email} onChange={e => set(r.key, { email: e.target.value })} placeholder="name@company.com" inputMode="email" autoCapitalize="none" autoCorrect="off"
+                                style={{ ...INP, ...(emailNote(r)?.kind === 'bad' ? { borderColor: '#fca5a5' } : {}) }} />
+                              {(() => { const n = emailNote(r); return n ? <div style={{ fontSize: 12, marginTop: 4, fontWeight: 600, color: n.kind === 'bad' ? '#b91c1c' : '#b45309' }}>{n.kind === 'bad' ? '✕' : '⚠'} {n.text}</div> : null; })()}
                             </div>
                           </div>
                           {/* For the tenant standing at the desk. We still take the email —

@@ -38,6 +38,7 @@ import DealMeetings from '@/components/crm/DealMeetings';
 import ContactComms from '@/components/crm/ContactComms';
 import QuickText from '@/components/crm/QuickText';
 import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope as EsignEnvelope } from '@/components/crm/EsignPanel';
+import { useConfirm } from '@/components/crm/ConfirmDialog';
 import type { ComposerDoc } from '@/components/crm/EsignComposer';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import CrmShield, { detectAutomation, reportSecurityEvent } from '@/components/crm/CrmShield';
@@ -2667,11 +2668,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Delete a filled document (deal Docs tab and a contact's Documents). Same endpoint
   // and wording as the property Documents list: a signed document is refused, and one
   // still out for signature has its pending request cancelled with it.
+  // An in-app dialog instead of the browser's: it can say what will happen, and it never freezes the tab.
+  const { confirm: askConfirm, dialog: appConfirmDialog } = useConfirm();
   const deleteFormDoc = useCallback(async (id: string, name: string, pendingSignature: boolean) => {
     const msg = pendingSignature
-      ? `"${name}" is out for signature. Deleting it will CANCEL the pending signature request (the signers can no longer sign) and remove the document. Continue?`
-      : `Delete "${name}"? This cannot be undone.`;
-    if (!confirm(msg)) return;
+      ? `Delete "${name}"?\n\nIt is out for signature. Deleting it will CANCEL the pending signature request (the signers can no longer sign) and remove the document.`
+      : `Delete "${name}"?\n\nThis cannot be undone.`;
+    if (!(await askConfirm(msg, { ok: 'Delete', danger: true }))) return;
     try {
       const r = await fetch(`/api/crm/form-submissions?id=${id}`, {
         method: 'DELETE',
@@ -2682,7 +2685,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setClientDocs(ds => ds.filter(d => d.id !== id));
       showToast(`${name} deleted`);
     } catch { showToast('Could not delete the document'); }
-  }, [session?.access_token, showToast]);
+  }, [session?.access_token, showToast, askConfirm]);
   const renameDealDoc = useCallback(async (id: string, title: string) => {
     const name = title.trim();
     if (!name) { showToast('Give the document a name'); return; }
@@ -2870,7 +2873,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function deleteDoc(doc: DealDoc, dealId: string) {
-    if (!confirm(`Remove "${doc.name}"? This cannot be undone.`)) return;
+    if (!(await askConfirm(`Remove "${doc.name}"?\n\nThis cannot be undone.`, { ok: 'Remove', danger: true }))) return;
     const res = await fetch('/api/crm/docs', { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) }, body: JSON.stringify({ docId: doc.id }) });
     if (res.ok) { showToast(`${doc.name} removed`); loadDealDocs(dealId); }
     else showToast('Delete failed');
@@ -16118,6 +16121,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
       )}
 
+      {appConfirmDialog}
       {composer && (
         <EsignComposer
           initialFile={composer.file}

@@ -17,7 +17,7 @@ export interface PrepField { id: string; type: 'initial' | 'signature' | 'date' 
 export interface PrepResult { fields: PrepField[]; warnings: string[]; pages: number; found: { initialsPages: number; signatureBlocks: number }; /** a scan / flattened image: no printed text to read, so nothing was placed */ unreadable?: boolean }
 
 const PARTY: Array<[RegExp, EsignRole]> = [
-  [/\b(landlord|lessor|owner)\b/i, 'landlord'], [/\b(tenant|lessee)\b/i, 'client'],
+  [/\b(landlord|lessor|sublessor|owner)\b/i, 'landlord'], [/\b(tenant|lessee|sublessee|applicant)\b/i, 'client'],
   [/\b(seller|vendor)\b/i, 'seller'], [/\b(buyer|purchaser)\b/i, 'buyer'],
   [/\b(broker|agent|realtor|associate)\b/i, 'agent'], [/\bwitness\b/i, 'witness'],
   [/\b(guarantor|client|principal|customer)\b/i, 'client'],
@@ -43,7 +43,7 @@ function linesOf(page: PageText): Line[] {
   return groups.map(g => ({ y: g[0].y, items: g.sort((a, b) => a.x - b.x) })).sort((a, b) => b.y - a.y);
 }
 
-const PARTY_ONLY = /^\s*(landlord|tenant|seller|buyer|owner|lessor|lessee|purchaser|guarantor|client)(\s*\/\s*\w+)?\s*:?\s*$/i;
+const PARTY_ONLY = /^\s*(landlord|tenant|seller|buyer|owner|lessor|lessee|sublessor|sublessee|applicant|purchaser|guarantor|client)(\s*\/\s*\w+)?\s*:?\s*$/i;
 function kindOf(label: string, hasDateOnLine: boolean): Slot['kind'] {
   if (/\bdate\b/i.test(label)) return 'date';
   if (/\binitial/i.test(label)) return 'initial';
@@ -85,7 +85,7 @@ function slotsOf(line: Line, pageW: number): Slot[] {
   return out;
 }
 
-const HEADING = /^\s*(landlord|tenant|seller|buyer|owner|lessor|lessee|purchaser|guarantor|broker|agent|witness|client)\b[^,]{0,28}:?\s*$/i;
+const HEADING = /^\s*(landlord|tenant|seller|buyer|owner|lessor|lessee|sublessor|sublessee|applicant|purchaser|guarantor|broker|agent|witness|client)\b[^,]{0,28}:?\s*$/i;
 const uid = (() => { let n = 0; return (p: string) => `${p}-${Date.now().toString(36)}-${++n}`; })();
 const pct = (n: number) => Math.round(n * 1000) / 1000;
 function field(type: PrepField['type'], page: number, p: PageText, s: { x0: number; x1: number; y: number }, role: string, fw: [number, number], extra: Partial<PrepField> = {}): PrepField {
@@ -191,6 +191,7 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
   // ── signature blocks ───────────────────────────────────────────────────────────────────────────────────────────
   const doneCount = new Map<string, number>();
   const deferred: { role: string; place: () => void }[] = [];
+  const unnamed: { pi: number; label: string; place: (role: string) => void }[] = [];
   if (want.signatures || want.dates) {
     pages.forEach((p, pi) => {
       const ls = lineSlots[pi];
@@ -206,21 +207,23 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
         let role = head?.role ?? roleOfLabel(s.label);
         let inferred = false;
         if (!role && roles.length === 1) { role = roles[0] as EsignRole; inferred = true; }
-        if (!role) { warnings.push(`Page ${pi + 1}: found a signature line but could not tell whose it is — left it out.`); continue; }
-        if (!wantRole.has(role)) continue;   // someone who isn't signing this time
-        const r = role;
-        const place = () => {
+        if (role && !wantRole.has(role)) continue;   // someone who isn't signing this time
+        // Everything placed for a signature block, as whichever party ends up owning it.
+        const placeAs = (r: string, note = '') => {
           const slot = doneCount.get(r) ?? 0;
           if (slot >= (cap.get(r) ?? 1)) {
             warnings.push(`Page ${pi + 1}: there is another ${r} signature block (a co-signer) — I only placed ${slot === 1 ? 'the first one' : `the first ${slot}`}.`);
             return;
           }
           doneCount.set(r, slot + 1); sigBlocks++;
+          if (note) warnings.push(note);
           if (want.signatures) fields.push(field('signature', pi + 1, p, s, r, [0.18, 0.4], { slot }));
           const sameLeft = s.x0 < 300;
           if (want.dates) {
             // the date for this signature: on the same line to its right, else the nearest date blank just below in the same column
-            const d = all.filter(o => o.kind === 'date' && ((Math.abs(o.y - s.y) < 3 && o.x0 > s.x1 - 2) || (o.y < s.y - 3 && s.y - o.y < 80 && (o.x0 < 300) === sameLeft))).sort((a, b) => b.y - a.y || a.x0 - b.x0)[0];
+            const d = all.filter(o => o.kind === 'date' && ((Math.abs(o.y - s.y) < 3 && o.x0 > s.x1 - 2) || (o.y < s.y - 3 && s.y - o.y < 80 && (o.x0 < 300) === sameLeft))
+              // a "Date:" printed on the Title line below the name (TXR-1939) belongs to the block too
+              || (o.kind === 'date' && o.y < s.y - 3 && s.y - o.y < 80 && Math.abs(o.lx - s.lx) < 260 && (o.x0 < 300) === sameLeft)).sort((a, b) => b.y - a.y || a.x0 - b.x0)[0];
             if (d) fields.push(field('date', pi + 1, p, d, r, [0.08, 0.2], { slot }));
             else warnings.push(`Page ${pi + 1}: no date blank next to the ${r}'s signature — no date field added there.`);
           }
@@ -232,11 +235,20 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
             if (ti) fields.push(field('text', pi + 1, p, ti, r, [0.12, 0.3], { slot, label: 'Title', size: 10, optional: true }));
           }
         };
+        // A block that names nobody (no "Buyer:" heading over it): kept aside and handed to a signer who has no block of their own, in the
+        // order printed — said out loud in a warning, because it is an assumption.
+        if (!role) { unnamed.push({ pi, label: `page ${pi + 1}`, place: r => placeAs(r, `Page ${pi + 1}: a signature block names no party — I assumed it is the ${r}'s (blocks are given to signers in the order printed). Check it.`) }); continue; }
         // With ONE signer, a signature line that names nobody is only a guess. Explicitly named blocks (a "Buyer:" heading over it) win; the
         // guesses are used only when the document names none for that signer.
-        if (inferred) deferred.push({ role: r, place }); else place();
+        const r = role;
+        if (inferred) deferred.push({ role: r, place: () => placeAs(r) }); else placeAs(r);
       }
     });
+    {
+      // hand unnamed blocks to signers still without one
+      const waiting = [...new Set(roles)].filter(r => (doneCount.get(r) ?? 0) === 0 && !deferred.some(d => d.role === r));
+      unnamed.forEach((u, i) => { const r = waiting[i]; if (r) u.place(r); else warnings.push(`Page ${u.pi + 1}: found a signature line but could not tell whose it is — left it out.`); });
+    }
     for (const d of deferred) if ((doneCount.get(d.role) ?? 0) === 0) d.place();
     // Signers with no block found: signature + date at the foot of the last page, so nothing is silently missing
     let stack = 0;

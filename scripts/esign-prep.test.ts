@@ -32,6 +32,17 @@ const check = (name: string, ok: boolean, extra = '') => { if (!ok) { bad++; con
   const solo = await detectSigningSpots(pdf, ['buyer'], { initials: true, signatures: true, dates: true, names: true });
   check('single signer: signature is the named Buyer block on page 14, not a guessed line earlier', of(solo, 'signature', 'buyer').length === 1 && of(solo, 'signature', 'buyer')[0].page === 14);
 
+  // A block that names no party (TXR-1939 termination notice): given to the signers in printed order, not a guessed spot at the foot of the page.
+  const term = await detectSigningSpots(new Uint8Array(fs.readFileSync('forms_src/credocs/commercial_contract_termination_notice__12610_ts77997.pdf')), ['seller', 'buyer'], { initials: false, signatures: true, dates: true, names: true });
+  const ts = term.fields.filter(f => f.type === 'signature');
+  check('unnamed blocks: both signers get a printed block (not the bottom-of-page guess)', ts.length === 2 && ts.every(f => !f.guess && f.fy > 0.7 && f.fy < 0.88), JSON.stringify(ts.map(f => f.fy)));
+  check('unnamed blocks: the assumption is said out loud', term.warnings.some(w => /assumed/.test(w)));
+  check('unnamed blocks: the Date on the Title line is found', term.fields.filter(f => f.type === 'date' && !f.guess).length === 2);
+
+  // Sublessor / Sublessee are the landlord / tenant sides.
+  const sub = await detectSigningSpots(new Uint8Array(fs.readFileSync('forms_src/credocs/commercial_sublease__722_ts38439.pdf')), ['landlord', 'client'], { initials: true, signatures: true, dates: true, names: true });
+  check('sublease: signature blocks named by Sublessor / Sublessee are found', sub.fields.filter(f => f.type === 'signature' && !f.guess).length === 2);
+
   console.log(bad ? `\n${bad} failed` : '\nall passed');
   process.exit(bad ? 1 : 0);
 })();

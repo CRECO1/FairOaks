@@ -318,7 +318,7 @@ export async function PATCH(req: NextRequest) {
     const all = (rows ?? []) as Array<FinalizeSigner & { status: string; signed_at: string | null }>;
     if (!all.length) return NextResponse.json({ error: 'No signers on this request.' }, { status: 400 });
     if (!all.every(s => s.status === 'signed' || s.signed_at)) return NextResponse.json({ error: 'Not everyone has signed yet.' }, { status: 400 });
-    const { data: full } = await supabase.from('crm_envelopes').select('id, title, business_unit, source_path, submission_id, created_by').eq('id', env.id).single();
+    const { data: full } = await supabase.from('crm_envelopes').select('id, title, business_unit, source_path, submission_id, created_by, deal_id').eq('id', env.id).single();
     if (!full) return notFound('Signature request not found');
     const fin = await finalizeEnvelope(supabase, full, all);
     if (!fin.ok) { console.error('[api/envelopes] finalize', fin.error); return NextResponse.json({ error: fin.error || 'Could not finish signing' }, { status: 500 }); }

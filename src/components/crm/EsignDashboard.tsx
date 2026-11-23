@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRememberedState, useRememberedSelection } from '@/lib/view-memory';
 import Skeleton from '@/components/crm/Skeleton';
+import { useConfirm } from '@/components/crm/ConfirmDialog';
 
 interface Stats {
   sent: number; tracked: number;
@@ -85,6 +86,7 @@ const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--k-374151)', background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap' };
 
 export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, onPreview, isSuperAdmin, deals = [], refreshKey = 0 }: Props) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [envs, setEnvs] = useState<Envelope[]>([]);
   const [docs, setDocs] = useState<ImportedDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,7 +149,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   }, [showToast, onCompose]);
 
   const removeDoc = useCallback(async (d: ImportedDoc) => {
-    if (!window.confirm(`Remove "${d.title || 'this document'}" from E-Sign? The file is deleted.`)) return;
+    if (!(await confirm(`Remove "${d.title || 'this document'}" from E-Sign?\n\nThe file is deleted.`, { ok: 'Remove' }))) return;
     const r = await fetch(`/api/crm/esign-import?id=${d.id}`, { method: 'DELETE', headers: auth(authToken) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { showToast?.(j.error || 'Could not remove it'); return; }
@@ -178,7 +180,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
 
   // Stop a request that shouldn't go through…
   async function voidEnv(env: Envelope) {
-    if (!window.confirm(`Cancel "${env.title || 'this request'}"?\n\nSigners can no longer sign it. The document stays, so you can fix it and re-send.`)) return;
+    if (!(await confirm(`Cancel "${env.title || 'this request'}"?\n\nSigners can no longer sign it. The document stays, so you can fix it and re-send.`, { ok: 'Cancel request', danger: false }))) return;
     setBusy(env.id);
     try {
       const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ envelope_id: env.id, action: 'void' }) });
@@ -189,7 +191,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   // …file one away without losing it. The record, the signers and every signature
   // are kept — a deal's signing history is a business record, not queue clutter.
   async function archiveEnv(env: Envelope) {
-    if (!window.confirm(`Archive "${env.title || 'this request'}"?\n\nIt moves out of the active list. Everything is kept — tick “Show cancelled & archived” to find it again.`)) return;
+    if (!(await confirm(`Archive "${env.title || 'this request'}"?\n\nIt moves out of the active list. Everything is kept — tick “Show cancelled & archived” to find it again.`, { ok: 'Archive', danger: false }))) return;
     setBusy(env.id);
     try {
       const r = await fetch(`/api/crm/envelopes?id=${env.id}`, { method: 'DELETE', headers: auth(authToken) });
@@ -207,7 +209,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   }
   // …and the one action that actually destroys something. Owner only.
   async function purgeEnv(env: Envelope) {
-    if (!window.confirm(`Permanently delete "${env.title || 'this request'}"?\n\nEvery signature${env.status === 'completed' ? ' and THE FULLY EXECUTED PDF' : ''} is destroyed. This cannot be undone — Archive keeps the history instead.`)) return;
+    if (!(await confirm(`Permanently delete "${env.title || 'this request'}"?\n\nEvery signature${env.status === 'completed' ? ' and THE FULLY EXECUTED PDF' : ''} is destroyed. This cannot be undone — Archive keeps the history instead.`, { ok: 'Delete permanently', danger: true }))) return;
     setBusy(env.id);
     try {
       const r = await fetch(`/api/crm/envelopes?id=${env.id}&purge=1`, { method: 'DELETE', headers: auth(authToken) });
@@ -344,7 +346,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
 
   // Reminds every stalled signer in one go, one at a time so the sends stay ordered.
   async function nudgeAll(list: Array<{ id: string }>) {
-    if (!window.confirm(`Send a reminder to the current signer on ${list.length} requests?`)) return;
+    if (!(await confirm(`Send a reminder to the current signer on ${list.length} requests?`, { ok: 'Send reminders', danger: false }))) return;
     setBusy('all');
     let ok = 0;
     for (const e of list) {
@@ -445,6 +447,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) importFile(f); }}>
       <input ref={fileRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
         onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
+      {confirmDialog}
 
       {/* ── Header: title, one-line pulse, the two ways to start ── */}
       <div className="es-head" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 10, marginBottom: 16 }}>

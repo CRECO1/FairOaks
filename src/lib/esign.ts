@@ -7,7 +7,7 @@
 // server-to-server sends (routing to the next signer, completion) via Resend, plus
 // token generation, the audit log, and all pdf-lib signature stamping.
 // ─────────────────────────────────────────────────────────────────────────────
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import { isBrokerFilled } from '@/lib/esign-fields';
 import { friendlyTitle } from '@/lib/esign-title';
 import { renderEsignMessage, firstNameOf, companyFor } from '@/lib/esign-message';
@@ -216,37 +216,70 @@ export async function stampSignerFields(
   return doc.save();
 }
 
+/** "iPhone · Safari" from a user-agent string — enough to tell a signer's device apart in an audit trail without storing more than we already hold. */
+export function deviceOf(ua?: string | null): string {
+  if (!ua) return 'unknown device';
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'device';
+  const br = /Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'browser';
+  return `${os} · ${br}`;
+}
+
+export interface CertSigner {
+  name: string; email: string; role: string; signedAt?: string | null; ip?: string | null;
+  // What each person did, so a dispute can be answered from this page alone.
+  device?: string | null; consentAt?: string | null; inPerson?: boolean; style?: string | null;
+  spots?: { initials: number; signatures: number; dates: number; fillIns: number };
+}
+
 // Append a Certificate of Completion page (the audit trail that makes it enforceable).
 export async function appendCertificate(
   pdfBytes: Uint8Array,
-  info: { docTitle: string; envelopeId: string; signers: Array<{ name: string; email: string; role: string; signedAt?: string | null; ip?: string | null }> },
+  info: { docTitle: string; envelopeId: string; docSha256?: string; signers: CertSigner[] },
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const page = doc.addPage([612, 792]);
   const M = 56;
-  let y = 792 - 64;
-  const line = (t: string, f = font, size = 10, color = rgb(0.1, 0.1, 0.12)) => { page.drawText(winAnsi(t), { x: M, y, size, font: f, color }); y -= size + 6; };
-
-  page.drawRectangle({ x: 0, y: 792 - 42, width: 612, height: 42, color: rgb(0.788, 0.573, 0.173) });
-  page.drawText('Certificate of Completion', { x: M, y: 792 - 30, size: 16, font: bold, color: rgb(1, 1, 1) });
-  y = 792 - 74;
+  let page = doc.addPage([612, 792]);
+  const head = (p: typeof page) => {
+    p.drawRectangle({ x: 0, y: 792 - 42, width: 612, height: 42, color: rgb(0.788, 0.573, 0.173) });
+    p.drawText('Certificate of Completion', { x: M, y: 792 - 30, size: 16, font: bold, color: rgb(1, 1, 1) });
+  };
+  head(page);
+  let y = 792 - 74;
+  // Many signers no longer run off the bottom of the page: a new certificate page picks up where this one ends.
+  const room = (need: number) => { if (y - need < 60) { page = doc.addPage([612, 792]); head(page); y = 792 - 74; } };
+  const line = (t: string, f = font, size = 10, color = rgb(0.1, 0.1, 0.12)) => { room(size + 6); page.drawText(winAnsi(t), { x: M, y, size, font: f, color }); y -= size + 6; };
+  const grey = rgb(0.4, 0.42, 0.46);
   line(`Document: ${info.docTitle}`, bold, 11);
-  line(`Envelope ID: ${info.envelopeId}`, font, 9, rgb(0.4, 0.42, 0.46));
+  line(`Envelope ID: ${info.envelopeId}`, font, 9, grey);
+  if (info.docSha256) {
+    // The fingerprint of the signed document (without this page): change one character in it and this no longer matches.
+    line('Signed document SHA-256:', font, 8.5, grey);
+    line(info.docSha256.slice(0, 32), font, 8.5, grey);
+    line(info.docSha256.slice(32), font, 8.5, grey);
+  }
   y -= 8;
   line('Signers', bold, 12, rgb(0.62, 0.45, 0.13));
   for (const s of info.signers) {
+    room(70);
     line(`${s.name}  (${s.role})`, bold, 10.5);
-    line(`   ${s.email}`, font, 9, rgb(0.4, 0.42, 0.46));
-    line(`   Signed: ${s.signedAt ? new Date(s.signedAt).toUTCString() : '—'}${s.ip ? `   ·   IP ${s.ip}` : ''}`, font, 9, rgb(0.4, 0.42, 0.46));
+    line(`   ${s.email}`, font, 9, grey);
+    line(`   Signed: ${s.signedAt ? new Date(s.signedAt).toUTCString() : '—'}${s.ip ? `   ·   IP ${s.ip}` : ''}`, font, 9, grey);
+    const how = [s.device, s.inPerson ? 'signed in person on the sender’s device' : null, s.consentAt ? `e-sign consent ${new Date(s.consentAt).toUTCString()}` : null].filter(Boolean).join('   ·   ');
+    if (how) line(`   ${how}`, font, 8.5, grey);
+    if (s.spots) {
+      const bits = [s.spots.signatures && `${s.spots.signatures} signature${s.spots.signatures > 1 ? 's' : ''}`, s.spots.initials && `${s.spots.initials} initials`, s.spots.dates && `${s.spots.dates} date${s.spots.dates > 1 ? 's' : ''}`, s.spots.fillIns && `${s.spots.fillIns} fill-in${s.spots.fillIns > 1 ? 's' : ''}`].filter(Boolean);
+      if (bits.length) line(`   Placed: ${bits.join(' · ')}${s.style ? `   ·   style: ${s.style}` : ''}`, font, 8.5, grey);
+    }
     y -= 6;
   }
   y -= 6;
+  room(60);
   page.drawLine({ start: { x: M, y }, end: { x: 612 - M, y }, thickness: 0.75, color: rgb(0.9, 0.91, 0.93) });
   y -= 16;
   line('Each party consented to sign electronically (ESIGN/UETA). This certificate records the', font, 8.5, rgb(0.5, 0.52, 0.56));
-  line('identity, timestamp, and network address captured at the time of each signature.', font, 8.5, rgb(0.5, 0.52, 0.56));
+  line('identity, timestamp, device and network address captured at the time of each signature.', font, 8.5, rgb(0.5, 0.52, 0.56));
   return doc.save();
 }
 
@@ -259,6 +292,8 @@ export interface ExecutedSigner {
   // The signer's initials in the same hand as their signature. Falls back to drawn
   // block letters when a signer typed a name instead of adopting a style.
   initialsPng?: Uint8Array | null;
+  // Audit detail for the certificate page.
+  userAgent?: string | null; consentAt?: string | null; inPerson?: boolean; style?: string | null;
 }
 
 // A field the agent placed on the doc (from the submission). Signature/initial/date
@@ -366,7 +401,18 @@ export async function buildExecutedParts(
   }
 
   const withSigs = await doc.save();
-  return { clean: withSigs, full: await appendCertificate(withSigs, info) };
+  // The fingerprint is of the signed document itself (no certificate page), which is the copy people actually keep.
+  const docSha256 = createHash('sha256').update(withSigs).digest('hex');
+  const spotsOf = (s: ExecutedSigner) => {
+    const mine = placed.filter(f => (f.signerIndex ? f.signerIndex === s.index : (f.signerRole || 'client') === (s.role || 'client')));
+    const n = (t: string[]) => mine.filter(f => t.includes(f.type)).length;
+    return { initials: n(['initial']), signatures: n(['signature']), dates: n(['date', 'date_signed']), fillIns: n(['text', 'check']) };
+  };
+  const certSigners: CertSigner[] = info.signers.map(s => ({
+    name: s.name, email: s.email, role: s.role, signedAt: s.signedAt, ip: s.ip,
+    device: s.userAgent ? deviceOf(s.userAgent) : null, consentAt: s.consentAt, inPerson: s.inPerson, style: s.style, spots: spotsOf(s),
+  }));
+  return { clean: withSigs, full: await appendCertificate(withSigs, { docTitle: info.docTitle, envelopeId: info.envelopeId, signers: certSigners, docSha256 }) };
 }
 
 // ── Finalize ─────────────────────────────────────────────────────────────────
@@ -378,6 +424,7 @@ export interface FinalizeSigner {
   name: string; email: string; signer_role: string;
   signed_at: string | null; ip: string | null; signature_path: string | null; typed_name: string | null;
   initials_path?: string | null;
+  user_agent?: string | null; consent_at?: string | null; in_person?: boolean | null; signature_style?: string | null;
 }
 /**
  * File an executed onboarding document against the agent's recruiting contact.
@@ -425,9 +472,28 @@ async function fileToRecruitingContact(
   }
 }
 
+/**
+ * File the signed (clean) copy in the deal's own Documents folder, so it is where everyone already looks for the deal's paperwork instead of
+ * only on the E-Sign page. Idempotent — one fixed object name per envelope, so a retried finalize adds nothing — and best-effort: the envelope
+ * is already complete, so any failure here is logged and swallowed.
+ */
+async function fileToDeal(admin: SupabaseClient, env: { id: string; title: string; deal_id?: string | null; created_by: string | null }, clean: Uint8Array): Promise<void> {
+  try {
+    if (!env.deal_id) return;
+    const storagePath = `${env.deal_id}/signed-${env.id}.pdf`;
+    const { data: have } = await admin.from('crm_deal_docs').select('id').eq('storage_path', storagePath).maybeSingle();
+    if (have) return;
+    const { error: upErr } = await admin.storage.from('deal-docs').upload(storagePath, Buffer.from(clean), { contentType: 'application/pdf', upsert: true });
+    if (upErr) { console.error('[esign] could not file the signed copy to the deal', upErr.message); return; }
+    const name = `${(env.title || 'Document').replace(/\.pdf$/i, '').slice(0, 120)} — signed.pdf`;
+    const { error: rowErr } = await admin.from('crm_deal_docs').insert([{ deal_id: env.deal_id, name, storage_path: storagePath, file_size: clean.byteLength, file_type: 'application/pdf', uploaded_by: env.created_by }]);
+    if (rowErr) { console.error('[esign] signed copy stored but not listed on the deal', rowErr.message); await admin.storage.from('deal-docs').remove([storagePath]); }
+  } catch (e) { console.error('[esign] fileToDeal', e); }
+}
+
 export async function finalizeEnvelope(
   admin: SupabaseClient,
-  env: { id: string; title: string; business_unit: string; source_path: string | null; submission_id: string | null; created_by: string | null },
+  env: { id: string; title: string; business_unit: string; source_path: string | null; submission_id: string | null; created_by: string | null; deal_id?: string | null },
   signers: FinalizeSigner[],
 ): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -445,7 +511,8 @@ export async function finalizeEnvelope(
       };
       const png = await grab(s.signature_path);
       const ini = await grab(s.initials_path);
-      execSigners.push({ name: s.name, email: s.email, role: s.signer_role, index: execSigners.length + 1, signedAt: s.signed_at, ip: s.ip, signaturePng: png, initialsPng: ini, typedName: s.typed_name || undefined });
+      execSigners.push({ name: s.name, email: s.email, role: s.signer_role, index: execSigners.length + 1, signedAt: s.signed_at, ip: s.ip, signaturePng: png, initialsPng: ini, typedName: s.typed_name || undefined,
+        userAgent: s.user_agent ?? null, consentAt: s.consent_at ?? null, inPerson: !!s.in_person, style: s.signature_style ?? null });
     }
 
     let sigFields: PlacedField[] = [];
@@ -472,6 +539,7 @@ export async function finalizeEnvelope(
     await admin.from('crm_envelopes').update({ status: 'completed', executed_path: execPath, executed_clean_path: cleanErr ? null : cleanPath, completed_at: nowIso, updated_at: nowIso }).eq('id', env.id);
     await logEvent(admin, env.id, null, 'completed', { actor: 'system' });
     await fileToRecruitingContact(admin, env, signers, cleanErr ? execPath : cleanPath);
+    await fileToDeal(admin, env, clean);
 
     // Email the executed copy to every signer + the broker (best-effort; the doc is
     // already stored + marked completed, so a mail failure never blocks completion).

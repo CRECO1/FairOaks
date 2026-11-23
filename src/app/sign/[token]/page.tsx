@@ -884,8 +884,8 @@ export default function SignPage() {
               <>
                 <div style={{ position: 'relative' }}>
                   <canvas ref={canvasRef} aria-label="Signature pad — draw your signature with your finger or mouse"
-                    style={{ display: 'block', width: '100%', height: narrow ? 180 : 160, background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 10, boxSizing: 'border-box', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'crosshair' }} />
-                  <span aria-hidden style={{ position: 'absolute', left: 16, right: 16, bottom: 38, borderBottom: '1px dashed #d6d9de', pointerEvents: 'none' }} />
+                    style={{ display: 'block', width: '100%', height: narrow ? 240 : 200, background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 10, boxSizing: 'border-box', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'crosshair' }} />
+                  <span aria-hidden style={{ position: 'absolute', left: 16, right: 16, bottom: narrow ? 52 : 44, borderBottom: '1px dashed #d6d9de', pointerEvents: 'none' }} />
                 </div>
                 {/* Clear sits below the pad, not on it: on a phone a signature that ran to the
                     right edge landed on the button and wiped itself. */}
