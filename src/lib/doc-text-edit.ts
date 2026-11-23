@@ -189,6 +189,12 @@ function ensureDomShims() {
 export async function readPdfText(bytes: Uint8Array): Promise<PageText[]> {
   ensureDomShims();
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  // Without a worker file pdf.js "sets up a fake worker" by importing pdf.worker.mjs next to itself — a path that doesn't exist once the
+  // route is bundled for Vercel. Handing it the worker module directly (globalThis.pdfjsWorker) skips the file lookup.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const g = globalThis as any;
+  // @ts-expect-error — pdf.js ships no type declarations for the worker entry
+  if (!g.pdfjsWorker) g.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
   const task = pdfjs.getDocument(pdfjsOptions(bytes));
   const pdf = await task.promise;
   const pages: PageText[] = [];
