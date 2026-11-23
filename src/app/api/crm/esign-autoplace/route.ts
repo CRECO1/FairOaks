@@ -68,7 +68,8 @@ export async function POST(req: NextRequest) {
         label: f.label ? String(f.label).slice(0, 60) : undefined, optional: f.optional ? true : undefined }];
     });
     if (!keep.length) return NextResponse.json({ error: 'Place some spots first.' }, { status: 400 });
-    const { error: upErr } = await db.storage.from('transaction-forms').upload(layoutPath, JSON.stringify({ v: 1, saved_by: ctx.userId, saved_at: new Date().toISOString(), fields: keep }), { contentType: 'application/json', upsert: true });
+    // The bucket only accepts PDFs (a JSON upload is refused with 415), so the small JSON file is stored under the PDF type; it is only ever read back by this route.
+    const { error: upErr } = await db.storage.from('transaction-forms').upload(layoutPath, JSON.stringify({ v: 1, saved_by: ctx.userId, saved_at: new Date().toISOString(), fields: keep }), { contentType: 'application/pdf', upsert: true });
     if (upErr) { console.error('[esign-autoplace] save layout', upErr); return NextResponse.json({ error: 'Could not save the layout.' }, { status: 500 }); }
     return NextResponse.json({ ok: true, count: keep.length });
   }
