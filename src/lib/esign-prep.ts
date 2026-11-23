@@ -47,7 +47,8 @@ const PARTY_ONLY = /^\s*(landlord|tenant|seller|buyer|owner|lessor|lessee|purcha
 function kindOf(label: string, hasDateOnLine: boolean): Slot['kind'] {
   if (/\bdate\b/i.test(label)) return 'date';
   if (/\binitial/i.test(label)) return 'initial';
-  if (/\(signature\)|\bsignature\b|\bsign(ed)?\b/i.test(label)) return 'signature';
+  // a signature LINE is labelled in a few words ("By (signature):"); a whole sentence that happens to say "sign" is just text
+  if (/\(signature\)|\bsignature\b|\bsign(ed)?\b/i.test(label) && label.trim().split(/\s+/).length <= 6) return 'signature';
   if (/^\s*by\s*:?\s*$/i.test(label)) return 'bare-by';
   if (PARTY_ONLY.test(label) && hasDateOnLine) return 'signature';
   return 'other';

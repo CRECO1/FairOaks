@@ -807,6 +807,7 @@ export default function TransactionDocEditor({
   // there are left alone.
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoNotes, setAutoNotes] = useState<string[]>([]);
+  const [autoIds, setAutoIds] = useState<string[]>([]);   // what the last Auto-place added, so one click can take it back
   const autoPlace = useCallback(async () => {
     if (!submissionId || !recipients?.length) return;
     setAutoBusy(true); setAutoNotes([]);
@@ -818,20 +819,39 @@ export default function TransactionDocEditor({
       if (!r.ok) { onToast?.(j.error || 'Could not read where the blanks are — place the fields by hand'); return; }
       const incoming = (Array.isArray(j.fields) ? j.fields : []) as { page: number; fx: number; fy: number; fw: number; type: string; size?: number; signerKey: string; label?: string; optional?: boolean }[];
       const next = [...fieldsRef.current];
+      const addedIds: string[] = [];
       let added = 0, initials = 0;
       for (const f of incoming) {
         const rec = recByKey.get(f.signerKey); if (!rec) continue;
         if (next.some(o => o.type === f.type && o.signerKey === f.signerKey && o.page === f.page && Math.abs(o.fx - f.fx) < 0.03 && Math.abs(o.fy - f.fy) < 0.02)) continue;
         next.push({ id: nextId(), page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, value: '', size: f.size || 11, type: f.type as Field['type'], label: f.label, optional: f.optional,
           signerRole: rec.role, signerKey: rec.key, signerEmail: rec.email.trim().toLowerCase(), signerName: rec.name.trim() });
+        addedIds.push(next[next.length - 1].id);
         added++; if (f.type === 'initial') initials++;
       }
       setFields(next);
+      setAutoIds(addedIds);
       setAutoNotes(Array.isArray(j.warnings) ? j.warnings.slice(0, 6) : []);
       onToast?.(added ? `✨ Placed ${added} spot${added === 1 ? '' : 's'}${initials ? ` (${initials} initials)` : ''} — check them, then drag any that need a nudge` : incoming.length ? 'Those spots are already placed' : 'Found no printed blanks to place — use the tools to place them by hand');
     } catch { onToast?.('Could not read the document — place the fields by hand'); }
     finally { setAutoBusy(false); }
   }, [submissionId, recipients, recByKey, onToast]);
+  const undoAuto = useCallback(() => {
+    const gone = new Set(autoIds);
+    setFields(fs => fs.filter(f => !gone.has(f.id)));
+    setAutoIds([]); setAutoNotes([]); setSelected(null);
+  }, [autoIds]);
+  // The first time the field step opens on a document with nothing placed, do it for them — it is one click to undo.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current || !keysEnabled || status !== 'ready' || !submissionId || !recipients?.length) return;
+    const t = setTimeout(() => {
+      if (autoRan.current) return;
+      autoRan.current = true;
+      if (fieldsRef.current.length === 0) autoPlace();
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [keysEnabled, status, submissionId, recipients, autoPlace]);
   // Every spot a signer has to complete, in reading order — what ◀ ▶ steps through.
   const navList = React.useMemo(() => fields
     .filter(f => ['signature', 'initial', 'date', 'text', 'check'].includes(f.type) && (!recipients?.length || !f.signerKey || recByKey.has(f.signerKey)))
@@ -860,6 +880,12 @@ export default function TransactionDocEditor({
       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', minHeight: isMobile ? 44 : undefined, padding: '10px 10px', borderRadius: 9, cursor: autoBusy ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 800, fontFamily: "'DM Sans',sans-serif",
         border: '1px solid #e6d3a2', background: '#fffdf6', color: '#a06a12', opacity: autoBusy ? .6 : 1 }}>
       {autoBusy ? 'Reading the form…' : '✨ Auto-place spots'}
+    </button>
+  ) : null;
+  const undoAutoBtn = autoIds.length ? (
+    <button onClick={undoAuto} title="Remove the spots Auto-place just added"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', minHeight: isMobile ? 44 : undefined, marginTop: 6, padding: '8px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280' }}>
+      ↶ Undo auto-place ({autoIds.length})
     </button>
   ) : null;
 
@@ -1044,7 +1070,7 @@ export default function TransactionDocEditor({
               <option value="agent">For: Agent</option>
             </select>
           )}
-          {autoBtn}
+          {autoBtn}{undoAutoBtn}
           {autoNotes.length > 0 && <div style={{ fontSize: 11.5, lineHeight: 1.4, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '7px 9px' }}>{autoNotes.map((n, i) => <div key={i}>• {n}</div>)}</div>}
           {navBar}
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
@@ -1089,7 +1115,7 @@ export default function TransactionDocEditor({
             </select>
           )}
 
-          {autoBtn && <div style={{ marginBottom: 16 }}>{autoBtn}{autoNotes.length > 0 && (
+          {autoBtn && <div style={{ marginBottom: 16 }}>{autoBtn}{undoAutoBtn}{autoNotes.length > 0 && (
             <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.4, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '7px 9px' }}>
               {autoNotes.map((n, i) => <div key={i} style={{ marginTop: i ? 4 : 0 }}>• {n}</div>)}
             </div>)}</div>}
