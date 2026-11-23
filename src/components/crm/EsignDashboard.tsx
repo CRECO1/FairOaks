@@ -53,7 +53,7 @@ interface Props {
   isSuperAdmin?: boolean;
   // Opens the envelope composer: with a freshly dropped file, or on a document
   // already imported and still being prepared.
-  onCompose?: (arg: { file?: File; doc?: ImportedDoc }) => void;
+  onCompose?: (arg: { file?: File; doc?: ImportedDoc; dealId?: string }) => void;
   // Bumped by the parent whenever the editor saves, so the list re-reads the doc.
   refreshKey?: number;
   // Opens a PDF in the app's own viewer rather than forcing a download.
@@ -131,11 +131,13 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       const r = await fetch('/api/crm/esign-import', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ from_deal_doc_id: docId }) });
       const j = await r.json();
       if (!r.ok) { showToast?.(j.error || 'Could not open that document'); return; }
+      const fromDeal = dealPick ?? undefined;
       setPickDeal(false); setDealPick(null); setDealDocs(null);
-      onCompose?.({ doc: j.submission });
+      // The deal it came from goes along, so the composer can start with that deal's person as the first signer.
+      onCompose?.({ doc: j.submission, dealId: fromDeal });
     } catch { showToast?.('Could not open that document'); }
     finally { setUploading(false); }
-  }, [authToken, onCompose, showToast]);
+  }, [authToken, onCompose, showToast, dealPick]);
 
   // A dropped file goes straight into the composer, which does the upload as its
   // first step — so the agent lands on "Set Up Envelope" with the document in place.
@@ -622,7 +624,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                   </div>
                 </div>
                 {d.url && onPreview && <button onClick={() => onPreview({ url: d.url!, name: `${d.title || 'Document'}.pdf` })} style={mini}>Preview</button>}
-                {onCompose && <button onClick={() => onCompose({ doc: d })} style={primaryBtn}>Prepare &amp; send</button>}
+                {onCompose && <button onClick={() => onCompose({ doc: d, dealId: d.deal_id ?? undefined })} style={primaryBtn}>Prepare &amp; send</button>}
                 {/* Last and quiet: the one destructive action sits away from Preview / Prepare & send so it can't be tapped by mistake. */}
                 <button className="es-quiet" onClick={() => removeDoc(d)} title="Remove this document" aria-label={`Remove ${prettyTitle(d.title)}`} style={{ ...mini, background: 'none', border: 'none', color: 'var(--k-9ca3af)', fontWeight: 600, marginLeft: 10 }}>Remove</button>
               </div>

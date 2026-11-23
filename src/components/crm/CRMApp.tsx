@@ -12265,7 +12265,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               refreshKey={esignFieldsVersion}
               isSuperAdmin={isSuperAdmin}
               onPreview={f => setPreviewFile({ url: f.url, name: f.name, type: 'application/pdf' })}
-              onCompose={({ file, doc }) => setComposer({ file: file ?? null, doc: doc ? { id: doc.id, title: doc.title, url: doc.url } : null })}
+              onCompose={({ file, doc, dealId }) => setComposer({ file: file ?? null, doc: doc ? { id: doc.id, title: doc.title, url: doc.url } : null, dealId })}
               onOpenDeal={(dealId) => { const d = deals.find(x => x.id === dealId); if (d) { openDeal(d); setDealTab('esign'); } else { setPage('deals'); showToast('Open the deal from All Deals'); } }}
             />
           )}
