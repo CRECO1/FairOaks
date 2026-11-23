@@ -138,6 +138,8 @@ const nextConfig = {
   serverExternalPackages: ['sharp', 'graphql', '@napi-rs/canvas'],
   outputFileTracingIncludes: {
     '/api/crm/assistant': ['./node_modules/pdfjs-dist/standard_fonts/**/*', './node_modules/@napi-rs/canvas*/**/*'],
+    // E-Sign Auto-place reads the PDF's text with the same pdf.js — it needs the canvas module (pdf.js polyfills DOMMatrix from it) and the fonts too.
+    '/api/crm/esign-autoplace': ['./node_modules/pdfjs-dist/standard_fonts/**/*', './node_modules/@napi-rs/canvas*/**/*'],
   },
 
   // Add security headers to all routes
