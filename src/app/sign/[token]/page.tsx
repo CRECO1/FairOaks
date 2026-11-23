@@ -367,7 +367,7 @@ export default function SignPage() {
     ? { ...f, label: isGenericLabel(f.label) ? labels[f.id] : f.label }
     : f), [data, labels]);
   const inputFields = useMemo(() => fields.filter(f => isInput(f.type)), [fields]);
-  const isDone = useCallback((f: SignField) => isInput(f.type) ? !!(values[f.id] ?? '').trim() : !!filled[f.id], [values, filled]);
+  const isDone = useCallback((f: SignField) => isInput(f.type) ? (f.required === false || !!(values[f.id] ?? '').trim()) : !!filled[f.id], [values, filled]);
   // Where this person sits in the signing order, and who it moves to after them.
   // The page already tracks FIELD progress ("3 / 7 spots"); what a signer on a
   // multi-party document can't tell is whether they're the last one holding it up.
@@ -390,6 +390,23 @@ export default function SignPage() {
   const allDone = fields.length > 0 && remaining.length === 0;
   const setFieldValue = useCallback((f: SignField, v: string) => setValues(prev => ({ ...prev, [f.id]: v })), []);
   const dateStr = useMemo(() => new Date().toLocaleDateString('en-US'), []);
+  // Names and dates the signer would only retype: a "Printed name" blank gets the name they confirmed, a "Date" blank gets today.
+  // Done once per spot (a ref), so clearing it or typing something else sticks; they can still edit what lands there.
+  const prefilled = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (adoptStep || !typed.trim()) return;
+    const add: Record<string, string> = {};
+    for (const f of inputFields) {
+      if (f.type !== 'text' || prefilled.current.has(f.id)) continue;
+      const l = (f.label ?? '').trim();
+      const v = /^(printed |print |typed |full |legal )?name\s*:?$/i.test(l) || /\bprinted name\b/i.test(l) ? typed.trim()
+        : /^(date|date signed|signing date|today'?s date)\s*:?$/i.test(l) ? dateStr : '';
+      if (!v) continue;
+      prefilled.current.add(f.id);
+      if (!(values[f.id] ?? '').trim()) add[f.id] = v;
+    }
+    if (Object.keys(add).length) setValues(prev => { const n = { ...prev }; for (const k of Object.keys(add)) if (!(n[k] ?? '').trim()) n[k] = add[k]; return n; });
+  }, [adoptStep, typed, inputFields, values, dateStr]);
 
   const scrollToField = useCallback((id: string) => {
     const el = document.getElementById(`fld-${id}`);
@@ -406,6 +423,22 @@ export default function SignPage() {
   const scrollToAdopt = useCallback(() => {
     adoptRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
+
+  // Enter in a fill-in moves to the next spot that still needs something (an input gets focus, a signature / initials spot is scrolled to and
+  // highlighted); with nothing left it goes to the Finish card.
+  const goAfter = useCallback((cur: SignField) => {
+    const i = fields.findIndex(x => x.id === cur.id);
+    const next = [...fields.slice(i + 1), ...fields.slice(0, i)].find(x => !isDone(x) && x.id !== cur.id);
+    if (!next) { scrollToAdopt(); return; }
+    if (isInput(next.type)) scrollToInput(next.id); else { (document.activeElement as HTMLElement | null)?.blur?.(); scrollToField(next.id); }
+  }, [fields, isDone, scrollToAdopt, scrollToInput, scrollToField]);
+  // ◀ Back: the spot before the one being asked for now (the last one once everything is done).
+  const goBack = useCallback(() => {
+    const at = nextField ? fields.findIndex(x => x.id === nextField.id) : fields.length;
+    const prev = fields[Math.max(0, at - 1)];
+    if (!prev) return;
+    if (isInput(prev.type)) scrollToInput(prev.id); else scrollToField(prev.id);
+  }, [fields, nextField, scrollToInput, scrollToField]);
 
   // Turn the chosen hand into the images the page stamps into each spot.
   const renderAdopted = useCallback(async () => {
@@ -926,6 +959,10 @@ export default function SignPage() {
                 <button onClick={startOver} title="Clear what you've placed and start again"
                   style={{ minHeight: TAP, fontSize: 13, fontWeight: 700, color: '#7c5a12', background: '#fff', border: '1px solid #e6d3a2', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', whiteSpace: 'nowrap', ...(narrow ? { flex: '1 1 auto' } : {}) }}>↺ Start over</button>
               )}
+              {fields.length > 1 && (remaining.length < fields.length || allDone) && (
+                <button onClick={goBack} title="Go to the previous spot"
+                  style={{ minHeight: TAP, fontSize: 13, fontWeight: 700, color: '#7c5a12', background: '#fff', border: '1px solid #e6d3a2', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', whiteSpace: 'nowrap', ...(narrow ? { flex: '1 1 auto' } : {}) }}>◀ Back</button>
+              )}
               {!allDone && (
                 <button onClick={() => { if (nextField) { if (!isInput(nextField.type)) scrollToField(nextField.id); fillField(nextField); } }}
                   style={{ minHeight: TAP, fontSize: 14, fontWeight: 800, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', whiteSpace: 'nowrap', ...(narrow ? { flex: '1 1 auto' } : {}) }}>
@@ -970,11 +1007,12 @@ export default function SignPage() {
                 ) : (
                   <div key={f.id}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <label htmlFor={`in-${f.id}`} style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: '#374151' }}>{label}</label>
+                      <label htmlFor={`in-${f.id}`} style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: '#374151' }}>{label}{f.required === false && <span style={{ fontWeight: 500, color: '#9ca3af' }}> (optional)</span>}</label>
                       {show}
                     </div>
                     {/* 16px text: anything smaller makes iOS zoom the page when the signer taps in. */}
                     <input id={`in-${f.id}`} value={v} onChange={e => setFieldValue(f, e.target.value)} {...focus}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); goAfter(f); } }}
                       autoComplete="off" enterKeyHint="next"
                       style={{ width: '100%', minHeight: TAP, padding: '10px 12px', boxSizing: 'border-box', borderRadius: 8, fontSize: 16, fontFamily: 'inherit', color: INK,
                         border: `1.5px solid ${v.trim() ? '#e5e7eb' : '#e6d3a2'}`, background: v.trim() ? '#fff' : '#fffdf6' }} />

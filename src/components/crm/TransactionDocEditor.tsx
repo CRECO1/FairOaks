@@ -46,6 +46,7 @@ interface Field {
   label?: string;           // human label, shown as the blank's placeholder
   color?: 'red' | 'black';  // strike lines: red (default) or plain black
   defaultValue?: string;    // template's starting text, kept so re-saving the layout preserves it
+  optional?: boolean;       // a signer's fill-in the signer may leave empty (e.g. a Title that only an entity has)
 }
 // Only the PDF's own point dimensions are kept — the rendered pixel size is now
 // decided by CSS (width:100% capped at RENDER_W, with a matching aspect-ratio).
@@ -117,7 +118,7 @@ interface DealLite { id: string; client?: string; property?: string; type?: stri
 // recipients (the E-Sign composer does), fields are placed against a person rather
 // than an abstract role — so two clients on one document can't collide.
 export interface EditorRecipient { key: string; name: string; email: string; role: string; color: string }
-export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string; signerEmail?: string; signerName?: string; size?: number; label?: string };
+export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string; signerEmail?: string; signerName?: string; size?: number; label?: string; optional?: boolean };
 
 export default function TransactionDocEditor({
   form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, keysEnabled = true, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved, autoSave = false,
@@ -766,7 +767,7 @@ export default function TransactionDocEditor({
   const reportRef = useRef(onFieldsChange);
   reportRef.current = onFieldsChange;
   useEffect(() => {
-    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, signerEmail: f.signerEmail, signerName: f.signerName, size: FORM_FONT_SIZE, label: f.label })));
+    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, signerEmail: f.signerEmail, signerName: f.signerName, size: FORM_FONT_SIZE, label: f.label, optional: f.optional })));
   }, [fields]);
 
   const sendNow = useCallback(async () => {
@@ -776,7 +777,7 @@ export default function TransactionDocEditor({
     if (!sig.length && !window.confirm('No signature fields are placed. Signers will sign on an added Signatures page instead. Continue?')) return;
     await saveToDeal();
     // The label travels with the field so the signer is told what the blank is for.
-    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, signerEmail: f.signerEmail, signerName: f.signerName, size: FORM_FONT_SIZE, label: f.label })));
+    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, signerEmail: f.signerEmail, signerName: f.signerName, size: FORM_FONT_SIZE, label: f.label, optional: f.optional })));
   }, [fields, saveToDeal, onSend]);
 
   // Jump the document pane to a page, and keep the navigator's highlight in step
@@ -798,6 +799,69 @@ export default function TransactionDocEditor({
     });
     setActivePage(p => (p === best ? p : best));
   }, []);
+
+  // ── Auto-place + stepping through the spots ──────────────────────────────────────────────────────────────────
+  // "Auto-place" reads the printed blanks off the document (the footer's "Initialed for Identification by Buyer ___ and Seller ___",
+  // each signature block's By / Printed Name / Title lines, a Date blank) and drops one field per blank, addressed to the signers
+  // listed — so initials land IN the footer blank instead of wherever a click happened to fall. Run it again and spots already
+  // there are left alone.
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoNotes, setAutoNotes] = useState<string[]>([]);
+  const autoPlace = useCallback(async () => {
+    if (!submissionId || !recipients?.length) return;
+    setAutoBusy(true); setAutoNotes([]);
+    try {
+      const h: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authTokenRef.current) h.Authorization = `Bearer ${authTokenRef.current}`;
+      const r = await fetch('/api/crm/esign-autoplace', { method: 'POST', headers: h, body: JSON.stringify({ submission_id: submissionId, signers: recipients.map(x => ({ key: x.key, role: x.role })), names: true }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { onToast?.(j.error || 'Could not read where the blanks are — place the fields by hand'); return; }
+      const incoming = (Array.isArray(j.fields) ? j.fields : []) as { page: number; fx: number; fy: number; fw: number; type: string; size?: number; signerKey: string; label?: string; optional?: boolean }[];
+      const next = [...fieldsRef.current];
+      let added = 0, initials = 0;
+      for (const f of incoming) {
+        const rec = recByKey.get(f.signerKey); if (!rec) continue;
+        if (next.some(o => o.type === f.type && o.signerKey === f.signerKey && o.page === f.page && Math.abs(o.fx - f.fx) < 0.03 && Math.abs(o.fy - f.fy) < 0.02)) continue;
+        next.push({ id: nextId(), page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, value: '', size: f.size || 11, type: f.type as Field['type'], label: f.label, optional: f.optional,
+          signerRole: rec.role, signerKey: rec.key, signerEmail: rec.email.trim().toLowerCase(), signerName: rec.name.trim() });
+        added++; if (f.type === 'initial') initials++;
+      }
+      setFields(next);
+      setAutoNotes(Array.isArray(j.warnings) ? j.warnings.slice(0, 6) : []);
+      onToast?.(added ? `✨ Placed ${added} spot${added === 1 ? '' : 's'}${initials ? ` (${initials} initials)` : ''} — check them, then drag any that need a nudge` : incoming.length ? 'Those spots are already placed' : 'Found no printed blanks to place — use the tools to place them by hand');
+    } catch { onToast?.('Could not read the document — place the fields by hand'); }
+    finally { setAutoBusy(false); }
+  }, [submissionId, recipients, recByKey, onToast]);
+  // Every spot a signer has to complete, in reading order — what ◀ ▶ steps through.
+  const navList = React.useMemo(() => fields
+    .filter(f => ['signature', 'initial', 'date', 'text', 'check'].includes(f.type) && (!recipients?.length || !f.signerKey || recByKey.has(f.signerKey)))
+    .sort((a, b) => a.page - b.page || Math.round(a.fy * 200) - Math.round(b.fy * 200) || a.fx - b.fx), [fields, recipients, recByKey]);
+  const navIdx = navList.findIndex(f => f.id === selected);
+  const jumpField = useCallback((dir: 1 | -1) => {
+    if (!navList.length) return;
+    // Nothing selected yet: start from the page being read, so "next" means the next spot below where they are.
+    const from = navIdx >= 0 ? navIdx : (dir === 1 ? navList.findIndex(f => f.page >= activePage) - 1 : navList.length);
+    const to = ((from + dir) % navList.length + navList.length) % navList.length;
+    const f = navList[to];
+    setSelected(f.id); setActivePage(f.page);
+    requestAnimationFrame(() => (pagesRef.current?.querySelector(`[data-fid="${f.id}"]`) as HTMLElement | null)?.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'center' }));
+  }, [navList, navIdx, activePage]);
+  const navBar = navList.length ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <button onClick={() => jumpField(-1)} title="Previous spot" aria-label="Previous spot"
+        style={{ flex: 1, minHeight: isMobile ? 44 : 34, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>◀</button>
+      <span style={{ flex: 1.6, textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#6b7280', whiteSpace: 'nowrap' }}>{navIdx >= 0 ? `${navIdx + 1} of ${navList.length}` : `${navList.length} spot${navList.length === 1 ? '' : 's'}`}</span>
+      <button onClick={() => jumpField(1)} title="Next spot" aria-label="Next spot"
+        style={{ flex: 1, minHeight: isMobile ? 44 : 34, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>▶</button>
+    </div>
+  ) : null;
+  const autoBtn = recipients?.length && submissionId ? (
+    <button onClick={autoPlace} disabled={autoBusy} title="Read the printed blanks on this document and drop initials, signatures, dates, printed names and titles into them for the signers above"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', minHeight: isMobile ? 44 : undefined, padding: '10px 10px', borderRadius: 9, cursor: autoBusy ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 800, fontFamily: "'DM Sans',sans-serif",
+        border: '1px solid #e6d3a2', background: '#fffdf6', color: '#a06a12', opacity: autoBusy ? .6 : 1 }}>
+      {autoBusy ? 'Reading the form…' : '✨ Auto-place spots'}
+    </button>
+  ) : null;
 
   // One field tool, drawn as a tile in the left rail.
   const tile = (t: typeof tool, glyph: string, label: string) => (
@@ -980,6 +1044,9 @@ export default function TransactionDocEditor({
               <option value="agent">For: Agent</option>
             </select>
           )}
+          {autoBtn}
+          {autoNotes.length > 0 && <div style={{ fontSize: 11.5, lineHeight: 1.4, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '7px 9px' }}>{autoNotes.map((n, i) => <div key={i}>• {n}</div>)}</div>}
+          {navBar}
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
             {mobileTile('select', '↖︎', 'Move')}
             {mobileTile('signature', '✒', 'Sign')}
@@ -1022,6 +1089,10 @@ export default function TransactionDocEditor({
             </select>
           )}
 
+          {autoBtn && <div style={{ marginBottom: 16 }}>{autoBtn}{autoNotes.length > 0 && (
+            <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.4, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '7px 9px' }}>
+              {autoNotes.map((n, i) => <div key={i} style={{ marginTop: i ? 4 : 0 }}>• {n}</div>)}
+            </div>)}</div>}
           {railGroup('Signature', [
             tile('signature', '✒', 'Signature'),
             tile('initial', '✎', 'Initials'),
@@ -1054,6 +1125,8 @@ export default function TransactionDocEditor({
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 7 }}>Text format</div>
             <RtFormatButtons compact />
           </div>
+
+          {navBar && <div style={{ marginTop: 14 }}><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 6 }}>Go to spot</div>{navBar}</div>}
 
           <div style={{ marginTop: 16, fontSize: 11.5, color: '#9ca3af', lineHeight: 1.5 }}>
             {fields.length} field{fields.length === 1 ? '' : 's'} placed.<br />
@@ -1155,7 +1228,7 @@ export default function TransactionDocEditor({
                 const kind = f.type === 'signature' ? 'Signature' : f.type === 'initial' ? 'Initials' : 'Date';
                 const glyph = f.type === 'signature' ? '✒' : f.type === 'initial' ? '✎' : '📅';
                 return (
-                  <div key={f.id}
+                  <div key={f.id} data-fid={f.id}
                     onMouseDown={e => onDragStart(e, f)} onTouchStart={e => onTouchDragStart(e, f)}
                     title={`${who} — ${kind} · filled when they sign`}
                     style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
@@ -1172,7 +1245,7 @@ export default function TransactionDocEditor({
               }
               const showGrip = isSel || hovered === f.id;
               return (
-              <div key={f.id}
+              <div key={f.id} data-fid={f.id}
                 onMouseDown={e => onDragStart(e, f)}
                 onTouchStart={e => onTouchDragStart(e, f)}
                 onMouseEnter={() => setHovered(f.id)}

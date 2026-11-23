@@ -102,7 +102,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
         const t = String(f.type);
         const base = { id: `f${i}`, page: Number(f.page) || 1, fx: Number(f.fx), fy: Number(f.fy), fw: Number(f.fw), type: t === 'date_signed' ? 'date' : t };
         return INPUT.includes(t)
-          ? { ...base, label: (String(f.label ?? '').trim() || undefined), value: String(f.value ?? ''), required: true }
+          ? { ...base, label: (String(f.label ?? '').trim() || undefined), value: String(f.value ?? ''), required: !f.optional }
           : base;
       })
       // top-to-bottom, page by page — the order a person would read them
@@ -191,7 +191,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       .filter(({ f }) => ['text', 'check'].includes(String(f.type)) && !isBrokerFilled(f) && (
         f.signerIndex ? Number(f.signerIndex) === signer.signing_order : String(f.signerRole ?? 'client') === String(signer.signer_role ?? 'client')))
       .map(({ i }) => i);
-    const missing = myInputs.filter(i => !String(fieldValues[`f${i}`] ?? '').trim()).length;
+    // An optional fill-in (a Title only an entity has) may stay empty; everything else the agent placed is required.
+    const missing = myInputs.filter(i => !subVals![i].optional && !String(fieldValues[`f${i}`] ?? '').trim()).length;
     if (missing) return NextResponse.json({ error: `Please fill in ${missing === 1 ? 'the required field' : `all ${missing} required fields`} on the document before signing.` }, { status: 400 });
   }
 

@@ -11,7 +11,9 @@
 import { readPdfText, type Item, type PageText } from '@/lib/doc-text-edit';
 
 export type EsignRole = 'client' | 'landlord' | 'agent' | 'seller' | 'buyer' | 'witness' | 'other';
-export interface PrepField { id: string; type: 'initial' | 'signature' | 'date'; page: number; fx: number; fy: number; fw: number; size: number; value: ''; signerRole: string }
+// `slot` = which of several same-role signers this spot is for (0 = first co-buyer / co-seller…). `text` spots are the printed
+// name / title lines under a signature; `optional` ones (a title only an entity has) don't block signing when left empty.
+export interface PrepField { id: string; type: 'initial' | 'signature' | 'date' | 'text'; page: number; fx: number; fy: number; fw: number; size: number; value: ''; signerRole: string; slot?: number; label?: string; optional?: boolean }
 export interface PrepResult { fields: PrepField[]; warnings: string[]; pages: number; found: { initialsPages: number; signatureBlocks: number } }
 
 const PARTY: Array<[RegExp, EsignRole]> = [
@@ -85,27 +87,34 @@ function slotsOf(line: Line, pageW: number): Slot[] {
 const HEADING = /^\s*(landlord|tenant|seller|buyer|owner|lessor|lessee|purchaser|guarantor|broker|agent|witness|client)\b[^,]{0,28}:?\s*$/i;
 const uid = (() => { let n = 0; return (p: string) => `${p}-${Date.now().toString(36)}-${++n}`; })();
 const pct = (n: number) => Math.round(n * 1000) / 1000;
-function field(type: PrepField['type'], page: number, p: PageText, s: { x0: number; x1: number; y: number }, role: string, fw: [number, number]): PrepField {
-  return { id: uid(type === 'initial' ? 'ini' : type === 'date' ? 'date' : 'sig'), type, page, fx: pct((s.x0 + 3) / p.width), fy: pct((p.height - (s.y - 1.5)) / p.height),
-    fw: pct(Math.min(fw[1], Math.max(fw[0], (s.x1 - s.x0 - 3) / p.width))), size: 11, value: '', signerRole: role };
+function field(type: PrepField['type'], page: number, p: PageText, s: { x0: number; x1: number; y: number }, role: string, fw: [number, number], extra: Partial<PrepField> = {}): PrepField {
+  return { id: uid(type === 'initial' ? 'ini' : type === 'date' ? 'date' : type === 'text' ? 'txt' : 'sig'), type, page, fx: pct((s.x0 + 3) / p.width), fy: pct((p.height - (s.y - 1.5)) / p.height),
+    fw: pct(Math.min(fw[1], Math.max(fw[0], (s.x1 - s.x0 - 3) / p.width))), size: 11, value: '', signerRole: role, ...extra };
 }
+const NAME_LABEL = /^\s*(printed\s+|print\s+|typed\s+)?name\b/i;
+const TITLE_LABEL = /^\s*title\b/i;
 
 /**
- * Detect initial / signature / date spots for the given signer roles.
+ * Detect initial / signature / date (and printed-name / title) spots for the given signer roles.
  * `roles` are E-Sign role names (landlord, client, seller, buyer, agent…); a footer blank or signature block for a
- * party that isn't among them is ignored (e.g. the broker column when only the owner is signing).
+ * party that isn't among them is ignored (e.g. the broker column when only the owner is signing). A role listed more
+ * than once (two buyers) gets that many footer blanks / signature blocks, in printed order — `slot` says which.
  */
-export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want: { initials: boolean; signatures: boolean; dates: boolean }): Promise<PrepResult> {
+export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want: { initials: boolean; signatures: boolean; dates: boolean; names?: boolean }): Promise<PrepResult> {
   const pages = await readPdfText(pdf);
   const warnings: string[] = [];
   const wantRole = new Set(roles);
+  const cap = new Map<string, number>();
+  for (const r of roles) cap.set(r, (cap.get(r) ?? 0) + 1);
   const fields: PrepField[] = [];
   let initialsPages = 0, sigBlocks = 0;
   const lineSlots = pages.map(p => linesOf(p).map(l => ({ line: l, slots: slotsOf(l, p.width) })));
 
   // ── initials: the footer line on each page ────────────────────────────────────────────────────────────────────
   if (want.initials) {
-    const spots = new Map<string, ({ x0: number; y: number } | undefined)[]>();
+    type Blank = { x0: number; x1: number; y: number };
+    const spots = new Map<string, (Blank[] | undefined)[]>();
+    const add = (role: string, pi: number, b: Blank) => { const arr = spots.get(role) ?? []; (arr[pi] ??= []).push(b); spots.set(role, arr); };
     lineSlots.forEach((ls, pi) => {
       const foot = ls.find(({ line }) => /initial(ed)?\b/i.test(line.items.map(i => i.str).join('')) && /identification/i.test(line.items.map(i => i.str).join('')));
       if (!foot) {
@@ -114,19 +123,25 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
         for (const { slots } of ls) for (const sl of slots) {
           if (sl.y > p.height * 0.15 || !/\binitials?\b/i.test(sl.label)) continue;
           const role = roleOfLabel(sl.label) ?? (roles.length === 1 ? roles[0] : null);
-          if (!role || !wantRole.has(role)) continue;
-          const arr = spots.get(role) ?? []; if (!arr[pi]) arr[pi] = { x0: sl.x0, y: sl.y }; spots.set(role, arr);
+          if (!role || !wantRole.has(role) || spots.get(role)?.[pi]) continue;
+          add(role, pi, { x0: sl.x0, x1: sl.x1, y: sl.y });
         }
         return;
       }
+      // "Initialed for Identification by Seller ___, ___ and Buyer ___, ___": a party label, then its blank(s). A short
+      // unlabelled blank right after a party's blank is that party's second (co-signer's) initials.
       const seen = new Set<string>();
+      let cur: string | null = null;
       for (const s of foot.slots) {
         const tail = (s.label.split(/\bby\b/i).pop() ?? s.label).split(/\band\b/i).pop() ?? s.label;
-        const role = roleOfLabel(tail);
-        if (!role || seen.has(role)) continue;
-        seen.add(role);
-        if (!wantRole.has(role)) continue;
-        const arr = spots.get(role) ?? []; arr[pi] = { x0: s.x0, y: s.y }; spots.set(role, arr);
+        const named = roleOfLabel(tail);
+        let role: string | null = null;
+        if (named) { if (seen.has(named)) { cur = null; continue; } seen.add(named); cur = named; role = named; }
+        else if (cur && !/[a-z]/i.test(s.label) && s.x1 - s.x0 <= 120) role = cur;
+        if (!role || !wantRole.has(role)) continue;
+        // a trailing blank also holds the gap up to the page number, so it is only ever as wide as the party's first one
+        const firstW = named ? 0 : (spots.get(role)?.[pi]?.[0] ? spots.get(role)![pi]![0].x1 - spots.get(role)![pi]![0].x0 : 30);
+        add(role, pi, { x0: s.x0, x1: named ? s.x1 : s.x0 + Math.min(s.x1 - s.x0, firstW), y: s.y });
       }
     });
     for (const role of wantRole) {
@@ -135,27 +150,39 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
         if (spots.size) warnings.push(`The page footers only have an initials line for ${[...spots.keys()].join(', ')} — no initials boxes for the ${role}.`);
         continue;
       }
-      const known = arr.filter(Boolean) as { x0: number; y: number }[];
-      const ref = known[Math.floor(known.length / 2)];
-      const missing: number[] = [];
+      const known = arr.map((b, i) => (b ? i : -1)).filter(i => i >= 0);
+      const first = known[0], last = known[known.length - 1];
+      const ref = arr[known[Math.floor(known.length / 2)]]!;
+      const printed = Math.max(...known.map(i => arr[i]!.length));
+      const want_n = cap.get(role) ?? 1;
+      const n = Math.min(want_n, printed);
+      if (want_n > printed) warnings.push(`The page footers only have ${printed === 1 ? 'one initials blank' : `${printed} initials blanks`} for the ${role} — the other ${role}${want_n - printed > 1 ? 's need' : ' needs'} initials boxes placed by hand.`);
+      const missing: number[] = [], skipped: number[] = [];
       pages.forEach((p, pi) => {
-        const s = arr[pi];
-        if (!s) missing.push(pi + 1);
-        const at = s ?? ref;
-        fields.push(field('initial', pi + 1, p, { x0: at.x0, x1: at.x0 + 30, y: at.y }, role, [0.048, 0.048]));
+        const cell = arr[pi];
+        // A page with no printed initials line before the first / after the last one is a cover or signature page — no box there.
+        if (!cell && (pi < first || pi > last)) { skipped.push(pi + 1); return; }
+        if (!cell) missing.push(pi + 1);
+        const use = cell ?? ref;
+        for (let k = 0; k < n; k++) {
+          const b = use[k]; if (!b) continue;
+          // The box is as wide as the printed blank, so it sits in it instead of spilling over the text beside it.
+          fields.push(field('initial', pi + 1, p, b, role, [0.045, 0.09], { slot: k }));
+        }
       });
       initialsPages = Math.max(initialsPages, known.length);
       if (missing.length) warnings.push(`No printed initials line on page${missing.length > 1 ? 's' : ''} ${missing.join(', ')} — I put the ${role}'s initials box in the same spot as the other pages; check it.`);
+      if (skipped.length) warnings.push(`No initials line on page${skipped.length > 1 ? 's' : ''} ${skipped.join(', ')} (no printed blank for the ${role}) — left without initials boxes.`);
     }
     if (!fields.some(f => f.type === 'initial')) {
       const role = roles[0] ?? 'client';
       warnings.push('I could not find a printed “initialed for identification” line, so I put an initials box in the bottom-right corner of every page. Check they don’t cover any text.');
-      pages.forEach((_, pi) => fields.push({ id: uid('ini'), type: 'initial', page: pi + 1, fx: 0.86, fy: 0.972, fw: 0.06, size: 11, value: '', signerRole: role }));
+      pages.forEach((_, pi) => fields.push({ id: uid('ini'), type: 'initial', page: pi + 1, fx: 0.86, fy: 0.972, fw: 0.06, size: 11, value: '', signerRole: role, slot: 0 }));
     }
   }
 
   // ── signature blocks ───────────────────────────────────────────────────────────────────────────────────────────
-  const done = new Set<string>();
+  const doneCount = new Map<string, number>();
   if (want.signatures || want.dates) {
     pages.forEach((p, pi) => {
       const ls = lineSlots[pi];
@@ -172,29 +199,37 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
         if (!role && roles.length === 1) role = roles[0] as EsignRole;
         if (!role) { warnings.push(`Page ${pi + 1}: found a signature line but could not tell whose it is — left it out.`); continue; }
         if (!wantRole.has(role)) continue;   // someone who isn't signing this time
-        if (done.has(role)) {
-          warnings.push(`Page ${pi + 1}: there is a second ${role} signature block (a co-signer) — I only placed the first one.`);
+        const slot = doneCount.get(role) ?? 0;
+        if (slot >= (cap.get(role) ?? 1)) {
+          warnings.push(`Page ${pi + 1}: there is another ${role} signature block (a co-signer) — I only placed ${slot === 1 ? 'the first one' : `the first ${slot}`}.`);
           continue;
         }
-        done.add(role); sigBlocks++;
-        if (want.signatures) fields.push(field('signature', pi + 1, p, s, role, [0.18, 0.4]));
+        doneCount.set(role, slot + 1); sigBlocks++;
+        if (want.signatures) fields.push(field('signature', pi + 1, p, s, role, [0.18, 0.4], { slot }));
+        const sameLeft = s.x0 < 300;
         if (want.dates) {
           // the date for this signature: on the same line to its right, else the nearest date blank just below in the same column
-          const sameLeft = s.x0 < 300;
           const d = all.filter(o => o.kind === 'date' && ((Math.abs(o.y - s.y) < 3 && o.x0 > s.x1 - 2) || (o.y < s.y - 3 && s.y - o.y < 80 && (o.x0 < 300) === sameLeft))).sort((a, b) => b.y - a.y || a.x0 - b.x0)[0];
-          if (d) fields.push(field('date', pi + 1, p, d, role, [0.08, 0.2]));
+          if (d) fields.push(field('date', pi + 1, p, d, role, [0.08, 0.2], { slot }));
           else warnings.push(`Page ${pi + 1}: no date blank next to the ${role}'s signature — no date field added there.`);
+        }
+        if (want.names) {
+          // "Printed Name:" and "Title:" lines under this signature, in the same column
+          const below = all.filter(o => o.kind === 'other' && o.y < s.y - 3 && s.y - o.y < 70 && (o.x0 < 300) === sameLeft && Math.abs(o.lx - s.lx) < 45).sort((a, b) => b.y - a.y);
+          const nm = below.find(o => NAME_LABEL.test(o.label)), ti = below.find(o => TITLE_LABEL.test(o.label));
+          if (nm) fields.push(field('text', pi + 1, p, nm, role, [0.16, 0.34], { slot, label: 'Printed name', size: 10 }));
+          if (ti) fields.push(field('text', pi + 1, p, ti, role, [0.12, 0.3], { slot, label: 'Title', size: 10, optional: true }));
         }
       }
     });
     // Signers with no block found: signature + date at the foot of the last page, so nothing is silently missing
     let stack = 0;
-    for (const role of roles) {
-      if (done.has(role) || !want.signatures) continue;
+    for (const role of new Set(roles)) {
+      if ((doneCount.get(role) ?? 0) > 0 || !want.signatures) continue;
       warnings.push(`I could not find a printed signature line for the ${role}, so I put a signature box${want.dates ? ' and date' : ''} near the bottom of the last page (page ${pages.length}). Check the placement before sending.`);
       const y0 = pct(0.9 - stack * 0.07); stack++;
-      fields.push({ id: uid('sig'), type: 'signature', page: pages.length, fx: 0.12, fy: y0, fw: 0.32, size: 11, value: '', signerRole: role });
-      if (want.dates) fields.push({ id: uid('date'), type: 'date', page: pages.length, fx: 0.55, fy: y0, fw: 0.14, size: 11, value: '', signerRole: role });
+      fields.push({ id: uid('sig'), type: 'signature', page: pages.length, fx: 0.12, fy: y0, fw: 0.32, size: 11, value: '', signerRole: role, slot: 0 });
+      if (want.dates) fields.push({ id: uid('date'), type: 'date', page: pages.length, fx: 0.55, fy: y0, fw: 0.14, size: 11, value: '', signerRole: role, slot: 0 });
     }
   }
   return { fields, warnings, pages: pages.length, found: { initialsPages, signatureBlocks: sigBlocks } };
