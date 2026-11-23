@@ -30,7 +30,7 @@ const cName = (c: PickContact) => c.business_name || `${c.first_name ?? ''} ${c.
 
 export interface ComposerDoc { id: string; title?: string; url?: string | null; pageCount?: number }
 interface Recipient { key: string; name: string; email: string; role: string; inPerson?: boolean }
-interface DealLite { id: string; client?: string; property?: string }
+interface DealLite { id: string; client?: string; property?: string; client_email?: string; representation_side?: string | null; type?: string }
 
 const INP: React.CSSProperties = { width: '100%', padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif", color: '#1a1a1a', background: '#fff', boxSizing: 'border-box' };
 const LBL: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#6b7280', marginBottom: 4, display: 'block' };
@@ -85,6 +85,19 @@ export default function EsignComposer({
   const [onlySigner, setOnlySigner] = useState(false);
   const [ordered, setOrdered] = useState(true);
   const [recipients, setRecipients] = useState<Recipient[]>([{ key: newKey(), name: '', email: '', role: 'client', inPerson: false }]);
+  // Opened from a deal: the person it is for is already known, so the first signer starts filled in (name, email, and whether they are the
+  // buyer / seller / tenant / landlord) instead of blank. Once, and only into an untouched row — never over what the agent typed.
+  const dealSeeded = useRef(false);
+  useEffect(() => {
+    if (dealSeeded.current || !dealId) return;
+    const d = deals?.find(x => x.id === dealId);
+    if (!d) return;
+    dealSeeded.current = true;
+    const side = String(d.representation_side ?? '').toLowerCase(), ty = (d.type ?? '').toLowerCase();
+    const role = side === 'buyer' || /buyer/.test(ty) ? 'buyer' : side === 'seller' || /seller/.test(ty) ? 'seller'
+      : side === 'landlord' || /landlord/.test(ty) ? 'landlord' : side === 'tenant' || /tenant/.test(ty) ? 'client' : 'client';
+    setRecipients(rs => rs.length === 1 && !rs[0].name && !rs[0].email ? [{ ...rs[0], name: d.client ?? '', email: d.client_email ?? '', role }] : rs);
+  }, [dealId, deals]);
   const [pick, setPick] = useState<string | null>(null);   // which recipient's name box is showing suggestions
 
   const [subject, setSubject] = useState('');

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, hiddenDealIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { canAccessLinked } from '@/lib/crm-linked-access';
@@ -33,7 +34,8 @@ export async function POST(req: NextRequest) {
       .map((s) => ({ key: String(s?.key ?? ''), role: String(s?.role ?? '').toLowerCase() }))
     .filter((s: { key: string; role: string }) => s.key && ROLES.includes(s.role))
     .slice(0, 12);
-  if (!signers.length) return NextResponse.json({ error: 'Add at least one signer first.' }, { status: 400 });
+  const saving = body.save_layout === true;
+  if (!signers.length && !saving) return NextResponse.json({ error: 'Add at least one signer first.' }, { status: 400 });
 
   const db = adminClient();
   const { data: sub } = await db.from('crm_form_submissions')
@@ -51,10 +53,42 @@ export async function POST(req: NextRequest) {
   const { data: blob, error: dlErr } = await db.storage.from('transaction-forms').download(path);
   if (dlErr || !blob) return NextResponse.json({ error: 'Could not read the document.' }, { status: 500 });
 
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+
+  // A layout the agent chose to remember for this exact PDF (same bytes → same form, however many times it is imported). Opt-in only — it is
+  // kept apart from the form templates, which never carry signature or initials spots.
+  const layoutPath = `esign-layouts/${sub.business_unit || 'commercial'}/${createHash('sha256').update(bytes).digest('hex')}.json`;
+  if (saving) {
+    const FT = ['signature', 'initial', 'date', 'text'];
+    const keep = (Array.isArray(body.fields) ? body.fields : []).slice(0, 400).flatMap((f: Record<string, unknown>) => {
+      const fx = Number(f.fx), fy = Number(f.fy), fw = Number(f.fw), page = Math.round(Number(f.page));
+      const type = String(f.type), role = String(f.signerRole ?? '').toLowerCase();
+      if (!FT.includes(type) || !ROLES.includes(role) || !(page >= 1) || ![fx, fy, fw].every(Number.isFinite)) return [];
+      return [{ page, fx, fy, fw, type, size: Number(f.size) || 11, signerRole: role, slot: Math.max(0, Math.min(11, Math.round(Number(f.slot) || 0))),
+        label: f.label ? String(f.label).slice(0, 60) : undefined, optional: f.optional ? true : undefined }];
+    });
+    if (!keep.length) return NextResponse.json({ error: 'Place some spots first.' }, { status: 400 });
+    const { error: upErr } = await db.storage.from('transaction-forms').upload(layoutPath, JSON.stringify({ v: 1, saved_by: ctx.userId, saved_at: new Date().toISOString(), fields: keep }), { contentType: 'application/json', upsert: true });
+    if (upErr) { console.error('[esign-autoplace] save layout', upErr); return NextResponse.json({ error: 'Could not save the layout.' }, { status: 500 }); }
+    return NextResponse.json({ ok: true, count: keep.length });
+  }
+  if (!guides) {
+    const { data: lb } = await db.storage.from('transaction-forms').download(layoutPath);
+    if (lb) {
+      try {
+        const saved = JSON.parse(await lb.text()) as { fields?: { page: number; fx: number; fy: number; fw: number; type: string; size: number; signerRole: string; slot: number; label?: string; optional?: boolean }[] };
+        const byR = new Map<string, string[]>();
+        for (const s2 of signers) byR.set(s2.role, [...(byR.get(s2.role) ?? []), s2.key]);
+        const out = (saved.fields ?? []).flatMap(f => { const key = byR.get(f.signerRole)?.[f.slot ?? 0]; return key ? [{ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, size: f.size, signerKey: key, signerRole: f.signerRole, label: f.label, optional: f.optional }] : []; });
+        if (out.length) return NextResponse.json({ fields: out, warnings: ['Used the layout you saved for this form.'], pages: 0, unreadable: false, source: 'saved' });
+      } catch { /* a bad file falls through to reading the form */ }
+    }
+  }
+
   const roles = signers.map(s => s.role);
   let det;
   try {
-    det = await detectSigningSpots(new Uint8Array(await blob.arrayBuffer()), roles, {
+    det = await detectSigningSpots(bytes, roles, {
       initials: body.initials !== false, signatures: body.signatures !== false, dates: body.dates !== false, names: body.names !== false,
     });
   } catch (e) {
@@ -71,5 +105,5 @@ export async function POST(req: NextRequest) {
     return [{ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, size: f.size, signerKey: key, signerRole: f.signerRole, label: f.label, optional: f.optional }];
   });
   if (guides) return NextResponse.json({ guides: det.fields.filter(f => !f.guess).map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type })) });
-  return NextResponse.json({ fields, warnings: det.warnings, pages: det.pages });
+  return NextResponse.json({ fields, warnings: det.warnings, pages: det.pages, unreadable: !!det.unreadable });
 }

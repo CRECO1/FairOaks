@@ -91,6 +91,31 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
     : (signerLabel ? signerLabel(key) : key);
   const roles = Array.from(new Set(fields.map(partyOf)));
   const blocked = status === 'nofile' || status === 'encrypted';
+  // One line per person: what they will be asked to do, and a flag when something looks missing — read this before pressing Send.
+  const summary = (() => {
+    const keys = Array.from(new Set([...(signers ?? []).map((_, i) => `s${i + 1}`), ...roles]));
+    return keys.map(k => {
+      const mine = fields.filter(f => partyOf(f) === k);
+      const n = (t: string[]) => mine.filter(f => t.includes(f.type ?? '')).length;
+      const ini = mine.filter(f => f.type === 'initial');
+      const sig = n(['signature']), dat = n(['date', 'date_signed']), txt = n(['text']), chk = n(['check']);
+      const bits = [ini.length && `${ini.length} initials (${new Set(ini.map(f => f.page || 1)).size} pages)`, sig && `${sig} signature${sig > 1 ? 's' : ''}`, dat && `${dat} date${dat > 1 ? 's' : ''}`, txt && `${txt} fill-in${txt > 1 ? 's' : ''}`, chk && `${chk} checkbox${chk > 1 ? 'es' : ''}`].filter(Boolean) as string[];
+      const warn = !mine.length ? 'no spots — gets an added Signatures page' : !sig ? 'no signature spot — gets an added Signatures page' : '';
+      return { k, name: nameOf(k), bits, warn };
+    });
+  })();
+  const summaryBar = summary.length > 0 && status === 'ready' && (
+    <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 3, padding: narrow ? '6px 12px 8px' : '0 2px 10px', color: '#e5e7eb', fontSize: 12 }}>
+      {summary.map(r => (
+        <div key={r.k} style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <span style={{ width: 9, height: 9, borderRadius: 3, background: colorOf(r.k), flexShrink: 0, alignSelf: 'center' }} />
+          <strong style={{ color: '#fff' }}>{r.name}</strong>
+          <span>{r.bits.length ? r.bits.join(' · ') : '—'}</span>
+          {r.warn && <span style={{ color: '#fcd34d', fontWeight: 700 }}>⚠ {r.warn}</span>}
+        </div>
+      ))}
+    </div>
+  );
 
   const closeBtn = (
     <button onClick={onClose} style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,.16)', border: 'none', borderRadius: 8, padding: narrow ? '0 16px' : '7px 14px', minHeight: narrow ? 44 : undefined, cursor: 'pointer', flexShrink: 0 }}>{onConfirm ? '‹ Back' : '✕ Close'}</button>
@@ -121,6 +146,7 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
             {closeBtn}
           </div>
           {legend}
+          {summaryBar}
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexShrink: 0, flexWrap: 'wrap' }}>
@@ -131,6 +157,7 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
           {sendBtn}
         </div>
       )}
+      {!narrow && summaryBar}
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#4b4f52', borderRadius: narrow ? 0 : 8, padding: narrow ? 8 : 18, WebkitOverflowScrolling: 'touch' }}>
         {status === 'loading' && <div style={{ color: '#cbd5e1', textAlign: 'center', padding: 60 }}>Rendering document…</div>}
         {status === 'error' && <div style={{ color: '#fca5a5', textAlign: 'center', padding: 60 }}>Couldn’t render this document. You can still send, but review the source first.</div>}

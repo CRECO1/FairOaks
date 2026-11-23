@@ -29,6 +29,9 @@ const check = (name: string, ok: boolean, extra = '') => { if (!ok) { bad++; con
   const dupes = two.fields.filter(f => f.type === 'initial' && f.slot === 1 && f.page === 1);
   check('co-signers: their initials do not sit on top of each other', dupes.length === 2 && dupes.every(a => dupes.every(b => a === b || Math.abs(a.fx - b.fx) > 0.03)));
 
+  const solo = await detectSigningSpots(pdf, ['buyer'], { initials: true, signatures: true, dates: true, names: true });
+  check('single signer: signature is the named Buyer block on page 14, not a guessed line earlier', of(solo, 'signature', 'buyer').length === 1 && of(solo, 'signature', 'buyer')[0].page === 14);
+
   console.log(bad ? `\n${bad} failed` : '\nall passed');
   process.exit(bad ? 1 : 0);
 })();

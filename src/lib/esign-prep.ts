@@ -14,7 +14,7 @@ export type EsignRole = 'client' | 'landlord' | 'agent' | 'seller' | 'buyer' | '
 // `slot` = which of several same-role signers this spot is for (0 = first co-buyer / co-seller…). `text` spots are the printed
 // name / title lines under a signature; `optional` ones (a title only an entity has) don't block signing when left empty.
 export interface PrepField { id: string; type: 'initial' | 'signature' | 'date' | 'text'; page: number; fx: number; fy: number; fw: number; size: number; value: ''; signerRole: string; slot?: number; label?: string; optional?: boolean; guess?: boolean }
-export interface PrepResult { fields: PrepField[]; warnings: string[]; pages: number; found: { initialsPages: number; signatureBlocks: number } }
+export interface PrepResult { fields: PrepField[]; warnings: string[]; pages: number; found: { initialsPages: number; signatureBlocks: number }; /** a scan / flattened image: no printed text to read, so nothing was placed */ unreadable?: boolean }
 
 const PARTY: Array<[RegExp, EsignRole]> = [
   [/\b(landlord|lessor|owner)\b/i, 'landlord'], [/\b(tenant|lessee)\b/i, 'client'],
@@ -103,6 +103,12 @@ const TITLE_LABEL = /^\s*title\b/i;
  */
 export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want: { initials: boolean; signatures: boolean; dates: boolean; names?: boolean }): Promise<PrepResult> {
   const pages = await readPdfText(pdf);
+  // A scan (or a PDF flattened to pictures) has no text to find blanks in. Say so, rather than dropping guessed boxes on a page we cannot read.
+  const chars = pages.reduce((n, p) => n + p.items.reduce((m, i) => m + i.str.trim().length, 0), 0);
+  if (!pages.length || chars < 15 * pages.length) {
+    return { fields: [], pages: pages.length, found: { initialsPages: 0, signatureBlocks: 0 }, unreadable: true,
+      warnings: ['This looks like a scan or a picture of a document — there is no printed text for me to read the blanks from. Use the tools to place initials, signatures and dates by hand.'] };
+  }
   const warnings: string[] = [];
   const wantRole = new Set(roles);
   const cap = new Map<string, number>();
@@ -184,6 +190,7 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
 
   // ── signature blocks ───────────────────────────────────────────────────────────────────────────────────────────
   const doneCount = new Map<string, number>();
+  const deferred: { role: string; place: () => void }[] = [];
   if (want.signatures || want.dates) {
     pages.forEach((p, pi) => {
       const ls = lineSlots[pi];
@@ -197,32 +204,40 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
         // "By:" above a "By (signature):" in the same block is just the lead-in; use the signature line
         if (s.kind === 'bare-by' && sigs.some(o => o.kind === 'signature' && o.y < s.y && s.y - o.y < 60 && Math.abs(o.lx - s.lx) < 45)) continue;
         let role = head?.role ?? roleOfLabel(s.label);
-        if (!role && roles.length === 1) role = roles[0] as EsignRole;
+        let inferred = false;
+        if (!role && roles.length === 1) { role = roles[0] as EsignRole; inferred = true; }
         if (!role) { warnings.push(`Page ${pi + 1}: found a signature line but could not tell whose it is — left it out.`); continue; }
         if (!wantRole.has(role)) continue;   // someone who isn't signing this time
-        const slot = doneCount.get(role) ?? 0;
-        if (slot >= (cap.get(role) ?? 1)) {
-          warnings.push(`Page ${pi + 1}: there is another ${role} signature block (a co-signer) — I only placed ${slot === 1 ? 'the first one' : `the first ${slot}`}.`);
-          continue;
-        }
-        doneCount.set(role, slot + 1); sigBlocks++;
-        if (want.signatures) fields.push(field('signature', pi + 1, p, s, role, [0.18, 0.4], { slot }));
-        const sameLeft = s.x0 < 300;
-        if (want.dates) {
-          // the date for this signature: on the same line to its right, else the nearest date blank just below in the same column
-          const d = all.filter(o => o.kind === 'date' && ((Math.abs(o.y - s.y) < 3 && o.x0 > s.x1 - 2) || (o.y < s.y - 3 && s.y - o.y < 80 && (o.x0 < 300) === sameLeft))).sort((a, b) => b.y - a.y || a.x0 - b.x0)[0];
-          if (d) fields.push(field('date', pi + 1, p, d, role, [0.08, 0.2], { slot }));
-          else warnings.push(`Page ${pi + 1}: no date blank next to the ${role}'s signature — no date field added there.`);
-        }
-        if (want.names) {
-          // "Printed Name:" and "Title:" lines under this signature, in the same column
-          const below = all.filter(o => o.kind === 'other' && o.y < s.y - 3 && s.y - o.y < 70 && (o.x0 < 300) === sameLeft && Math.abs(o.lx - s.lx) < 45).sort((a, b) => b.y - a.y);
-          const nm = below.find(o => NAME_LABEL.test(o.label)), ti = below.find(o => TITLE_LABEL.test(o.label));
-          if (nm) fields.push(field('text', pi + 1, p, nm, role, [0.16, 0.34], { slot, label: 'Printed name', size: 10 }));
-          if (ti) fields.push(field('text', pi + 1, p, ti, role, [0.12, 0.3], { slot, label: 'Title', size: 10, optional: true }));
-        }
+        const r = role;
+        const place = () => {
+          const slot = doneCount.get(r) ?? 0;
+          if (slot >= (cap.get(r) ?? 1)) {
+            warnings.push(`Page ${pi + 1}: there is another ${r} signature block (a co-signer) — I only placed ${slot === 1 ? 'the first one' : `the first ${slot}`}.`);
+            return;
+          }
+          doneCount.set(r, slot + 1); sigBlocks++;
+          if (want.signatures) fields.push(field('signature', pi + 1, p, s, r, [0.18, 0.4], { slot }));
+          const sameLeft = s.x0 < 300;
+          if (want.dates) {
+            // the date for this signature: on the same line to its right, else the nearest date blank just below in the same column
+            const d = all.filter(o => o.kind === 'date' && ((Math.abs(o.y - s.y) < 3 && o.x0 > s.x1 - 2) || (o.y < s.y - 3 && s.y - o.y < 80 && (o.x0 < 300) === sameLeft))).sort((a, b) => b.y - a.y || a.x0 - b.x0)[0];
+            if (d) fields.push(field('date', pi + 1, p, d, r, [0.08, 0.2], { slot }));
+            else warnings.push(`Page ${pi + 1}: no date blank next to the ${r}'s signature — no date field added there.`);
+          }
+          if (want.names) {
+            // "Printed Name:" and "Title:" lines under this signature, in the same column
+            const below = all.filter(o => o.kind === 'other' && o.y < s.y - 3 && s.y - o.y < 70 && (o.x0 < 300) === sameLeft && Math.abs(o.lx - s.lx) < 45).sort((a, b) => b.y - a.y);
+            const nm = below.find(o => NAME_LABEL.test(o.label)), ti = below.find(o => TITLE_LABEL.test(o.label));
+            if (nm) fields.push(field('text', pi + 1, p, nm, r, [0.16, 0.34], { slot, label: 'Printed name', size: 10 }));
+            if (ti) fields.push(field('text', pi + 1, p, ti, r, [0.12, 0.3], { slot, label: 'Title', size: 10, optional: true }));
+          }
+        };
+        // With ONE signer, a signature line that names nobody is only a guess. Explicitly named blocks (a "Buyer:" heading over it) win; the
+        // guesses are used only when the document names none for that signer.
+        if (inferred) deferred.push({ role: r, place }); else place();
       }
     });
+    for (const d of deferred) if ((doneCount.get(d.role) ?? 0) === 0) d.place();
     // Signers with no block found: signature + date at the foot of the last page, so nothing is silently missing
     let stack = 0;
     for (const role of new Set(roles)) {

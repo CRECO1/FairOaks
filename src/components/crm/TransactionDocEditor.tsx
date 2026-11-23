@@ -853,9 +853,24 @@ export default function TransactionDocEditor({
       setFields(next);
       setAutoIds(addedIds);
       setAutoNotes(Array.isArray(j.warnings) ? j.warnings.slice(0, 6) : []);
-      onToast?.(added ? `✨ Placed ${added} spot${added === 1 ? '' : 's'}${initials ? ` (${initials} initials)` : ''} — check them, then drag any that need a nudge` : incoming.length ? 'Those spots are already placed' : 'Found no printed blanks to place — use the tools to place them by hand');
+      onToast?.(j.unreadable ? '📄 This looks like a scan — place the spots by hand with the tools' : added ? `✨ Placed ${added} spot${added === 1 ? '' : 's'}${initials ? ` (${initials} initials)` : ''} — check them, then drag any that need a nudge` : incoming.length ? 'Those spots are already placed' : 'Found no printed blanks to place — use the tools to place them by hand');
     } catch { onToast?.('Could not read the document — place the fields by hand'); }
     finally { setAutoBusy(false); }
+  }, [submissionId, recipients, recByKey, onToast]);
+  // Remember where the spots are for THIS form (same PDF → same layout next time, applied to whoever signs). Opt-in, separate from the form templates.
+  const [layoutSaved, setLayoutSaved] = useState(false);
+  const saveLayout = useCallback(async () => {
+    if (!submissionId || !recipients?.length) return;
+    const mine = fieldsRef.current.filter(f => ['signature', 'initial', 'date', 'text'].includes(f.type) && f.signerKey && recByKey.has(f.signerKey)).map(f => {
+      const rec = recByKey.get(f.signerKey!)!;
+      return { page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, size: f.size, label: f.label, optional: f.optional, signerRole: rec.role, slot: recipients.filter(r => r.role === rec.role).findIndex(r => r.key === rec.key) };
+    });
+    if (!mine.length) { onToast?.('Place some spots first'); return; }
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authTokenRef.current) h.Authorization = `Bearer ${authTokenRef.current}`;
+    const r = await fetch('/api/crm/esign-autoplace', { method: 'POST', headers: h, body: JSON.stringify({ submission_id: submissionId, save_layout: true, fields: mine }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) { setLayoutSaved(true); onToast?.(`💾 Layout saved (${j.count} spots) — Auto-place will use it next time this form comes up`); } else onToast?.(j.error || 'Could not save the layout');
   }, [submissionId, recipients, recByKey, onToast]);
   const undoAuto = useCallback(() => {
     const gone = new Set(autoIds);
@@ -901,6 +916,12 @@ export default function TransactionDocEditor({
       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', minHeight: isMobile ? 44 : undefined, padding: '10px 10px', borderRadius: 9, cursor: autoBusy ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 800, fontFamily: "'DM Sans',sans-serif",
         border: '1px solid #e6d3a2', background: '#fffdf6', color: '#a06a12', opacity: autoBusy ? .6 : 1 }}>
       {autoBusy ? 'Reading the form…' : '✨ Auto-place spots'}
+    </button>
+  ) : null;
+  const saveLayoutBtn = recipients?.length && submissionId && fields.some(f => f.signerKey) ? (
+    <button onClick={saveLayout} title="Remember these spots for this form, so Auto-place puts them back next time"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', minHeight: isMobile ? 44 : undefined, marginTop: 6, padding: '8px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280' }}>
+      {layoutSaved ? '✓ Layout saved' : '💾 Remember this layout'}
     </button>
   ) : null;
   const undoAutoBtn = autoIds.length ? (
@@ -1091,7 +1112,7 @@ export default function TransactionDocEditor({
               <option value="agent">For: Agent</option>
             </select>
           )}
-          {autoBtn}{undoAutoBtn}
+          {autoBtn}{undoAutoBtn}{saveLayoutBtn}
           {autoNotes.length > 0 && <div style={{ fontSize: 11.5, lineHeight: 1.4, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '7px 9px' }}>{autoNotes.map((n, i) => <div key={i}>• {n}</div>)}</div>}
           {navBar}
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
@@ -1136,7 +1157,7 @@ export default function TransactionDocEditor({
             </select>
           )}
 
-          {autoBtn && <div style={{ marginBottom: 16 }}>{autoBtn}{undoAutoBtn}{autoNotes.length > 0 && (
+          {autoBtn && <div style={{ marginBottom: 16 }}>{autoBtn}{undoAutoBtn}{saveLayoutBtn}{autoNotes.length > 0 && (
             <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.4, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '7px 9px' }}>
               {autoNotes.map((n, i) => <div key={i} style={{ marginTop: i ? 4 : 0 }}>• {n}</div>)}
             </div>)}</div>}

@@ -498,6 +498,16 @@ export default function SignPage() {
     setFilled(prev => { const n = { ...prev }; delete n[f.id]; return n; });
   }, []);
   const startOver = useCallback(() => { setFilled({}); setErr(''); }, []);
+  // A TREC contract can ask for initials on 13 pages. One tap places them all (each still shows in its spot, and a tap on a spot undoes it).
+  const initialsLeft = useMemo(() => fields.filter(f => f.type === 'initial' && !filled[f.id]), [fields, filled]);
+  const initialAll = useCallback(() => {
+    if (!adopted) { setAdoptStep(true); window.scrollTo({ top: 0 }); return; }
+    setErr('');
+    const ids = initialsLeft.map(f => f.id);
+    setFilled(prev => { const n = { ...prev }; for (const id of ids) n[id] = true; return n; });
+    const rest = fields.find(x => !ids.includes(x.id) && !isDone(x));
+    if (rest) setTimeout(() => (isInput(rest.type) ? scrollToInput(rest.id) : scrollToField(rest.id)), 200);
+  }, [adopted, initialsLeft, fields, isDone, scrollToInput, scrollToField]);
 
   useEffect(() => {
     if (!token) return;
@@ -962,6 +972,10 @@ export default function SignPage() {
               {fields.length > 1 && (remaining.length < fields.length || allDone) && (
                 <button onClick={goBack} title="Go to the previous spot"
                   style={{ minHeight: TAP, fontSize: 13, fontWeight: 700, color: '#7c5a12', background: '#fff', border: '1px solid #e6d3a2', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', whiteSpace: 'nowrap', ...(narrow ? { flex: '1 1 auto' } : {}) }}>◀ Back</button>
+              )}
+              {initialsLeft.length >= 3 && (
+                <button onClick={initialAll} title="Place your initials on every page that asks for them"
+                  style={{ minHeight: TAP, fontSize: 13, fontWeight: 800, color: '#7c5a12', background: '#fff', border: `1.5px solid ${GOLD}`, borderRadius: 8, padding: '9px 14px', cursor: 'pointer', whiteSpace: 'nowrap', ...(narrow ? { flex: '1 1 auto' } : {}) }}>✎ Initial all {initialsLeft.length} pages</button>
               )}
               {!allDone && (
                 <button onClick={() => { if (nextField) { if (!isInput(nextField.type)) scrollToField(nextField.id); fillField(nextField); } }}
