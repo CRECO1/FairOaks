@@ -6765,7 +6765,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {dragRemove ? (ordered.length > 1 ? 'Let go to remove this tab' : 'Keep at least one tab') : 'Drag sideways to reorder · up to remove'}
                 </div>
               )}
-              <nav className="crm-topnav" aria-label="Sections">
+              <nav className="crm-topnav" aria-label="Sections" style={assistantOpen ? { display: 'none' } : undefined}>
                 {ordered.map(t => (
                   <button key={t.id} className={`crm-topnav-item${t.on ? ' on' : ''}${dragTab === t.id ? ' drag' : ''}${dragTab === t.id && dragRemove ? ' rm' : ''}`} aria-current={t.on ? 'page' : undefined}
                     onContextMenu={e => e.preventDefault()}
