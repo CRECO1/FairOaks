@@ -100,8 +100,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ki
     const v = label.trim().slice(0, 200);
     if (!v) return NextResponse.json({ error: 'Give it a name' }, { status: 400 });
     // The form lives on a deal / property whose access rules are RLS on the submission itself: renaming needs the same visibility.
-    const { data: seen } = await dc.userDb.from('crm_form_submissions').select('id').eq('id', row.submission_id as string).maybeSingle();
-    if (!seen) return notFound();
+    // Same check the Drive list uses to show the form at all (crm_form_can). Reading the submission through the caller's own RLS was
+    // stricter than that, so a form you could see in the list answered "Not found" when you tried to rename it.
+    const { data: ok } = await dc.admin.rpc('crm_form_can', { p_uid: dc.ctx.userId, p_sub: row.submission_id as string });
+    if (ok !== true) return notFound();
     await dc.admin.from('crm_form_submissions').update({ title: v, updated_at: new Date().toISOString() }).eq('id', row.submission_id as string);
     await dc.admin.from('crm_drive_forms').update({ updated_at: new Date().toISOString() }).eq('id', id);
   } else
