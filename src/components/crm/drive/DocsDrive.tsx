@@ -796,7 +796,11 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           {view === 'folder' && folderId === null && !filtering && suggested.length > 0 && (
             <div style={{ marginBottom: 18 }}>
               {sectionLabel('Suggested')}
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>{suggested.map(d => gridCard('doc', d))}</div>
+              <div style={isMobile
+                ? { display: 'flex', gap: 12, overflowX: 'auto', scrollSnapType: 'x proximity', margin: '0 -4px', padding: '0 4px 6px', WebkitOverflowScrolling: 'touch' }   // a phone: one swipeable row, so the folders start on the first screen
+                : { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                {suggested.map(d => isMobile ? <div key={d.id} style={{ flex: '0 0 200px', scrollSnapAlign: 'start', minWidth: 0 }}>{gridCard('doc', d)}</div> : gridCard('doc', d))}
+              </div>
             </div>
           )}
           {view === 'folder' && data && (
@@ -812,7 +816,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                 .dd-sum .l{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--k-9ca3af);font-weight:700}
                 .dd-sum .v{font:700 26px 'Cormorant Garamond',serif;color:var(--k-111);line-height:1.1;margin-top:2px}
                 @keyframes dd-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-                @media (max-width:700px){.dd-sumrow{grid-template-columns:repeat(2,1fr);gap:9px}.dd-sum .v{font-size:22px}}
+                @media (max-width:700px){.dd-sumrow{display:none}}   /* phone: the filter chips just below do the same job, and the tiles pushed the files a screen down */
                 @media (prefers-reduced-motion:reduce){.dd-sum{animation:none;transition:none}button.dd-sum:hover{transform:none}}
               `}</style>
               <div className="dd-sumrow">

@@ -454,7 +454,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
   );
 
   return (
-    <div style={{ display: 'flex', height: isMobile ? 'calc(100dvh - 190px)' : 'calc(100vh - 120px)', minHeight: 360, background: 'var(--c-surface, #fff)', border: BORDER, borderRadius: 14, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: isMobile ? 'calc(100dvh - 244px - env(safe-area-inset-top) - env(safe-area-inset-bottom))' : 'calc(100vh - 120px)', minHeight: 360, background: 'var(--c-surface, #fff)', border: BORDER, borderRadius: 14, overflow: 'hidden' }}>
       <style>{CSS}</style>
       {isMobile ? (room ? thread : list) : <>{list}{room ? thread : <div style={{ flex: 1 }} />}</>}
     </div>
