@@ -149,11 +149,22 @@ export async function GET(req: NextRequest) {
     } catch (err) { console.error('[api/envelopes] signed urls', err); }
   }
   mark('sign', tSign);
+  // How many separate times each signer has opened the document (visits within 30 minutes already collapse into one event). "Opened 3 times and
+  // still hasn't signed" is a different call to make than "opened once". Only for requests still out — finished ones don't need it.
+  const openCount = new Map<string, number>();
+  const outIds = (data ?? []).filter(e => e.status === 'sent' || e.status === 'in_progress').map(e => e.id);
+  if (outIds.length) {
+    try {
+      const { data: ev } = await supabase.from('crm_envelope_events').select('signer_id').in('envelope_id', outIds).eq('event', 'opened').limit(2000);
+      for (const x of ev ?? []) if (x.signer_id) openCount.set(x.signer_id, (openCount.get(x.signer_id) ?? 0) + 1);
+    } catch { /* a nicety — never fail the list over it */ }
+  }
   const envelopes = (data ?? []).map((e) => {
     const executed_clean_url: string | null = e.executed_clean_path ? urlByPath.get(e.executed_clean_path) ?? null : null;
     const executed_url: string | null = e.executed_path ? urlByPath.get(e.executed_path) ?? null : null;
-    for (const sg of (e.crm_envelope_signers ?? []) as Array<{ last_email_id?: string | null; email_status?: string | null; delivery?: string | null }>) {
+    for (const sg of (e.crm_envelope_signers ?? []) as Array<{ id: string; last_email_id?: string | null; email_status?: string | null; delivery?: string | null; open_count?: number }>) {
       sg.delivery = sg.email_status ?? (sg.last_email_id ? deliveryById.get(sg.last_email_id) ?? null : null);
+      sg.open_count = openCount.get(sg.id) ?? 0;
     }
     return { ...e, executed_url, executed_clean_url, sent_by: e.created_by ? senderById.get(e.created_by) ?? 'Agent' : null };
   });

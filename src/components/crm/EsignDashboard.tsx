@@ -19,7 +19,7 @@ interface Stats {
 
 interface ActEvent { id: string; event: string; actor: string | null; ip: string | null; user_agent: string | null; meta: Record<string, unknown> | null; created_at: string; signer_name: string | null }
 
-interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean; delivery?: string | null; reminded_at?: string | null; reminder_count?: number | null; expires_at?: string | null }
+interface Signer { id: string; open_count?: number; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean; delivery?: string | null; reminded_at?: string | null; reminder_count?: number | null; expires_at?: string | null }
 interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; completed_at?: string | null; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
@@ -400,7 +400,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     if (cur.expires_at && !cur.in_person && Date.parse(cur.expires_at) <= Date.now()) return [{ env: e, tone: 'bad', text: `${cur.name}’s signing link expired — they see “contact your broker”`, action: 'renew' }];
     if (cur.delivery && ['bounced', 'complained', 'failed'].includes(cur.delivery)) return [{ env: e, tone: 'bad', text: `Email to ${cur.name} didn’t arrive — check the address`, action: null }];
     const days = cur.sent_at ? Math.floor((Date.now() - new Date(cur.sent_at).getTime()) / 86400000) : 0;
-    if (!cur.in_person && days >= 3) return [{ env: e, tone: 'warn', text: `${cur.name} ${cur.viewed_at ? 'opened it but hasn’t signed' : 'hasn’t opened it'} · ${days} days`, action: 'nudge' }];
+    if (!cur.in_person && days >= 3) return [{ env: e, tone: 'warn', text: `${cur.name} ${cur.viewed_at ? `opened it${(cur.open_count ?? 0) > 1 ? ` ${cur.open_count} times` : ''} but hasn’t signed` : 'hasn’t opened it'} · ${days} days`, action: 'nudge' }];
     return [];
   }).slice(0, 4);
 
@@ -773,7 +773,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                   const signed = s.status === 'signed' || !!s.signed_at;
                   const declined = s.status === 'declined' || !!s.declined_at;
                   const isCur = current?.id === s.id;
-                  const when = signed ? `Signed ${ago(s.signed_at)}` : declined ? `Declined ${ago(s.declined_at)}` : s.viewed_at ? `Opened ${ago(s.viewed_at)}` : s.sent_at ? `Sent ${ago(s.sent_at)}` : 'Not sent yet';
+                  const when = signed ? `Signed ${ago(s.signed_at)}` : declined ? `Declined ${ago(s.declined_at)}` : s.viewed_at ? `Opened ${ago(s.viewed_at)}${(s.open_count ?? 0) > 1 ? ` · ${s.open_count} times` : ''}` : s.sent_at ? `Sent ${ago(s.sent_at)}` : 'Not sent yet';
                   const dv = !signed && !s.in_person ? s.delivery : null;
                   const bad = dv === 'bounced' || dv === 'complained' || dv === 'failed';
                   return (

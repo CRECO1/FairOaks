@@ -44,24 +44,31 @@ function linesOf(page: PageText): Line[] {
 }
 
 const PARTY_ONLY = /^\s*(landlord|tenant|seller|buyer|owner|lessor|lessee|sublessor|sublessee|applicant|purchaser|guarantor|client)(\s*\/\s*\w+)?\s*:?\s*$/i;
-function kindOf(label: string, hasDateOnLine: boolean): Slot['kind'] {
+function kindOf(label: string, hasDateOnLine: boolean, width = 0, lowerPage = false, partiesOnly = false): Slot['kind'] {
   if (/\bdate\b/i.test(label)) return 'date';
   if (/\binitial/i.test(label)) return 'initial';
   // a signature LINE is labelled in a few words ("By (signature):"); a whole sentence that happens to say "sign" is just text
   if (/\(signature\)|\bsignature\b|\bsign(ed)?\b/i.test(label) && label.trim().split(/\s+/).length <= 6) return 'signature';
   if (/^\s*by\s*:?\s*$/i.test(label)) return 'bare-by';
   if (PARTY_ONLY.test(label) && hasDateOnLine) return 'signature';
+  // TREC residential contracts print the signature line as just "Buyer ______     Seller ______": a party's name followed by a wide blank.
+  // (no colon: "Seller: ____" on a contract's first page is the party's NAME, not a signature)
+  // The short addenda print the same two-word line with only a small gap (the rule under it is a drawn line), so a narrow blank counts
+  // when the line sits in the lower part of the page, where signatures live.
+  if (PARTY_ONLY.test(label) && !/:\s*$/.test(label) && (width >= 80 || (width >= 18 && lowerPage && partiesOnly))) return 'signature';
   return 'other';
 }
 
 /** Every blank on a line, each labelled with the words printed just before it. */
-function slotsOf(line: Line, pageW: number): Slot[] {
+function slotsOf(line: Line, pageW: number, pageH = 792): Slot[] {
   const out: Slot[] = [];
   const its = line.items;
   const lineText = its.map(i => i.str).join('');
   const hasDate = /\bdate\b/i.test(lineText);
+  // a line that is nothing but party names and gaps ("Buyer ____   Seller ____"), not a sentence with a checkbox after the word Buyer
+  const partiesOnly = /^\s*(?:(?:buyer|seller|landlord|tenant|owner|purchaser|lessor|lessee|sublessor|sublessee|applicant|client|guarantor)\s*)+$/i.test(lineText);
   let label = '', lx = its[0]?.x ?? 0;
-  const push = (x0: number, x1: number, lbl: string, lxx: number) => out.push({ label: lbl.replace(/\s+/g, ' ').trim(), lx: lxx, x0, x1, y: line.y, kind: kindOf(lbl, hasDate) });
+  const push = (x0: number, x1: number, lbl: string, lxx: number) => out.push({ label: lbl.replace(/\s+/g, ' ').trim(), lx: lxx, x0, x1, y: line.y, kind: kindOf(lbl, hasDate, x1 - x0, line.y < pageH * 0.45, partiesOnly) });
   its.forEach((it, i) => {
     const next = its[i + 1];
     const blankSpace = !it.str.trim() && it.w >= 12;
@@ -82,6 +89,12 @@ function slotsOf(line: Line, pageW: number): Slot[] {
       push(x0, x0 + Math.max(24, Math.min(cap, room, colLimit)), label, lx); label = ''; lx = next?.x ?? x0;
     }
   });
+  // "Buyer ____     Seller" — the last party's rule is drawn to the right of its name, so no blank follows that label
+  if (partiesOnly && PARTY_ONLY.test(label) && !/:\s*$/.test(label) && its.length) {
+    const last = its[its.length - 1];
+    const x0 = last.x + last.w + 4, x1 = Math.min(pageW - 36, x0 + 200);
+    if (x1 - x0 >= 60) push(x0, x1, label, lx);
+  }
   return out;
 }
 
@@ -115,7 +128,7 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
   for (const r of roles) cap.set(r, (cap.get(r) ?? 0) + 1);
   const fields: PrepField[] = [];
   let initialsPages = 0, sigBlocks = 0;
-  const lineSlots = pages.map(p => linesOf(p).map(l => ({ line: l, slots: slotsOf(l, p.width) })));
+  const lineSlots = pages.map(p => linesOf(p).map(l => ({ line: l, slots: slotsOf(l, p.width, p.height) })));
 
   // ── initials: the footer line on each page ────────────────────────────────────────────────────────────────────
   if (want.initials) {

@@ -307,10 +307,14 @@ export default function EsignComposer({
         onClose={() => setReview(false)}
         onConfirm={async () => {
           // Last look before it goes out: anything that is valid but looks wrong is named, once, so a placeholder or a typo isn't found out by a bounce.
-          const notes = valid.map(r => ({ r, n: emailNote(r) })).filter(x => x.n?.kind === 'warn');
+          const notes: { key: string; who: string; text: string }[] = valid.flatMap(r => { const n = emailNote(r); return n?.kind === 'warn' ? [{ key: `e-${r.key}`, who: `${r.name} (${r.email.trim()})`, text: n.text }] : []; });
+          // A signer with no spot at all is not an error — they get a Signatures page added at the end — but it is rarely what was meant when
+          // the other signers do have spots on the document's own lines.
+          const withSpots = new Set(effective.map(f => f.signerIndex));
+          if (effective.length > 0) valid.forEach((r, i) => { if (!withSpots.has(i + 1)) notes.push({ key: `s-${r.key}`, who: r.name, text: 'has no signature, initials or date spot on the document — they would only get a Signatures page added at the end' }); });
           if (notes.length) {
             const go = await ask({ title: 'Send anyway?', ok: 'Send anyway', cancel: 'Go back and fix',
-              body: <div>{notes.map(({ r, n }) => <div key={r.key} style={{ marginBottom: 6 }}><strong>{r.name}</strong> ({r.email.trim()}): {n!.text}</div>)}</div> });
+              body: <div>{notes.map(n => <div key={n.key} style={{ marginBottom: 6 }}><strong>{n.who}</strong>: {n.text}</div>)}</div> });
             if (!go) return;
           }
           await send(); setReview(false);

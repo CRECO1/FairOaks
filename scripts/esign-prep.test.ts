@@ -43,6 +43,19 @@ const check = (name: string, ok: boolean, extra = '') => { if (!ok) { bad++; con
   const sub = await detectSigningSpots(new Uint8Array(fs.readFileSync('forms_src/credocs/commercial_sublease__722_ts38439.pdf')), ['landlord', 'client'], { initials: true, signatures: true, dates: true, names: true });
   check('sublease: signature blocks named by Sublessor / Sublessee are found', sub.fields.filter(f => f.type === 'signature' && !f.guess).length === 2);
 
+  // Residential TREC forms print the signature line as just "Buyer ____   Seller ____" (no "By (signature):") — these were the ones with NO spot found.
+  if (fs.existsSync('forms_src/library/trec-20-19.pdf')) {
+    const res = await detectSigningSpots(new Uint8Array(fs.readFileSync('forms_src/library/trec-20-19.pdf')), ['seller', 'buyer'], { initials: true, signatures: true, dates: false, names: false });
+    const sg = res.fields.filter(f => f.type === 'signature' && !f.guess);
+    check('TREC 20-19: seller and buyer signature lines are found on the signature page (10)', sg.length === 2 && sg.every(f => f.page === 10), JSON.stringify(sg.map(f => [f.signerRole, f.page])));
+    check('TREC 20-19: initials land on the pages that print the line', res.fields.filter(f => f.type === 'initial' && !f.guess).length >= 18);
+  }
+  if (fs.existsSync('forms_src/library/trec-10-6.pdf')) {
+    const res = await detectSigningSpots(new Uint8Array(fs.readFileSync('forms_src/library/trec-10-6.pdf')), ['seller', 'buyer'], { initials: false, signatures: true, dates: false, names: false });
+    const sg = res.fields.filter(f => f.type === 'signature' && !f.guess);
+    check('TREC 10-6 addendum: narrow "Buyer __ Seller __" line low on the page counts as the signature line', sg.length === 2 && sg.every(f => f.fy > 0.6), JSON.stringify(sg.map(f => [f.signerRole, f.fy])));
+  }
+
   console.log(bad ? `\n${bad} failed` : '\nall passed');
   process.exit(bad ? 1 : 0);
 })();
