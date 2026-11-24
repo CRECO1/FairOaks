@@ -366,6 +366,47 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
   );
 }
 
+/**
+ * A small ✕ that appears at the end of a table row while the pointer rests on it, so a line that doesn't fit (a lease LOI with a term that
+ * doesn't apply) goes in one click. Header rows and one-row tables are left alone; Undo (Ctrl/⌘+Z) brings a row back.
+ */
+function RowDeleter({ editor, disabled }: { editor: Editor | null; disabled?: boolean }) {
+  const [at, setAt] = useState<{ top: number; left: number; row: HTMLElement } | null>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    if (!editor || disabled) { setAt(null); return; }
+    const dom = editor.view.dom as HTMLElement;
+    const keep = () => clearTimeout(hideTimer.current);
+    const hideSoon = () => { clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setAt(null), 250); };
+    const move = (e: MouseEvent) => {
+      const row = (e.target as HTMLElement | null)?.closest?.('tr') as HTMLElement | null;
+      if (!row || !dom.contains(row) || !editor.isEditable || row.querySelector('th') || (row.parentElement?.children.length ?? 0) < 2) { hideSoon(); return; }
+      keep();
+      const r = row.getBoundingClientRect();
+      const left = r.right + 30 < window.innerWidth ? r.right + 6 : r.right - 26;
+      setAt(prev => (prev && prev.row === row ? prev : { top: r.top + r.height / 2 - 11, left, row }));
+    };
+    const clear = () => setAt(null);
+    dom.addEventListener('mousemove', move); dom.addEventListener('mouseleave', hideSoon);
+    window.addEventListener('scroll', clear, true); editor.on('update', clear);
+    return () => { dom.removeEventListener('mousemove', move); dom.removeEventListener('mouseleave', hideSoon); window.removeEventListener('scroll', clear, true); editor.off('update', clear); clearTimeout(hideTimer.current); };
+  }, [editor, disabled]);
+  if (!editor || !at) return null;
+  const del = () => {
+    const cell = at.row.querySelector('td,th');
+    if (!cell) return;
+    const pos = editor.view.posAtDOM(cell, 0);
+    editor.chain().focus().setTextSelection(pos).deleteRow().run();
+    setAt(null);
+  };
+  return (
+    <button type="button" aria-label="Delete this row" title="Delete this row (Undo brings it back)"
+      onMouseEnter={() => clearTimeout(hideTimer.current)} onMouseLeave={() => { clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setAt(null), 250); }}
+      onMouseDown={e => e.preventDefault()} onClick={del}
+      style={{ position: 'fixed', top: at.top, left: at.left, width: 22, height: 22, borderRadius: 11, border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', fontSize: 12, lineHeight: '20px', padding: 0, cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,.18)', zIndex: 30 }}>✕</button>
+  );
+}
+
 function DocSurface({ handle, authToken, me, userId, isMobile, onEditor, onComment, onHighlightClick }: { handle: CollabHandle; authToken?: string; me: Peer; userId: string; isMobile: boolean; onEditor: (e: Editor | null) => void; onComment: () => void; onHighlightClick: () => void }) {
   const clickRef = useRef(onHighlightClick); clickRef.current = onHighlightClick;
   // CRECO letterhead on/off is a setting of the document itself (shared, saved with it), so everyone sees the same page.
@@ -413,6 +454,7 @@ function DocSurface({ handle, authToken, me, userId, isMobile, onEditor, onComme
         <div style={{ maxWidth: 816, margin: '0 auto', minHeight: isMobile ? '100%' : 1056, background: 'var(--k-fff)', boxShadow: isMobile ? 'none' : '0 1px 3px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.05)', borderRadius: isMobile ? 0 : 4, padding: isMobile ? '18px 16px 80px' : '56px 72px 80px' }}>
           {letterhead && <LetterheadHeader />}
           <EditorContent editor={editor} />
+          {!isMobile && <RowDeleter editor={editor} disabled={suggesting} />}
           <DocMention editor={editor} authToken={authToken} />
           {letterhead && <LetterheadFooter />}
         </div>
