@@ -2574,7 +2574,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // An alert links to /crm/commercial?open=<type>:<id>#<page>. The tap reaches the app three ways, because a home-screen app on a phone does
   // not always honour the URL it was asked to open (it can launch at its start page, or just come to the front): the URL itself (cold start),
   // a message from the service worker (app already open), and a note the service worker leaves behind that the app reads on launch / return.
-  const openEntityRef = useRef<(type: string | null | undefined, id: string | null | undefined) => boolean>(() => true);
+  const openEntityRef = useRef<(type: string | null | undefined, id: string | null | undefined, message?: string | null) => boolean>(() => true);
   const [pendingOpen, setPendingOpen] = useState<{ type: string; id: string; at: number } | null>(null);
   const handleCrmLink = useCallback((raw: string) => {
     const link = parseAlertLink(raw, window.location.origin);
@@ -4493,18 +4493,40 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [activeClient?.id, session?.access_token]);
 
   // Opens the specific thing a bell row or a phone alert points at. Returns false when the thing is not loaded yet (the caller waits and retries).
-  function openEntity(type: string | null | undefined, id: string | null | undefined): boolean {
+  // After a tag opens a card, scroll to the sentence it was written in and flash it (the bell message quotes the first words).
+  function landOnText(snippet: string, tries = 0) {
+    const needle = snippet.replace(/\s+/g, ' ').trim().slice(0, 40).toLowerCase();
+    if (needle.length < 8) return;
+    const norm = (t: string) => t.replace(/\s+/g, ' ').toLowerCase();
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let hit: HTMLElement | null = null;
+    for (let n = w.nextNode(); n; n = w.nextNode()) { if (norm(n.textContent ?? '').includes(needle) && n.parentElement && !n.parentElement.closest('[aria-label="Notifications"]')) { hit = n.parentElement; break; } }
+    if (!hit) { for (const t of Array.from(document.querySelectorAll('textarea'))) { if (norm((t as HTMLTextAreaElement).value).includes(needle)) { hit = t as HTMLElement; break; } } }
+    if (!hit) { if (tries < 8) setTimeout(() => landOnText(snippet, tries + 1), 400); return; }
+    hit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    hit.animate([{ boxShadow: '0 0 0 4px rgba(201,146,44,.9)' }, { boxShadow: '0 0 0 0 rgba(201,146,44,0)' }], { duration: 2200 });
+  }
+
+  function openEntity(type: string | null | undefined, id: string | null | undefined, message?: string | null): boolean {
+    const quoted = (message ?? '').match(/[“"]([^”"]{8,})[”"]/)?.[1] ?? '';
     if (type === 'contact' && id) {
       const c = clients.find(cl => cl.id === id);
       if (!c) return false;
       setActiveDeal(null);   // a card restored from the last visit must not stay open behind the one the alert is about
-      setPage('contacts'); setActiveClient(c); return true;
+      setPage('contacts'); setActiveClient(c);
+      if (quoted) setTimeout(() => landOnText(quoted), 700);
+      return true;
     }
     if (type === 'calls') {
       // 'tagged you on a call' → the Calling Log, on that exact call (the id is a crm_call_log row).
       setActiveClient(null); setActiveDeal(null); setCallFocusId(id ?? null); setPage('calls'); if (!clients.length) loadClients(); return true;
     }
-    if (type === 'task') { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); return true; }
+    if (type === 'task') {
+      setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks();
+      const title = (message ?? '').match(/task: ([^—]+?)(?: — |$)/)?.[1];   // 'tagged you on a task: <title>' → find that task
+      if (title) setTimeout(() => landOnText(title), 900);
+      return true;
+    }
     if (type === 'listing' && id) {
       // A note tag on a property (Internal Notes / Rent Roll): open that property's card.
       rememberView(`${businessUnit}:listing`, id);
@@ -4521,7 +4543,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const d = deals.find(x => x.id === id);
       if (!d) return false;
       setActiveClient(null);
-      setPage('deals'); openDeal(d); return true;
+      setPage('deals'); openDeal(d);
+      // A tag lands where it was written: the summary notes (Overview) or the authored notes (Activity tab).
+      const inSummary = !!quoted && (d.notes ?? '').replace(/\s+/g, ' ').toLowerCase().includes(quoted.replace(/\s+/g, ' ').slice(0, 40).toLowerCase());
+      if (/mentioned you in a note|tagged you/.test(message ?? '')) { setTimeout(() => { setDealTab(inSummary ? 'overview' : 'activity'); setTimeout(() => landOnText(quoted), 500); }, 250); }
+      return true;
     }
     return true;
   }
@@ -6117,7 +6143,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <button key={n.id} onClick={() => {
                                 markMentionRead(n.id);
                                 // The same opener a phone-alert tap uses; if the deal / contact is still loading, wait and retry instead of doing nothing.
-                                { let tries = 0; const go = () => { if (openEntityRef.current?.(n.entity_type, n.entity_id) === false && tries++ < 12) setTimeout(go, 500); }; go(); }
+                                { let tries = 0; const go = () => { if (openEntityRef.current?.(n.entity_type, n.entity_id, n.message) === false && tries++ < 12) setTimeout(go, 500); }; go(); }
                                 setShowNotifications(false);
                               }}
                                 style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
