@@ -683,7 +683,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         <button type="button" onClick={() => openItem('folder', f)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           <Tile n={t.icon} color={t.color} size={38} />
           <span style={{ minWidth: 0, flex: 1 }}>
-            <span title={f.name} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere', fontSize: 14.5, fontWeight: 700, lineHeight: 1.25, color: 'var(--k-1a1a1a)' }>{f.name}</span>
+            <span title={f.name} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere', fontSize: 14.5, fontWeight: 700, lineHeight: 1.25, color: 'var(--k-1a1a1a)' }}>{f.name}</span>
             <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 1 }}>{accessLabel(f)}</span>
           </span>
         </button>
