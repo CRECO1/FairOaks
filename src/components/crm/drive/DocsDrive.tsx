@@ -678,12 +678,12 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   const folderCard = (f: DriveFolder) => {
     const t = tone('folder', f);
     return (
-      <div key={`folder${f.id}`} className="dd-card" {...dragProps('folder', f)} {...dropProps(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 6px 10px 12px', border: `1px solid ${isSel('folder', f) || dragHover === f.id ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)', background: isSel('folder', f) || dragHover === f.id ? 'var(--k-fdf6e9)' : 'var(--k-fff)', minHeight: 62, ...(dragHover === f.id ? { boxShadow: `0 0 0 2px ${GOLD}55` } : {}) }}>
+      <div key={`folder${f.id}`} className={isMobile ? 'dd-card' : 'dd-card dd-fc'} {...dragProps('folder', f)} {...dropProps(f.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 6px 10px 12px', border: `1px solid ${isSel('folder', f) || dragHover === f.id ? GOLD : 'var(--k-eef0f2)'}`, borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,.05)', background: isSel('folder', f) || dragHover === f.id ? 'var(--k-fdf6e9)' : 'var(--k-fff)', minHeight: 62, ...(dragHover === f.id ? { boxShadow: `0 0 0 2px ${GOLD}55` } : {}) }}>
         {chk('folder', f)}
         <button type="button" onClick={() => openItem('folder', f)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           <Tile n={t.icon} color={t.color} size={38} />
           <span style={{ minWidth: 0, flex: 1 }}>
-            <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: 'var(--k-1a1a1a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+            <span title={f.name} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere', fontSize: 14.5, fontWeight: 700, lineHeight: 1.25, color: 'var(--k-1a1a1a)' }>{f.name}</span>
             <span style={{ display: 'block', fontSize: 12, color: 'var(--k-9ca3af)', marginTop: 1 }}>{accessLabel(f)}</span>
           </span>
         </button>
@@ -785,7 +785,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
         <div className={`dd-scope${selecting ? ' dd-selecting' : ''}`} onDragOver={e => { if (!inTrash && view === 'folder' && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)}
           onDrop={e => { setDragOver(false); if (!inTrash && view === 'folder' && e.dataTransfer.files.length) { e.preventDefault(); void uploadFiles(e.dataTransfer.files); } }}
           style={{ borderRadius: 14, outline: dragOver ? `2px dashed ${GOLD}` : 'none', outlineOffset: 4, background: dragOver ? `${GOLD}0d` : 'transparent' }}>
-          <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}.dd-narrow-sub{display:none}@container (max-width:860px){.dd-owner,.dd-access,.dd-mod{display:none!important}.dd-narrow-sub{display:block}}.dd-chk{opacity:0;transition:opacity .1s}.dd-row:hover .dd-chk,.dd-card:hover .dd-chk,.dd-selecting .dd-chk,.dd-chk:focus-within{opacity:1}`}</style>
+          <style>{`.dd-row{transition:background .12s}.dd-row:hover{background:var(--k-fbf8f1)}.dd-card{transition:border-color .12s,box-shadow .12s}.dd-card:hover{border-color:${GOLD};box-shadow:0 2px 10px rgba(201,146,44,.14)}.dd-dots:hover{background:var(--k-f3f4f6)!important}.dd-row:last-child{border-bottom:none}.dd-narrow-sub{display:none}@container (max-width:860px){.dd-owner,.dd-access,.dd-mod{display:none!important}.dd-narrow-sub{display:block}}.dd-fc{position:relative}.dd-fc .dd-chk{position:absolute;top:-7px;left:-7px;z-index:2;background:var(--k-fff);border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25)}.dd-chk{opacity:0;transition:opacity .1s}.dd-row:hover .dd-chk,.dd-card:hover .dd-chk,.dd-selecting .dd-chk,.dd-chk:focus-within{opacity:1}`}</style>
       {undo && (
         <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: isMobile ? 88 : 28, zIndex: 3000, background: 'var(--k-1a1a1a)', color: '#fff', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 28px rgba(0,0,0,.3)', fontSize: 13.5, maxWidth: 'calc(100vw - 24px)' }}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>“{undo.name}” moved to trash</span>
@@ -881,7 +881,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           {cardsView && folders.length > 0 && (
             <div style={{ marginBottom: 18 }}>
               {sectionLabel('Folders')}
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>{folders.map(folderCard)}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>{folders.map(folderCard)}</div>
             </div>
           )}
           {(docs.length > 0 || forms.length > 0 || files.length > 0 || (!cardsView && folders.length > 0)) && (
