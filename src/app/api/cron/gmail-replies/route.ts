@@ -29,7 +29,7 @@ const DEFAULT_HOURS = 3; // 18 runs of overlap: a missed run or two costs nothin
 const MAX_MESSAGES = 100;
 
 type Conn = { id: string; user_id: string; gmail_email: string | null; access_token: string; refresh_token: string; expires_at: string };
-type ContactRow = { id: string; first_name: string | null; last_name: string | null; email: string | null; extra_emails: string[] | null; agent_id: string | null };
+type ContactRow = { id: string; first_name: string | null; last_name: string | null; email: string | null; extra_emails: string[] | null; agent_id: string | null; lead_source?: string | null };
 
 async function getValidToken(db: ReturnType<typeof adminClient>, conn: Conn): Promise<string | null> {
   if (Date.now() < new Date(conn.expires_at).getTime() - 120_000) return decryptToken(conn.access_token);
@@ -170,7 +170,7 @@ export async function GET(req: NextRequest) {
   // Every contact address (primary + extras) → contact. Paged: the list is in the thousands.
   const byEmail = new Map<string, ContactRow>();
   for (let from = 0; ; from += 1000) {
-    const { data } = await db.from('crm_clients').select('id, first_name, last_name, email, extra_emails, agent_id').range(from, from + 999);
+    const { data } = await db.from('crm_clients').select('id, first_name, last_name, email, extra_emails, agent_id, lead_source').range(from, from + 999);
     for (const c of (data ?? []) as ContactRow[]) {
       for (const e of [c.email, ...(c.extra_emails ?? [])]) { const k = (e ?? '').trim().toLowerCase(); if (k && !byEmail.has(k)) byEmail.set(k, c); }
     }
@@ -264,9 +264,11 @@ export async function GET(req: NextRequest) {
 
       for (const id of ids.filter(i => !haveSet.has(i))) {
         scanned++;
-        const metaRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Message-ID`, { headers: auth });
+        const metaRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Message-ID&metadataHeaders=In-Reply-To&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Id&metadataHeaders=Precedence&metadataHeaders=Auto-Submitted`, { headers: auth });
         if (!metaRes.ok) continue;
         const meta = await metaRes.json();
+        // Marketing / bulk mail (other agents' blasts, newsletters) is never a reply — keep it out of the dashboard and Inbox.
+        if (hdr(meta, 'List-Unsubscribe') || hdr(meta, 'List-Id') || /bulk|list|junk/i.test(hdr(meta, 'Precedence')) || /^(?!no$).+/i.test(hdr(meta, 'Auto-Submitted').trim())) continue;
         const sender = addrOf(hdr(meta, 'From'));
         if (own.has(sender)) continue;
         let contact: ContactRow | undefined = byEmail.get(sender);
@@ -288,6 +290,8 @@ export async function GET(req: NextRequest) {
           }
         }
         if (!contact) continue;
+        // Brokers the Property DB crawl added as contacts only count when they ANSWER something (a thread we are on); their own pitches do not.
+        if (!viaThread && /^Property DB/i.test(contact.lead_source ?? '') && !hdr(meta, 'In-Reply-To')) continue;
         const rfc = hdr(meta, 'Message-ID') || null;
         if (rfc) { // the other mailbox may have filed this exact message already
           const { data: dup } = await db.from('crm_deal_emails').select('id').eq('rfc_message_id', rfc).limit(1);
