@@ -38,7 +38,7 @@ export function useConfirm() {
 
   const dialog = opts ? (
     <div role="alertdialog" aria-modal="true" aria-label={opts.title} onClick={e => { if (e.target === e.currentTarget) finish(false); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(17,24,39,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontFamily: "'DM Sans',sans-serif" }}>
+      style={{ position: 'fixed', inset: 0, zIndex: 10100, background: 'rgba(17,24,39,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 440, padding: '20px 22px', boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
         <div style={{ fontSize: 17, fontWeight: 800, color: '#111', marginBottom: opts.body ? 8 : 16 }}>{opts.title}</div>
         {opts.body && <div style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.55, marginBottom: 18 }}>{opts.body}</div>}

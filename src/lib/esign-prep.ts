@@ -174,7 +174,7 @@ export async function detectSigningSpots(pdf: Uint8Array, roles: string[], want:
         for (let k = 0; k < n; k++) {
           const b = use[k]; if (!b) continue;
           // The box is as wide as the printed blank, so it sits in it instead of spilling over the text beside it.
-          fields.push(field('initial', pi + 1, p, b, role, [0.045, 0.09], { slot: k }));
+          fields.push(field('initial', pi + 1, p, b, role, [0.036, 0.09], { slot: k }));
         }
       });
       initialsPages = Math.max(initialsPages, known.length);
