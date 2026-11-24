@@ -8,7 +8,7 @@ import { specForForm, type LoiPurchaseData } from '@/lib/loi-spec';
 
 // "Edit as a live document" for a Letter of Intent filed in Drive: writes the letter out as a NEW live My Drive document in the same folder
 // (same team sharing), so it can be edited together — and linked to a deal or contact card as itself — like any other document.
-// The saved form is left exactly as it is, and a form is converted ONCE: asking again opens the document made the first time.
+// The original form goes to the Trash (restorable) so the folder doesn't end up with two look-alike letters, and a form is converted ONCE: asking again opens the document made the first time.
 // The letter's terms come across as an editable table; the signature blocks come across as plain lines (e-sign placement is a form feature).
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -76,5 +76,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   }).select(DOC_COLS).single();
   if (error || !doc) return NextResponse.json({ error: 'Could not create the document' }, { status: 500 });
   await logDocEvent(dc.admin, { docId: doc.id as string, bu: dc.bu, actor: dc.ctx.userId, kind: 'created', detail: { via: 'form', from: title, from_form_id: id } });
+  await dc.admin.from('crm_drive_forms').update({ trashed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id);
   return NextResponse.json({ item: doc });
 }

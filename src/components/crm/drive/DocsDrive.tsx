@@ -450,12 +450,13 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     } catch (e) { onToast((e as Error).message || 'Could not open it for editing'); }
   };
 
-  // A Letter of Intent form → a live document of its own (the form stays as it is; asking again opens the same document).
+  // A Letter of Intent form → a live document of its own (the form goes to the Trash; asking again opens the same document).
   const formToDoc = async (f: DriveFormItem) => {
     onToast('Making a live document…');
     try {
       const r = await api<{ item: DriveDoc; existing?: boolean }>(`/api/crm/drive/forms/${f.id}/to-doc`, { method: 'POST' });
       openDoc(r.item.id); refresh();
+      if (!r.existing) onToast('Live document made — the original form is in the Trash');
     } catch (e) { onToast((e as Error).message || 'Could not make a live document'); }
   };
 
