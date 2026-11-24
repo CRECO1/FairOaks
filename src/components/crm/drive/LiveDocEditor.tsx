@@ -369,13 +369,32 @@ function DocWorkspace({ doc, initialState, authToken, user, isMobile, onClose, o
 /**
  * A small ✕ that appears at the end of a table row while the pointer rests on it, so a line that doesn't fit (a lease LOI with a term that
  * doesn't apply) goes in one click. Header rows and one-row tables are left alone; Undo (Ctrl/⌘+Z) brings a row back.
+ * On a touch screen (no hover) the ✕ follows the row the cursor is in instead: tap into a line, tap the ✕.
  */
-function RowDeleter({ editor, disabled }: { editor: Editor | null; disabled?: boolean }) {
+function RowDeleter({ editor, disabled, touch }: { editor: Editor | null; disabled?: boolean; touch?: boolean }) {
   const [at, setAt] = useState<{ top: number; left: number; row: HTMLElement } | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     if (!editor || disabled) { setAt(null); return; }
     const dom = editor.view.dom as HTMLElement;
+    if (touch) {
+      // The row the cursor is in (a data row of a table with at least two rows), with the ✕ inside its right end.
+      const place = () => {
+        try {
+          if (!editor.isEditable || !editor.isActive('table')) { setAt(null); return; }
+          const n = editor.view.domAtPos(editor.state.selection.from).node;
+          const row = ((n.nodeType === 1 ? n : n.parentElement) as HTMLElement | null)?.closest?.('tr') as HTMLElement | null;
+          if (!row || !dom.contains(row) || row.querySelector('th') || (row.parentElement?.children.length ?? 0) < 2) { setAt(null); return; }
+          const r = row.getBoundingClientRect();
+          if (r.bottom < 0 || r.top > window.innerHeight) { setAt(null); return; }
+          setAt({ top: r.top + r.height / 2 - 16, left: Math.max(4, Math.min(r.right - 38, window.innerWidth - 38)), row });
+        } catch { setAt(null); }
+      };
+      editor.on('selectionUpdate', place); editor.on('update', place); editor.on('blur', place);
+      window.addEventListener('scroll', place, true); window.addEventListener('resize', place);
+      place();
+      return () => { editor.off('selectionUpdate', place); editor.off('update', place); editor.off('blur', place); window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); };
+    }
     const keep = () => clearTimeout(hideTimer.current);
     const hideSoon = () => { clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setAt(null), 250); };
     const move = (e: MouseEvent) => {
@@ -390,7 +409,7 @@ function RowDeleter({ editor, disabled }: { editor: Editor | null; disabled?: bo
     dom.addEventListener('mousemove', move); dom.addEventListener('mouseleave', hideSoon);
     window.addEventListener('scroll', clear, true); editor.on('update', clear);
     return () => { dom.removeEventListener('mousemove', move); dom.removeEventListener('mouseleave', hideSoon); window.removeEventListener('scroll', clear, true); editor.off('update', clear); clearTimeout(hideTimer.current); };
-  }, [editor, disabled]);
+  }, [editor, disabled, touch]);
   if (!editor || !at) return null;
   const del = () => {
     const cell = at.row.querySelector('td,th');
@@ -403,7 +422,7 @@ function RowDeleter({ editor, disabled }: { editor: Editor | null; disabled?: bo
     <button type="button" aria-label="Delete this row" title="Delete this row (Undo brings it back)"
       onMouseEnter={() => clearTimeout(hideTimer.current)} onMouseLeave={() => { clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setAt(null), 250); }}
       onMouseDown={e => e.preventDefault()} onClick={del}
-      style={{ position: 'fixed', top: at.top, left: at.left, width: 22, height: 22, borderRadius: 11, border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', fontSize: 12, lineHeight: '20px', padding: 0, cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,.18)', zIndex: 30 }}>✕</button>
+      style={{ position: 'fixed', top: at.top, left: at.left, width: touch ? 32 : 22, height: touch ? 32 : 22, borderRadius: 16, border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', fontSize: touch ? 15 : 12, lineHeight: touch ? '30px' : '20px', padding: 0, cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,.18)', zIndex: 30 }}>✕</button>
   );
 }
 
@@ -454,7 +473,7 @@ function DocSurface({ handle, authToken, me, userId, isMobile, onEditor, onComme
         <div style={{ maxWidth: 816, margin: '0 auto', minHeight: isMobile ? '100%' : 1056, background: 'var(--k-fff)', boxShadow: isMobile ? 'none' : '0 1px 3px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.05)', borderRadius: isMobile ? 0 : 4, padding: isMobile ? '18px 16px 80px' : '56px 72px 80px' }}>
           {letterhead && <LetterheadHeader />}
           <EditorContent editor={editor} />
-          {!isMobile && <RowDeleter editor={editor} disabled={suggesting} />}
+          <RowDeleter editor={editor} disabled={suggesting} touch={isMobile} />
           <DocMention editor={editor} authToken={authToken} />
           {letterhead && <LetterheadFooter />}
         </div>
