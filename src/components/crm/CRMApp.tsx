@@ -13908,7 +13908,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </div>
 
               {/* New lead on hold — only the broker sees it until it is assigned or released */}
-              {c.lead_hold && isSuperAdmin && (
+              {c.lead_hold && isSuperAdmin && !(isMobile && cardCompact) && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 28px', background: 'var(--k-fffbeb)', borderBottom: '1px solid var(--k-fde68a)', fontSize: 13, color: 'var(--k-92400e)' }}>
                   <span style={{ flex: 1, minWidth: 200 }}>🔒 <strong>New lead on hold</strong> — only you can see it. Assign it to someone and it opens up to them, or release it to the team as it is.</span>
                   <select

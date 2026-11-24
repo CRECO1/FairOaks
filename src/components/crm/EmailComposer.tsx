@@ -484,7 +484,10 @@ export default function EmailComposer(p: EmailComposerProps) {
 
   const frame: React.CSSProperties = dock
     ? { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--k-fff)', position: 'relative' }
-    : { marginBottom: 14, border: '1px solid var(--k-e5e7eb)', borderRadius: 12, background: 'var(--k-fff)', boxShadow: '0 4px 18px rgba(0,0,0,.07)', overflow: 'hidden', position: 'relative' };
+    : p.isMobile
+      // A phone: the card composer is a full-screen sheet (it used to squeeze into the ~380px under the contact card's pinned header).
+      ? { position: 'fixed', inset: 0, zIndex: 1250, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)', overflowY: 'auto', overscrollBehavior: 'contain', paddingTop: 'env(safe-area-inset-top)', margin: 0 }
+      : { marginBottom: 14, border: '1px solid var(--k-e5e7eb)', borderRadius: 12, background: 'var(--k-fff)', boxShadow: '0 4px 18px rgba(0,0,0,.07)', overflow: 'hidden', position: 'relative' };
 
   return (
     <div
@@ -512,7 +515,7 @@ export default function EmailComposer(p: EmailComposerProps) {
 
       {/* Header (the dock supplies its own title bar) */}
       {!dock && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px 4px 14px', background: 'var(--k-f9fafb)', borderBottom: '1px solid var(--k-e5e7eb)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px 4px 14px', background: 'var(--k-f9fafb)', borderBottom: '1px solid var(--k-e5e7eb)', ...(p.isMobile ? { position: 'sticky', top: 0, zIndex: 3, minHeight: 52 } : {}) }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
           <button type="button" onClick={closeKeepingDraft} aria-label="Close (keeps your draft)" title="Close — your draft is kept" style={tb({ fontSize: 18, color: 'var(--k-6b7280)' })}>✕</button>
         </div>
