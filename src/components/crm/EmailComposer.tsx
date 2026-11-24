@@ -731,7 +731,7 @@ export default function EmailComposer(p: EmailComposerProps) {
           {p.isMobile && draftNote && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--k-9ca3af)', whiteSpace: 'nowrap' }}>{draftNote}</span>}
         </div>
       )}
-      <div style={{ position: dock ? 'relative' : 'sticky', bottom: dock ? 0 : 'var(--kb, 0px)', display: 'flex', alignItems: 'center', gap: 10, ...(p.isMobile ? { flexWrap: 'wrap' as const, rowGap: 8 } : {}), padding: p.isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '10px 12px', background: 'var(--k-fff)', borderTop: '1px solid var(--k-e5e7eb)' }}>
+      <div style={{ position: dock ? 'relative' : 'sticky', bottom: dock ? 0 : 'var(--kb, 0px)', display: 'flex', alignItems: 'center', gap: 10, ...(p.isMobile ? { flexWrap: 'wrap' as const, rowGap: 8, ...(dock ? {} : { marginTop: 'auto', zIndex: 3 }) } : {}), padding: p.isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '10px 12px', background: 'var(--k-fff)', borderTop: '1px solid var(--k-e5e7eb)' }}>
         {busy ? (
           <>
             <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: 'var(--k-374151)' }} role="status" aria-live="polite">Sending in {count}…</div>

@@ -6139,7 +6139,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <button onClick={markAllMentionsRead} style={{ background: 'none', border: 'none', fontSize: 11, color: 'var(--k-6d28d9)', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Mark all read</button>
                               )}
                             </div>
-                            {mentions.slice(0, showAllMentions ? 30 : 5).map(n => (
+                            {[...mentions.filter(m => m.type === 'mention'), ...mentions.filter(m => m.type !== 'mention')].slice(0, showAllMentions ? 30 : 5).map(n => (
                               <button key={n.id} onClick={() => {
                                 markMentionRead(n.id);
                                 // The same opener a phone-alert tap uses; if the deal / contact is still loading, wait and retry instead of doing nothing.
@@ -6149,7 +6149,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
                                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: n.read_at ? 'var(--k-d1d5db)' : 'var(--k-6d28d9)', flexShrink: 0, marginTop: 4 }} />
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 12, color: n.read_at ? 'var(--k-6b7280)' : 'var(--k-111)', fontWeight: n.read_at ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.message}</div>
+                                  <div style={{ fontSize: 12, color: n.read_at ? 'var(--k-6b7280)' : 'var(--k-111)', fontWeight: n.read_at ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.type === 'mention' && <span style={{ background: 'var(--k-ede9fe)', color: 'var(--k-6d28d9)', fontSize: 10, fontWeight: 800, letterSpacing: .5, padding: '1px 5px', borderRadius: 4, marginRight: 6 }}>TAG</span>}{n.message}</div>
                                   <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{new Date(n.created_at).toLocaleDateString()}</div>
                                 </div>
                               </button>
