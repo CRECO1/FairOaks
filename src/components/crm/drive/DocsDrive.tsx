@@ -196,7 +196,8 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     let live = true;
     api<DriveListing>('/api/crm/drive?view=recent').then(r => { if (live) setSuggested(r.docs.slice(0, 6)); }).catch(() => { /* optional */ });
     return () => { live = false; };
-  }, [api, view, folderId]);
+    // `data` changes after every list reload (rename, move, trash, a change from another tab), so the cards never show an old name
+  }, [api, view, folderId, data]);
   useEffect(() => { if (view === 'folder') rememberView(`${businessUnit}:drive-folder`, folderId); }, [folderId, view, businessUnit]);
   useEffect(() => { // keep the folders on the current path open in the sidebar tree
     if (data?.path.length) setExpanded(prev => { const n = new Set(prev); data.path.forEach(p => n.add(p.id)); return n; });
