@@ -450,6 +450,15 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
     } catch (e) { onToast((e as Error).message || 'Could not open it for editing'); }
   };
 
+  // A Letter of Intent form → a live document of its own (the form stays as it is; asking again opens the same document).
+  const formToDoc = async (f: DriveFormItem) => {
+    onToast('Making a live document…');
+    try {
+      const r = await api<{ item: DriveDoc; existing?: boolean }>(`/api/crm/drive/forms/${f.id}/to-doc`, { method: 'POST' });
+      openDoc(r.item.id); refresh();
+    } catch (e) { onToast((e as Error).message || 'Could not make a live document'); }
+  };
+
   // Upload: the browser PUTs each file straight to storage (signed URL), then the API records it in the folder it was dropped on.
   // The queue (pre-check, HEIC → JPG, progress, Retry, failure log) is shared with every other upload screen: UploadTray.tsx.
   const runDriveUpload: UpRunner = async (picked, { setPct, ctx }) => {
@@ -953,6 +962,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
                {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="🖨" label="Print" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void printDoc(d.item as DriveDoc); }} />}
                {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as PDF" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocPdf(d.item as DriveDoc); }} />}
                {dlg.kind === 'doc' && (dlg.item as DriveDoc).kind !== 'sheet' && <MenuBtn icon="⬇" label="Download as Word (.docx)" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadDocWord(d.item as DriveDoc); }} />}
+              {dlg.kind === 'form' && /^LOI-/.test((dlg.item as DriveFormItem).form_code ?? '') && <MenuBtn icon="✎" label="Make a live document" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void formToDoc(d.item as DriveFormItem); }} />}
               {dlg.kind === 'file' && canEditFile((dlg.item as DriveFile).name) && <MenuBtn icon="✎" label="Edit as a live document" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void editFile(d.item as DriveFile); }} />}
               {dlg.kind === 'doc' && !!(dlg.item as DriveDoc).source_file && <MenuBtn icon="↓" label={`Download the original (.${(dlg.item as DriveDoc).source_file!.name.split('.').pop()?.toLowerCase()})`} isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile({ id: (d.item as DriveDoc).source_file!.id } as DriveFile); }} />}
               {dlg.kind === 'file' && <MenuBtn icon="↓" label="Download" isMobile={isMobile} onClick={() => { const d = dlg; setDlg(null); void downloadFile(d.item as DriveFile); }} />}
