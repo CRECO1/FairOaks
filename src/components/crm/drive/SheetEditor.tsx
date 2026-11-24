@@ -176,15 +176,32 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
   }, [doc.id]);
 
   const titleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const pendingTitle = useRef<string | null>(null);   // typed but not yet confirmed saved
+  // Save the title now. Reports a failure (it used to be swallowed, so a rename could look done and silently not stick) and keeps it
+  // pending so the next blur / keystroke / close tries again. `keepalive` lets it finish even while the tab is closing.
+  const saveTitle = async (closing = false) => {
+    clearTimeout(titleTimer.current);
+    const t = (pendingTitle.current ?? '').trim();
+    if (pendingTitle.current === null || !t) { pendingTitle.current = null; return; }
+    onTitle?.(doc.id, t);
+    try {
+      const r = await fetch(`/api/crm/drive/items/doc/${doc.id}`, { method: 'PATCH', keepalive: closing, headers: { 'Content-Type': 'application/json', ...(authRef.current ? { Authorization: `Bearer ${authRef.current}` } : {}) }, body: JSON.stringify({ title: t }) });
+      if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error || 'The new name was not saved');
+      if (pendingTitle.current !== null && pendingTitle.current.trim() === t) pendingTitle.current = null;
+    } catch (e) { if (!closing) onToast((e as Error).message || 'The new name was not saved — check your connection and try again'); }
+  };
+  const saveTitleRef = useRef(saveTitle); saveTitleRef.current = saveTitle;
+  useEffect(() => {
+    const out = () => { if (pendingTitle.current !== null) void saveTitleRef.current(true); };
+    window.addEventListener('pagehide', out);
+    return () => { window.removeEventListener('pagehide', out); out(); };   // closing the document also saves a name typed in the last moment
+  }, []);
   const onTitleInput = (v: string) => {
     setTitle(v);
     handle?.ydoc.getMap<string>('meta').set('title', v);
+    pendingTitle.current = v;
     clearTimeout(titleTimer.current);
-    titleTimer.current = setTimeout(async () => {
-      const t = v.trim(); if (!t) return;
-      onTitle?.(doc.id, t);
-      try { await fetch(`/api/crm/drive/items/doc/${doc.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(authRef.current ? { Authorization: `Bearer ${authRef.current}` } : {}) }, body: JSON.stringify({ title: t }) }); } catch { /* the next keystroke retries */ }
-    }, 700);
+    titleTimer.current = setTimeout(() => void saveTitleRef.current(), 700);
   };
 
   // open comment threads per cell ("tabId|r:c" -> count), for the corner markers
@@ -225,9 +242,9 @@ export default function SheetWorkspace({ doc, initialState, authToken, user, isM
       <header style={{ display: 'flex', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap', rowGap: isMobile ? 4 : 0, gap: isMobile ? 4 : 12, padding: isMobile ? '8px 10px' : '8px 18px', background: 'var(--k-fff)', borderBottom: '1px solid var(--k-e5e7eb)', flexShrink: 0 }}>
         <button type="button" onClick={onClose} aria-label="Back to Docs" style={{ ...iconBtn(isMobile), fontSize: 18 }}>←</button>
         <div style={{ flex: isMobile ? '1 1 calc(100% - 56px)' : 1, minWidth: 0 }}>
-          <input value={title} onChange={e => onTitleInput(e.target.value)} aria-label="Spreadsheet title" maxLength={300}
+          <input value={title} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }} onChange={e => onTitleInput(e.target.value)} aria-label="Spreadsheet title" maxLength={300}
             style={{ width: '100%', border: '1px solid transparent', borderRadius: 6, background: 'transparent', fontSize: isMobile ? 16 : 17, fontWeight: 600, color: 'var(--k-1a1a1a)', padding: '3px 6px', fontFamily: "'DM Sans',sans-serif", textOverflow: 'ellipsis' }}
-            onFocus={e => (e.currentTarget.style.borderColor = 'var(--k-d1d5db)')} onBlur={e => (e.currentTarget.style.borderColor = 'transparent')} />
+            onFocus={e => (e.currentTarget.style.borderColor = 'var(--k-d1d5db)')} onBlur={e => { e.currentTarget.style.borderColor = 'transparent'; void saveTitle(); }} />
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 11.5, color: 'var(--k-9ca3af)', padding: '0 6px', flexWrap: 'wrap' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: dot }} />{statusLabel}</span>
             <span style={{ color: save === 'error' ? 'var(--k-dc2626)' : undefined }}>{saveLabel}</span>
