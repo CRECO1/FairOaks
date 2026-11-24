@@ -6270,7 +6270,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-app-shell *::-webkit-scrollbar-track{background:transparent;}
         /* Phone / tablet navigation: a swipeable tab bar pinned to the bottom of the screen (thumb reach). It is the last flex child of the
            column shell (order), so page content and sticky bars end above it; safe-area padding clears the home indicator. */
-        .crm-app-shell .crm-topnav{display:flex;gap:0;flex-shrink:0;order:99;background:var(--c-surface);border-top:1px solid var(--c-line);padding:4px 6px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(0,0,0,.06);position:relative;z-index:10000;}
+        .crm-app-shell .crm-topnav{display:flex;gap:0;flex-shrink:0;order:99;background:var(--c-surface);border-top:1px solid var(--c-line);padding:4px 6px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(0,0,0,.06);position:relative;z-index:900;}
         .crm-topnav-item{position:relative;flex:1 1 0;min-width:0;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 2px;min-height:54px;background:none;border:none;color:var(--c-muted);font:600 11.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:color .15s;}
         .crm-topnav-item{touch-action:none;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;}
         .crm-topnav-item.drag.rm{background:rgba(220,38,38,.16);color:#dc2626;}
@@ -6403,7 +6403,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         td{padding:12px 14px;font-size:14px;border-bottom:1px solid var(--k-efefef);vertical-align:middle;}
         tr:last-child td{border-bottom:none;}
         tr:hover td{background:var(--k-fafafa);}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:36px 20px;overflow-y:auto;}
+        .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:36px 20px;overflow-y:auto;}
         .modal{background:var(--k-fff);border-radius:12px;width:760px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.3);flex-shrink:0;}
         .pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:12px;font-size:12px;font-weight:500;}
         @keyframes spin{to{transform:rotate(360deg)}}
@@ -6765,7 +6765,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {dragRemove ? (ordered.length > 1 ? 'Let go to remove this tab' : 'Keep at least one tab') : 'Drag sideways to reorder · up to remove'}
                 </div>
               )}
-              <nav className="crm-topnav" aria-label="Sections" style={assistantOpen ? { display: 'none' } : undefined}>
+              <nav className="crm-topnav" aria-label="Sections" style={assistantOpen ? { display: 'none' } : mobileMenuOpen ? { zIndex: 10000 } : undefined}>
                 {ordered.map(t => (
                   <button key={t.id} className={`crm-topnav-item${t.on ? ' on' : ''}${dragTab === t.id ? ' drag' : ''}${dragTab === t.id && dragRemove ? ' rm' : ''}`} aria-current={t.on ? 'page' : undefined}
                     onContextMenu={e => e.preventDefault()}
