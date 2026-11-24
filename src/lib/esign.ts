@@ -538,6 +538,9 @@ export async function finalizeEnvelope(
     const nowIso = new Date().toISOString();
     await admin.from('crm_envelopes').update({ status: 'completed', executed_path: execPath, executed_clean_path: cleanErr ? null : cleanPath, completed_at: nowIso, updated_at: nowIso }).eq('id', env.id);
     await logEvent(admin, env.id, null, 'completed', { actor: 'system' });
+    // A document whose title starts with "TEST" is a trial run: once it completes it files itself away (archived — never deleted, a signed
+    // record is kept) so it doesn't clutter the Signed list. Everything else about completion is unchanged.
+    if (/^\s*test[\s_-]/i.test(env.title || '')) await admin.from('crm_envelopes').update({ archived_at: nowIso }).eq('id', env.id);
     await fileToRecruitingContact(admin, env, signers, cleanErr ? execPath : cleanPath);
     await fileToDeal(admin, env, clean);
 

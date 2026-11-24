@@ -47,6 +47,8 @@ interface Props {
   listings?: TagListing[];
   /** Teammates @tagged in a call note — parent creates the notification. */
   onMention?: (ids: string[], call: { id: string; caller_name?: string | null; from_number?: string | null }, note: string) => void;
+  /** A bell / alert tap points at one call: open it, scroll to it, flash it. */
+  focusCallId?: string | null; onFocusDone?: () => void;
 }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
@@ -128,7 +130,7 @@ function preset(kind: 'hour' | 'eod' | 'tmrw'): string {
   return d.toISOString();
 }
 
-export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin, businessUnit, onOpenContact, agents = [], listings, onMention }: Props) {
+export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin, businessUnit, onOpenContact, agents = [], listings, onMention, focusCallId, onFocusDone }: Props) {
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -189,6 +191,22 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
     } catch { /* list is the point */ }
   }, [authToken, filter, days, q, businessUnit, showInternal]);
   useEffect(() => { load(); }, [load]);
+  // Jump to the call a notification points at. If it is not in the current list (older than the window, or a filter hides it), widen once.
+  const widened = useRef(false);
+  useEffect(() => { if (!focusCallId) widened.current = false; }, [focusCallId]);
+  useEffect(() => {
+    if (!focusCallId || loading) return;
+    if (calls.some(x => x.id === focusCallId)) {
+      setOpen(focusCallId);
+      setTimeout(() => {
+        const el = document.getElementById(`call-${focusCallId}`);
+        if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.animate([{ boxShadow: '0 0 0 4px rgba(201,146,44,.9)' }, { boxShadow: '0 0 0 0 rgba(201,146,44,0)' }], { duration: 2200 }); }
+      }, 150);
+      onFocusDone?.();
+    } else if (!widened.current) {
+      widened.current = true; setFilter('all'); setQ(''); setDays(365); setShowInternal(true);
+    } else { onFocusDone?.(); }
+  }, [focusCallId, calls, loading, onFocusDone]);
   // The "How did the call go?" prompt logs calls from anywhere in the CRM — refresh when it does.
   useEffect(() => { const h = () => load(); window.addEventListener('crm:calls-changed', h); return () => window.removeEventListener('crm:calls-changed', h); }, [load]);
 
@@ -639,7 +657,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
               const di = pending ? dueInfo(c) : null;
               const hot = urgent || (di?.overdue ?? false);   // urgent OR past-due → the row goes red
               return (
-                <div key={c.id} style={{ background: 'var(--k-fff)', border: `1px solid ${pending ? (hot ? 'var(--k-fca5a5)' : '#f3e4c4') : '#eef0f2'}`, borderLeft: `4px solid ${pending ? (hot ? '#ef4444' : '#c9922c') : 'var(--k-e5e7eb)'}`, borderRadius: mob ? 20 : 14, padding: mob ? '15px 14px' : '13px 15px', boxShadow: mob ? '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.06)' : '0 1px 3px rgba(0,0,0,.05)' }}>
+                <div key={c.id} id={`call-${c.id}`} style={{ background: 'var(--k-fff)', border: `1px solid ${pending ? (hot ? 'var(--k-fca5a5)' : '#f3e4c4') : '#eef0f2'}`, borderLeft: `4px solid ${pending ? (hot ? '#ef4444' : '#c9922c') : 'var(--k-e5e7eb)'}`, borderRadius: mob ? 20 : 14, padding: mob ? '15px 14px' : '13px 15px', boxShadow: mob ? '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.06)' : '0 1px 3px rgba(0,0,0,.05)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 6 }}>
                     <span style={{ fontSize: 20, flexShrink: 0 }} title={c.source}>{kindIcon(c)}</span>
                     <div style={{ flex: '1 1 200px', minWidth: 0 }}>

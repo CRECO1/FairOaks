@@ -1057,6 +1057,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null; pinned?: boolean }[]>([]);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [callFocusId, setCallFocusId] = useState<string | null>(null);   // a bell tap points at one call in the Calling Log
   const [copilotActivityOpen, setCopilotActivityOpen] = useState(false);
   const [backupStatusOpen, setBackupStatusOpen] = useState(false);
   const [uploadFailuresOpen, setUploadFailuresOpen] = useState(false);
@@ -4499,7 +4500,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setActiveDeal(null);   // a card restored from the last visit must not stay open behind the one the alert is about
       setPage('contacts'); setActiveClient(c); return true;
     }
-    if (type === 'calls') { setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients(); return true; }
+    if (type === 'calls') {
+      // 'tagged you on a call' → the Calling Log, on that exact call (the id is a crm_call_log row).
+      setActiveClient(null); setActiveDeal(null); setCallFocusId(id ?? null); setPage('calls'); if (!clients.length) loadClients(); return true;
+    }
     if (type === 'task') { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); return true; }
     if (type === 'listing' && id) {
       // A note tag on a property (Internal Notes / Rent Roll): open that property's card.
@@ -6101,6 +6105,36 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {totalAlerts > 0 && <span style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>{totalAlerts} item{totalAlerts !== 1 ? 's' : ''}</span>}
                       </div>
                       <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                        {mentions.length > 0 && (
+                          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--k-f3f4f6)' }}>
+                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6d28d9)', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span>🔔 Notifications ({mentions.length})</span>
+                              {unreadMentions.length > 0 && (
+                                <button onClick={markAllMentionsRead} style={{ background: 'none', border: 'none', fontSize: 11, color: 'var(--k-6d28d9)', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Mark all read</button>
+                              )}
+                            </div>
+                            {mentions.slice(0, showAllMentions ? 30 : 5).map(n => (
+                              <button key={n.id} onClick={() => {
+                                markMentionRead(n.id);
+                                // The same opener a phone-alert tap uses; if the deal / contact is still loading, wait and retry instead of doing nothing.
+                                { let tries = 0; const go = () => { if (openEntityRef.current?.(n.entity_type, n.entity_id) === false && tries++ < 12) setTimeout(go, 500); }; go(); }
+                                setShowNotifications(false);
+                              }}
+                                style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: n.read_at ? 'var(--k-d1d5db)' : 'var(--k-6d28d9)', flexShrink: 0, marginTop: 4 }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, color: n.read_at ? 'var(--k-6b7280)' : 'var(--k-111)', fontWeight: n.read_at ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.message}</div>
+                                  <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{new Date(n.created_at).toLocaleDateString()}</div>
+                                </div>
+                              </button>
+                            ))}
+                            {mentions.length > 5 && (
+                              <button onClick={() => setShowAllMentions(v => !v)} style={{ background: 'none', border: 'none', padding: '4px 0 0', fontSize: 12, color: 'var(--k-6d28d9)', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                                {showAllMentions ? 'Show fewer' : `Show all (+${mentions.length - 5} more)`}
+                              </button>
+                            )}
+                          </div>
+                        )}
                         {totalAlerts === 0 && (
                           <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14 }}>
                             <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
@@ -6177,35 +6211,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </button>
                               );
                             })}
-                          </div>
-                        )}
-                        {mentions.length > 0 && (
-                          <div style={{ padding: '10px 16px' }}>
-                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6d28d9)', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span>🔔 Notifications ({mentions.length})</span>
-                              {unreadMentions.length > 0 && (
-                                <button onClick={markAllMentionsRead} style={{ background: 'none', border: 'none', fontSize: 11, color: 'var(--k-6d28d9)', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Mark all read</button>
-                              )}
-                            </div>
-                            {mentions.slice(0, showAllMentions ? 30 : 5).map(n => (
-                              <button key={n.id} onClick={() => {
-                                markMentionRead(n.id);
-                                openEntity(n.entity_type, n.entity_id);   // the same opener a phone-alert tap uses
-                                setShowNotifications(false);
-                              }}
-                                style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: n.read_at ? 'var(--k-d1d5db)' : 'var(--k-6d28d9)', flexShrink: 0, marginTop: 4 }} />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 12, color: n.read_at ? 'var(--k-6b7280)' : 'var(--k-111)', fontWeight: n.read_at ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.message}</div>
-                                  <div style={{ fontSize: 11, color: 'var(--k-9ca3af)', marginTop: 1 }}>{new Date(n.created_at).toLocaleDateString()}</div>
-                                </div>
-                              </button>
-                            ))}
-                            {mentions.length > 5 && (
-                              <button onClick={() => setShowAllMentions(v => !v)} style={{ background: 'none', border: 'none', padding: '4px 0 0', fontSize: 12, color: 'var(--k-6d28d9)', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
-                                {showAllMentions ? 'Show fewer' : `Show all (+${mentions.length - 5} more)`}
-                              </button>
-                            )}
                           </div>
                         )}
                       </div>
@@ -12276,6 +12281,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {page === 'calls' && (
             <CallingLog
               listings={tagListings}
+              focusCallId={callFocusId}
+              onFocusDone={() => setCallFocusId(null)}
               authToken={session?.access_token}
               showToast={showToast}
               isAdmin={isAdmin}

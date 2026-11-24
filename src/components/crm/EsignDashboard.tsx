@@ -23,7 +23,7 @@ interface Signer { id: string; name: string; email: string; signer_role: string;
 interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; completed_at?: string | null; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
-export interface ImportedDoc { id: string; title?: string; url?: string | null; deal_id?: string | null; listing_id?: string | null; updated_at?: string; form_id?: string | null; source_path?: string | null; envelope?: { id: string; status: string } | null }
+export interface ImportedDoc { id: string; title?: string; url?: string | null; deal_id?: string | null; listing_id?: string | null; updated_at?: string; form_id?: string | null; source_path?: string | null; envelope?: { id: string; status: string; created_at?: string } | null }
 
 // Identity of the underlying DOCUMENT, as opposed to the row. Re-importing the
 // same PDF writes a new object with a fresh `<epoch>_` prefix, so the original
@@ -309,8 +309,10 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     }
     const out: Array<{ doc: ImportedDoc; dupes: number }> = [];
     for (const rows of byDoc.values()) {
-      if (rows.some(r => r.envelope?.status === 'completed')) continue;
-      const unsent = rows.filter(r => !r.envelope)
+      // Copies that were sitting here BEFORE the document was signed are the leftovers of earlier attempts. A copy imported AFTER the signed
+      // request was made is a deliberate new import of the same file, and hiding it left an unsent draft nobody could see or remove.
+      const doneAt = rows.reduce((latest, r) => (r.envelope?.status === 'completed' ? ((r.envelope.created_at ?? '') > latest ? (r.envelope.created_at ?? '') : latest) : latest), '');
+      const unsent = rows.filter(r => !r.envelope && (!doneAt || (r.updated_at ?? '') > doneAt))
         .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''));
       if (unsent.length) out.push({ doc: unsent[0], dupes: unsent.length - 1 });
     }

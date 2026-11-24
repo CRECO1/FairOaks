@@ -610,7 +610,7 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
           <Tile n={t.icon} color={t.color} />
           <span style={{ minWidth: 0, flex: 1 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <MidText text={title} style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--k-1a1a1a)' }} />
+              <span title={title} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere', minWidth: 0, fontSize: 14.5, fontWeight: 600, lineHeight: 1.3, color: 'var(--k-1a1a1a)' }}>{title}</span>
               {kind === 'doc' && !!(it as DriveDoc).linked_cards && (
                 <span title="Shown live on a deal or contact card" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, height: 20, padding: '0 8px', borderRadius: 10, background: '#2563eb1a', color: '#2563eb', fontSize: 11, fontWeight: 700 }}><DI n="briefcase" size={11} />{(it as DriveDoc).linked_cards === 1 ? 'On a card' : `On ${(it as DriveDoc).linked_cards} cards`}</span>
               )}
@@ -1047,16 +1047,6 @@ export default function DocsDrive({ deals = [], contacts = [], onSignDoc, busine
   );
 }
 
-/** A name on one line that, when it doesn't fit, cuts the MIDDLE (keeping the start and the last 12 characters — the date / extension) instead of the end. */
-function MidText({ text, style }: { text: string; style?: React.CSSProperties }) {
-  const k = text.length > 30 ? 12 : 0;
-  return (
-    <span title={text} style={{ display: 'flex', minWidth: 0, ...style }}>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{k ? text.slice(0, -k) : text}</span>
-      {k > 0 && <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{text.slice(-k)}</span>}
-    </span>
-  );
-}
 const crumb = (current: boolean): React.CSSProperties => ({ background: 'none', border: 'none', padding: '6px 6px', borderRadius: 6, cursor: current ? 'default' : 'pointer', fontSize: 'inherit', fontWeight: current ? 700 : 600, color: current ? 'var(--k-1a1a1a)' : 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif", maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 
 const MENU_ICON: Record<string, DIName> = { '🔒': 'lock', '▦': 'sheet', '📄': 'doc', '📋': 'template', '📁': 'folder', '📝': 'form', '⬆': 'upload', '↩': 'restore', '🗑': 'trash', '↗': 'open', '👁': 'eye', '⬇': 'download', '↓': 'download', '💼': 'briefcase', '👤': 'user', '✎': 'pen', '👥': 'users', '⭐': 'star' };
