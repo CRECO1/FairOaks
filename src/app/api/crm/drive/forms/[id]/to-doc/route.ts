@@ -15,7 +15,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const cell = (s: unknown) => String(s ?? '').replace(/\|/g, '\\|').replace(/\s*\n+\s*/g, ' ').trim();
 const lines = (s: unknown) => String(s ?? '').split(/\n+/).map(x => x.trim()).filter(Boolean);
 
-export function loiToMarkdown(d: LoiPurchaseData, spec: { title: string; boilerplate: string[]; partyHeading: string }): string {
+function loiToMarkdown(d: LoiPurchaseData, spec: { title: string; boilerplate: string[]; partyHeading: string }): string {
   const out: string[] = [];
   if (d.loiDate) out.push(d.loiDate);
   for (const l of [d.addresseeName, d.addresseeAddr1, d.addresseeAddr2]) if (l?.trim()) out.push(l.trim());
