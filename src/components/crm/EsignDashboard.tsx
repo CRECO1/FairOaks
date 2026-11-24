@@ -561,7 +561,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       {/* ── Pick a document out of a deal's folder ── */}
       {pickDeal && (
         <div className="crm-sheet" onClick={e => { if (e.target === e.currentTarget) setPickDeal(false); }}
-          style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
+          style={{ position: 'fixed', inset: 0, zIndex: 1350, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
           <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 22, width: '100%', maxWidth: 520, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: 'var(--k-111)' }}>
@@ -747,7 +747,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
         const link: React.CSSProperties = { background: 'none', border: 'none', padding: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--k-6b7280)', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textDecoration: 'underline' };
         const evs = acts[env.id];
         return (
-          <div onClick={e => { if (e.target === e.currentTarget) setOpenId(null); }} style={{ position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(17,24,39,.35)', display: 'flex', justifyContent: 'flex-end' }}>
+          <div onClick={e => { if (e.target === e.currentTarget) setOpenId(null); }} style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(17,24,39,.35)', display: 'flex', justifyContent: 'flex-end' }}>
             <aside role="dialog" aria-label="Signature request details" style={{ width: 'min(460px, 100vw)', height: '100%', background: 'var(--k-fff)', boxShadow: '-12px 0 40px rgba(0,0,0,.14)', overflowY: 'auto', padding: '20px 22px 32px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>

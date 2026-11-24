@@ -1076,7 +1076,7 @@ function DetailModal({ p, onClose, isMobile = false, allProperties = [], onOpenP
         <div style={{ height: 6, background: as.color, borderTopLeftRadius: isMobile ? 18 : 16, borderTopRightRadius: isMobile ? 18 : 16, flexShrink: 0 }} />
         <div style={{ padding: isMobile ? '18px 18px 24px' : 28, ...(isMobile ? { overflowY: 'auto', WebkitOverflowScrolling: 'touch', flex: 1, minHeight: 0 } : {}) }}>
           {/* Header — the close button stays pinned at the top of the sheet on a phone */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', ...(isMobile ? { position: 'sticky', top: 0, background: 'var(--k-fff)', paddingBottom: 8, zIndex: 2 } : {}) }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', ...(isMobile ? { position: 'sticky', top: -18, background: 'var(--k-fff)', padding: '18px 0 8px', margin: '-18px 0 0', zIndex: 2 } : {}) }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 28, fontWeight: 600, color: 'var(--k-1a1a1a)', lineHeight: 1.15 }}>
                 {p.name || p.address || 'Property'}
