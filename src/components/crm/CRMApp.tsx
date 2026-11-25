@@ -11074,7 +11074,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* Settings tab */}
                   {campaignTab === 'settings' && (
-                    <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
                       {([
                         ['Type', activeCampaign.type.toUpperCase()],
                         ['Frequency', activeCampaign.frequency.charAt(0).toUpperCase() + activeCampaign.frequency.slice(1)],
@@ -11159,7 +11159,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {/* Basics */}
                   <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
                     <div style={{ fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 14 }}>Campaign Details</div>
-                    <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Campaign Name *</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Monthly Market Update" value={newCampaign.name} onChange={e => setNewCampaign({ ...newCampaign, name: e.target.value })} /></div>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Description</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Brief description of the campaign purpose" value={newCampaign.description} onChange={e => setNewCampaign({ ...newCampaign, description: e.target.value })} /></div>
                       {(() => {
@@ -11341,7 +11341,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {newCampaign.type === 'email' && (
                     <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
                       <div style={{ fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 14 }}>Email Content</div>
-                      <div style={{ display: 'grid', gap: 14 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 14 }}>
                         <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Subject Line *</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Hi {{first_name}}, here's your market update!" value={newCampaign.email_subject} onChange={e => setNewCampaign({ ...newCampaign, email_subject: e.target.value })} /></div>
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -11535,7 +11535,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <button className="crm-btn crm-btn-gold" onClick={() => { setActiveActionPlan(null); setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active', completion_campaign_id: '' }); setPlanSteps([]); setActionPlanView('builder'); }}>+ Create First Plan</button>
                     </div>
                   ) : (
-                    <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
                       {actionPlans.filter(plan => !actionPlanAgentFilter || plan.created_by === actionPlanAgentFilter).map(plan => {
                         const triggerLabel = plan.trigger_type === 'manual' ? 'Manual'
                           : plan.trigger_type === 'new_contact' ? 'On new contact'
@@ -11913,7 +11913,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* Settings tab */}
                   {actionPlanTab === 'settings' && (
-                    <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
                       {[['Trigger', activeActionPlan.trigger_type.replace(/_/g, ' ')], ['Trigger Value', activeActionPlan.trigger_value || '—'], ['Status', activeActionPlan.status], ['Steps', String(activeActionPlan.step_count ?? 0)], ['Created', new Date(activeActionPlan.created_at).toLocaleDateString()]].map(([l, v]) => (
                         <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--k-f9fafb)', borderRadius: 8, fontSize: 14 }}>
                           <span style={{ color: 'var(--k-6b7280)', fontWeight: 500 }}>{l}</span><span style={{ fontWeight: 600, textTransform: l === 'Trigger' ? 'capitalize' : undefined }}>{v}</span>
@@ -11966,7 +11966,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {/* Plan details */}
                   <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
                     <div style={{ fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--k-9ca3af)', fontWeight: 600, marginBottom: 14 }}>Plan Details</div>
-                    <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Plan Name *</label><input className="crm-input" style={{ marginTop: 4 }} value={newPlan.name} onChange={e => setNewPlan({ ...newPlan, name: e.target.value })} placeholder="e.g. New Buyer Welcome Sequence" /></div>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-6b7280)', fontWeight: 500 }}>Description</label><input className="crm-input" style={{ marginTop: 4 }} value={newPlan.description} onChange={e => setNewPlan({ ...newPlan, description: e.target.value })} placeholder="What does this plan do?" /></div>
                       <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -15572,9 +15572,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           return (a > 0 ? '…' : '') + body.slice(a, i + q.length + 60) + (i + q.length + 60 < body.length ? '…' : '');
         };
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 10000, display: 'flex', alignItems: isMobile ? 'flex-end' : 'flex-start', justifyContent: 'center', paddingTop: isMobile ? 0 : 80, paddingBottom: isMobile ? 0 : 0 }}
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 10000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? 0 : 80, paddingBottom: isMobile ? 0 : 0 }}   // a phone: the box sits at the TOP so the keyboard can't cover what you type
             onClick={() => { setShowSearch(false); setSearchQuery(''); }}>
-            <div style={{ background: 'var(--k-fff)', borderRadius: isMobile ? '20px 20px 0 0' : 14, width: '100%', maxWidth: isMobile ? '100%' : 580, margin: isMobile ? 0 : '0 16px', boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden', paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0, maxHeight: isMobile ? '80vh' : undefined, display: 'flex', flexDirection: 'column' }}
+            <div style={{ background: 'var(--k-fff)', borderRadius: isMobile ? '0 0 20px 20px' : 14, width: '100%', maxWidth: isMobile ? '100%' : 580, margin: isMobile ? 0 : '0 16px', boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden', paddingTop: isMobile ? 'env(safe-area-inset-top)' : 0, maxHeight: isMobile ? '88dvh' : undefined, display: 'flex', flexDirection: 'column' }}
               onClick={e => e.stopPropagation()}>
               {/* Search input */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--k-f0f0f0)' }}>
@@ -15589,7 +15589,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <kbd style={{ fontSize: 11, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 4, padding: '2px 6px', color: 'var(--k-6b7280)', fontFamily: 'monospace' }}>ESC</kbd>
               </div>
               {/* Results */}
-              <div style={{ maxHeight: isMobile ? '60vh' : 420, overflowY: 'auto', flex: 1 }}>
+              <div style={{ maxHeight: isMobile ? '42dvh' : 420, overflowY: 'auto', flex: 1 }}>
                 {!q && (
                   <div style={{ padding: '20px 18px', color: 'var(--k-9ca3af)', fontSize: 14, textAlign: 'center' }}>
                     Start typing to search contacts, deals, emails, documents and campaigns

@@ -97,7 +97,7 @@ export default function PlazaVendors({ authToken, showToast, isMobile }: Props) 
 
       {rows === null && <Skeleton rows={4} />}
       {rows && rows.length === 0 && !editing && <div style={{ padding: 24, border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)' }}>No businesses yet.</div>}
-      <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
         {(rows ?? []).map(v => (
           <div key={v.id} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 260px' }}>

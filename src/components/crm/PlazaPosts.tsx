@@ -145,7 +145,7 @@ export default function PlazaPosts({ authToken, showToast, isMobile }: Props) {
         const pend = (posts ?? []).filter(p => p.source === 'community' && !p.published).length;
         return pend > 0 ? <div style={{ background: 'var(--k-fffbeb)', border: '1px solid var(--k-fcd34d)', color: 'var(--k-92400e)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, fontWeight: 600 }}>{pend} community event{pend === 1 ? '' : 's'} waiting for your approval. Review below, edit if needed, then Approve &amp; publish.</div> : null;
       })()}
-      <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
         {(posts ?? []).slice().sort((a, b) => Number(b.source === 'community' && !b.published) - Number(a.source === 'community' && !a.published)).map(p => (
           <div key={p.id} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 260px' }}>

@@ -123,7 +123,7 @@ export default function PlazaListings({ authToken, showToast, isMobile }: Props)
       )}
 
       {rows === null && <Skeleton rows={4} />}
-      <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
         {shown.map(l => {
           const st = l.invite ? STATUS[l.invite.status] : null;
           const sub = l.invite?.submitted;
