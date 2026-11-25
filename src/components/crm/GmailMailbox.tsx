@@ -954,7 +954,7 @@ export default function GmailMailbox(p: Props) {
   if (!wide) return <div>{toolbar}{body}{toastEl}{helpEl}{pullEl}</div>;
 
   // Two panes: each scrolls on its own, like Gmail.
-  const paneH = 'calc(100vh - 215px)';
+  const paneH = 'calc(100vh - 270px)';
   return (
     <div>
       {toolbar}
