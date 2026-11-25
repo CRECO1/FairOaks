@@ -54,11 +54,11 @@ export default function CallSplit({ numbers, isMobile, variant, mainStyle, caret
   );
   const off: React.CSSProperties = { opacity: 0.38, pointerEvents: 'none' };
   return (
-    <div style={{ display: 'inline-flex', position: 'relative', flex: solid ? 1 : undefined, minWidth: 0 }}>
+    <div style={{ display: 'inline-flex', position: 'relative', flex: solid ? (isMobile ? '1.6 1 0' : 1) : undefined, minWidth: 0 }}>
       <a href={def ? `tel:${def}` : undefined} aria-label={def ? `Call ${phoneShow(def)}` : 'No phone on file'}
-        style={{ ...mainStyle, ...(solid ? { flex: 1 } : {}), borderRadius: solid ? '10px 0 0 10px' : '17px 0 0 17px', ...(def ? {} : off) }}>📞 Call</a>
+        style={{ ...mainStyle, whiteSpace: 'nowrap', ...(solid ? { flex: 1 } : {}), borderRadius: solid ? '10px 0 0 10px' : '17px 0 0 17px', ...(def ? {} : off) }}>📞 Call</a>
       <button type="button" onClick={() => setOpen(v => !v)} aria-haspopup="menu" aria-expanded={open} aria-label="Choose which number to call or text" title="Cell and business line"
-        style={{ width: solid ? (isMobile ? 44 : 34) : 30, flexShrink: 0, border: solid ? `1px solid ${gold}` : '1px solid rgba(255,255,255,.55)', borderLeft: solid ? '1px solid rgba(255,255,255,.45)' : '1px solid rgba(255,255,255,.3)', borderRadius: solid ? '0 10px 10px 0' : '0 17px 17px 0',
+        style={{ width: solid ? (isMobile ? 38 : 34) : 30, flexShrink: 0, border: solid ? `1px solid ${gold}` : '1px solid rgba(255,255,255,.55)', borderLeft: solid ? '1px solid rgba(255,255,255,.45)' : '1px solid rgba(255,255,255,.3)', borderRadius: solid ? '0 10px 10px 0' : '0 17px 17px 0',
           background: solid ? gold : 'transparent', color: '#fff', fontSize: 11, cursor: 'pointer', ...caretStyle, ...(def ? {} : off) }}>▾</button>
       {open && (
         <>

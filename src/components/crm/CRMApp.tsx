@@ -6163,7 +6163,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
                           </div>
                         )}
-                        {totalAlerts === 0 && (
+                        {totalAlerts === 0 && mentions.length === 0 && (
                           <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--k-9ca3af)', fontSize: 14 }}>
                             <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
                             All clear — no alerts right now
@@ -10621,9 +10621,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   )}
 
                   {/* Tabs */}
-                  <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--k-f0f0f0)', marginBottom: 20 }}>
+                  <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--k-f0f0f0)', marginBottom: 20, ...(isMobile ? { overflowX: 'auto', scrollbarWidth: 'none' } : {}) }}>
                     {(['enrolled', 'history', 'preview', 'settings'] as const).map(t => (
-                      <button key={t} onClick={() => setCampaignTab(t)} style={{ padding: '10px 18px', fontSize: 14, fontWeight: campaignTab === t ? 700 : 400, color: campaignTab === t ? '#c9922c' : 'var(--k-6b7280)', background: 'none', border: 'none', borderBottom: campaignTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textTransform: 'capitalize' }}>
+                      <button key={t} onClick={() => setCampaignTab(t)} style={{ whiteSpace: 'nowrap', flexShrink: 0, padding: '10px 18px', fontSize: 14, fontWeight: campaignTab === t ? 700 : 400, color: campaignTab === t ? '#c9922c' : 'var(--k-6b7280)', background: 'none', border: 'none', borderBottom: campaignTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textTransform: 'capitalize' }}>
                         {t === 'enrolled' ? (activeCampaign.status === 'completed' ? `Recipients (${campaignEnrollments.length})` : `Enrolled (${campaignEnrollments.filter(e => e.active).length})`) : t === 'preview' ? '👁 Preview' : t.charAt(0).toUpperCase() + t.slice(1)}
                       </button>
                     ))}

@@ -472,7 +472,7 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onO
         <input ref={fileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT} onChange={e => addFiles(e.target.files)} style={{ display: 'none' }} aria-hidden tabIndex={-1} />
         <button onClick={() => fileInputRef.current?.click()} disabled={loading || picks.length >= ATTACHMENT_MAX_FILES} aria-label="Attach a file or photo" title="Attach a photo, PDF, Word, Excel or CSV"
           style={{ background: 'var(--k-fff)', color: 'var(--k-6b7280)', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: loading || picks.length >= ATTACHMENT_MAX_FILES ? 'default' : 'pointer', fontSize: 19, opacity: picks.length >= ATTACHMENT_MAX_FILES ? 0.5 : 1 }}>📎</button>
-        <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} rows={1} placeholder={picks.length ? 'Say what to do with the file…' : 'Ask or tell me to do something…'}
+        <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} rows={1} placeholder={picks.length ? 'What to do with the file…' : 'Ask me to do something…'}
           onPaste={e => { const fs = Array.from(e.clipboardData?.files ?? []); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
           style={{ flex: 1, resize: 'none', border: '1px solid var(--k-e5e7eb)', borderRadius: 10, padding: '11px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none', minHeight: 44, maxHeight: 120, boxSizing: 'border-box' }} />

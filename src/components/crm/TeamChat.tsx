@@ -433,7 +433,7 @@ export default function TeamChat({ token, meId, people, isMobile, onUnread, init
             </div>}
           </span>
           <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setMi(0); saveDraft(room, e.target.value); }} rows={1} maxLength={4000} aria-label="Write a message" onFocus={() => setEmoji(false)}
-            placeholder={cur?.room === 'team' ? 'Message the team — @name pings a phone' : `Message ${cur?.title.split(' ')[0] ?? ''}`}
+            placeholder={cur?.room === 'team' ? (isMobile ? 'Message the team…' : 'Message the team — @name pings a phone') : `Message ${cur?.title.split(' ')[0] ?? ''}`}
             onPaste={e => { const fs = Array.from(e.clipboardData.files); if (fs.length) { e.preventDefault(); void uploadFiles(fs); } }}
             onKeyDown={e => {
               if (suggest.length) {
