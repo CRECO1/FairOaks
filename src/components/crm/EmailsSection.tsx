@@ -65,8 +65,8 @@ export default function EmailsSection(p: Props) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [p]);
-  const toggle = (gmailLabel: string, crmLabel: string) => (
-    <div role="group" aria-label="Mail source" style={{ display: 'inline-flex', padding: 3, gap: 2, background: 'var(--k-f3f4f6)', borderRadius: 10, marginBottom: 14 }}>
+  const toggle = (gmailLabel: string, crmLabel: string, mb = 14) => (
+    <div role="group" aria-label="Mail source" style={{ display: 'inline-flex', padding: 3, gap: 2, background: 'var(--k-f3f4f6)', borderRadius: 10, marginBottom: mb }}>
       {([['gmail', gmailLabel], ['crm', crmLabel]] as const).map(([v, l]) => (
         <button key={v} type="button" onClick={() => setSource(v)} aria-pressed={source === v}
           style={{ padding: p.isMobile ? '9px 14px' : '6px 14px', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", background: source === v ? 'var(--k-fff)' : 'transparent', color: source === v ? 'var(--k-111)' : 'var(--k-6b7280)', boxShadow: source === v ? '0 1px 2px rgba(0,0,0,.08)' : 'none' }}>{l}</button>
@@ -84,7 +84,7 @@ export default function EmailsSection(p: Props) {
   }, [p.tab]);
   const tabs: Array<[EmailsTab, string, number]> = [['inbox', 'Inbox', p.unread], ['drafts', 'Drafts', p.draftCount + gmailDrafts], ['sent', 'Sent', 0]];
   return (
-    <div style={{ maxWidth: source === 'gmail' && p.tab !== 'drafts' ? 1400 : 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '20px 24px 48px' }}>
+    <div style={{ maxWidth: source === 'gmail' && p.tab !== 'drafts' ? 1400 : 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '12px 24px 24px' }}>
       <style>{`
         .em-sumrow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
         .em-sum{position:relative;background:var(--k-fff);border:1px solid var(--k-e5e7eb);border-radius:14px;padding:8px 14px 8px 18px;overflow:hidden;text-align:left;
@@ -98,21 +98,6 @@ export default function EmailsSection(p: Props) {
         @media (max-width:700px){.em-sumrow{grid-template-columns:repeat(3,1fr);gap:8px}.em-sum{padding:10px 10px 9px 14px}.em-sum .v{font-size:20px}.em-sum .s{display:none}}
         @media (prefers-reduced-motion:reduce){.em-sum{animation:none;transition:none}.em-sum:hover{transform:none}}
       `}</style>
-      {!p.isMobile && (
-        <div className="em-sumrow">
-          {[
-            { label: 'Unread', big: p.unread, sub: p.unread ? 'waiting for you' : 'all caught up', dot: '#c9922c', click: () => p.setTab('inbox') },
-            { label: 'Drafts', big: p.draftCount + gmailDrafts, sub: 'saved, not sent', dot: '#3b82f6', click: () => p.setTab('drafts') },
-            { label: 'Write', big: '✉', sub: 'new email  ·  press c', dot: '#22c55e', click: () => p.onCompose() },
-          ].map((t, i) => (
-            <button key={t.label} type="button" className="em-sum" style={{ ['--em-dot' as string]: t.dot, animationDelay: `${i * 40}ms` }} onClick={t.click}>
-              <div className="l">{t.label}</div>
-              <div className="v">{t.big}</div>
-              <div className="s">{t.sub}</div>
-            </button>
-          ))}
-        </div>
-      )}
       {p.isMobile && !(reading && p.tab !== 'drafts') && (
         <div className="m-pills" role="tablist" aria-label="Emails">
           {tabs.map(([id, label, n]) => (
@@ -139,6 +124,7 @@ export default function EmailsSection(p: Props) {
           );
         })}
       </div>
+      {(p.tab === 'inbox' || p.tab === 'sent') && <div style={{ flexShrink: 0, marginBottom: 5 }}>{p.tab === 'inbox' ? toggle('All mail', 'CRM replies', 0) : toggle('All sent', 'Tracked opens', 0)}</div>}
       {/* Compose lives here now (it used to be in the top bar on every page). Press c anywhere on this page. */}
       <button type="button" onClick={p.onCompose} title="Compose a new email (c)" aria-label="Compose a new email"
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 0, marginBottom: 7, padding: p.isMobile ? 0 : '8px 18px', width: p.isMobile ? 44 : undefined, height: p.isMobile ? 44 : undefined, borderRadius: p.isMobile ? 22 : 22, border: 'none', background: '#c9922c', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 14, fontWeight: 700, boxShadow: '0 2px 8px rgba(201,146,44,.35)' }}>
@@ -148,7 +134,7 @@ export default function EmailsSection(p: Props) {
 
       {p.tab === 'inbox' && (
         <>
-          {!(p.isMobile && reading) && toggle('All mail', 'CRM replies')}
+          {p.isMobile && !reading && toggle('All mail', 'CRM replies')}
           {source === 'gmail'
             ? <GmailMailbox box="inbox" isMobile={p.isMobile} onReading={setReading} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
             : <InboxSection isMobile={p.isMobile} {...p.inbox} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onInboxReply} canReplyAll={p.canInboxReplyAll} />}
@@ -157,7 +143,7 @@ export default function EmailsSection(p: Props) {
       {p.tab === 'drafts' && (<><ScheduledEmails isMobile={p.isMobile} notify={p.notify} /><DraftsSection isMobile={p.isMobile} onCompose={p.onCompose} signature={p.signature} onResume={p.onResumeDraft} nameFor={p.nameFor} onEditGmail={p.onEditGmailDraft} notify={p.notify} /></>)}
       {p.tab === 'sent' && (
         <>
-          {!(p.isMobile && reading) && toggle('All sent', 'Tracked opens')}
+          {p.isMobile && !reading && toggle('All sent', 'Tracked opens')}
           {source === 'gmail'
             ? <GmailMailbox box="sent" isMobile={p.isMobile} onReading={setReading} contactFor={p.contactFor} searchPeople={p.searchPeople} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onReply={p.onLiveReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onLiveForward} onNewCompose={p.onCompose} notify={p.notify} onAddContact={p.onAddContact} />
             : <SentSection embedded isMobile={p.isMobile} myAddresses={p.myAddresses} nameFor={p.nameFor} dealLabel={p.dealLabel} clientLabel={p.clientLabel} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact} onFollowUp={p.onFollowUp} />}
