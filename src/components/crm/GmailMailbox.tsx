@@ -49,7 +49,7 @@ const fmtBytes = (n: number) => n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` :
 const AVATARS = ['#475569', '#0f766e', '#7c3aed', '#b45309', '#be123c', '#1d4ed8', '#4d7c0f', '#a21caf'];
 const colorFor = (s: string) => { let h = 0; for (const ch of s.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return AVATARS[h % AVATARS.length]; };
 // Preview text for a message or row: raw tracking links and invisible spacer characters (marketing mail like Crexi is mostly both) make a preview unreadable, so drop them.
-const cleanPreview = (t: string) => t.replace(/https?:\/\/\S+/gi, ' ').replace(/\[(?:image|https?:)[^\]]*\]/gi, ' ').replace(/[\u200b-\u200f\u2060\ufeff\u00ad\u034f\u061c\u180e]+/g, ' ').replace(/\s+/g, ' ').trim();
+const cleanPreview = (t: string) => t.replace(/^Sent to .{0,400}? — reply to include everyone\.\s*/i, '').replace(/https?:\/\/\S+/gi, ' ').replace(/\[(?:image|https?:)[^\]]*\]/gi, ' ').replace(/[\u200b-\u200f\u2060\ufeff\u00ad\u034f\u061c\u180e]+/g, ' ').replace(/\s+/g, ' ').trim();
 const decodeSnippet = (t: string) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 const OPENED_KEY = 'crm-gmail-opened';
 const loadOpened = (): Set<string> => { try { return new Set(JSON.parse(localStorage.getItem(OPENED_KEY) ?? '[]') as string[]); } catch { return new Set(); } };
@@ -803,12 +803,16 @@ export default function GmailMailbox(p: Props) {
               return (
                 <div role="button" tabIndex={0} aria-expanded={gOpen} onClick={toggle} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
                   style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: p.isMobile ? '12px' : '12px 16px', cursor: 'pointer', background: 'var(--k-fffbeb)', borderTop: i && !showHeader ? '1px solid var(--k-f3f4f6)' : 'none', borderBottom: gOpen ? '1px solid var(--k-fde68a)' : 'none' }}>
-                  <div aria-hidden style={{ width: 36, height: 36, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>{gi.size}</div>
+                  <div aria-hidden title={`Sent to ${gi.size} people`} style={{ width: 36, height: 36, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0, gap: 1 }}>👥<span style={{ fontSize: 11 }}>{gi.size}</span></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{t.subject}</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                        <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}>To: </span>{gi.members.map(x => { const o = otherOf(x); return (o.name || o.email).split(/[\s@]/)[0]; }).join(', ')}
+                      </span>
                       <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(t.date)}>{when(t.date)}</span>
                     </div>
+                    <div style={{ fontSize: 13.5, color: 'var(--k-374151)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{t.subject}</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanPreview(decodeSnippet(t.snippet)).replace(/^Sent to .{0,400}? — reply to include everyone\.\s*/i, '')}</div>
                     <div style={{ marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: '3px 10px', fontSize: 12.5 }}>
                       {gi.members.map(x => {
                         const o = otherOf(x), tr = tracking.get(x.id), who = (o.name || o.email).split(/[\s@]/)[0];
@@ -817,7 +821,7 @@ export default function GmailMailbox(p: Props) {
                     </div>
                     <div style={{ marginTop: 5, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, background: opened ? 'var(--k-d1fae5)' : 'var(--k-f3f4f6)', color: opened ? 'var(--k-065f46)' : 'var(--k-6b7280)' }}>👁 {opened} of {gi.size} opened</span>
-                      <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>Sent separately · {gOpen ? 'tap to fold' : 'tap for each person'} {gOpen ? '▴' : '▾'}</span>
+                      <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>One email, {gi.size} tracked copies · {gOpen ? 'tap to fold' : 'tap to see each person'} {gOpen ? '▴' : '▾'}</span>
                     </div>
                   </div>
                 </div>
