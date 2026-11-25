@@ -83,8 +83,9 @@ export default function EmailsSection(p: Props) {
     return () => { live = false; window.removeEventListener('focus', load); window.removeEventListener('crm-gmail-drafts-changed', load); };
   }, [p.tab]);
   const tabs: Array<[EmailsTab, string, number]> = [['inbox', 'Inbox', p.unread], ['drafts', 'Drafts', p.draftCount + gmailDrafts], ['sent', 'Sent', 0]];
+  // Drafts is as wide as Inbox and Sent, so the tab row does not jump sideways when you switch tabs.
   return (
-    <div style={{ maxWidth: source === 'gmail' && p.tab !== 'drafts' ? 1400 : 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '12px 24px 24px' }}>
+    <div style={{ maxWidth: source === 'gmail' || p.tab === 'drafts' ? 1400 : 980, margin: '0 auto', padding: p.isMobile ? '12px 12px 96px' : '12px 24px 24px' }}>
       <style>{`
         .em-sumrow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
         .em-sum{position:relative;background:var(--k-fff);border:1px solid var(--k-e5e7eb);border-radius:14px;padding:8px 14px 8px 18px;overflow:hidden;text-align:left;

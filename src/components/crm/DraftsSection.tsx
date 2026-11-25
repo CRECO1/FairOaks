@@ -72,6 +72,13 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
   const [previewKey, setPreviewKey] = useState<string | null>(null);   // the CRM draft whose full text is open below its row
   const [gPreview, setGPreview] = useState<{ id: string; draft?: GmailDraftBody; error?: string } | null>(null);   // the Gmail draft whose full text is open below its row
   const [busy, setBusy] = useState<string | null>(null);
+  // Wide screens: a list on the left and the whole draft on the right (like Inbox and Sent); phones keep the single list.
+  const [wide, setWide] = useState(false);
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  useEffect(() => {
+    const on = () => setWide(!isMobile && window.innerWidth >= 1180);
+    on(); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on);
+  }, [isMobile]);
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastTick = useRef(-1);
@@ -158,9 +165,8 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
       flash('Gmail draft discarded');
     } finally { setBusy(null); }
   };
-  // Show a Gmail draft's full text in place (same fetch as "Edit here", nothing is opened or changed).
-  const toggleGmailPreview = async (g: GmailDraftRow) => {
-    if (gPreview?.id === g.id) { setGPreview(null); return; }
+  // Show a Gmail draft's full text (same fetch as "Edit here", nothing is opened or changed).
+  const loadGmailPreview = async (g: GmailDraftRow) => {
     setGPreview({ id: g.id });
     try {
       const r = await fetch(`/api/gmail/drafts?id=${encodeURIComponent(g.id)}`, { cache: 'no-store' });
@@ -168,6 +174,11 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
       setGPreview(p => (p?.id === g.id ? (r.ok && j.draft ? { id: g.id, draft: j.draft as GmailDraftBody } : { id: g.id, error: j.error ?? 'Could not load that draft.' }) : p));
     } catch { setGPreview(p => (p?.id === g.id ? { id: g.id, error: 'Could not load that draft.' } : p)); }
   };
+  const toggleGmailPreview = async (g: GmailDraftRow) => {
+    if (gPreview?.id === g.id) { setGPreview(null); return; }
+    await loadGmailPreview(g);
+  };
+  const selectItem = (it: Item) => { setFocusKey(it.key); if (it.src === 'gmail' && gPreview?.id !== it.g.id) void loadGmailPreview(it.g); };
   const editGmail = async (g: GmailDraftRow) => {
     if (!onEditGmail) return;
     setBusy(g.id);
@@ -195,55 +206,7 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
   const btn: React.CSSProperties = { height: isMobile ? 40 : 32, padding: '0 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', border: '1px solid var(--k-d1d5db)', background: 'var(--k-fff)', color: 'var(--k-374151)', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' };
 
   const total = items.length;
-  return (
-    <div style={{ maxWidth: 860 }}>
-      <style>{'.dr-chk{display:none;position:absolute;inset:0;align-items:center;justify-content:center}.dr-row:hover .dr-av,.dr-sel .dr-av{display:none}.dr-row:hover .dr-chk,.dr-sel .dr-chk{display:flex}.dr-row.dr-gm .dr-chk{display:none!important}.dr-row.dr-gm:hover .dr-av{display:flex!important}@media (hover:none){.dr-row .dr-av{display:flex!important}.dr-row .dr-chk{display:none!important}}'}</style>
-      <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--k-9ca3af)', lineHeight: 1.5 }}>
-        Emails you started and haven’t sent{deviceOnly ? ' (on this device)' : ' — they follow you to your phone'}. Tap one to pick up where you left off.
-      </p>
-      {deviceOnly && (
-        <div style={{ margin: '0 0 14px', padding: '9px 12px', background: 'var(--k-fef9f0)', border: '1px solid var(--k-fde68a)', borderRadius: 8, fontSize: 12.5, color: 'var(--k-92400e)' }}>
-          CRM drafts are only on this device for now. Once the one-time drafts setup is applied they’ll sync across devices too.
-        </div>
-      )}
-
-      {total > 0 && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-          <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%' }}>
-            <button type="button" onClick={() => setFilter('all')} style={chip(filter === 'all')}>All{n(counts.all)}</button>
-            <button type="button" onClick={() => setFilter('replies')} style={chip(filter === 'replies')}>↩ Replies{n(counts.replies)}</button>
-            <button type="button" onClick={() => setFilter('new')} style={chip(filter === 'new')}>✉ New{n(counts.new)}</button>
-            {counts.files > 0 && <button type="button" onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 With files{n(counts.files)}</button>}
-            {counts.gmail > 0 && <button type="button" onClick={() => setFilter('gmail')} style={chip(filter === 'gmail')}>In Gmail{n(counts.gmail)}</button>}
-            <button type="button" onClick={() => setFilter('stale')} title={`Not touched in ${STALE_DAYS}+ days`} style={chip(filter === 'stale')}>⏳ {STALE_DAYS}+ days old{n(counts.stale)}</button>
-          </div>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search drafts" aria-label="Search drafts"
-            style={{ flex: isMobile ? '1 1 100%' : '0 1 240px', marginLeft: isMobile ? 0 : 'auto', minWidth: 0, height: isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
-        </div>
-      )}
-
-      {sel.size > 0 && (
-        <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', background: '#111', color: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600 }}>
-          <span>{sel.size} selected</span>
-          {sel.size < crmShown.length && <button type="button" onClick={() => setSel(new Set(crmShown.map(x => x.d.key)))} style={{ border: 'none', background: 'none', color: '#e8b563', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>All {crmShown.length}</button>}
-          <span style={{ flex: 1 }} />
-          <button type="button" onClick={() => discard(crmShown.map(x => x.d).filter(d => sel.has(d.key)))} style={{ height: 32, padding: '0 12px', border: '1px solid #7f1d1d', borderRadius: 8, background: '#450a0a', color: '#fecaca', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>🗑 Discard</button>
-          <button type="button" onClick={() => setSel(new Set())} aria-label="Clear selection" title="Clear (Esc)" style={{ width: 32, height: 32, border: 'none', borderRadius: 8, background: 'none', color: '#bbb', cursor: 'pointer', fontSize: 16 }}>✕</button>
-        </div>
-      )}
-
-      {total === 0 ? (
-        <div style={{ padding: '40px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)' }}>
-          <div style={{ width: 56, height: 56, borderRadius: 28, background: 'var(--k-fdf6e9)', color: '#c9922c', fontSize: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>✎</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>{syncing || !gm.loaded ? 'Checking for drafts…' : 'No drafts waiting'}</div>
-          <div style={{ fontSize: 13, lineHeight: 1.6 }}>{syncing || !gm.loaded ? 'Checking for drafts…' : <>Start an email from Compose, a contact or a deal and it’s saved here if you don’t send it.<br />Press <kbd style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 5, padding: '0 6px' }}>c</kbd> on this page to compose.</>}</div>
-          {!(syncing || !gm.loaded) && onCompose && <button type="button" onClick={onCompose} style={{ marginTop: 14, padding: isMobile ? '12px 20px' : '9px 18px', borderRadius: 22, border: 'none', background: '#c9922c', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✉ Write an email</button>}
-        </div>
-      ) : shown.length === 0 ? (
-        <div style={{ padding: '32px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)', fontSize: 14 }}>
-          Nothing matches{q ? ` “${q}”` : ''}.
-        </div>
-      ) : (
+  const listBox = (
         <div className={sel.size ? 'dr-sel' : undefined} style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
           {shown.map((it, i) => {
             const to = recips(it);
@@ -264,6 +227,52 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
             const open = () => (isG ? void editGmail(it.g) : onResume(it.d));
             const previewing = !isG && previewKey === it.d.key;
             const gLink = isG ? `https://mail.google.com/mail/${gm.account ? `?authuser=${encodeURIComponent(gm.account)}` : ''}#drafts?compose=${it.g.messageId}` : '';
+            if (wide) {
+              const focused = focusKey === it.key;
+              const hdr = showHeader ? <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{g}</div> : null;
+              const act: React.CSSProperties = { width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--k-6b7280)', fontSize: 14, padding: 0 };
+              return (
+                <React.Fragment key={it.key}>
+                  {hdr}
+                  <div role="button" tabIndex={0} className={`dr-row${isG ? ' dr-gm' : ''}`} onClick={() => selectItem(it)} onDoubleClick={open} onKeyDown={e => { if (e.key === 'Enter') open(); }}
+                    style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px', borderTop: !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${focused ? '#c9922c' : 'transparent'}`, background: !isG && sel.has(it.d.key) ? 'var(--k-fdf6e8)' : focused ? 'var(--k-fef9f0)' : 'var(--k-fff)', opacity: busy === (isG ? it.g.id : it.d.key) ? 0.5 : 1 }}>
+                    <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
+                      <div className="dr-av" aria-hidden style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', background: first ? '#475569' : '#9ca3af' }}>{initial}</div>
+                      {!isG && (
+                        <div className="dr-chk" onClick={e => { e.stopPropagation(); tick(it.d.key, crmIdx, e.shiftKey); }} title="Select (shift-click for a range)">
+                          <input type="checkbox" aria-label={`Select draft to ${label || 'nobody'}`} checked={sel.has(it.d.key)} onChange={() => {}} style={{ width: 18, height: 18, accentColor: '#c9922c', cursor: 'pointer' }} />
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                          {kind && !isG && <span title={`${kind}${it.d.context.label ? ' · ' + it.d.context.label : ''}`} style={{ marginRight: 5, fontSize: 12 }}>{Array.from(kind)[0]}</span>}
+                          <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}>To: </span>
+                          {first ? <>{label}{to.length > 1 && <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}> +{to.length - 1}</span>}</> : <span style={{ color: '#dc2626', fontWeight: 600 }}>nobody yet</span>}
+                        </span>
+                        <span style={{ display: 'inline-flex', gap: 8, flexShrink: 0, alignItems: 'center', fontSize: 11.5, fontWeight: 600 }}>
+                          {reply && <span style={{ color: 'var(--k-1d4ed8)' }}>↩{'\uFE0E'} Reply</span>}
+                          {files.length > 0 && <span title={files.map(f => f.name).join('\n')} style={{ color: 'var(--k-92400e)' }}>📎 {files.length}</span>}
+                          {isG && <span title="Saved in your Gmail" style={{ color: 'var(--k-6b7280)' }}>Gmail</span>}
+                        </span>
+                        <span style={{ fontSize: 12, color: old ? 'var(--k-b45309)' : 'var(--k-9ca3af)', fontWeight: old ? 700 : 400, whiteSpace: 'nowrap', flexShrink: 0 }} title={old ? 'Still need to send this?' : undefined}>{ago(it.at)}</span>
+                      </div>
+                      <div style={{ fontSize: 13.5, marginTop: 2, color: 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <strong style={{ fontWeight: 600 }}>{subject || '(no subject)'}</strong>
+                        {snippet ? <span style={{ color: 'var(--k-9ca3af)' }}> — {snippet.slice(0, 140)}</span> : !files.length ? <span style={{ color: '#dc2626' }}> — no text yet</span> : null}
+                      </div>
+                    </div>
+                    <div className="dr-acts" onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 8, top: 6, gap: 2, padding: 2, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
+                      <button type="button" title="Edit and send" aria-label="Edit and send" onClick={open} style={act}>✏️</button>
+                      {!isG
+                        ? <button type="button" title="Discard draft (you can undo)" aria-label="Discard draft" onClick={() => discard([it.d])} style={act}>🗑</button>
+                        : gm.canModify && <button type="button" title="Discard this draft in Gmail" aria-label="Discard Gmail draft" onClick={() => void discardGmail(it.g)} style={act}>🗑</button>}
+                    </div>
+                  </div>
+                </React.Fragment>
+              );
+            }
             return (
               <React.Fragment key={it.key}>
                 {showHeader && <div style={{ padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{g}</div>}
@@ -360,7 +369,158 @@ export default function DraftsSection({ isMobile, onResume, nameFor, onEditGmail
             );
           })}
         </div>
+  );
+  // ---- Wide screens: the draft you picked, whole, on the right. Nothing picked: the numbers and what has waited longest.
+  const focus = shown.find(i => i.key === focusKey) ?? null;
+  const paneH = 'calc(100vh - 235px)';
+  const noRecip = items.filter(i => recips(i).length === 0).length;
+  const card: React.CSSProperties = { background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, padding: '18px 22px' };
+  const primary: React.CSSProperties = { ...btn, background: '#c9922c', borderColor: '#c9922c', color: '#fff' };
+  const tile = (label: string, big: React.ReactNode, sub: string, warm = false): React.ReactNode => (
+    <div style={{ flex: '1 1 0', minWidth: 120, background: warm ? 'var(--k-fffbeb)' : 'var(--k-f9fafb)', border: `1px solid ${warm ? 'var(--k-fde68a)' : 'var(--k-eef0f2)'}`, borderRadius: 12, padding: '12px 14px' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: warm ? 'var(--k-92400e)' : 'var(--k-9ca3af)' }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 700, color: warm ? 'var(--k-92400e)' : 'var(--k-111)', lineHeight: 1.2, fontFamily: "'Cormorant Garamond',serif" }}>{big}</div>
+      <div style={{ fontSize: 12, color: 'var(--k-6b7280)' }}>{sub}</div>
+    </div>
+  );
+  const longest = [...items].sort((a, b) => a.at - b.at).slice(0, 6);
+  const overview = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {tile('Drafts', items.length, 'not sent yet')}
+        {tile('Old', counts.stale, `${STALE_DAYS}+ days untouched`, counts.stale > 0)}
+        {tile('No recipient', noRecip, 'nobody to send it to', noRecip > 0)}
+      </div>
+      <div style={{ background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 14px' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)' }}>Waiting the longest</div>
+          <div style={{ fontSize: 12, color: 'var(--k-9ca3af)' }}>Pick one to read it, or double-click to edit and send</div>
+        </div>
+        {longest.map(it => {
+          const t = recips(it), f = t[0], nm = f ? (f.name || f.email) : 'nobody yet';
+          return (
+            <div key={it.key} role="button" tabIndex={0} onClick={() => selectItem(it)} onKeyDown={e => { if (e.key === 'Enter') selectItem(it); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderTop: '1px solid var(--k-f3f4f6)', cursor: 'pointer' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: f ? 'var(--k-111)' : '#dc2626', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>To: {nm}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--k-6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(it.src === 'gmail' ? it.g.subject : it.d.subject) || '(no subject)'}</div>
+              </div>
+              <span style={{ fontSize: 12, fontWeight: stale(it) ? 700 : 500, color: stale(it) ? 'var(--k-b45309)' : 'var(--k-9ca3af)', flexShrink: 0 }}>{ago(it.at)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', textAlign: 'center', padding: '4px 0 8px' }}>Click a draft to read it · double-click or Enter to edit and send</div>
+    </div>
+  );
+  const detail = (() => {
+    if (!focus) return overview;
+    const row = (lab: string, val: React.ReactNode) => <div style={{ fontSize: 13, color: 'var(--k-374151)', marginBottom: 3 }}><span style={{ display: 'inline-block', width: 54, color: 'var(--k-9ca3af)', fontWeight: 600 }}>{lab}</span>{val}</div>;
+    const fileChips = (fl: Array<{ name: string; size: number }>) => fl.length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{fl.map(f => <span key={f.name} style={pill('var(--k-fdf6e8)', 'var(--k-92400e)', 'var(--k-fde68a)')}>📎 {f.name}{f.size ? ` (${kb(f.size)})` : ''}</span>)}</div>;
+    const bodyBox = (inner: React.ReactNode) => <div style={{ border: '1px solid var(--k-e5e7eb)', borderRadius: 8, padding: '14px 16px', background: '#fff', minHeight: 140, maxHeight: 'calc(100vh - 470px)', overflowY: 'auto', marginTop: 12 }}>{inner}</div>;
+    if (focus.src === 'crm') {
+      const d = focus.d, t = recips(focus);
+      const kindText = d.context.kind === 'deal' ? '💼 Deal' : d.context.kind === 'contact' ? '👤 Contact' : '✉ New message';
+      return (
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, flex: '1 1 260px', minWidth: 0, fontSize: 21, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{d.subject || '(no subject)'}</h2>
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              <button type="button" onClick={() => onResume(d)} style={primary}>Edit &amp; send</button>
+              <button type="button" onClick={() => discard([d])} style={btn} title="Discard draft (you can undo)">Discard</button>
+            </div>
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', margin: '6px 0 14px' }}>Saved {ago(focus.at)} · {kindText}{d.context.label ? ` · ${d.context.label}` : ''}{isReplyCrm(d) ? ' · ↩ Reply' : ''}</div>
+          {row('To', t.length ? t.map(x => x.name ? `${x.name} <${x.email}>` : x.email).join(', ') : <span style={{ color: '#b45309' }}>nobody yet. Add the contact’s email on their card, then open this draft there to send.</span>)}
+          {d.cc && row('Cc', d.cc)}
+          {bodyBox(plain(d.bodyHtml) ? <MessageFrame html={withBodyStyle(withSignature(d.bodyHtml, signature))} /> : <span style={{ color: '#9ca3af', fontSize: 14 }}>No text yet</span>)}
+          {fileChips((d.context.files ?? []).map(f => ({ name: f.name, size: f.size ?? 0 })))}
+        </div>
+      );
+    }
+    const g = focus.g, gl = `https://mail.google.com/mail/${gm.account ? `?authuser=${encodeURIComponent(gm.account)}` : ''}#drafts?compose=${g.messageId}`;
+    const pv = gPreview?.id === g.id ? gPreview : null;
+    return (
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0, flex: '1 1 260px', minWidth: 0, fontSize: 21, fontWeight: 700, color: 'var(--k-111)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{g.subject || '(no subject)'}</h2>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+            {onEditGmail && <button type="button" onClick={() => void editGmail(g)} disabled={busy === g.id} style={primary} title="Open it in the CRM composer: sent from here it is tracked and filed on the deal or contact">Edit &amp; send</button>}
+            <a href={gl} target="_blank" rel="noopener noreferrer" style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }} title="Open this draft in Gmail (keeps its attachments)">Gmail ↗</a>
+            {gm.canModify && <button type="button" onClick={() => void discardGmail(g)} style={btn} title="Discard this draft in Gmail (no undo)">Discard</button>}
+          </div>
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', margin: '6px 0 14px' }}>Saved {ago(focus.at)} · ✉ In your Gmail</div>
+        {!pv && <div style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>Loading the draft…</div>}
+        {pv?.error && <div style={{ fontSize: 13, color: '#b45309' }}>{pv.error}</div>}
+        {pv?.draft && (
+          <>
+            {row('To', pv.draft.to || <span style={{ color: '#b45309' }}>nobody yet</span>)}
+            {pv.draft.cc && row('Cc', pv.draft.cc)}
+            {pv.draft.bcc && row('Bcc', pv.draft.bcc)}
+            {bodyBox(plain(pv.draft.html) ? <MessageFrame html={pv.draft.html} /> : <span style={{ color: '#9ca3af', fontSize: 14 }}>No text yet</span>)}
+            {fileChips(pv.draft.files)}
+          </>
+        )}
+      </div>
+    );
+  })();
+  const twoPane = (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 440px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+      <div style={{ height: paneH, minHeight: 420, overflowY: 'auto' }}>{listBox}</div>
+      <div style={{ height: paneH, minHeight: 420, overflowY: 'auto' }}>{detail}</div>
+    </div>
+  );
+  return (
+    <div style={{ maxWidth: wide ? undefined : 860 }}>
+      {wide && <style>{'.dr-acts{display:none}.dr-row:hover .dr-acts,.dr-row:focus-within .dr-acts{display:flex}'}</style>}
+      <style>{'.dr-chk{display:none;position:absolute;inset:0;align-items:center;justify-content:center}.dr-row:hover .dr-av,.dr-sel .dr-av{display:none}.dr-row:hover .dr-chk,.dr-sel .dr-chk{display:flex}.dr-row.dr-gm .dr-chk{display:none!important}.dr-row.dr-gm:hover .dr-av{display:flex!important}@media (hover:none){.dr-row .dr-av{display:flex!important}.dr-row .dr-chk{display:none!important}}'}</style>
+      {!wide && <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--k-9ca3af)', lineHeight: 1.5 }}>
+        Emails you started and haven’t sent{deviceOnly ? ' (on this device)' : ' — they follow you to your phone'}. Tap one to pick up where you left off.
+      </p>}
+      {deviceOnly && (
+        <div style={{ margin: '0 0 14px', padding: '9px 12px', background: 'var(--k-fef9f0)', border: '1px solid var(--k-fde68a)', borderRadius: 8, fontSize: 12.5, color: 'var(--k-92400e)' }}>
+          CRM drafts are only on this device for now. Once the one-time drafts setup is applied they’ll sync across devices too.
+        </div>
       )}
+
+      {total > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+          <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%' }}>
+            <button type="button" onClick={() => setFilter('all')} style={chip(filter === 'all')}>All{n(counts.all)}</button>
+            <button type="button" onClick={() => setFilter('replies')} style={chip(filter === 'replies')}>↩ Replies{n(counts.replies)}</button>
+            <button type="button" onClick={() => setFilter('new')} style={chip(filter === 'new')}>✉ New{n(counts.new)}</button>
+            {counts.files > 0 && <button type="button" onClick={() => setFilter('files')} style={chip(filter === 'files')}>📎 With files{n(counts.files)}</button>}
+            {counts.gmail > 0 && <button type="button" onClick={() => setFilter('gmail')} style={chip(filter === 'gmail')}>In Gmail{n(counts.gmail)}</button>}
+            <button type="button" onClick={() => setFilter('stale')} title={`Not touched in ${STALE_DAYS}+ days`} style={chip(filter === 'stale')}>⏳ {STALE_DAYS}+ days old{n(counts.stale)}</button>
+          </div>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search drafts" aria-label="Search drafts"
+            style={{ flex: isMobile ? '1 1 100%' : '0 1 240px', marginLeft: isMobile ? 0 : 'auto', minWidth: 0, height: isMobile ? 42 : 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
+        </div>
+      )}
+
+      {sel.size > 0 && (
+        <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', background: '#111', color: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600 }}>
+          <span>{sel.size} selected</span>
+          {sel.size < crmShown.length && <button type="button" onClick={() => setSel(new Set(crmShown.map(x => x.d.key)))} style={{ border: 'none', background: 'none', color: '#e8b563', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>All {crmShown.length}</button>}
+          <span style={{ flex: 1 }} />
+          <button type="button" onClick={() => discard(crmShown.map(x => x.d).filter(d => sel.has(d.key)))} style={{ height: 32, padding: '0 12px', border: '1px solid #7f1d1d', borderRadius: 8, background: '#450a0a', color: '#fecaca', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>🗑 Discard</button>
+          <button type="button" onClick={() => setSel(new Set())} aria-label="Clear selection" title="Clear (Esc)" style={{ width: 32, height: 32, border: 'none', borderRadius: 8, background: 'none', color: '#bbb', cursor: 'pointer', fontSize: 16 }}>✕</button>
+        </div>
+      )}
+
+      {total === 0 ? (
+        <div style={{ padding: '40px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)', maxWidth: wide ? 860 : undefined }}>
+          <div style={{ width: 56, height: 56, borderRadius: 28, background: 'var(--k-fdf6e9)', color: '#c9922c', fontSize: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>✎</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--k-374151)', marginBottom: 4 }}>{syncing || !gm.loaded ? 'Checking for drafts…' : 'No drafts waiting'}</div>
+          <div style={{ fontSize: 13, lineHeight: 1.6 }}>{syncing || !gm.loaded ? 'Checking for drafts…' : <>Start an email from Compose, a contact or a deal and it’s saved here if you don’t send it.<br />Press <kbd style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 5, padding: '0 6px' }}>c</kbd> on this page to compose.</>}</div>
+          {!(syncing || !gm.loaded) && onCompose && <button type="button" onClick={onCompose} style={{ marginTop: 14, padding: isMobile ? '12px 20px' : '9px 18px', borderRadius: 22, border: 'none', background: '#c9922c', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✉ Write an email</button>}
+        </div>
+      ) : shown.length === 0 ? (
+        <div style={{ padding: '32px 20px', textAlign: 'center', background: 'var(--k-fff)', border: '1px dashed var(--k-d1d5db)', borderRadius: 12, color: 'var(--k-6b7280)', fontSize: 14 }}>
+          Nothing matches{q ? ` “${q}”` : ''}.
+        </div>
+      ) : (wide ? twoPane : listBox)}
 
       {toast && (
         <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: isMobile ? 84 : 24, zIndex: 80, display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', background: '#111', color: '#fff', borderRadius: 10, boxShadow: '0 6px 24px rgba(0,0,0,.25)', fontSize: 13.5, fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
