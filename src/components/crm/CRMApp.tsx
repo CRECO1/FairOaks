@@ -1576,6 +1576,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Responsive
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  // Phones: a swipeable pill row (Properties, Emails, Tasks, filters…) brings the chosen pill into view, so you can always see which one is on.
+  useEffect(() => {
+    if (windowWidth >= 768) return;
+    const id = requestAnimationFrame(() => {
+      document.querySelectorAll<HTMLElement>('.m-pills').forEach(rail => {
+        const on = rail.querySelector<HTMLElement>('.m-pill.on, [aria-selected="true"]');
+        if (!on) return;
+        const key = on.textContent ?? '';
+        if (rail.dataset.seen === key) return;   // only when the chosen pill changes — never fight a manual swipe
+        rail.dataset.seen = key;
+        const rr = rail.getBoundingClientRect(), r = on.getBoundingClientRect();
+        if (r.left < rr.left + 4 || r.right > rr.right - 4) rail.scrollTo({ left: r.left - rr.left + rail.scrollLeft - (rail.clientWidth - r.width) / 2, behavior: 'smooth' });
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  });
 
   // Calendar state
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
@@ -6351,7 +6367,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .m-fold .chev{margin-left:auto;color:var(--c-faint);transition:transform .15s;} .m-fold .t+.chev{margin-left:8px;}
         .m-fold[open] .chev{transform:rotate(180deg);}
         .m-search{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
-        .m-pills{display:flex;gap:8px;overflow-x:auto;margin:0 -14px 14px;padding:0 14px;scrollbar-width:none;}
+        .m-pills{display:flex;gap:8px;overflow-x:auto;margin:0 -14px 14px;padding:0 30px 0 14px;scrollbar-width:none;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 26px),transparent);}
         .m-pills::-webkit-scrollbar{display:none;}
         .m-pill{flex:none;min-height:40px;padding:0 15px;border-radius:99px;border:1px solid var(--c-line);background:var(--c-surface);color:var(--c-ink-2);font:600 13.5px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;}
         .m-pill.on{background:rgba(201,146,44,.2);border-color:rgba(201,146,44,.6);color:#8a5a0c;}

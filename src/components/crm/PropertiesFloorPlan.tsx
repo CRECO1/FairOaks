@@ -503,6 +503,9 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
             .fp-ctl{border-radius:22px!important;min-height:44px}
             .fp-seg{border-radius:22px!important;padding:4px!important}
             .fp-seg button{border-radius:18px!important;min-height:40px}}
+          .fp-hint{display:none}
+          @media (max-width:700px){.fp-pan{overflow-x:auto;-webkit-overflow-scrolling:touch}.fp-pan>svg{min-width:720px}
+            .fp-hint{display:block;font-size:12px;color:#9ca3af;text-align:center;padding:2px 0 6px}}
           @media (prefers-reduced-motion:reduce){.fp-sum{animation:none}}
         `}</style>
         {(() => {
@@ -529,7 +532,8 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
         })()}
 
         <div className="fp-card" style={{ background: '#fff', border: '1px solid #e6e8eb', borderRadius: 14, padding: 8, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
-          {renderFloor(building, floor, true)}
+          <div className="fp-hint">Swipe sideways to see the whole plan</div>
+          <div className="fp-pan">{renderFloor(building, floor, true)}</div>
         </div>
       </div>
 
