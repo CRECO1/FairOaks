@@ -8296,7 +8296,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           const dayCrm = crmByDate[dateKey] ?? [];
 
                           return (
-                            <div key={dayNum} onClick={() => setCalSelectedDate(dateKey)}
+                            <div key={dayNum} onClick={() => { setCalSelectedDate(dateKey); if (isMobile) setTimeout(() => document.getElementById('crm-cal-day-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); }}
                               style={{ borderRight: '1px solid var(--k-f0f0f0)', borderBottom: '1px solid var(--k-f0f0f0)', padding: isMobile ? '5px 4px' : '6px 8px', cursor: 'pointer', background: isSelected ? 'var(--k-fef9f0)' : 'var(--k-fff)', transition: 'background 0.1s', overflow: 'hidden' }}
                               onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--k-fafafa)'; }}
                               onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'var(--k-fff)'; }}>
@@ -8344,7 +8344,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
 
                     {/* Right: Event Detail Panel */}
-                    <div style={{ width: isMobile ? '100%' : 320, flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)', overflow: 'hidden', maxHeight: isMobile ? 420 : undefined, ...(isMobile ? { borderRadius: 22, border: '1px solid var(--k-e5e7eb)', boxShadow: '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.06)' } : {}) }}>
+                    <div id="crm-cal-day-panel" style={{ width: isMobile ? '100%' : 320, flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--k-fff)', overflow: 'hidden', maxHeight: isMobile ? 420 : undefined, ...(isMobile ? { borderRadius: 22, border: '1px solid var(--k-e5e7eb)', boxShadow: '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.06)' } : {}) }}>
                       <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--k-e5e7eb)' }}>
                         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: 'var(--k-111)' }}>
                           {calSelectedDate ? (() => {
@@ -10589,14 +10589,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
               {campaignView === 'detail' && activeCampaign && (
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
                     <button onClick={() => { setCampaignView('list'); setActiveCampaign(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--k-6b7280)', padding: 0 }}>←</button>
-                    <div style={{ flex: 1 }}>
-                      <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: 'var(--k-111)' }}>{activeCampaign.name}</h2>
+                    <div style={{ flex: isMobile ? '1 1 calc(100% - 40px)' : 1 }}>
+                      <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 21 : 24, fontWeight: 700, color: 'var(--k-111)' }}>{activeCampaign.name}</h2>
                       <div style={{ fontSize: 13, color: 'var(--k-6b7280)' }}>{activeCampaign.type.toUpperCase()} · {activeCampaign.frequency} · <span style={{ color: activeCampaign.status === 'active' ? 'var(--k-16a34a)' : activeCampaign.status === 'paused' ? '#d97706' : 'var(--k-6b7280)', fontWeight: 600 }}>{activeCampaign.status}</span></div>
                     </div>
                     {isAdmin && (
-                      <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 8, ...(isMobile ? { flexBasis: '100%', flexWrap: 'wrap' } : {}) }}>
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={async () => { let full: Campaign; try { full = await ensureCampaignBody(activeCampaign); } catch { return; } setActiveCampaign(full); setNewCampaign({ name: full.name, description: full.description, type: full.type, frequency: full.frequency, send_date: full.send_date ?? '', send_time: full.send_time ?? '08:00', send_day_of_month: full.send_day_of_month != null ? String(full.send_day_of_month) : '', status: full.status, email_subject: full.email_subject ?? '', email_body: full.email_body ?? '', sms_body: full.sms_body ?? '', sender_agent_id: full.sender_agent_id ?? '', project_id: full.project_id ?? '', hold_risky_addresses: !!full.hold_risky_addresses }); setCampaignView('builder'); }}>Edit</button>
                         {isSuperAdmin && activeCampaign.status !== 'active' && activeCampaign.status !== 'completed' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? '…' : '▶ Activate'}</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '⏸ Pause'}</button>}
