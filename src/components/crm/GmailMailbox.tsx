@@ -920,7 +920,7 @@ export default function GmailMailbox(p: Props) {
   );
 
   const helpEl = help && (
-    <div role="dialog" aria-label="Keyboard shortcuts" onClick={() => setHelp(false)} style={{ position: 'fixed', inset: 0, zIndex: 990, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div role="dialog" aria-label="Keyboard shortcuts" onClick={() => setHelp(false)} style={{ position: 'fixed', inset: 0, zIndex: 1160, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--k-fff)', borderRadius: 14, padding: '20px 24px', width: 'min(460px, 100%)', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--k-111)', flex: 1 }}>Keyboard shortcuts</div>

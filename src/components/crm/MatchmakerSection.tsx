@@ -848,7 +848,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
 
       {isMobile && peopleOpen && (
         <div className="crm-sheet" onClick={e => { if (e.target === e.currentTarget) setPeopleOpen(false); }}
-          style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-end' }}>
+          style={{ position: 'fixed', inset: 0, zIndex: 1160, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-end' }}>
           <div className="crm-sheet-panel" role="dialog" aria-label="Pick a tenant or buyer"
             style={{ background: 'var(--k-fff)', borderRadius: '18px 18px 0 0', width: '100%', maxHeight: '88dvh', display: 'flex', flexDirection: 'column', padding: 14, boxSizing: 'border-box' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>

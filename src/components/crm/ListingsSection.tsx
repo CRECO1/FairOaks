@@ -1454,7 +1454,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
       {/* ── Detail Panel ──────────────────────────────────────────────────────── */}
       {active && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1050, display: 'flex' }} onClick={e => { if (e.target === e.currentTarget) closePanel(); }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1160, display: 'flex' }} onClick={e => { if (e.target === e.currentTarget) closePanel(); }}>
           <div style={{ flex: 1 }} onClick={closePanel} />
           <div style={{ width: Math.min(activeTab === 'rentroll' || activeTab === 'prospects' || activeTab === 'leasing' ? 1100 : 620, window.innerWidth), background: 'var(--k-fff)', boxShadow: '-4px 0 40px rgba(0,0,0,.16)', display: 'flex', flexDirection: 'column', overflowY: 'auto', transition: 'width .18s ease' }}>
 
@@ -2234,7 +2234,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
       {/* ── New Listing Modal ─────────────────────────────────────────────────── */}
       {showNew && (
-        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1150, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1170, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setShowNew(false); }}>
           <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -2257,7 +2257,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {/* ── Form picker: choose a transaction-doc template for this property ── */}
       {/* New Deal at this property */}
       {showNewDeal && active && (
-        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1250, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1270, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setShowNewDeal(false); }}>
           <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -2302,7 +2302,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
       {/* Link an existing deal to this property */}
       {showLinkDeal && active && (
-        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1250, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1270, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setShowLinkDeal(false); }}>
           <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -2360,7 +2360,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           </div>
         );
         return (
-        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1250, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1270, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setFormPicker(false); }}>
           <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -2398,7 +2398,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {emailDocId && <EmailDocDialog submissionId={emailDocId} token={authToken} onClose={() => setEmailDocId(null)} />}
       {/* Send for signature */}
       {sendModal && (
-        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1310, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setSendModal(null); }}>
           <div className="es-touch crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>

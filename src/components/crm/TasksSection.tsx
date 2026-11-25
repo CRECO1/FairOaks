@@ -489,7 +489,7 @@ function TaskDetailPanel({
     done && (task.completed_at || task.updated_at) ? `Done ${when(task.completed_at ?? task.updated_at)}` : '',
   ].filter(Boolean).join(' · ');
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 950, display: 'flex' }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1160, display: 'flex' }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ flex: 1 }} onClick={onClose} />
       <div style={{ width: Math.min(480, window.innerWidth), background: 'var(--k-fff)', boxShadow: '-4px 0 32px rgba(0,0,0,.14)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         {/* Header */}
@@ -1463,7 +1463,7 @@ export default function TasksSection({
 
       {/* Contact quick-view popup */}
       {contactPopup && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,.35)' }}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1170, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,.35)' }}
           onClick={() => setContactPopup(null)}>
           <div onClick={e => e.stopPropagation()}
             style={{ background: 'var(--k-fff)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 340, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
@@ -1502,7 +1502,7 @@ export default function TasksSection({
 
       {/* New Task Modal */}
       {showNewModal && (
-        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1160, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setShowNewModal(false); }}>
           <div className="crm-sheet-panel" style={{ background: 'var(--k-fff)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
             <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 20, color: 'var(--k-111)' }}>New Task</h3>
