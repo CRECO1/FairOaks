@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js';
 import { resolveSignature, withBodyStyle, withSignature } from '@/lib/agent-signature';
 import { chicagoToday } from '@/lib/chicago-time';
 import { attachmentParam, encodeHeader, formatAddress, plainAddress, stripLineBreaks } from '@/lib/mime-header';
+import { plainAddr, pickPriorCopy, isDuplicateSend, type Prior } from '@/lib/send-threading';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -286,21 +287,20 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
     // Prefix subject with Re: if replying and not already prefixed.
     const finalSubject = inReplyTo && !subject.startsWith('Re:') ? `Re: ${subject}` : subject;
 
-    // Duplicate-send guard: if the IDENTICAL email (same recipient, subject and body) to
-    // this contact/deal already went out in the last 10 minutes, don't send it again. Stops
-    // the Copilot re-calling send_email and plain UI double-clicks from double-emailing.
+    // Duplicate-send guard: if the IDENTICAL email (same subject and text) already went out to EVERY one of these recipients in the last
+    // 10 minutes, don't send it again. Stops the Copilot re-calling send_email and plain UI double-clicks from double-emailing.
+    // It looks at everything this mailbox sent, not just this card: "separate copies" are filed on each recipient's own contact, and
+    // the text is compared the way it is stored (htmlToText), which the old check did not.
     {
-      const incomingPlain = String(body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
       const sinceIso = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const scope = dealId ? `deal_id=eq.${encodeURIComponent(dealId)}` : `client_id=eq.${encodeURIComponent(clientId as string)}`;
       const recentRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/crm_deal_emails?${scope}&direction=eq.sent&created_at=gte.${sinceIso}&select=to_email,subject,body`,
+        `${SUPABASE_URL}/rest/v1/crm_deal_emails?from_email=eq.${encodeURIComponent(gmailEmail)}&direction=eq.sent&created_at=gte.${sinceIso}&select=to_email,subject,body&order=created_at.desc&limit=200`,
         { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
       );
       const recent = await recentRes.json().catch(() => []);
-      if (Array.isArray(recent) && recent.some((e: { to_email?: string; subject?: string; body?: string }) =>
-        (e.to_email ?? '') === to && (e.subject ?? '') === finalSubject && (e.body ?? '') === incomingPlain)) {
-        return NextResponse.json({ error: 'This exact email was just sent to this recipient a moment ago — it was not sent again.', duplicate: true }, { status: 409 });
+      const recipients = [...toList, ...ccList].map(plainAddr).filter(Boolean);
+      if (Array.isArray(recent) && isDuplicateSend(recent, recipients, [subject, finalSubject], htmlToText(body).slice(0, 4000))) {
+        return NextResponse.json({ error: 'This exact email was just sent to these recipients a moment ago — it was not sent again.', duplicate: true }, { status: 409 });
       }
     }
 
@@ -335,7 +335,13 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
 
     // One Gmail send + one logged row. Each copy carries its OWN tracking id, so a copy
     // addressed to a single person makes an open attributable to that person.
-    const sendCopy = async (opts: { toHeader: string; ccHeader?: string; bccHeader?: string; replyTo?: string; note?: string; tid: string }) => {
+    // Threading for ONE copy. Default = what the composer sent (a reply opened on a thread). A person who already has an earlier copy of
+    // this conversation from us gets THEIR OWN thread instead, so a follow-up always lands with the email it follows.
+    type CopyThread = { threadId?: string; inReplyTo: string; refIds: string[]; auto: boolean };
+    const sendCopy = async (opts: { toHeader: string; ccHeader?: string; bccHeader?: string; replyTo?: string; note?: string; tid: string; thread?: CopyThread }) => {
+      const th: CopyThread = opts.thread ?? { threadId, inReplyTo, refIds, auto: false };
+      // An automatically threaded copy keeps the subject exactly as typed; an explicit reply gets "Re:" as before.
+      const copySubject = th.auto ? subject : finalSubject;
       const pixel = `<img src="https://www.fairoaksrealtygroup.com/api/track/open?id=${opts.tid}" width="1" height="1" style="display:none" />`;
       const html = `${withBodyStyle(`${opts.note ?? ''}${outBody}`)}${pixel}`;
       const headerLines = [
@@ -344,14 +350,14 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
         ...(opts.ccHeader ? [`Cc: ${opts.ccHeader}`] : []),
         ...(opts.bccHeader ? [`Bcc: ${opts.bccHeader}`] : []),
         ...(opts.replyTo ? [`Reply-To: ${opts.replyTo}`] : []),
-        `Subject: ${encodeHeader(finalSubject)}`,
+        `Subject: ${encodeHeader(copySubject)}`,
         'MIME-Version: 1.0',
         'Content-Type: text/html; charset=utf-8',
-        ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${refIds.join(' ')}`] : []),
+        ...(th.inReplyTo ? [`In-Reply-To: ${th.inReplyTo}`, `References: ${th.refIds.join(' ')}`] : []),
       ];
       const encoded = Buffer.from(buildMimeEmail(headerLines, html, attList)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
       const sendBody: Record<string, string> = { raw: encoded };
-      if (threadId) sendBody.threadId = threadId;
+      if (th.threadId) sendBody.threadId = th.threadId;
       const postSend = () => fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
         method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(sendBody),
       });
@@ -364,6 +370,9 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
         sendRes = await postSend();
       }
       const sendData = await sendRes.json();
+      if (sendRes.ok && sendBody.threadId && sendData.threadId && sendData.threadId !== sendBody.threadId) {
+        console.warn('[gmail/send] Gmail started a new thread instead of joining the requested one', { requested: sendBody.threadId, got: sendData.threadId, auto: th.auto });
+      }
       if (!sendRes.ok) {
         console.error('Gmail send failed', sendRes.status, JSON.stringify(sendData.error ?? sendData), { userId, hadThread: !!threadId });
         throw new Error(sendData.error?.message ?? 'Gmail send failed');
@@ -389,7 +398,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
           direction: 'sent',
           from_email: gmailEmail,
           to_email: opts.toHeader,
-          subject: finalSubject,
+          subject: copySubject,
           body: plainBody,
           // The email exactly as sent (no tracking pixel) so every teammate who can open this row sees what the recipient got.
           body_html: `${opts.note ?? ''}${outBody}`.slice(0, 200_000),
@@ -398,7 +407,7 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
           gmail_message_id: sendData.id,
           tracking_id: opts.tid,
           tracked: true, // carries the pixel above (Gmail-synced rows get a default tracking_id but no pixel)
-          gmail_thread_id: sendBody.threadId ?? sendData.threadId ?? null,
+          gmail_thread_id: sendData.threadId ?? sendBody.threadId ?? null, // the thread Gmail really used (it silently starts a new one when it cannot join the requested one)
           ...(sentMessageId ? { rfc_message_id: sentMessageId } : {}),
           ...(opts.ccHeader ? { cc_emails: opts.ccHeader } : {}),
           ...(opts.bccHeader ? { bcc_emails: opts.bccHeader } : {}),
@@ -434,17 +443,40 @@ export async function handleSend(req: Request, presetCtx?: CrmContext | null) {
         }
       } catch { /* every copy simply stays on the sending card */ }
     }
+    // Follow-ups stay in each person's own Gmail thread: find this mailbox's earlier email to each recipient with the same subject (last 60 days).
+    // Used for separate copies, and for a single recipient when the composer did not say which thread this belongs to (a saved draft, a contact card).
+    const priors = new Map<string, Prior>();
+    if (individual || (toList.length === 1 && ccList.length === 0 && !threadId)) {
+      try {
+        const since60 = new Date(Date.now() - 60 * 86_400_000).toISOString();
+        await Promise.all(everyone.slice(0, 8).map(async a => {
+          const addr = plainAddr(a);
+          if (!addr) return;
+          const r = await fetch(
+            `${SUPABASE_URL}/rest/v1/crm_deal_emails?from_email=eq.${encodeURIComponent(gmailEmail)}&direction=eq.sent&to_email=ilike.${encodeURIComponent(`*${addr}*`)}&email_at=gte.${since60}&gmail_thread_id=not.is.null&rfc_message_id=not.is.null&select=to_email,subject,gmail_thread_id,rfc_message_id,email_at&order=email_at.desc&limit=60`,
+            { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
+          );
+          const rows = await r.json().catch(() => []);
+          const hit = Array.isArray(rows) ? pickPriorCopy(rows, subject, addr) : null;
+          if (hit) priors.set(addr, hit);
+        }));
+      } catch { /* threading simply stays as the composer sent it */ }
+    }
+    const threadFor = (addr: string): CopyThread | undefined => {
+      const pr = priors.get(plainAddr(addr));
+      return pr ? { threadId: pr.threadId, inReplyTo: pr.rfcId, refIds: [pr.rfcId], auto: true } : undefined;
+    };
     let emailId: string | undefined;
     try {
       if (individual) {
         const replyAll = Array.from(new Set([...everyone, gmailEmail].filter(Boolean))).join(', ');
         const note = `<div style="font-size:12px;color:#6b7280;margin-bottom:14px">Sent to ${everyone.map(a => a.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join(', ')} — reply to include everyone.</div>`;
         for (let k = 0; k < everyone.length; k++) {
-          const id = await sendCopy({ toHeader: everyone[k], replyTo: replyAll, note, tid: k === 0 ? trackingId : crypto.randomUUID() });
+          const id = await sendCopy({ toHeader: everyone[k], replyTo: replyAll, note, tid: k === 0 ? trackingId : crypto.randomUUID(), thread: threadFor(everyone[k]) });
           if (k === 0) emailId = id;
         }
       } else {
-        emailId = await sendCopy({ toHeader: to, ccHeader: ccList.length ? ccList.join(', ') : undefined, bccHeader: bccList.length ? bccList.join(', ') : undefined, tid: trackingId });
+        emailId = await sendCopy({ toHeader: to, ccHeader: ccList.length ? ccList.join(', ') : undefined, bccHeader: bccList.length ? bccList.join(', ') : undefined, tid: trackingId, thread: toList.length === 1 && ccList.length === 0 ? threadFor(to) : undefined });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Gmail send failed';
