@@ -30,6 +30,7 @@ const COMMERCIAL_ORDER = [
   'Compensation',
   'Disclosures',
   '8000 Fair Oaks Plaza',
+  'Elkhorn Point',
   'Agent Onboarding',
 ];
 const RESIDENTIAL_ORDER = [

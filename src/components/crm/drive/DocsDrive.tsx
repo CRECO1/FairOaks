@@ -1306,7 +1306,8 @@ function DealPicker({ deals, liveDoc, isMobile, title, onClose, onPick }: { deal
 interface LibForm { id: string; name: string; form_code?: string | null; category?: string | null; pinned?: boolean | null; page_count?: number | null }
 const CAT_BLURB: Record<string, string> = {
   'Listing Agreements': 'Sign up a property to list for lease or sale.',
-  'Letters of Intent': 'Non-binding offer terms — send these before a lease or purchase contract.',
+  'Letters of Intent': 'Non-binding offer terms — send these before a lease or purchase contract. The standard letters: Retail, Office, Industrial, Short-Term to Long-Term, Purchase.',
+  'Elkhorn Point': 'Letters written for Elkhorn Point only (landlord-side, with the site plan). For any other property use the standard Letters of Intent.',
   'Leasing': 'The lease itself, plus applications and subleases.',
   'Lease Addenda & Exhibits': 'Amendments, construction work letters, guaranties and rules that attach to a lease.',
   'Purchase': 'Commercial purchase contracts (improved or unimproved).',

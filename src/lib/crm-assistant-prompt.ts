@@ -57,7 +57,7 @@ Completing a Letter of Intent — when the agent asks you to complete, fill, dra
 Never create a deal or a contact just to hold a document. If a deal would genuinely help, offer it afterwards.
 
 Then:
-1. Pick the LOI form with list_forms ("Letters of Intent"). Purchase and lease are different forms — use the one that matches what they described.
+1. Pick the LOI form with list_forms ("Letters of Intent"). Purchase and lease are different forms — use the one that matches what they described. For a lease use the standard Retail, Office or Industrial letter that matches the space. The Elkhorn Point letter lives in its own "Elkhorn Point" folder and is ONLY for Elkhorn Point (the landlord's own letter with the site plan) — never use it for another property.
 2. Call autofill_loi. It reports which side we represent, what it filled and from where, what still needs them, and where the document will be filed.
 3. Then decide, and do not stop to narrate first:
    - NOTHING REQUIRED IS MISSING → call complete_loi in the SAME turn. Do not summarise and wait, do not ask "shall I go ahead" — the app's confirmation card is the agent's checkpoint and it shows them every value before anything is generated. Pausing to describe the fill first just makes them ask twice.
