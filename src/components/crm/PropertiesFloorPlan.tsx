@@ -504,6 +504,8 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
             .fp-seg{border-radius:22px!important;padding:4px!important}
             .fp-seg button{border-radius:18px!important;min-height:40px}}
           .fp-hint{display:none}
+          @media (max-width:700px){.fp-editor{position:fixed!important;left:0;right:0;bottom:0;width:auto!important;max-height:86dvh;overflow-y:auto;z-index:1000;box-sizing:border-box;border-radius:20px 20px 0 0!important;padding-bottom:calc(20px + env(safe-area-inset-bottom))!important;box-shadow:0 0 0 100vmax rgba(0,0,0,.45)!important;border:none!important}
+            .fp-editor input,.fp-editor select,.fp-editor textarea{font-size:16px!important}}
           @media (max-width:700px){.fp-pan{overflow-x:auto;-webkit-overflow-scrolling:touch}.fp-pan>svg{min-width:620px}
             .fp-hint{display:block;font-size:12px;color:#9ca3af;text-align:center;padding:2px 0 6px}}
           @media (prefers-reduced-motion:reduce){.fp-sum{animation:none}}
@@ -539,7 +541,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
 
       {/* Editor panel */}
       {isAdmin && selectedDef && (
-        <div style={{ flex: '0 0 320px', width: 320, background: '#fff', border: '1px solid #e6e8eb', borderRadius: 14, padding: 18, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+        <div className="fp-editor" style={{ flex: '0 0 320px', width: 320, background: '#fff', border: '1px solid #e6e8eb', borderRadius: 14, padding: 18, boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#243140' }}>Edit Suite</div>
             <button onClick={() => setSelKey(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#9aa0a8' }}>✕</button>
