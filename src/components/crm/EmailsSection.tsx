@@ -1,5 +1,6 @@
 'use client';
 
+import { sharedJson, forgetShared } from '@/lib/shared-fetch';
 import React, { useEffect, useState } from 'react';
 import GmailMailbox, { type ContactMatch } from './GmailMailbox';
 import type { LiveMessage } from '@/lib/gmail-live';
@@ -77,10 +78,12 @@ export default function EmailsSection(p: Props) {
   const [gmailDrafts, setGmailDrafts] = useState(0);
   useEffect(() => {
     let live = true;
-    const load = () => { fetch('/api/gmail/drafts?count=1', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => { if (live && j?.connected) setGmailDrafts(Number(j.count) || 0); }).catch(() => {}); };
+    // The sidebar asks for this same number: share one request, and ask again only when you change a draft.
+    const load = () => { void sharedJson<{ connected?: boolean; count?: number }>('/api/gmail/drafts?count=1', 30_000, { cache: 'no-store' }).then(j => { if (live && j?.connected) setGmailDrafts(Number(j.count) || 0); }); };
+    const changed = () => { forgetShared('/api/gmail/drafts?count=1'); load(); };
     load();
-    window.addEventListener('focus', load); window.addEventListener('crm-gmail-drafts-changed', load);
-    return () => { live = false; window.removeEventListener('focus', load); window.removeEventListener('crm-gmail-drafts-changed', load); };
+    window.addEventListener('focus', load); window.addEventListener('crm-gmail-drafts-changed', changed);
+    return () => { live = false; window.removeEventListener('focus', load); window.removeEventListener('crm-gmail-drafts-changed', changed); };
   }, [p.tab]);
   const tabs: Array<[EmailsTab, string, number]> = [['inbox', 'Inbox', p.unread], ['drafts', 'Drafts', p.draftCount + gmailDrafts], ['sent', 'Sent', 0]];
   // Drafts is as wide as Inbox and Sent, so the tab row does not jump sideways when you switch tabs.

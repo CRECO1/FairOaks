@@ -118,6 +118,7 @@ import { deriveSide } from '@/lib/representation-side';
 import CommissionPanel from '@/components/crm/CommissionPanel';
 import { EMPTY_COMMISSION_FORM, formFromCommission, commissionErrors, type CommissionForm } from '@/lib/commission';
 import Skeleton from '@/components/crm/Skeleton';
+import { sharedJson, forgetShared } from '@/lib/shared-fetch';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().
@@ -1296,12 +1297,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     let live = true;
     // Show last time's number straight away: until Gmail answers, the badge used to fall back to the CRM's own (much smaller) count and then jump.
     try { const c = Number(localStorage.getItem('crm-gmail-unread')); if (Number.isFinite(c) && localStorage.getItem('crm-gmail-unread') !== null) setGmailUnread(prev => prev ?? c); } catch { /* ignore */ }
-    const tick = () => { if (document.visibilityState !== 'visible') return; fetch('/api/gmail/mailbox?counts=1').then(r => r.json()).then(j => { if (live && j && j.connected) { setGmailUnread(j.unreadInbox ?? 0); try { localStorage.setItem('crm-gmail-unread', String(j.unreadInbox ?? 0)); } catch { /* ignore */ } } }).catch(() => {}); };
+    const tick = () => { if (document.visibilityState !== 'visible') return; void sharedJson<{ connected?: boolean; unreadInbox?: number }>('/api/gmail/mailbox?counts=1', 20_000).then(j => { if (live && j && j.connected) { setGmailUnread(j.unreadInbox ?? 0); try { localStorage.setItem('crm-gmail-unread', String(j.unreadInbox ?? 0)); } catch { /* ignore */ } } }).catch(() => {}); };
     tick();
     const t = setInterval(tick, 3 * 60_000);
     window.addEventListener('focus', tick);
-    window.addEventListener('crm-gmail-changed', tick); // the Emails page just marked something read / archived it
-    return () => { live = false; clearInterval(t); window.removeEventListener('focus', tick); window.removeEventListener('crm-gmail-changed', tick); };
+    const changedTick = () => { forgetShared('/api/gmail/mailbox?counts=1'); tick(); };
+    window.addEventListener('crm-gmail-changed', changedTick); // the Emails page just marked something read / archived it
+    return () => { live = false; clearInterval(t); window.removeEventListener('focus', tick); window.removeEventListener('crm-gmail-changed', changedTick); };
   }, [gmailConnected]);
   const emailBadge = gmailConnected ? (gmailUnread ?? 0) : inbox.unreadMine;
   const [chatUnread, setChatUnread] = useState(0);
@@ -1489,10 +1491,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   useEffect(() => {
     if (!session?.user.id) return;
     let live = true;
-    const load = () => { fetch('/api/gmail/drafts?count=1', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => { if (live && j?.connected) setGmailDraftCount(Number(j.count) || 0); }).catch(() => {}); };
+    const load = () => { void sharedJson<{ connected?: boolean; count?: number }>('/api/gmail/drafts?count=1', 30_000, { cache: 'no-store' }).then(j => { if (live && j?.connected) setGmailDraftCount(Number(j.count) || 0); }); };
+    const changed = () => { forgetShared('/api/gmail/drafts?count=1'); load(); }; // you saved or discarded a draft: ask the server again
     load();
-    window.addEventListener('focus', load); window.addEventListener('crm-gmail-drafts-changed', load);
-    return () => { live = false; window.removeEventListener('focus', load); window.removeEventListener('crm-gmail-drafts-changed', load); };
+    window.addEventListener('focus', load); window.addEventListener('crm-gmail-drafts-changed', changed);
+    return () => { live = false; window.removeEventListener('focus', load); window.removeEventListener('crm-gmail-drafts-changed', changed); };
   }, [session?.user.id]);
 
   // Drafts: keep the sidebar count honest, and pull in drafts started on the agent's other devices.

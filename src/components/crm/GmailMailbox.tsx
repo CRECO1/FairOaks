@@ -60,6 +60,20 @@ const previewable = (mime: string) => /^(application\/pdf|image\/(png|jpe?g|gif|
 // refresh runs, and a conversation you hover or reopen is already there.
 type ListCacheEntry = { threads: ThreadSummary[]; next: string | null; accounts: string[]; account: string | null };
 const listCache = new Map<string, ListCacheEntry>();
+// The list is also kept for this browser tab (sessionStorage, gone when the tab closes), so a reload paints the last list at once instead of
+// an empty skeleton while a slow server catches up. The real list replaces it as soon as it arrives.
+const LIST_KEY = 'crm-gmail-list:';
+const readStoredList = (key: string): ListCacheEntry | undefined => {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(LIST_KEY + key) ?? 'null') as ListCacheEntry | null;
+    return v && Array.isArray(v.threads) && v.threads.length ? v : undefined;
+  } catch { return undefined; }
+};
+const storeList = (key: string, e: ListCacheEntry) => { try { sessionStorage.setItem(LIST_KEY + key, JSON.stringify({ ...e, threads: e.threads.slice(0, 60) })); } catch { /* storage full or blocked */ } };
+const clearListCache = () => {
+  listCache.clear();
+  try { for (const k of Object.keys(sessionStorage)) if (k.startsWith(LIST_KEY)) sessionStorage.removeItem(k); } catch { /* ignore */ }
+};
 const threadCache = new Map<string, LiveMessage[]>();
 const inflight = new Map<string, Promise<LiveMessage[] | null>>();
 const threadKey = (account: string | null, id: string, date: number) => `${account ?? ''}|${id}|${date}`;
@@ -212,7 +226,7 @@ export default function GmailMailbox(p: Props) {
   const cacheKey = `${p.box}|${filter}|${term}|${account ?? ''}|${labelId}`;
   const load = useCallback(async (silent = false) => {
     setErr('');
-    const cached = listCache.get(cacheKey);
+    const cached = listCache.get(cacheKey) ?? readStoredList(cacheKey);
     if (cached && !silent) { setThreads(cached.threads); setNext(cached.next); setAccounts(cached.accounts); } // instant paint, refresh below
     else if (!silent) setThreads(null);
     try {
@@ -223,7 +237,8 @@ export default function GmailMailbox(p: Props) {
       if (Array.isArray(j.labels)) setLabels(j.labels as GLabel[]);
       if (typeof j.canModify === 'boolean') setCanModify(j.canModify); if (j.reconnect) setReconnect(j.reconnect);
       const fresh = (j.threads ?? []) as ThreadSummary[];
-      listCache.set(cacheKey, { threads: fresh, next: j.next ?? null, accounts: j.accounts ?? [], account: j.account ?? account });
+      const entry = { threads: fresh, next: j.next ?? null, accounts: j.accounts ?? [], account: j.account ?? account };
+      listCache.set(cacheKey, entry); storeList(cacheKey, entry);
       setThreads(fresh); setNext(j.next ?? null);
     } catch { if (!cached) { setErr('Could not reach Gmail — check your connection.'); setThreads([]); } }
   }, [build, account, cacheKey]);
@@ -357,10 +372,10 @@ export default function GmailMailbox(p: Props) {
     if (removing) setThreads(prev => (prev ?? []).filter(x => x.id !== t.id));
     else setThreads(prev => (prev ?? []).map(x => x.id !== t.id ? x : { ...x, ...(action === 'read' ? { unread: false } : action === 'unread' ? { unread: true } : action === 'star' ? { starred: true } : { starred: false }) }));
     if (action === 'unread') setOpened(prev => { const n = new Set(prev); n.delete(keyOf(t)); try { localStorage.setItem(OPENED_KEY, JSON.stringify([...n].slice(-3000))); } catch { /* ignore */ } return n; });
-    listCache.clear();
+    clearListCache();
     if (!(await send(t.id, action))) { setThreads(before); return; }
     if (silent) return;
-    flash(DONE[action], removing ? () => { setThreads(before); listCache.clear(); void send(t.id, UNDO_OF[action]); setToast(null); } : undefined);
+    flash(DONE[action], removing ? () => { setThreads(before); clearListCache(); void send(t.id, UNDO_OF[action]); setToast(null); } : undefined);
   };
 
   // Labels: optimistic toggle on one conversation, create a new one, or add one to everything ticked.
@@ -368,7 +383,7 @@ export default function GmailMailbox(p: Props) {
     if (canModify === false) { p.notify('Allow the CRM to change your Gmail first — see the note above the list.'); return; }
     const before = threads;
     setThreads(prev => (prev ?? []).map(x => x.id !== t.id ? x : { ...x, labels: on ? [...new Set([...(x.labels ?? []), id])] : (x.labels ?? []).filter(l => l !== id) }));
-    listCache.clear();
+    clearListCache();
     if (!(await send(t.id, `${on ? 'label' : 'unlabel'}:${id}`))) setThreads(before);
   };
   const createLabel = async (name: string): Promise<GLabel | null> => {
@@ -522,20 +537,20 @@ export default function GmailMailbox(p: Props) {
     if (removing) setThreads(prev => (prev ?? []).filter(x => !idSet.has(x.id)));
     else setThreads(prev => (prev ?? []).map(x => !idSet.has(x.id) ? x : { ...x, ...(action === 'read' ? { unread: false } : action === 'unread' ? { unread: true } : action === 'star' ? { starred: true } : { starred: false }) }));
     if (action === 'unread') setOpened(prev => { const n = new Set(prev); for (const x of before ?? []) if (idSet.has(x.id)) n.delete(keyOf(x)); try { localStorage.setItem(OPENED_KEY, JSON.stringify([...n].slice(-3000))); } catch { /* ignore */ } return n; });
-    listCache.clear();
+    clearListCache();
     const failed: string[] = []; let i = 0;
     await Promise.all(Array.from({ length: Math.min(4, ids.length) }, async () => { while (i < ids.length) { const id = ids[i++]; if (!(await send(id, action, true))) failed.push(id); } }));
     window.dispatchEvent(new Event('crm-gmail-changed'));
     const okIds = ids.filter(x => !failed.includes(x));
     if (failed.length) { void load(true); p.notify(`${failed.length} of ${ids.length} could not be changed — they are back in the list.`); }
     if (!okIds.length) return;
-    flash(`${DONE[action]} · ${okIds.length} conversation${okIds.length === 1 ? '' : 's'}`, removing ? () => { setThreads(before); listCache.clear(); okIds.forEach(id => void send(id, UNDO_OF[action], true)); setToast(null); } : undefined);
+    flash(`${DONE[action]} · ${okIds.length} conversation${okIds.length === 1 ? '' : 's'}`, removing ? () => { setThreads(before); clearListCache(); okIds.forEach(id => void send(id, UNDO_OF[action], true)); setToast(null); } : undefined);
   };
   const bulk = (action: Act) => actOn([...sel], action);
   const bulkLabel = async (id: string) => {
     const ids = [...sel], idSet = new Set(ids), name = labels.find(l => l.id === id)?.name ?? 'label';
     setThreads(prev => (prev ?? []).map(x => !idSet.has(x.id) ? x : { ...x, labels: [...new Set([...(x.labels ?? []), id])] }));
-    listCache.clear();
+    clearListCache();
     const failed: string[] = []; let i = 0;
     await Promise.all(Array.from({ length: Math.min(4, ids.length) }, async () => { while (i < ids.length) { const t = ids[i++]; if (!(await send(t, `label:${id}`, true))) failed.push(t); } }));
     if (failed.length) { void load(true); p.notify(`${failed.length} of ${ids.length} could not be labeled.`); }
@@ -809,9 +824,9 @@ export default function GmailMailbox(p: Props) {
           </div>
         );
       })()}
-      {threads === null ? <ListSkeleton />
+      {threads === null ? <><ListSkeleton /><SlowNote /></>
       : !connected ? <Empty title="Gmail isn’t connected" sub="Connect your Google account (bottom of the sidebar) and your mail shows up here." />
-      : err ? <Empty title="Couldn’t load your mail" sub={err} />
+      : err ? <Empty title="Couldn’t load your mail" sub={err} retry={() => void load()} />
       : visible.length === 0 ? <Empty title={term || contactsOnly || filter !== 'all' ? 'Nothing matches' : p.box === 'inbox' ? 'You’re all caught up 🎉' : 'No sent mail yet'} sub={contactsOnly && threads.length ? 'None of the loaded conversations are with people in your CRM — try “Load older mail”.' : term ? 'Try different words, or clear a filter.' : filter !== 'all' ? 'Nothing matches this filter. Choose “All” to see everything.' : p.box === 'inbox' ? 'No new mail right now. Enjoy the quiet.' : 'Emails you send from the CRM or Gmail show up here.'} />
       : (
         <div className={`gm-list${sel.size ? ' gm-sel' : ''}`} style={p.isMobile ? { background: 'transparent' } : { background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
@@ -1071,13 +1086,22 @@ function ListSkeleton() {
   );
 }
 
-function Empty({ title, sub }: { title: string; sub: string }) {
+function Empty({ title, sub, retry }: { title: string; sub: string; retry?: () => void }) {
   return (
     <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--k-6b7280)', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 12 }}>
       <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-374151)' }}>{title}</div>
       <div style={{ fontSize: 13, marginTop: 6 }}>{sub}</div>
+      {retry && <button type="button" onClick={retry} style={{ marginTop: 14, padding: '8px 18px', borderRadius: 20, border: 'none', background: '#c9922c', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Try again</button>}
     </div>
   );
+}
+
+// Under the loading skeleton: after a few seconds, say so, so a slow server does not look like a broken page.
+function SlowNote() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setSlow(true), 7000); return () => clearTimeout(t); }, []);
+  if (!slow) return null;
+  return <div role="status" style={{ textAlign: 'center', fontSize: 12.5, color: 'var(--k-9ca3af)', padding: '10px 12px' }}>Still loading. The server is slow right now; your mail is safe and this usually clears within a minute.</div>;
 }
 
 // A reply box under the conversation: type a short answer, Send (or ⌘/Ctrl+Enter). It waits 5 seconds so you can Undo.
