@@ -7,12 +7,14 @@ import GmailFiles from './GmailFiles';
 import { confirmDialog } from '@/lib/confirm-dialog';
 import { parseIcs, describeWhen } from '@/lib/ics';
 import { MessageFrame } from './MessageFrame';
+import { CT, dayKey, when, whenLong, parseAddr, initials, colorFor } from './mail-format';
+import { groupSends, type SentGroup } from '@/lib/sent-groups';
+import { SentGroupCard, SentGroupPanel, SentOverview, type Track, type OverviewItem } from './SentPanels';
 import DocPreviewModal from './DocPreviewModal';
 import { createClient } from '@/lib/supabase/client';
 
 const supabase = createClient();
 // CRM open tracking for emails sent from the CRM: per Gmail thread / message, so the live views can show "👁 Opened 3×".
-type Track = { tracked: boolean; opens: number; opened: boolean };
 
 // Your real Gmail inside the CRM. On a wide screen it is a two-pane inbox (list on the left, the conversation on the
 // right, so you never lose your place); on a phone the list and the conversation are separate screens. Mail is read live
@@ -21,15 +23,6 @@ type Track = { tracked: boolean; opens: number; opened: boolean };
 // Google permission). With that permission (gmail.modify) you can also mark read/unread, archive, star and trash right
 // here — every change is applied to Gmail itself and can be undone.
 
-const CT: Intl.DateTimeFormatOptions = { timeZone: 'America/Chicago' };
-const dayKey = (ms: number) => new Date(ms).toLocaleDateString('en-US', CT);
-const when = (ms: number) => {
-  const d = new Date(ms), now = new Date();
-  if (dayKey(ms) === dayKey(now.getTime())) return d.toLocaleTimeString('en-US', { ...CT, hour: 'numeric', minute: '2-digit' });
-  const sameYear = d.toLocaleDateString('en-US', { ...CT, year: 'numeric' }) === now.toLocaleDateString('en-US', { ...CT, year: 'numeric' });
-  return d.toLocaleDateString('en-US', { ...CT, month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) });
-};
-const whenLong = (ms: number) => new Date(ms).toLocaleString('en-US', { ...CT, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 const groupLabel = (ms: number) => {
   const now = Date.now();
   if (dayKey(ms) === dayKey(now)) return 'Today';
@@ -38,16 +31,8 @@ const groupLabel = (ms: number) => {
   const d = new Date(ms), sameYear = d.toLocaleDateString('en-US', { ...CT, year: 'numeric' }) === new Date().toLocaleDateString('en-US', { ...CT, year: 'numeric' });
   return d.toLocaleDateString('en-US', { ...CT, month: 'long', ...(sameYear ? {} : { year: 'numeric' }) });
 };
-const parseAddr = (raw: string | null | undefined) => {
-  const first = (raw ?? '').split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)[0]?.trim() ?? '';
-  const m = first.match(/^"?(.*?)"?\s*<([^>]+)>$/);
-  return m ? { name: m[1].trim(), email: m[2].trim() } : { name: '', email: first };
-};
 const addrCount = (raw: string | null | undefined) => (raw ?? '').split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).filter(s => s.trim()).length;
-const initials = (s: string) => s.replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '✉';
 const fmtBytes = (n: number) => n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
-const AVATARS = ['#475569', '#0f766e', '#7c3aed', '#b45309', '#be123c', '#1d4ed8', '#4d7c0f', '#a21caf'];
-const colorFor = (s: string) => { let h = 0; for (const ch of s.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return AVATARS[h % AVATARS.length]; };
 // Preview text for a message or row: raw tracking links and invisible spacer characters (marketing mail like Crexi is mostly both) make a preview unreadable, so drop them.
 const cleanPreview = (t: string) => t.replace(/^Sent to .{0,400}? — reply to include everyone\.\s*/i, '').replace(/https?:\/\/\S+/gi, ' ').replace(/\[(?:image|https?:)[^\]]*\]/gi, ' ').replace(/[\u200b-\u200f\u2060\ufeff\u00ad\u034f\u061c\u180e]+/g, ' ').replace(/\s+/g, ' ').trim();
 const decodeSnippet = (t: string) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&');
@@ -317,12 +302,14 @@ export default function GmailMailbox(p: Props) {
     if (!ids.length) return;
     let live = true;
     (async () => {
-      const got = new Map<string, Track>(ids.map(id => [id, { tracked: false, opens: 0, opened: false }]));
+      const got = new Map<string, Track>(ids.map(id => [id, { tracked: false, opens: 0, opened: false, first: null, last: null }]));
       for (let i = 0; i < ids.length; i += 60) {
-        const { data } = await supabase.from('crm_deal_emails').select('gmail_thread_id,opened_at,open_count,tracked').in('gmail_thread_id', ids.slice(i, i + 60)).eq('direction', 'sent').eq('tracked', true);
-        for (const r of (data ?? []) as Array<{ gmail_thread_id: string; opened_at: string | null; open_count: number | null }>) {
+        const { data } = await supabase.from('crm_deal_emails').select('gmail_thread_id,opened_at,last_opened_at,open_count,tracked').in('gmail_thread_id', ids.slice(i, i + 60)).eq('direction', 'sent').eq('tracked', true);
+        for (const r of (data ?? []) as Array<{ gmail_thread_id: string; opened_at: string | null; last_opened_at: string | null; open_count: number | null }>) {
           const t = got.get(r.gmail_thread_id); if (!t) continue;
           t.tracked = true; t.opens += r.open_count ?? (r.opened_at ? 1 : 0); t.opened = t.opened || !!r.opened_at;
+          if (r.opened_at && (!t.first || r.opened_at < t.first)) t.first = r.opened_at;
+          const lo = r.last_opened_at ?? r.opened_at; if (lo && (!t.last || lo > t.last)) t.last = lo;
         }
       }
       if (live) setTracking(prev => { const n = new Map(prev); got.forEach((v, k) => n.set(k, v)); return n; });
@@ -448,35 +435,58 @@ export default function GmailMailbox(p: Props) {
   }, [term]);
   const [help, setHelp] = useState(false);
   const sugs = useMemo(() => (/[:"(]/.test(q) ? [] : p.searchPeople(q)), [q, p]);
-  const visible = useMemo(() => {
+  // Everything except the Sent-only filters, so copies sent together can be folded into one row before "Opened / Not opened / No reply" apply to them.
+  const baseList = useMemo(() => {
     let list = threads ?? [];
     if (who !== 'all') list = list.filter(t => { const a = otherOf(t), m = a.email ? p.contactFor(a.email) : null; return who === 'deals' ? m?.kind === 'deal' : who === 'contacts' ? !!m : !m; });
-    if (noReply) list = list.filter(t => t.lastMine && ageDays(t.date) >= 3);
     if (triF) list = list.filter(t => triOf(t)?.c === 'reply');
     if (waiting) list = list.filter(t => { const a = otherOf(t); return !t.lastMine && ageDays(t.date) >= 1 && ageDays(t.date) <= 30 && !!(a.email && p.contactFor(a.email)); });
-    if (p.box === 'sent' && trackF !== 'all') list = list.filter(t => { const tr = tracking.get(t.id); return trackF === 'opened' ? !!tr?.opened : !!tr?.tracked && !tr.opened; });
     return list;
-  }, [threads, who, noReply, waiting, triF, triage, trackF, tracking, otherOf, p]);
+  }, [threads, who, waiting, triF, triage, otherOf, p]);
 
-  // Sent separately ("See who opens it"): each person gets their OWN copy, which lands in Sent as N separate rows. Fold copies sent
-  // together (same subject, within 2 minutes, different people, all tracked) into ONE row that names each person and whether they opened it.
-  type SentGroup = { gid: string; idx: number; size: number; members: ThreadSummary[] };
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
+  // Sent with "See who opens it": every person gets their OWN copy, which lands in Sent as one row per person, and sending it
+  // twice doubles that. lib/sent-groups folds the copies (and repeat sends of the same email) into ONE row.
   const sentGroup = useMemo(() => {
-    const m = new Map<string, SentGroup>();
-    if (p.box !== 'sent') return m;
-    const norm = (x: string) => x.replace(/^\s*((re|fwd?):\s*)+/i, '').trim().toLowerCase();
-    let i = 0;
-    while (i < visible.length) {
-      const a = visible[i], grp = [a], who = new Set([otherOf(a).email.toLowerCase()]);
-      let j = i + 1;
-      while (j < visible.length && a.lastMine && visible[j].lastMine && norm(visible[j].subject) === norm(a.subject) && Math.abs(visible[j].date - a.date) <= 120_000
-        && tracking.get(visible[j].id)?.tracked && !who.has(otherOf(visible[j]).email.toLowerCase())) { who.add(otherOf(visible[j]).email.toLowerCase()); grp.push(visible[j]); j++; }
-      if (grp.length >= 2 && tracking.get(a.id)?.tracked) grp.forEach((t, k) => m.set(t.id, { gid: grp[0].id, idx: k, size: grp.length, members: grp }));
-      i = j > i ? j : i + 1;
-    }
+    if (p.box !== 'sent') return new Map<string, SentGroup<ThreadSummary>>();
+    return groupSends(baseList, t => !!tracking.get(t.id)?.tracked, otherOf);
+  }, [baseList, tracking, p.box, otherOf]);
+  const unitOf = useCallback((t: ThreadSummary) => sentGroup.get(t.id)?.all ?? [t], [sentGroup]);
+  const unitNoReply = (u: ThreadSummary[]) => u.every(x => x.lastMine) && ageDays(Math.max(...u.map(x => x.date))) >= 3;
+  const unitOpened = useCallback((u: ThreadSummary[]) => u.some(x => tracking.get(x.id)?.opened), [tracking]);
+  const unitTracked = useCallback((u: ThreadSummary[]) => u.some(x => tracking.get(x.id)?.tracked), [tracking]);
+
+  const visible = useMemo(() => {
+    let list = baseList;
+    if (p.box === 'sent') {
+      if (noReply) list = list.filter(t => unitNoReply(unitOf(t)));
+      if (trackF !== 'all') list = list.filter(t => { const u = unitOf(t); return trackF === 'opened' ? unitOpened(u) : !unitOpened(u) && unitTracked(u); });
+    } else if (noReply) list = list.filter(t => t.lastMine && ageDays(t.date) >= 3);
+    return list;
+  }, [baseList, p.box, noReply, trackF, unitOf, unitOpened, unitTracked]);
+
+  // One entry per row on Sent (a group counts once): the numbers on the filter chips and the overview.
+  const sentUnits = useMemo(() => {
+    if (p.box !== 'sent') return [] as ThreadSummary[][];
+    const seen = new Set<string>(), out: ThreadSummary[][] = [];
+    for (const t of baseList) { const g = sentGroup.get(t.id); if (g) { if (seen.has(g.gid)) continue; seen.add(g.gid); out.push(g.all); } else out.push([t]); }
+    return out;
+  }, [baseList, sentGroup, p.box]);
+  const sentCounts = useMemo(() => ({
+    tracked: sentUnits.filter(unitTracked).length,
+    opened: sentUnits.filter(unitOpened).length,
+    unopened: sentUnits.filter(u => !unitOpened(u) && unitTracked(u)).length,
+    waiting: sentUnits.filter(unitNoReply).length,
+  }), [sentUnits, unitOpened, unitTracked]);
+  // Day headings sit above the first row of each day; a folded group counts once, at its newest send.
+  const dayHeaders = useMemo(() => {
+    const m = new Map<string, boolean>();
+    let prev = '';
+    for (const t of visible) { const g = sentGroup.get(t.id); if (g && g.lead.id !== t.id) continue; const l = groupLabel(g ? g.sends[0].at : t.date); m.set(t.id, l !== prev); prev = l; }
     return m;
-  }, [visible, tracking, p.box, otherOf]);
+  }, [visible, sentGroup]);
+
+  // The rows actually drawn: a folded group is one row, so j / k and "next conversation" skip its other copies.
+  const rowsList = useMemo(() => visible.filter(t => { const g = sentGroup.get(t.id); return !g || g.lead.id === t.id; }), [visible, sentGroup]);
 
   // Bulk select: tick several conversations (shift-click for a range), then one action for all of them.
   const [sel, setSel] = useState<Set<string>>(() => new Set());
@@ -495,15 +505,17 @@ export default function GmailMailbox(p: Props) {
   const lastTick = useRef<number>(-1);
   useEffect(() => { setSel(new Set()); lastTick.current = -1; }, [p.box, filter, term, account, who, noReply, waiting, trackF, labelId]);
   useEffect(() => { setAsThreads(false); }, [filter, p.box]);
+  // Ticking a folded group ticks every copy of it, so Trash / Archive / Label act on the whole email, not one person's copy.
+  const tickMany = (ids: string[]) => setSel(prev => { const n = new Set(prev); const on = !ids.every(x => prev.has(x)); for (const x of ids) { if (on) n.add(x); else n.delete(x); } return n; });
   const tick = (id: string, idx: number, range: boolean) => setSel(prev => {
     const n = new Set(prev);
     if (range && lastTick.current >= 0) { const [a, b] = [Math.min(lastTick.current, idx), Math.max(lastTick.current, idx)]; const on = !prev.has(id); for (const x of visible.slice(a, b + 1)) { if (on) n.add(x.id); else n.delete(x.id); } }
     else if (n.has(id)) n.delete(id); else n.add(id);
     lastTick.current = idx; return n;
   });
-  const bulk = async (action: Act) => {
+  const actOn = async (ids: string[], action: Act) => {
     if (canModify === false) { p.notify('Allow the CRM to change your Gmail first — see the note above the list.'); return; }
-    const ids = [...sel], idSet = new Set(ids), before = threads, removing = action === 'archive' || action === 'trash';
+    const idSet = new Set(ids), before = threads, removing = action === 'archive' || action === 'trash';
     setSel(new Set());
     if (removing) setThreads(prev => (prev ?? []).filter(x => !idSet.has(x.id)));
     else setThreads(prev => (prev ?? []).map(x => !idSet.has(x.id) ? x : { ...x, ...(action === 'read' ? { unread: false } : action === 'unread' ? { unread: true } : action === 'star' ? { starred: true } : { starred: false }) }));
@@ -517,6 +529,7 @@ export default function GmailMailbox(p: Props) {
     if (!okIds.length) return;
     flash(`${DONE[action]} · ${okIds.length} conversation${okIds.length === 1 ? '' : 's'}`, removing ? () => { setThreads(before); listCache.clear(); okIds.forEach(id => void send(id, UNDO_OF[action], true)); setToast(null); } : undefined);
   };
+  const bulk = (action: Act) => actOn([...sel], action);
   const bulkLabel = async (id: string) => {
     const ids = [...sel], idSet = new Set(ids), name = labels.find(l => l.id === id)?.name ?? 'label';
     setThreads(prev => (prev ?? []).map(x => !idSet.has(x.id) ? x : { ...x, labels: [...new Set([...(x.labels ?? []), id])] }));
@@ -557,16 +570,16 @@ export default function GmailMailbox(p: Props) {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); return; }
-      if (e.key === 'x' && open && canModify) { e.preventDefault(); tick(open.id, visible.findIndex(x => x.id === open.id), false); return; }
+      if (e.key === 'x' && open && canModify) { e.preventDefault(); const g = sentGroup.get(open.id); if (g) tickMany(g.all.map(x => x.id)); else tick(open.id, visible.findIndex(x => x.id === open.id), false); return; }
       if (e.key !== 'j' && e.key !== 'k') return;
-      const i = open ? visible.findIndex(x => x.id === open.id) : -1;
-      const n = visible[e.key === 'j' ? Math.min(visible.length - 1, i + 1) : Math.max(0, i - 1)];
+      const i = open ? rowsList.findIndex(x => x.id === (sentGroup.get(open.id)?.lead.id ?? open.id)) : -1;
+      const n = rowsList[e.key === 'j' ? Math.min(rowsList.length - 1, i + 1) : Math.max(0, i - 1)];
       if (n) { e.preventDefault(); openThread(n); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wide, open, visible, canModify]);
+  }, [wide, open, visible, rowsList, sentGroup, canModify]);
   // z undoes the last archive / trash (while its "Undo" toast is up), like Gmail.
   useEffect(() => {
     if (!toast?.undo) return;
@@ -592,8 +605,10 @@ export default function GmailMailbox(p: Props) {
   // From the reader: after archiving/trashing, move on to the next conversation (like Gmail) or back to the list.
   const readerAct = (action: Act) => {
     if (!open) return;
-    const i = visible.findIndex(x => x.id === open.id), nxt = visible[i + 1] ?? visible[i - 1];
-    void act(open, action);
+    const g = sentGroup.get(open.id), removing = action === 'archive' || action === 'trash';
+    const i = rowsList.findIndex(x => x.id === (g?.lead.id ?? open.id)), nxt = rowsList[i + 1] ?? rowsList[i - 1];
+    if (g && removing) void actOn(g.all.map(x => x.id), action); // an email sent to several people goes (and comes back) as one
+    else void act(open, action);
     if (action === 'archive' || action === 'trash') { if (wide && nxt) openThread(nxt); else setOpenThread(null); }
   };
 
@@ -605,7 +620,8 @@ export default function GmailMailbox(p: Props) {
 
   const reader = (embedded: boolean) => open && (
     <ThreadReader key={open.id} t={threads?.find(x => x.id === open.id) ?? open} box={p.box} canModify={canModify === true} onAct={readerAct} labels={labels} onLabel={(id, on) => void labelThread(open, id, on)} onCreateLabel={createLabel} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
-      onReply={p.onReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)} />
+      onReply={p.onReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)}
+      top={p.box === 'sent' && sentGroup.get(open.id) ? <SentGroupPanel g={sentGroup.get(open.id)!} currentId={open.id} tracking={tracking} isMobile={p.isMobile} onOpen={openThread} /> : undefined} />
   );
 
   // Phone / narrow: the conversation replaces the list.
@@ -613,13 +629,13 @@ export default function GmailMailbox(p: Props) {
 
   const moreCount = (filter === 'files' ? 1 : 0) + (who !== 'all' ? 1 : 0) + (labelId ? 1 : 0);
   const toolbar = (
-    <div style={{ marginBottom: 12 }}>
+    <div style={p.isMobile ? { marginBottom: 12 } : { marginBottom: 10, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
       {/* row 1: search first — it is what people reach for most — with refresh and shortcuts beside it */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-        <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 0 }}>
+      <div style={p.isMobile ? { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 } : { display: 'contents' }}>
+        <div style={{ position: 'relative', flex: p.isMobile ? '1 1 260px' : '1 1 230px', minWidth: p.isMobile ? 0 : 190 }}>
           <span aria-hidden style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--k-9ca3af)', fontSize: 14, pointerEvents: 'none' }}>⌕</span>
           <input ref={searchRef} value={q} onChange={e => { setQ(e.target.value); setSugOpen(true); }} onFocus={() => setSugOpen(true)} onBlur={() => setTimeout(() => setSugOpen(false), 150)}
-            placeholder={p.isMobile ? 'Search mail or a name' : 'Search mail, or type a name…   (press / to jump here)'} aria-label="Search Gmail" aria-autocomplete="list"
+            placeholder={p.isMobile ? 'Search mail or a name' : 'Search mail or a name  ( / )'} aria-label="Search Gmail" aria-autocomplete="list"
             style={{ width: '100%', boxSizing: 'border-box', height: p.isMobile ? 44 : 38, padding: '0 14px 0 36px', borderRadius: 10, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-111)', fontSize: 14 }} />
           {q.trim() && (
             <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => putHist({ ...hist, saved: hist.saved.includes(q.trim()) ? hist.saved.filter(x => x !== q.trim()) : [q.trim(), ...hist.saved].slice(0, 12) })}
@@ -661,17 +677,17 @@ export default function GmailMailbox(p: Props) {
         </div>
         {accounts.length > 1 && (
           <select value={account ?? self ?? ''} onChange={e => setAccount(e.target.value)} aria-label="Gmail account"
-            style={{ height: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px' }}>
+            style={{ order: 9, height: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 13, padding: '0 8px' }}>
             {accounts.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         )}
         <button type="button" onClick={() => void refresh()} title="Refresh" aria-label="Refresh"
-          style={{ height: p.isMobile ? 42 : 34, width: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 15, cursor: 'pointer', opacity: refreshing ? 0.5 : 1 }}>{refreshing ? '…' : '↻'}</button>
+          style={{ order: 9, height: p.isMobile ? 42 : 34, width: p.isMobile ? 42 : 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 15, cursor: 'pointer', opacity: refreshing ? 0.5 : 1 }}>{refreshing ? '…' : '↻'}</button>
         {!p.isMobile && <button type="button" onClick={() => setHelp(true)} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"
-          style={{ height: 34, width: 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 15, cursor: 'pointer' }}>⌨</button>}
+          style={{ order: 9, height: 34, width: 34, borderRadius: 8, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 15, cursor: 'pointer' }}>⌨</button>}
       </div>
       {/* row 2: the few filters people actually use; everything else sits under "More filters" */}
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: p.isMobile ? 'nowrap' : 'wrap', overflowX: p.isMobile ? 'auto' : undefined, paddingBottom: p.isMobile ? 2 : 0 }} className="crm-tabs-scroll">
+      <div style={p.isMobile ? { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto', paddingBottom: 2 } : { display: 'contents' }} className="crm-tabs-scroll">
         <button onClick={() => setFilter('all')} style={chip(filter === 'all')}>{p.box === 'inbox' ? 'All inbox' : 'All sent'}</button>
         {p.box === 'inbox' && <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>}
         <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
@@ -680,9 +696,9 @@ export default function GmailMailbox(p: Props) {
           const need = (threads ?? []).filter(t => triOf(t)?.c === 'reply').length;
           return need > 0 ? <button type="button" onClick={() => setTriF(v => !v)} aria-pressed={triF} title="Conversations the assistant thinks are waiting on an answer from you" style={chip(triF)}>↩ Needs reply<span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{need}</span></button> : null;
         })()}
-        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'opened' ? 'all' : 'opened'))} aria-pressed={trackF === 'opened'} title="Sent from the CRM and the recipient opened it (of what is loaded)" style={chip(trackF === 'opened')}>👁 Opened</button>}
-        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'unopened' ? 'all' : 'unopened'))} aria-pressed={trackF === 'unopened'} title="Sent from the CRM and not opened yet (of what is loaded)" style={chip(trackF === 'unopened')}>Not opened</button>}
-        {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply</button>}
+        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'opened' ? 'all' : 'opened'))} aria-pressed={trackF === 'opened'} title="Sent from the CRM and the recipient opened it (of what is loaded)" style={chip(trackF === 'opened')}>👁 Opened{sentCounts.opened > 0 && <span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{sentCounts.opened}</span>}</button>}
+        {p.box === 'sent' && <button onClick={() => setTrackF(v => (v === 'unopened' ? 'all' : 'unopened'))} aria-pressed={trackF === 'unopened'} title="Sent from the CRM and not opened yet (of what is loaded)" style={chip(trackF === 'unopened')}>Not opened{sentCounts.unopened > 0 && <span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{sentCounts.unopened}</span>}</button>}
+        {p.box === 'sent' && <button onClick={() => setNoReply(v => !v)} aria-pressed={noReply} title="Conversations where you sent the last message 3+ days ago and nobody has answered (of what is loaded)" style={chip(noReply)}>⏳ No reply{sentCounts.waiting > 0 && <span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{sentCounts.waiting}</span>}</button>}
         <span style={{ position: 'relative', flexShrink: 0 }}>
           <button type="button" onClick={() => setMoreOpen(v => !v)} aria-expanded={moreOpen} aria-haspopup="true" style={chip(moreOpen || moreCount > 0)}>More filters ▾{moreCount > 0 && <span style={{ marginLeft: 6, opacity: 0.8 }}>· {moreCount}</span>}</button>
           {moreOpen && (
@@ -755,17 +771,13 @@ export default function GmailMailbox(p: Props) {
           <button type="button" onClick={() => setSel(new Set())} aria-label="Clear selection" title="Clear (Esc)" style={{ width: 32, height: 32, border: 'none', borderRadius: 8, background: 'none', color: '#bbb', cursor: 'pointer', fontSize: 16 }}>✕</button>
         </div>
       )}
-      {p.box === 'sent' && threads && threads.length > 0 && (() => {
-        const tr = threads.map(t => tracking.get(t.id)), tracked = tr.filter(x => x?.tracked).length, opened = tr.filter(x => x?.opened).length;
-        const waiting = threads.filter(t => t.lastMine && ageDays(t.date) >= 3).length;
-        return (
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', margin: '0 2px 10px', fontSize: 12.5, color: 'var(--k-6b7280)' }}>
-            <span><b style={{ color: 'var(--k-111)' }}>{threads.length}</b> conversations loaded</span>
-            {tracked > 0 && <span><b style={{ color: 'var(--k-065f46)' }}>{opened}</b> of {tracked} tracked opened ({Math.round((opened / tracked) * 100)}%)</span>}
-            {waiting > 0 && <span><b style={{ color: 'var(--k-b45309)' }}>{waiting}</b> waiting on a reply</span>}
-          </div>
-        );
-      })()}
+      {p.box === 'sent' && p.isMobile && threads && threads.length > 0 && (
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', margin: '0 2px 10px', fontSize: 12.5, color: 'var(--k-6b7280)' }}>
+          <span><b style={{ color: 'var(--k-111)' }}>{sentUnits.length}</b> emails loaded</span>
+          {sentCounts.tracked > 0 && <span><b style={{ color: 'var(--k-065f46)' }}>{sentCounts.opened}</b> of {sentCounts.tracked} tracked opened ({Math.round((sentCounts.opened / sentCounts.tracked) * 100)}%)</span>}
+          {sentCounts.waiting > 0 && <span><b style={{ color: 'var(--k-b45309)' }}>{sentCounts.waiting}</b> waiting on a reply</span>}
+        </div>
+      )}
       {p.box === 'inbox' && threads && threads.length > 0 && (() => {
         const rows = threads.map(t => triOf(t)).filter((x): x is Tri => !!x);
         if (!rows.length) return null;
@@ -792,46 +804,39 @@ export default function GmailMailbox(p: Props) {
             const unread = isUnread(t);
             const match = a.email ? p.contactFor(a.email) : null;
             const selected = open?.id === t.id;
-            const label = groupLabel(t.date);
-            const showHeader = i === 0 || groupLabel(visible[i - 1].date) !== label;
-            const gi = sentGroup.get(t.id), gOpen = gi ? openGroups.has(gi.gid) : true;
-            if (gi && !gOpen && gi.idx > 0) return null;   // folded into the group row above
+            // Desktop Sent: two-line rows. The open / reply status moves up beside the time and the extra badge line goes away.
+            const compact = p.box === 'sent' && !p.isMobile;
+            const trk = tracking.get(t.id);
+            const waitDays = p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3 ? ageDays(t.date) : null;
+            const miniPill = (bg: string, fg: string): React.CSSProperties => ({ fontSize: 11.5, fontWeight: 600, padding: '0 8px', borderRadius: 10, background: bg, color: fg, whiteSpace: 'nowrap', lineHeight: '18px' });
+            const statusPills = compact ? (
+              <span style={{ display: 'inline-flex', gap: 5, flexShrink: 0 }}>
+                {trk?.tracked && (trk.opened
+                  ? <span title="Opened by the recipient (CRM open tracking)" style={miniPill('var(--k-d1fae5)', 'var(--k-065f46)')}>👁 Opened{trk.opens > 1 ? ` ${trk.opens}×` : ''}</span>
+                  : <span title="Not opened yet" style={miniPill('var(--k-f3f4f6)', 'var(--k-6b7280)')}>Not opened</span>)}
+                {!t.lastMine && <span title="They wrote back" style={miniPill('var(--k-dbeafe)', 'var(--k-1e40af)')}>↩ Replied</span>}
+                {waitDays !== null && <span title="You sent the last message and nobody has answered" style={miniPill('var(--k-fdf6e8)', 'var(--k-92400e)')}>⏳ {waitDays}d</span>}
+              </span>
+            ) : null;
+            const gi = sentGroup.get(t.id);
+            if (gi && gi.lead.id !== t.id) return null;   // another copy of an email already drawn as one group row
+            const label = groupLabel(gi ? gi.sends[0].at : t.date);
+            const showHeader = dayHeaders.get(t.id) === true;
+            const firstRow = dayHeaders.keys().next().value === t.id;
             const dayHdr = showHeader ? <div style={p.isMobile ? { padding: '14px 6px 8px', fontSize: 12, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--k-9ca3af)' } : { padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div> : null;
-            const groupEl = gi && gi.idx === 0 ? (() => {
-              const opened = gi.members.filter(x => tracking.get(x.id)?.opened).length;
-              const toggle = () => setOpenGroups(prev => { const n = new Set(prev); if (n.has(gi.gid)) n.delete(gi.gid); else n.add(gi.gid); return n; });
+            if (gi) {
+              const ids = gi.all.map(x => x.id);
               return (
-                <div role="button" tabIndex={0} aria-expanded={gOpen} onClick={toggle} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
-                  style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: p.isMobile ? '12px' : '12px 16px', cursor: 'pointer', background: 'var(--k-fffbeb)', borderTop: i && !showHeader ? '1px solid var(--k-f3f4f6)' : 'none', borderBottom: gOpen ? '1px solid var(--k-fde68a)' : 'none' }}>
-                  <div aria-hidden title={`Sent to ${gi.size} people`} style={{ width: 36, height: 36, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0, gap: 1 }}>👥<span style={{ fontSize: 11 }}>{gi.size}</span></div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--k-111)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
-                        <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}>To: </span>{gi.members.map(x => { const o = otherOf(x); return (o.name || o.email).split(/[\s@]/)[0]; }).join(', ')}
-                      </span>
-                      <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(t.date)}>{when(t.date)}</span>
-                    </div>
-                    <div style={{ fontSize: 13.5, color: 'var(--k-374151)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{t.subject}</div>
-                    <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanPreview(decodeSnippet(t.snippet)).replace(/^Sent to .{0,400}? — reply to include everyone\.\s*/i, '')}</div>
-                    <div style={{ marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: '3px 10px', fontSize: 12.5 }}>
-                      {gi.members.map(x => {
-                        const o = otherOf(x), tr = tracking.get(x.id), who = (o.name || o.email).split(/[\s@]/)[0];
-                        return <span key={x.id} title={tr?.opened ? `Opened${tr.opens > 1 ? ` ${tr.opens}×` : ''}` : 'Not opened yet'} style={{ color: tr?.opened ? 'var(--k-065f46)' : 'var(--k-9ca3af)', fontWeight: tr?.opened ? 700 : 500 }}>{tr?.opened ? '👁' : '○'} {who}{tr?.opened && tr.opens > 1 ? ` ${tr.opens}×` : ''}</span>;
-                      })}
-                    </div>
-                    <div style={{ marginTop: 5, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 10, background: opened ? 'var(--k-d1fae5)' : 'var(--k-f3f4f6)', color: opened ? 'var(--k-065f46)' : 'var(--k-6b7280)' }}>👁 {opened} of {gi.size} opened</span>
-                      <span style={{ fontSize: 11, color: 'var(--k-9ca3af)' }}>One email, {gi.size} tracked copies · {gOpen ? 'tap to fold' : 'tap to see each person'} {gOpen ? '▴' : '▾'}</span>
-                    </div>
-                  </div>
-                </div>
+                <React.Fragment key={t.id}>{dayHdr}
+                  <SentGroupCard g={gi} tracking={tracking} isMobile={p.isMobile} first={firstRow || showHeader} selected={!!open && ids.includes(open.id)} checked={ids.every(x => sel.has(x))} canTick={!!canModify}
+                    preview={cleanPreview(decodeSnippet(gi.lead.snippet)).replace(/^Sent to .{0,400}? — reply to include everyone\.\s*/i, '')}
+                    onOpen={() => { if (sel.size > 0 && canModify) { tickMany(ids); return; } openThread(gi.lead); }} onTick={() => tickMany(ids)} />
+                </React.Fragment>
               );
-            })() : null;
-            if (groupEl && !gOpen) return <React.Fragment key={t.id}>{dayHdr}{groupEl}</React.Fragment>;
+            }
             return (
               <React.Fragment key={t.id}>
-                {showHeader && <div style={p.isMobile ? { padding: '14px 6px 8px', fontSize: 12, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--k-9ca3af)' } : { padding: '7px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--k-9ca3af)', background: 'var(--k-fafafa)', borderTop: i ? '1px solid var(--k-f0f0f0)' : 'none', borderBottom: '1px solid var(--k-f0f0f0)' }}>{label}</div>}
-                {groupEl}
+                {dayHdr}
                 <div style={p.isMobile ? { position: 'relative', overflow: 'hidden', marginBottom: 10, borderRadius: 18, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', boxShadow: '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.05)' } : { position: 'relative' }}>
                 {p.isMobile && canModify && swipe?.id === t.id && swipe.dx !== 0 && (
                   <div aria-hidden style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: swipe.dx < 0 ? 'flex-end' : 'flex-start', padding: '0 22px', background: swipe.dx < 0 ? (p.box === 'inbox' ? '#b45309' : '#b91c1c') : '#2563eb', color: '#fff', fontWeight: 800, fontSize: 14, opacity: Math.min(1, Math.abs(swipe.dx) / 90) }}>
@@ -852,7 +857,7 @@ export default function GmailMailbox(p: Props) {
                   onTouchEnd={() => { clearTimeout(lp.current.t); swipeEnd(t); }} onTouchCancel={() => { clearTimeout(lp.current.t); sw.current = null; setSwipe(null); }}
                   onContextMenu={e => { if (p.isMobile) e.preventDefault(); }}
                   onMouseEnter={() => { if (!p.isMobile) void loadThread(account, t.id, t.date); }}
-                  style={{ transform: swipe?.id === t.id ? `translateX(${swipe.dx}px)` : undefined, transition: swipe?.id === t.id ? 'none' : 'transform .18s', touchAction: p.isMobile && canModify ? 'pan-y' : undefined, position: 'relative', WebkitTouchCallout: p.isMobile ? 'none' : undefined, userSelect: p.isMobile ? 'none' : undefined, display: 'flex', gap: 12, alignItems: 'flex-start', padding: p.isMobile ? '14px' : '11px 14px', borderTop: !p.isMobile && !showHeader && i ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: sel.has(t.id) ? 'var(--k-fdf6e8)' : selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
+                  style={{ transform: swipe?.id === t.id ? `translateX(${swipe.dx}px)` : undefined, transition: swipe?.id === t.id ? 'none' : 'transform .18s', touchAction: p.isMobile && canModify ? 'pan-y' : undefined, position: 'relative', WebkitTouchCallout: p.isMobile ? 'none' : undefined, userSelect: p.isMobile ? 'none' : undefined, display: 'flex', gap: 12, alignItems: 'flex-start', padding: p.isMobile ? '14px' : '11px 14px', borderTop: !p.isMobile && !showHeader && !firstRow ? '1px solid var(--k-f0f0f0)' : 'none', cursor: 'pointer', borderLeft: `3px solid ${selected ? '#c9922c' : 'transparent'}`, background: sel.has(t.id) ? 'var(--k-fdf6e8)' : selected ? 'var(--k-fef9f0)' : unread ? 'var(--k-fffdf7)' : 'var(--k-fff)' }}>
                   <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
                     <div className="gm-av"><Avatar name={name} email={a.email} warm={!!match} /></div>
                     {p.isMobile && sel.has(t.id) && <div aria-label="Selected" style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800 }}>✓</div>}
@@ -865,6 +870,8 @@ export default function GmailMailbox(p: Props) {
                   </div>
                   {canModify && !p.isMobile && (
                     <div className="gm-acts" onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 8, top: 6, gap: 2, padding: 2, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
+                      {compact && waitDays !== null && <button type="button" disabled={following === t.id} onClick={() => void followUp(t)} title="Write a follow-up on this conversation"
+                        style={{ height: 28, padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}><Ic n="reply" size={13} />{following === t.id ? 'Opening…' : 'Follow up'}</button>}
                       {([p.box === 'inbox' ? ['archive', 'Archive', 'archive'] : null, [unread ? 'read' : 'unread', unread ? 'Mark read' : 'Mark unread', unread ? 'open' : 'mail'], [t.starred ? 'unstar' : 'star', t.starred ? 'Remove star' : 'Star', 'star'], ['trash', 'Trash', 'trash']] as Array<[Act, string, string] | null>).filter((x): x is [Act, string, string] => !!x).map(([act2, label, icon]) => (
                         <button key={act2} type="button" title={label} aria-label={label} onClick={() => void act(t, act2)}
                           style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 6, background: 'none', cursor: 'pointer', color: icon === 'star' && t.starred ? '#c9922c' : 'var(--k-6b7280)' }}><Ic n={icon as keyof typeof ICON} fill={icon === 'star' && t.starred} /></button>
@@ -875,15 +882,23 @@ export default function GmailMailbox(p: Props) {
                     <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                       <span style={{ fontSize: 14, fontWeight: unread ? 800 : 600, color: unread ? 'var(--k-111)' : 'var(--k-374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                         {unread && <span aria-label="Unread" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: '#c9922c', marginRight: 6, verticalAlign: 'middle' }} />}
-                        {p.box === 'sent' ? <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}>To: </span> : null}{name}
+                        {compact && match && <span aria-label={match.kind === 'deal' ? 'Has a deal' : 'In your CRM'} title={match.kind === 'deal' ? `Deal · ${match.label}` : `${match.role || 'Contact'} · ${match.label}`} style={{ marginRight: 5, fontSize: 12 }}>{match.kind === 'deal' ? '💼' : '👤'}</span>}{p.box === 'sent' ? <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}>To: </span> : null}{name}
                         {t.count > 1 && <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}> {t.count}</span>}
                         {t.starred && <span aria-label="Starred" style={{ display: 'inline-block', marginLeft: 6, verticalAlign: 'middle', color: '#c9922c' }}><Ic n="star" size={13} fill /></span>}
                       </span>
+                      {statusPills}
                       <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(t.date)}>{t.files && <span aria-label="Has attachments" title="Has attachments" style={{ marginRight: 5 }}>📎</span>}{when(t.date)}</span>
                     </div>
+                    {compact ? (
+                      <div style={{ fontSize: 13.5, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--k-4b5563)' }}>
+                        <span style={{ fontWeight: unread ? 700 : 600, color: unread ? 'var(--k-111)' : 'var(--k-374151)' }}>{t.subject}</span>
+                        <span style={{ color: 'var(--k-9ca3af)' }}> — {cleanPreview(decodeSnippet(t.snippet))}</span>
+                      </div>
+                    ) : (<>
                     <div style={{ fontSize: 13.5, color: unread ? 'var(--k-111)' : 'var(--k-4b5563)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 700 : 400 }}>{t.subject}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--k-9ca3af)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanPreview(decodeSnippet(t.snippet))}</div>
-                    {(!!sus(t) || match || !!triOf(t) || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30)) && (
+                    </>)}
+                    {!compact && (!!sus(t) || match || !!triOf(t) || tracking.get(t.id)?.tracked || (t.labels?.length ?? 0) > 0 || (p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3) || (p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30)) && (
                       <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
                         {sus(t) && <span title={'Looks like a scam: ' + sus(t)!.reasons[0]} style={{ color: 'var(--k-991b1b)', background: 'var(--k-fef2f2)', border: '1px solid #fca5a5', borderRadius: 10, padding: '0 8px' }}>⚠ Suspicious</span>}
                         {match && <span title="This sender is in your CRM" style={{ color: 'var(--k-a06a12)', background: 'var(--k-fdf6e9)', border: '1px solid var(--k-f0e2c4)', borderRadius: 10, padding: '0 8px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{match.kind === 'deal' ? '💼 Deal' : `👤 ${match.role || 'Contact'}`}<span style={{ fontWeight: 500 }}> · {match.label}</span></span>}
@@ -953,15 +968,32 @@ export default function GmailMailbox(p: Props) {
   ) : null;
   if (!wide) return <div>{toolbar}{body}{toastEl}{helpEl}{pullEl}</div>;
 
+  // Sent, nothing selected: the numbers, who still owes you a reply, and what was opened most recently (a folded group counts once).
+  const overviewEl = (() => {
+    if (p.box !== 'sent') return null;
+    const item = (u: ThreadSummary[]): OverviewItem => {
+      const g = sentGroup.get(u[0].id), lead = g?.lead ?? u[0];
+      const who = g ? g.people.map(pe => (pe.name || pe.email).split(/[\s@]/)[0]).join(', ') : (otherOf(lead).name || otherOf(lead).email || '(unknown)');
+      const at = Math.max(...u.map(x => x.date));
+      const lastOpen = Math.max(0, ...u.map(x => { const l = tracking.get(x.id)?.last; return l ? new Date(l).getTime() : 0; })) || null;
+      return { key: lead.id, who: `To: ${who}`, subject: lead.subject, at, days: ageDays(at), lastOpen, open: () => openThread(lead), follow: () => void followUp(lead), following: following === lead.id };
+    };
+    const items = sentUnits.map(item);
+    const today = dayKey(Date.now());
+    return <SentOverview sentToday={items.filter(it => dayKey(it.at) === today).length} tracked={sentCounts.tracked} opened={sentCounts.opened}
+      waiting={sentUnits.filter(unitNoReply).map(item).sort((a, b) => b.at - a.at)}
+      recent={items.filter(it => it.lastOpen).sort((a, b) => (b.lastOpen ?? 0) - (a.lastOpen ?? 0))} />;
+  })();
+
   // Two panes: each scrolls on its own, like Gmail.
-  const paneH = 'calc(100vh - 270px)';
+  const paneH = 'calc(100vh - 215px)';
   return (
     <div>
       {toolbar}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 400px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
         <div style={{ height: paneH, minHeight: 480, overflowY: 'auto', paddingRight: 2 }}>{body}</div>
         <div style={{ height: paneH, minHeight: 480, overflowY: 'auto' }}>
-          {open ? reader(true) : (
+          {open ? reader(true) : p.box === 'sent' ? overviewEl : (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--k-9ca3af)', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 12, textAlign: 'center', padding: 24 }}>
               <div style={{ fontSize: 34 }} aria-hidden>✉️</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-374151)' }}>Select a conversation to read it</div>
@@ -1102,6 +1134,7 @@ function ThreadReader(p: {
   onOpenDeal: (id: string) => void; onOpenContact: (id: string) => void;
   onReply: Props['onReply']; onQuickReply: Props['onQuickReply']; onCreateDeal: Props['onCreateDeal']; teammates: Props['teammates']; onForward: Props['onForward']; onBack: () => void;
   notify: Props['notify']; onAddContact: Props['onAddContact'];
+  top?: React.ReactNode; // shown between the header and the messages (Sent: who an email to several people went to)
 }) {
   const [msgs, setMsgs] = useState<LiveMessage[] | null>(null);
   const [dismissedWarn, setDismissedWarn] = useState(false);
@@ -1520,6 +1553,7 @@ function ThreadReader(p: {
           )}
         </div>
       )}
+      {p.top}
       {msgs && !dismissedWarn && (() => {
         const lastO = [...msgs].reverse().find(m => parseAddr(m.from).email.toLowerCase() !== me);
         if (!lastO) return null;
