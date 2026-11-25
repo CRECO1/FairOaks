@@ -18,17 +18,19 @@ function inline(src: string): PMNode[] {
   const out: PMNode[] = [];
   const push = (text: string, marks: Mark[]) => { if (text) out.push({ type: 'text', text, ...(marks.length ? { marks } : {}) }); };
   const walk = (s: string, marks: Mark[]) => {
-    const re = /(\*\*|__)(.+?)\1|(\*|_)([^*_\s](?:[^*_]*[^*_\s])?)\3|~~(.+?)~~|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/;
+    // A run of 3+ underscores is a fill-in line (e.g. "Signature: ______"), kept literally — not bold/italic markup.
+    const re = /(_{3,})|(\*\*|__)(.+?)\2|(\*|_)([^*_\s](?:[^*_]*[^*_\s])?)\4|~~(.+?)~~|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/;
     let rest = s;
     for (;;) {
       const m = re.exec(rest);
       if (!m) { push(rest, marks); return; }
       push(rest.slice(0, m.index), marks);
-      if (m[1]) walk(m[2], [...marks, { type: 'bold' }]);
-      else if (m[3]) walk(m[4], [...marks, { type: 'italic' }]);
-      else if (m[5] !== undefined) walk(m[5], [...marks, { type: 'strike' }]);
-      else if (m[6] !== undefined) push(m[6], [...marks, { type: 'code' }]);
-      else walk(m[7], [...marks, { type: 'link', attrs: { href: m[8] } }]);
+      if (m[1]) push(m[1], marks);
+      else if (m[2]) walk(m[3], [...marks, { type: 'bold' }]);
+      else if (m[4]) walk(m[5], [...marks, { type: 'italic' }]);
+      else if (m[6] !== undefined) walk(m[6], [...marks, { type: 'strike' }]);
+      else if (m[7] !== undefined) push(m[7], [...marks, { type: 'code' }]);
+      else walk(m[8], [...marks, { type: 'link', attrs: { href: m[9] } }]);
       rest = rest.slice(m.index + m[0].length);
     }
   };

@@ -82,6 +82,15 @@ export async function GET(req: NextRequest) {
   const primary = sendAsList.find(s => s.isDefault) ?? sendAsList[0];
   const signature: string = primary?.signature ?? '';
 
+  // A Gmail account with NO signature set must not wipe the one already saved in the CRM (that is how Robert's
+  // went blank, twice): keep what is stored and hand it back.
+  if (!signature.trim()) {
+    const cur = await fetch(`${SUPABASE_URL}/rest/v1/crm_profiles?id=eq.${encodeURIComponent(userId)}&select=email_signature`, {
+      headers: { 'apikey': anonKey, 'Authorization': `Bearer ${serviceKey}` },
+    }).then(r => r.ok ? r.json() : []).catch(() => []);
+    return NextResponse.json({ signature: (cur?.[0]?.email_signature as string | null) ?? '' });
+  }
+
   // Save to crm_profiles
   await fetch(`${SUPABASE_URL}/rest/v1/crm_profiles?id=eq.${userId}`, {
     method: 'PATCH',
