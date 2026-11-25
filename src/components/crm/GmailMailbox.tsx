@@ -9,7 +9,9 @@ import { parseIcs, describeWhen } from '@/lib/ics';
 import { MessageFrame } from './MessageFrame';
 import { CT, dayKey, when, whenLong, parseAddr, initials, colorFor } from './mail-format';
 import { groupSends, type SentGroup } from '@/lib/sent-groups';
-import { SentGroupCard, SentGroupPanel, SentOverview, type Track, type OverviewItem } from './SentPanels';
+import { SentGroupCard, SentOverview, type Track, type OverviewItem } from './SentPanels';
+import { mergeChain } from '@/lib/sent-chain';
+import { InboxOverview, type InboxItem } from './InboxPanels';
 import DocPreviewModal from './DocPreviewModal';
 import { createClient } from '@/lib/supabase/client';
 
@@ -602,6 +604,18 @@ export default function GmailMailbox(p: Props) {
       p.onReply(msgs[msgs.length - 1], t.id, false, account);
     } finally { setFollowing(null); }
   };
+  // Follow up on a whole chain (an email sent to several people): reply to the last email YOU sent in it, so it goes to everyone on it.
+  const followUpChain = async (g: SentGroup<ThreadSummary>) => {
+    setFollowing(g.lead.id);
+    try {
+      const lists = (await Promise.all(g.all.map(t => loadThread(account, t.id, t.date)))).filter((l): l is LiveMessage[] => !!l);
+      if (!lists.length) { p.notify('Could not open that conversation — try again.'); return; }
+      const meAddr = (self ?? account ?? '').toLowerCase();
+      const merged = sortMsgs(mergeChain(lists, meAddr).msgs);
+      const mine = [...merged].reverse().find(m => parseAddr(m.from).email.toLowerCase() === meAddr) ?? merged[merged.length - 1];
+      p.onReply(mine, g.lead.id, false, account);
+    } finally { setFollowing(null); }
+  };
   // From the reader: after archiving/trashing, move on to the next conversation (like Gmail) or back to the list.
   const readerAct = (action: Act) => {
     if (!open) return;
@@ -619,15 +633,18 @@ export default function GmailMailbox(p: Props) {
   });
 
   const reader = (embedded: boolean) => open && (
-    <ThreadReader key={open.id} t={threads?.find(x => x.id === open.id) ?? open} box={p.box} canModify={canModify === true} onAct={readerAct} labels={labels} onLabel={(id, on) => void labelThread(open, id, on)} onCreateLabel={createLabel} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
+    <ThreadReader key={open.id} t={(() => { const th = threads?.find(x => x.id === open.id) ?? open, g = p.box === 'sent' ? sentGroup.get(open.id) : undefined; return g ? { ...th, subject: g.subject } : th; })()} box={p.box} canModify={canModify === true} onAct={readerAct} labels={labels} onLabel={(id, on) => void labelThread(open, id, on)} onCreateLabel={createLabel} account={account} self={self ?? account} isMobile={p.isMobile} embedded={embedded} contactFor={p.contactFor} onOpenDeal={p.onOpenDeal} onOpenContact={p.onOpenContact}
       onReply={p.onReply} onQuickReply={p.onQuickReply} onCreateDeal={p.onCreateDeal} teammates={p.teammates} onForward={p.onForward} notify={p.notify} onAddContact={p.onAddContact} onBack={() => setOpenThread(null)}
-      top={p.box === 'sent' && sentGroup.get(open.id) ? <SentGroupPanel g={sentGroup.get(open.id)!} currentId={open.id} tracking={tracking} isMobile={p.isMobile} onOpen={openThread} /> : undefined} />
+      chain={p.box === 'sent' ? sentGroup.get(open.id)?.all : undefined} />
   );
 
   // Phone / narrow: the conversation replaces the list.
   if (open && !wide) return <div>{reader(false)}{toast && <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: p.isMobile ? 84 : 24, zIndex: 80, display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', background: '#111', color: '#fff', borderRadius: 10, fontSize: 13.5, fontWeight: 600 }}>{toast.msg}{toast.undo && <button type="button" onClick={toast.undo} style={{ border: 'none', background: 'none', color: '#e8b563', fontWeight: 800, cursor: 'pointer', fontSize: 13.5 }}>Undo</button>}</div>}</div>;
 
   const moreCount = (filter === 'files' ? 1 : 0) + (who !== 'all' ? 1 : 0) + (labelId ? 1 : 0);
+  const isContactMail = (t: ThreadSummary) => { const e = otherOf(t).email; return !!(e && p.contactFor(e)); };
+  const isWaitingOnYou = (t: ThreadSummary) => !t.lastMine && ageDays(t.date) >= 1 && ageDays(t.date) <= 30 && isContactMail(t);
+  const waitingOnYouCount = p.box === 'inbox' ? (threads ?? []).filter(isWaitingOnYou).length : 0;
   const toolbar = (
     <div style={p.isMobile ? { marginBottom: 12 } : { marginBottom: 10, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
       {/* row 1: search first — it is what people reach for most — with refresh and shortcuts beside it */}
@@ -691,7 +708,7 @@ export default function GmailMailbox(p: Props) {
         <button onClick={() => setFilter('all')} style={chip(filter === 'all')}>{p.box === 'inbox' ? 'All inbox' : 'All sent'}</button>
         {p.box === 'inbox' && <button onClick={() => setFilter('unread')} style={chip(filter === 'unread')}>Unread</button>}
         <button onClick={() => setFilter('starred')} style={chip(filter === 'starred')}>★ Starred</button>
-        {p.box === 'inbox' && <button onClick={() => setWaiting(v => !v)} aria-pressed={waiting} title="People in your CRM who wrote in the last 30 days and haven’t had an answer from you (of what is loaded)" style={chip(waiting)}>↩ Waiting on you</button>}
+        {p.box === 'inbox' && <button onClick={() => setWaiting(v => !v)} aria-pressed={waiting} title="People in your CRM who wrote in the last 30 days and haven’t had an answer from you (of what is loaded)" style={chip(waiting)}>↩ Waiting on you{waitingOnYouCount > 0 && <span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{waitingOnYouCount}</span>}</button>}
         {p.box === 'inbox' && (() => {
           const need = (threads ?? []).filter(t => triOf(t)?.c === 'reply').length;
           return need > 0 ? <button type="button" onClick={() => setTriF(v => !v)} aria-pressed={triF} title="Conversations the assistant thinks are waiting on an answer from you" style={chip(triF)}>↩ Needs reply<span style={{ marginLeft: 6, opacity: 0.7, fontWeight: 500 }}>{need}</span></button> : null;
@@ -804,18 +821,29 @@ export default function GmailMailbox(p: Props) {
             const unread = isUnread(t);
             const match = a.email ? p.contactFor(a.email) : null;
             const selected = open?.id === t.id;
-            // Desktop Sent: two-line rows. The open / reply status moves up beside the time and the extra badge line goes away.
-            const compact = p.box === 'sent' && !p.isMobile;
+            // Desktop (Inbox and Sent): two-line rows. The status pills move up beside the time and the extra badge line goes away.
+            const compact = !p.isMobile;
             const trk = tracking.get(t.id);
             const waitDays = p.box === 'sent' && t.lastMine && ageDays(t.date) >= 3 ? ageDays(t.date) : null;
-            const miniPill = (bg: string, fg: string): React.CSSProperties => ({ fontSize: 11.5, fontWeight: 600, padding: '0 8px', borderRadius: 10, background: bg, color: fg, whiteSpace: 'nowrap', lineHeight: '18px' });
+            // Plain coloured text, no boxes: the row stays as quiet as a Gmail row and the status still reads at a glance.
+            const miniText = (fg: string): React.CSSProperties => ({ fontSize: 11.5, fontWeight: 600, color: fg, whiteSpace: 'nowrap', lineHeight: '18px' });
+            const tri = p.box === 'inbox' ? triOf(t) : undefined;
+            const sc = p.box === 'inbox' ? sus(t) : null;
+            const waitYou = p.box === 'inbox' && !t.lastMine && !!match && ageDays(t.date) >= 2 && ageDays(t.date) <= 30;
+            const firstLabel = (t.labels ?? []).map(id => labels.find(x => x.id === id)).find(Boolean);
             const statusPills = compact ? (
-              <span style={{ display: 'inline-flex', gap: 5, flexShrink: 0 }}>
-                {trk?.tracked && (trk.opened
-                  ? <span title="Opened by the recipient (CRM open tracking)" style={miniPill('var(--k-d1fae5)', 'var(--k-065f46)')}>👁 Opened{trk.opens > 1 ? ` ${trk.opens}×` : ''}</span>
-                  : <span title="Not opened yet" style={miniPill('var(--k-f3f4f6)', 'var(--k-6b7280)')}>Not opened</span>)}
-                {!t.lastMine && <span title="They wrote back" style={miniPill('var(--k-dbeafe)', 'var(--k-1e40af)')}>↩ Replied</span>}
-                {waitDays !== null && <span title="You sent the last message and nobody has answered" style={miniPill('var(--k-fdf6e8)', 'var(--k-92400e)')}>⏳ {waitDays}d</span>}
+              <span style={{ display: 'inline-flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+                {p.box === 'sent' && trk?.tracked && (trk.opened
+                  ? <span title="Opened by the recipient (CRM open tracking)" style={miniText('var(--k-065f46)')}>👁 Opened{trk.opens > 1 ? ` ${trk.opens}×` : ''}</span>
+                  : <span title="Not opened yet" style={miniText('var(--k-6b7280)')}>Not opened</span>)}
+                {p.box === 'sent' && !t.lastMine && <span title="They wrote back" style={miniText('var(--k-1e40af)')}>↩{'\uFE0E'} Replied</span>}
+                {waitDays !== null && <span title="You sent the last message and nobody has answered" style={miniText('var(--k-92400e)')}>⏳ {waitDays}d</span>}
+                {sc && <span title={'Looks like a scam: ' + sc.reasons[0]} style={miniText('var(--k-991b1b)')}>⚠ Suspicious</span>}
+                {tri?.c === 'junk' && <span title={`Assistant: ${tri.why || 'likely junk'}`} style={miniText('var(--k-991b1b)')}>🗑 Junk?</span>}
+                {tri?.c === 'reply' && <span title={`Assistant: ${tri.why || 'needs a reply'}`} style={miniText('var(--k-92400e)')}>↩ Needs reply</span>}
+                {tri?.c === 'fyi' && <span title={`Assistant: ${tri.why || 'FYI'}`} style={miniText('var(--k-6b7280)')}>FYI</span>}
+                {waitYou && !tri && <span title="They wrote last and you haven't answered" style={miniText('var(--k-92400e)')}>↩ Waiting · {ageDays(t.date)}d</span>}
+                {firstLabel && !tri && !sc && !waitYou && <span title={firstLabel.name} style={{ fontSize: 11.5, fontWeight: 600, padding: '0 8px', borderRadius: 10, background: firstLabel.bg ?? '#e5e7eb', color: firstLabel.fg ?? '#374151', whiteSpace: 'nowrap', lineHeight: '18px', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis' }}>{firstLabel.name.split('/').pop()}</span>}
               </span>
             ) : null;
             const gi = sentGroup.get(t.id);
@@ -870,6 +898,8 @@ export default function GmailMailbox(p: Props) {
                   </div>
                   {canModify && !p.isMobile && (
                     <div className="gm-acts" onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 8, top: 6, gap: 2, padding: 2, background: 'var(--k-fff)', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
+                      {compact && p.box === 'inbox' && triOf(t)?.c === 'junk' && a.email && <button type="button" onClick={() => { keepSender(a.email); p.notify(`${a.email} will no longer be tagged as junk here`); }} title="This sender is not junk — stop tagging them (this browser)"
+                        style={{ height: 28, padding: '0 10px', display: 'inline-flex', alignItems: 'center', border: 'none', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Not junk</button>}
                       {compact && waitDays !== null && <button type="button" disabled={following === t.id} onClick={() => void followUp(t)} title="Write a follow-up on this conversation"
                         style={{ height: 28, padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}><Ic n="reply" size={13} />{following === t.id ? 'Opening…' : 'Follow up'}</button>}
                       {([p.box === 'inbox' ? ['archive', 'Archive', 'archive'] : null, [unread ? 'read' : 'unread', unread ? 'Mark read' : 'Mark unread', unread ? 'open' : 'mail'], [t.starred ? 'unstar' : 'star', t.starred ? 'Remove star' : 'Star', 'star'], ['trash', 'Trash', 'trash']] as Array<[Act, string, string] | null>).filter((x): x is [Act, string, string] => !!x).map(([act2, label, icon]) => (
@@ -976,13 +1006,27 @@ export default function GmailMailbox(p: Props) {
       const who = g ? g.people.map(pe => (pe.name || pe.email).split(/[\s@]/)[0]).join(', ') : (otherOf(lead).name || otherOf(lead).email || '(unknown)');
       const at = Math.max(...u.map(x => x.date));
       const lastOpen = Math.max(0, ...u.map(x => { const l = tracking.get(x.id)?.last; return l ? new Date(l).getTime() : 0; })) || null;
-      return { key: lead.id, who: `To: ${who}`, subject: lead.subject, at, days: ageDays(at), lastOpen, open: () => openThread(lead), follow: () => void followUp(lead), following: following === lead.id };
+      return { key: lead.id, who: `To: ${who}`, subject: lead.subject, at, days: ageDays(at), lastOpen, open: () => openThread(lead), follow: () => void (g ? followUpChain(g) : followUp(lead)), following: following === lead.id };
     };
     const items = sentUnits.map(item);
     const today = dayKey(Date.now());
     return <SentOverview sentToday={items.filter(it => dayKey(it.at) === today).length} tracked={sentCounts.tracked} opened={sentCounts.opened}
       waiting={sentUnits.filter(unitNoReply).map(item).sort((a, b) => b.at - a.at)}
       recent={items.filter(it => it.lastOpen).sort((a, b) => (b.lastOpen ?? 0) - (a.lastOpen ?? 0))} />;
+  })();
+
+  // Inbox, nothing selected: who is waiting on you and what is new from the people in your CRM (of what is loaded).
+  const inboxOverviewEl = (() => {
+    if (p.box !== 'inbox') return null;
+    const all = threads ?? [];
+    const item = (t: ThreadSummary): InboxItem => {
+      const a = otherOf(t), m = a.email ? p.contactFor(a.email) : null;
+      return { key: t.id, who: a.name || a.email || '(unknown)', tag: m ? (m.kind === 'deal' ? '💼 Deal' : `👤 ${m.role || 'Contact'}`) : undefined, subject: t.subject, at: t.date, days: ageDays(t.date), open: () => openThread(t) };
+    };
+    return <InboxOverview loaded={all.length} unread={all.filter(isUnread).length} sorted={triage.size > 0}
+      waiting={all.filter(isWaitingOnYou).map(item)}
+      contactsUnread={all.filter(t => isUnread(t) && isContactMail(t)).map(item)}
+      needsReply={all.filter(t => triOf(t)?.c === 'reply').map(item)} />;
   })();
 
   // Two panes: each scrolls on its own, like Gmail.
@@ -993,7 +1037,7 @@ export default function GmailMailbox(p: Props) {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 400px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
         <div style={{ height: paneH, minHeight: 480, overflowY: 'auto', paddingRight: 2 }}>{body}</div>
         <div style={{ height: paneH, minHeight: 480, overflowY: 'auto' }}>
-          {open ? reader(true) : p.box === 'sent' ? overviewEl : (
+          {open ? reader(true) : p.box === 'sent' ? overviewEl : p.box === 'inbox' && (threads?.length ?? 0) > 0 ? inboxOverviewEl : (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--k-9ca3af)', background: 'var(--k-fff)', border: '1px dashed var(--k-e5e7eb)', borderRadius: 12, textAlign: 'center', padding: 24 }}>
               <div style={{ fontSize: 34 }} aria-hidden>✉️</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--k-374151)' }}>Select a conversation to read it</div>
@@ -1134,8 +1178,9 @@ function ThreadReader(p: {
   onOpenDeal: (id: string) => void; onOpenContact: (id: string) => void;
   onReply: Props['onReply']; onQuickReply: Props['onQuickReply']; onCreateDeal: Props['onCreateDeal']; teammates: Props['teammates']; onForward: Props['onForward']; onBack: () => void;
   notify: Props['notify']; onAddContact: Props['onAddContact'];
-  top?: React.ReactNode; // shown between the header and the messages (Sent: who an email to several people went to)
+  chain?: ThreadSummary[]; // Sent: every thread of this email chain (all people, all sends), read together as one conversation
 }) {
+  const chainKey = p.chain && p.chain.length > 1 ? p.chain.map(t => t.id).join(',') : '';
   const [msgs, setMsgs] = useState<LiveMessage[] | null>(null);
   const [dismissedWarn, setDismissedWarn] = useState(false);
   const [err, setErr] = useState('');
@@ -1176,7 +1221,7 @@ function ThreadReader(p: {
   const [opens, setOpens] = useState<Map<string, { opened: boolean; n: number; last: string | null }>>(() => new Map());
   useEffect(() => {
     let live = true;
-    supabase.from('crm_deal_emails').select('gmail_message_id,opened_at,last_opened_at,open_count').eq('gmail_thread_id', p.t.id).eq('direction', 'sent').eq('tracked', true)
+    supabase.from('crm_deal_emails').select('gmail_message_id,opened_at,last_opened_at,open_count').in('gmail_thread_id', chainKey ? chainKey.split(',') : [p.t.id]).eq('direction', 'sent').eq('tracked', true)
       .then(({ data }) => {
         if (!live) return;
         const m = new Map<string, { opened: boolean; n: number; last: string | null }>();
@@ -1185,11 +1230,52 @@ function ThreadReader(p: {
         setOpens(m);
       });
     return () => { live = false; };
-  }, [p.t.id]);
+  }, [p.t.id, chainKey]);
+
+  // The copies behind each message of a chain (one per person per send) and, from the tracking above, who opened which.
+  const [copies, setCopies] = useState<Map<string, LiveMessage[]>>(() => new Map());
+  const opensV = useMemo(() => {
+    const m = new Map(opens);
+    for (const [id, list] of copies) {
+      if (list.length < 2) continue;
+      const rows = list.map(c => opens.get(c.id)).filter((x): x is { opened: boolean; n: number; last: string | null } => !!x);
+      if (!rows.length) continue;
+      const last = rows.map(r => r.last).filter((x): x is string => !!x).sort().pop() ?? null;
+      m.set(id, { opened: rows.some(r => r.opened), n: rows.reduce((a, r) => a + r.n, 0), last });
+    }
+    return m;
+  }, [opens, copies]);
+  // "Nathan 3× · not yet: Joe, Derek" for a message that went to several people.
+  const openedBy = (m: LiveMessage) => {
+    const list = copies.get(m.id);
+    if (!list || list.length < 2) return '';
+    const who = (c: LiveMessage) => { const a = parseAddr(c.to); return (a.name || a.email).split(/[\s@]/)[0]; };
+    const yes = list.filter(c => opens.get(c.id)?.opened), no = list.filter(c => !opens.get(c.id)?.opened);
+    return [yes.length ? `${yes.map(c => `${who(c)}${(opens.get(c.id)?.n ?? 0) > 1 ? ` ${opens.get(c.id)!.n}×` : ''}`).join(', ')} opened` : '', no.length ? `${yes.length ? 'not yet: ' : 'Not opened by '}${no.map(who).join(', ')}` : ''].filter(Boolean).join(' · ');
+  };
+
+  const openChip = (m: LiveMessage) => {
+    const cps = copies.get(m.id), o = opensV.get(m.id)!;
+    if (cps && cps.length > 1) return `👁 ${cps.filter(c => opens.get(c.id)?.opened).length} of ${cps.length} opened`;
+    return `👁 Opened${o.n > 1 ? ` ${o.n}×` : ''}${o.last ? ` · ${when(new Date(o.last).getTime())}` : ''}`;
+  };
 
   useEffect(() => {
     let live = true;
     setErr('');
+    if (chainKey) { // a chain: read every thread together, like one Gmail conversation
+      setMsgs(null); setDismissedWarn(false);
+      Promise.all((p.chain ?? []).map(t => loadThread(p.account, t.id, t.date))).then(lists => {
+        if (!live) return;
+        const ok = lists.filter((l): l is LiveMessage[] => !!l);
+        if (!ok.length) { setErr('Could not open this conversation.'); setMsgs([]); return; }
+        const merged = mergeChain(ok, (p.self ?? p.account ?? '').toLowerCase());
+        setCopies(merged.copies);
+        const list = sortMsgs(merged.msgs); setMsgs(list); setFolded(initialFolds(list)); setCur(null);
+      });
+      return () => { live = false; };
+    }
+    setCopies(new Map());
     const cached = threadCache.get(threadKey(p.account, p.t.id, p.t.date));
     const show = (raw: LiveMessage[]) => { const list = sortMsgs(raw); setMsgs(list); setFolded(initialFolds(list)); setCur(null); }; // older, already-read messages fold like Gmail
     if (cached) { show(cached); return () => { live = false; }; }
@@ -1199,7 +1285,7 @@ function ThreadReader(p: {
       if (!list) { setErr('Could not open this conversation.'); setMsgs([]); } else show(list);
     });
     return () => { live = false; };
-  }, [p.t.id, p.t.date, p.account]);
+  }, [p.t.id, p.t.date, p.account, chainKey]);
 
   // PDFs and pictures open in a new tab; everything else downloads. ⬇ always downloads.
   const fetchFile = async (m: LiveMessage, a: { part: string; mime: string }) => {
@@ -1330,7 +1416,8 @@ function ThreadReader(p: {
     const list = (m.to || '').split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(s => parseAddr(s)).filter(a => a.email);
     const names = list.map(a => (a.email.toLowerCase() === me ? 'me' : (a.name || a.email)));
     const cc = addrCount(m.cc);
-    return `to ${names.slice(0, 2).join(', ') || '—'}${names.length > 2 ? ` +${names.length - 2}` : ''}${cc ? ` · cc ${cc}` : ''}`;
+    const shown = names.length <= 3 ? names : names.slice(0, 2);
+    return `to ${shown.join(', ') || '—'}${names.length > shown.length ? ` +${names.length - shown.length}` : ''}${cc ? ` · cc ${cc}` : ''}`;
   };
 
   // ✨ AI help: summarize the conversation, or draft a reply that opens in Compose for you to read and change. Nothing is ever sent.
@@ -1553,7 +1640,6 @@ function ThreadReader(p: {
           )}
         </div>
       )}
-      {p.top}
       {msgs && !dismissedWarn && (() => {
         const lastO = [...msgs].reverse().find(m => parseAddr(m.from).email.toLowerCase() !== me);
         if (!lastO) return null;
@@ -1681,7 +1767,7 @@ function ThreadReader(p: {
                 <span aria-hidden title={`Message ${num} of ${chrono.length}`} style={{ minWidth: 20, height: 20, borderRadius: 10, background: 'var(--k-f3f4f6)', color: 'var(--k-6b7280)', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{num}</span>
                 <Avatar name={name} email={from.email} size={26} />
                 <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--k-111)', flexShrink: 0 }}>{mine ? 'Me' : name}</span>
-                <span style={{ fontSize: 13, color: 'var(--k-9ca3af)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.text.replace(/\s+/g, ' ').slice(0, 140)}</span>
+                <span style={{ fontSize: 13, color: 'var(--k-9ca3af)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.text.replace(/\s+/g, ' ').replace(/^Sent to .{0,400}? — reply to include everyone\.\s*/i, '').slice(0, 140)}</span>
                 {m.attachments.length > 0 && <span aria-label="Has attachments" style={{ fontSize: 12 }}>📎</span>}
                 <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }}>{when(m.date)}</span>
               </div>
@@ -1709,6 +1795,7 @@ function ThreadReader(p: {
                       <span style={{ color: 'var(--k-9ca3af)' }}>To</span><span>{m.to || '—'}</span>
                       {m.cc && <><span style={{ color: 'var(--k-9ca3af)' }}>Cc</span><span>{m.cc}</span></>}
                       <span style={{ color: 'var(--k-9ca3af)' }}>Date</span><span>{whenLong(m.date)}</span>
+                      {openedBy(m) && <><span style={{ color: 'var(--k-9ca3af)' }}>Opens</span><span>{openedBy(m)}</span></>}
                     </div>
                   )}
                   {match && (
@@ -1725,8 +1812,8 @@ function ThreadReader(p: {
                     {chrono.length > 1 && <button type="button" aria-expanded aria-label="Collapse this message" title="Collapse this message" onClick={() => setFolded(prev => new Set(prev).add(m.id))}
                       style={{ width: 26, height: 26, border: '1px solid var(--k-e5e7eb)', borderRadius: 7, background: 'var(--k-fff)', color: 'var(--k-6b7280)', cursor: 'pointer', fontSize: 12, padding: 0 }}>▴</button>}
                   </span>
-                  {opens.has(m.id) && (opens.get(m.id)!.opened
-                    ? <span title={opens.get(m.id)!.last ? `Last opened ${whenLong(new Date(opens.get(m.id)!.last!).getTime())}` : 'Opened'} style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-065f46)', background: 'var(--k-d1fae5)', borderRadius: 10, padding: '1px 8px' }}>👁 Opened{opens.get(m.id)!.n > 1 ? ` ${opens.get(m.id)!.n}×` : ''}{opens.get(m.id)!.last ? ` · ${when(new Date(opens.get(m.id)!.last!).getTime())}` : ''}</span>
+                  {opensV.has(m.id) && (opensV.get(m.id)!.opened
+                    ? <span title={openedBy(m) || (opensV.get(m.id)!.last ? `Last opened ${whenLong(new Date(opensV.get(m.id)!.last!).getTime())}` : 'Opened')} style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--k-065f46)', background: 'var(--k-d1fae5)', borderRadius: 10, padding: '1px 8px' }}>{openChip(m)}</span>
                     : <span style={{ fontSize: 11.5, color: 'var(--k-9ca3af)', background: 'var(--k-f3f4f6)', borderRadius: 10, padding: '1px 8px' }}>Not opened</span>)}
                 </div>
               </div>
