@@ -15583,10 +15583,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   ref={searchRef}
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search contacts, deals, emails, documents…"
+                  placeholder={isMobile ? 'Search contacts, deals, emails…' : 'Search contacts, deals, emails, documents…'}
                   style={{ flex: 1, border: 'none', outline: 'none', fontSize: 16, fontFamily: "'DM Sans',sans-serif", color: 'var(--k-111)', background: 'transparent' }}
                 />
-                <kbd style={{ fontSize: 11, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 4, padding: '2px 6px', color: 'var(--k-6b7280)', fontFamily: 'monospace' }}>ESC</kbd>
+                {isMobile
+                  ? <button type="button" onClick={() => { setShowSearch(false); setSearchQuery(''); }} style={{ border: 'none', background: 'none', color: '#c9922c', fontWeight: 700, fontSize: 15, padding: '10px 4px', minHeight: 44, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
+                  : <kbd style={{ fontSize: 11, background: 'var(--k-f3f4f6)', border: '1px solid var(--k-e5e7eb)', borderRadius: 4, padding: '2px 6px', color: 'var(--k-6b7280)', fontFamily: 'monospace' }}>ESC</kbd>}
               </div>
               {/* Results */}
               <div style={{ maxHeight: isMobile ? '42dvh' : 420, overflowY: 'auto', flex: 1 }}>

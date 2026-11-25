@@ -1599,7 +1599,7 @@ function AddPropertyModal({
 
           {error && <div style={{ fontSize: 13, color: 'var(--k-dc2626)', marginTop: 6, fontWeight: 600 }}>{error}</div>}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, ...(isMobile ? { position: 'sticky', bottom: 0, background: 'var(--k-fff)', paddingTop: 12 } : {}) }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, ...(isMobile ? { position: 'sticky', bottom: -24, background: 'var(--k-fff)', padding: '12px 0 14px', borderTop: '1px solid var(--k-f0f0f0)', zIndex: 2 } : {}) }}>   {/* bottom -24 = the sheet's own bottom padding, so form fields can't peek out under the buttons */}
             <button onClick={onClose} disabled={saving}
               style={{ padding: '10px 18px', border: '1px solid var(--k-e5e7eb)', borderRadius: 8, background: 'var(--k-fff)', color: 'var(--k-6b7280)', fontWeight: 600, fontSize: 14, cursor: 'pointer', minHeight: isMobile ? 44 : undefined }}>Cancel</button>
             <button onClick={submit} disabled={saving || reading}
