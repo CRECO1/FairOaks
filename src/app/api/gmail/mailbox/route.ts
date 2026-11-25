@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
-import { callerMailboxes } from '@/lib/gmail-mailbox';
+import { callerMailboxesChecked } from '@/lib/gmail-mailbox';
 import { listThreads, unreadCounts, hasModifyScope, listLabels } from '@/lib/gmail-live';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +13,9 @@ export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const sp = req.nextUrl.searchParams;
-  const boxes = await callerMailboxes(ctx.userId);
+  const { boxes, failed } = await callerMailboxesChecked(ctx.userId);
+  // The database or Google did not answer: say so (the page shows "try again"), rather than the false "Gmail isn't connected".
+  if (!boxes.length && failed) return NextResponse.json({ error: 'Your mail is slow to load right now. Try Refresh in a moment.' }, { status: 503 });
   if (!boxes.length) return NextResponse.json({ connected: false, accounts: [], threads: [], next: null });
   const account = sp.get('account');
   const box = boxes.find(b => b.email && b.email === account) ?? boxes[0];

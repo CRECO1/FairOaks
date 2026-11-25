@@ -6,22 +6,30 @@ import { adminClient } from '@/lib/supabase-admin';
 
 export type Mailbox = { accessToken: string; email: string | null };
 
-export async function callerMailboxes(userId: string): Promise<Mailbox[]> {
+// `failed` is true when the database (or Google's token service) did not answer, as opposed to "this person has no Gmail connected":
+// the mailbox list uses it to say "slow right now, try again" instead of the false "Gmail isn't connected".
+export async function callerMailboxesChecked(userId: string): Promise<{ boxes: Mailbox[]; failed: boolean }> {
   const db = adminClient();
-  const { data: rows } = await db.from('gmail_connections').select('access_token, refresh_token, expires_at, email').eq('user_id', userId).order('created_at', { ascending: false });
+  const { data: rows, error } = await db.from('gmail_connections').select('access_token, refresh_token, expires_at, email').eq('user_id', userId).order('created_at', { ascending: false });
+  if (error) return { boxes: [], failed: true };
+  let failed = false;
   const out: Mailbox[] = [];
   for (const c of rows ?? []) {
     let accessToken = decryptToken(c.access_token as string);
     if (Date.now() >= new Date(c.expires_at as string).getTime() - 120_000) {
-      const res = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: process.env.GOOGLE_CLIENT_ID!, client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-          refresh_token: decryptToken(c.refresh_token as string), grant_type: 'refresh_token',
-        }),
-      });
+      let res: Response;
+      try {
+        res = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: process.env.GOOGLE_CLIENT_ID!, client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+            refresh_token: decryptToken(c.refresh_token as string), grant_type: 'refresh_token',
+          }),
+        });
+      } catch { failed = true; continue; } // Google did not answer: try again later, this is not a disconnect
       const j = await res.json().catch(() => ({}));
+      if (res.status >= 500) failed = true;
       if (!res.ok || !j.access_token) continue;
       accessToken = j.access_token as string;
       await db.from('gmail_connections').update({
@@ -30,5 +38,9 @@ export async function callerMailboxes(userId: string): Promise<Mailbox[]> {
     }
     out.push({ accessToken, email: (c.email as string | null) ?? null });
   }
-  return out;
+  return { boxes: out, failed: failed && out.length === 0 };
+}
+
+export async function callerMailboxes(userId: string): Promise<Mailbox[]> {
+  return (await callerMailboxesChecked(userId)).boxes;
 }

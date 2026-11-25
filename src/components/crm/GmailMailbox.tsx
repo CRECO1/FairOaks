@@ -1006,7 +1006,7 @@ export default function GmailMailbox(p: Props) {
       const who = g ? g.people.map(pe => (pe.name || pe.email).split(/[\s@]/)[0]).join(', ') : (otherOf(lead).name || otherOf(lead).email || '(unknown)');
       const at = Math.max(...u.map(x => x.date));
       const lastOpen = Math.max(0, ...u.map(x => { const l = tracking.get(x.id)?.last; return l ? new Date(l).getTime() : 0; })) || null;
-      return { key: lead.id, who: `To: ${who}`, subject: lead.subject, at, days: ageDays(at), lastOpen, open: () => openThread(lead), follow: () => void (g ? followUpChain(g) : followUp(lead)), following: following === lead.id };
+      return { key: lead.id, who: `To: ${who}`, subject: g ? g.subject : lead.subject, at, days: ageDays(at), lastOpen, open: () => openThread(lead), follow: () => void (g ? followUpChain(g) : followUp(lead)), following: following === lead.id };
     };
     const items = sentUnits.map(item);
     const today = dayKey(Date.now());
