@@ -103,8 +103,8 @@ export default function SettingsPage(props: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
         <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#c9922c', color: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>{initials}</div>
         <div style={{ minWidth: 0 }}>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--k-111, #111)' }}>Settings</h1>
-          <div style={{ fontSize: 13, color: 'var(--k-6b7280, #6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name} · {profile.email} · {props.isSuperAdmin ? 'Owner' : props.isAdmin ? 'Broker · Admin' : 'Agent'}</div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--k-111, #111)' }}>{props.isMobile ? `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || 'Settings' : 'Settings'}</h1>
+          <div style={{ fontSize: 13, color: 'var(--k-6b7280, #6b7280)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{props.isMobile ? '' : `${profile.first_name} ${profile.last_name} · `}{profile.email} · {props.isSuperAdmin ? 'Owner' : props.isAdmin ? 'Broker · Admin' : 'Agent'}</div>
         </div>
       </div>
 
@@ -116,13 +116,13 @@ export default function SettingsPage(props: {
             const on = section === s.id;
             return (
               <button key={s.id} onClick={() => setSection(s.id)} aria-current={on ? 'page' : undefined}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: on ? 700 : 500, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif",
+                style={{ display: 'flex', flexShrink: 0, alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: on ? 700 : 500, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif",
                   background: on ? 'rgba(201,146,44,.14)' : 'transparent', color: on ? '#a06f12' : 'var(--k-374151, #374151)', minHeight: 40 }}>
                 <Ico n={s.ico} size={17} />{s.label}
               </button>
             );
           })}
-          <button onClick={props.onSignOut} style={{ ...ghost, marginTop: props.isMobile ? 0 : 12, whiteSpace: 'nowrap', minHeight: 40 }}>⏻ Sign out</button>
+          <button onClick={props.onSignOut} style={{ ...ghost, marginTop: props.isMobile ? 0 : 12, whiteSpace: 'nowrap', flexShrink: 0, minHeight: 40 }}>⏻ Sign out</button>
         </nav>
 
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>

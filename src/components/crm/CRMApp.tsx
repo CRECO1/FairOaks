@@ -4832,6 +4832,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── Reset agent password ──────────────────────────────────────────────────────
   async function resetAgentPassword(email: string, firstName: string) {
+    if (!confirm(`Email ${firstName} a password reset link (${email})?`)) return;   // one stray tap on a phone used to send it
     const res = await fetch('/api/crm/reset-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) },
@@ -9469,20 +9470,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {isSuperAdmin && a.id !== profile.id && a.role !== 'super_admin' && (
                         <button
                           onClick={() => updateAgentRole(a.id, a.first_name, a.role === 'admin' ? 'agent' : 'admin')}
-                          style={{ width: '100%', padding: '7px 0', fontSize: 13, fontWeight: 600, background: a.role === 'admin' ? 'var(--k-fef3c7)' : 'var(--k-f0fdf4)', color: a.role === 'admin' ? 'var(--k-92400e)' : 'var(--k-166534)', border: `1px solid ${a.role === 'admin' ? 'var(--k-fde68a)' : 'var(--k-bbf7d0)'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                          style={{ width: '100%', padding: '7px 0', minHeight: isMobile ? 44 : undefined, fontSize: 13, fontWeight: 600, background: a.role === 'admin' ? 'var(--k-fef3c7)' : 'var(--k-f0fdf4)', color: a.role === 'admin' ? 'var(--k-92400e)' : 'var(--k-166534)', border: `1px solid ${a.role === 'admin' ? 'var(--k-fde68a)' : 'var(--k-bbf7d0)'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                           {a.role === 'admin' ? '⬇️ Remove Admin' : '⬆️ Make Admin'}
                         </button>
                       )}
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button
                           onClick={() => resetAgentPassword(a.email, a.first_name)}
-                          style={{ flex: 1, padding: '7px 0', fontSize: 13, fontWeight: 600, background: 'var(--k-f3f4f6)', color: 'var(--k-374151)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                          style={{ flex: 1, padding: '7px 0', minHeight: isMobile ? 44 : undefined, fontSize: 13, fontWeight: 600, background: 'var(--k-f3f4f6)', color: 'var(--k-374151)', border: '1px solid var(--k-e5e7eb)', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                           🔑 Reset Password
                         </button>
                         {a.id !== profile.id && a.role !== 'admin' && a.role !== 'super_admin' && (
                           <button
                             onClick={() => deleteAgent(a.id, a.first_name, a.last_name)}
-                            style={{ padding: '7px 10px', fontSize: 13, fontWeight: 600, background: 'var(--k-fee2e2)', color: 'var(--k-991b1b)', border: '1px solid var(--k-fecaca)', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                            style={{ padding: '7px 10px', minHeight: isMobile ? 44 : undefined, minWidth: isMobile ? 48 : undefined, marginLeft: isMobile ? 10 : 0, fontSize: 13, fontWeight: 600, background: 'var(--k-fee2e2)', color: 'var(--k-991b1b)', border: '1px solid var(--k-fecaca)', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                             🗑
                           </button>
                         )}
