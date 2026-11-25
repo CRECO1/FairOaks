@@ -504,7 +504,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
             .fp-seg{border-radius:22px!important;padding:4px!important}
             .fp-seg button{border-radius:18px!important;min-height:40px}}
           .fp-hint{display:none}
-          @media (max-width:700px){.fp-pan{overflow-x:auto;-webkit-overflow-scrolling:touch}.fp-pan>svg{min-width:720px}
+          @media (max-width:700px){.fp-pan{overflow-x:auto;-webkit-overflow-scrolling:touch}.fp-pan>svg{min-width:620px}
             .fp-hint{display:block;font-size:12px;color:#9ca3af;text-align:center;padding:2px 0 6px}}
           @media (prefers-reduced-motion:reduce){.fp-sum{animation:none}}
         `}</style>
