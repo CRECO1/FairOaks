@@ -2156,9 +2156,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, []); // eslint-disable-line
 
   // Sync page state → URL hash on navigation
+  // On the Emails page the hash also carries the tab (#sent / #drafts), so a refresh stays on Sent instead of falling back to Inbox.
   useEffect(() => {
-    if (typeof window !== 'undefined') window.location.hash = page;
-  }, [page]);
+    if (typeof window !== 'undefined') window.location.hash = page === 'emails' && emailsTab !== 'inbox' ? emailsTab : page;
+  }, [page, emailsTab]);
 
   // ── Reopen what was open inside the page before a refresh (lib/view-memory) ──
   // The hash brings back the page; these bring back the contact card, campaign or
