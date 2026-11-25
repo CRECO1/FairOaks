@@ -26,7 +26,7 @@ export function personStatus(person: Person, tracking: Tracking) {
     if (tr.first && (!first || tr.first < first)) first = tr.first;
     if (tr.last && (!last || tr.last > last)) last = tr.last;
   }
-  return { opens, opened: opened || repliedAt !== null, firstOpen: first, lastOpen: last, repliedAt, replied: repliedAt !== null };
+  return { opens, viewed: opened, opened: opened || repliedAt !== null, firstOpen: first, lastOpen: last, repliedAt, replied: repliedAt !== null };
 }
 
 export function groupSummary(g: G, tracking: Tracking) {
@@ -50,6 +50,11 @@ export function SentGroupCard(p: {
   const names = g.people.map(firstName).join(', ');
   const n = g.count;
   const lead = g.people[0];
+  // Who opened it, by name ("Nathan", "Nathan, Joe", "All 3"), not just "1/3".
+  const viewers = g.people.filter((_, i) => sum.status[i].viewed), repliers = g.people.filter((_, i) => sum.status[i].replied);
+  const waiting = g.people.filter((_, i) => !sum.status[i].opened);
+  const viewText = viewers.length === 0 ? `0/${sum.total}` : viewers.length === sum.total ? `All ${sum.total}` : viewers.length <= 2 ? viewers.map(firstName).join(', ') : `${viewers.length} of ${sum.total}`;
+  const who = { viewers, repliers, viewText, title: [viewers.length ? `Opened by ${viewers.map(firstName).join(', ')}` : 'Not opened yet', repliers.length ? `replied: ${repliers.map(firstName).join(', ')}` : '', waiting.length && viewers.length ? `not yet: ${waiting.map(firstName).join(', ')}` : ''].filter(Boolean).join(' · ') };
   const chain = [...g.sends].reverse().map(s => `${whenShort(s.at)} ${sendLabel(s.kind)}`).join(' · ');
   const outer: React.CSSProperties = p.isMobile
     ? { position: 'relative', overflow: 'hidden', marginBottom: 10, borderRadius: 18, border: '1px solid var(--k-e5e7eb)', background: 'var(--k-fff)', boxShadow: '0 1px 2px rgba(0,0,0,.05), 0 8px 18px rgba(0,0,0,.05)' }
@@ -73,8 +78,8 @@ export function SentGroupCard(p: {
               <span style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}>To: </span>{names}
               {n > 1 && <span title={chain} style={{ fontWeight: 500, color: 'var(--k-9ca3af)' }}> {n}</span>}
             </span>
-            <span title={`${sum.opened} of ${sum.total} people have opened it${sum.replied ? `, ${sum.replied} replied` : ''}`}
-              style={{ fontSize: 11.5, fontWeight: 600, flexShrink: 0, color: sum.opened ? 'var(--k-065f46)' : 'var(--k-9ca3af)' }}>👁 {sum.opened}/{sum.total}{sum.replied > 0 && <span style={{ color: 'var(--k-1e40af)' }}> ↩{'\uFE0E'} {sum.replied}</span>}</span>
+            <span title={who.title} style={{ fontSize: 11.5, fontWeight: 600, flexShrink: 0, color: who.viewers.length ? 'var(--k-065f46)' : 'var(--k-9ca3af)', maxWidth: '55%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              👁 {who.viewText}{who.repliers.length > 0 && <span style={{ color: 'var(--k-1e40af)' }}> ↩{'\uFE0E'} {who.repliers.map(firstName).join(', ')}</span>}</span>
             <span style={{ fontSize: 12, color: 'var(--k-9ca3af)', flexShrink: 0 }} title={whenLong(g.sends[0].at)}>{when(g.sends[0].at)}</span>
           </div>
           <div style={{ fontSize: 13.5, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--k-4b5563)' }}>
@@ -87,7 +92,7 @@ export function SentGroupCard(p: {
   );
 }
 
-export type OverviewItem = { key: string; who: string; subject: string; at: number; days?: number; lastOpen?: number | null; open: () => void; follow?: () => void; following?: boolean };
+export type OverviewItem = { key: string; who: string; subject: string; at: number; days?: number; lastOpen?: number | null; openedBy?: string; open: () => void; follow?: () => void; following?: boolean };
 
 const ago = (ms: number) => {
   const m = Math.max(1, Math.round((Date.now() - ms) / 60_000));
@@ -136,7 +141,7 @@ export function SentOverview(p: { sentToday: number; tracked: number; opened: nu
           {it.follow && <button type="button" disabled={it.following} onClick={e => { e.stopPropagation(); it.follow!(); }} style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid var(--k-d1d5db)', background: 'var(--k-fff)', color: 'var(--k-374151)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: FONT, flexShrink: 0 }}>{it.following ? 'Opening…' : 'Follow up'}</button>}
         </>)), 'Nothing waiting. Everyone you wrote to has answered or it is still fresh.')}
       {box('Recently opened', 'The last emails someone opened', p.recent.slice(0, 5).map(it => row(it,
-        <span style={{ ...pill('var(--k-d1fae5)', 'var(--k-065f46)'), flexShrink: 0 }}>👁 {it.lastOpen ? ago(it.lastOpen) : 'opened'}</span>)), 'No opens yet on the emails loaded here.')}
+        <span style={{ ...pill('var(--k-d1fae5)', 'var(--k-065f46)'), flexShrink: 0 }}>👁 {it.openedBy ? `${it.openedBy} · ` : ''}{it.lastOpen ? ago(it.lastOpen) : 'opened'}</span>)), 'No opens yet on the emails loaded here.')}
       <div style={{ fontSize: 12, color: 'var(--k-9ca3af)', textAlign: 'center', padding: '4px 0 8px' }}>Pick an email to read it · j / k to move · r reply · a reply all · f forward</div>
     </div>
   );

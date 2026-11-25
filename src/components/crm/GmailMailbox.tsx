@@ -1006,7 +1006,8 @@ export default function GmailMailbox(p: Props) {
       const who = g ? g.people.map(pe => (pe.name || pe.email).split(/[\s@]/)[0]).join(', ') : (otherOf(lead).name || otherOf(lead).email || '(unknown)');
       const at = Math.max(...u.map(x => x.date));
       const lastOpen = Math.max(0, ...u.map(x => { const l = tracking.get(x.id)?.last; return l ? new Date(l).getTime() : 0; })) || null;
-      return { key: lead.id, who: `To: ${who}`, subject: g ? g.subject : lead.subject, at, days: ageDays(at), lastOpen, open: () => openThread(lead), follow: () => void (g ? followUpChain(g) : followUp(lead)), following: following === lead.id };
+      const openers = (g ? g.people.filter(pe => pe.threads.some(t => tracking.get(t.id)?.opened)).map(pe => (pe.name || pe.email).split(/[\s@]/)[0]) : (tracking.get(lead.id)?.opened ? [(otherOf(lead).name || otherOf(lead).email).split(/[\s@]/)[0]] : []));
+      return { key: lead.id, who: `To: ${who}`, subject: g ? g.subject : lead.subject, at, days: ageDays(at), lastOpen, openedBy: openers.length ? (openers.length > 2 ? `${openers.length} people` : openers.join(', ')) : undefined, open: () => openThread(lead), follow: () => void (g ? followUpChain(g) : followUp(lead)), following: following === lead.id };
     };
     const items = sentUnits.map(item);
     const today = dayKey(Date.now());
@@ -1245,18 +1246,22 @@ function ThreadReader(p: {
     }
     return m;
   }, [opens, copies]);
-  // "Nathan 3× · not yet: Joe, Derek" for a message that went to several people.
+  // "Nathan 3× opened · not yet: Joe, Derek" for a message that went to several people.
+  const copyWho = (c: LiveMessage) => { const a = parseAddr(c.to); return (a.name || a.email).split(/[\s@]/)[0]; };
   const openedBy = (m: LiveMessage) => {
     const list = copies.get(m.id);
     if (!list || list.length < 2) return '';
-    const who = (c: LiveMessage) => { const a = parseAddr(c.to); return (a.name || a.email).split(/[\s@]/)[0]; };
+    const who = copyWho;
     const yes = list.filter(c => opens.get(c.id)?.opened), no = list.filter(c => !opens.get(c.id)?.opened);
     return [yes.length ? `${yes.map(c => `${who(c)}${(opens.get(c.id)?.n ?? 0) > 1 ? ` ${opens.get(c.id)!.n}×` : ''}`).join(', ')} opened` : '', no.length ? `${yes.length ? 'not yet: ' : 'Not opened by '}${no.map(who).join(', ')}` : ''].filter(Boolean).join(' · ');
   };
 
   const openChip = (m: LiveMessage) => {
     const cps = copies.get(m.id), o = opensV.get(m.id)!;
-    if (cps && cps.length > 1) return `👁 ${cps.filter(c => opens.get(c.id)?.opened).length} of ${cps.length} opened`;
+    if (cps && cps.length > 1) {
+      const seen = cps.filter(c => opens.get(c.id)?.opened);
+      return seen.length === cps.length ? `👁 All ${cps.length} opened` : seen.length <= 2 ? `👁 ${seen.map(copyWho).join(', ')} opened` : `👁 ${seen.length} of ${cps.length} opened`;
+    }
     return `👁 Opened${o.n > 1 ? ` ${o.n}×` : ''}${o.last ? ` · ${when(new Date(o.last).getTime())}` : ''}`;
   };
 
@@ -1789,6 +1794,7 @@ function ThreadReader(p: {
                     style={{ background: 'none', border: 'none', padding: 0, marginTop: 2, cursor: 'pointer', fontSize: 12.5, color: 'var(--k-6b7280)', fontFamily: "'DM Sans',sans-serif", textAlign: 'left' }}>
                     {toSummary(m)} <span style={{ fontSize: 10 }}>{showDetails ? '▴' : '▾'}</span>
                   </button>
+                  {openedBy(m) && <div style={{ marginTop: 3, fontSize: 12, fontWeight: 600, color: opensV.get(m.id)?.opened ? 'var(--k-065f46)' : 'var(--k-9ca3af)' }}>👁 {openedBy(m)}</div>}
                   {showDetails && (
                     <div style={{ marginTop: 6, padding: '8px 10px', background: 'var(--k-f9fafb)', border: '1px solid var(--k-eef0f2)', borderRadius: 8, fontSize: 12.5, color: 'var(--k-374151)', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '3px 10px', overflowWrap: 'anywhere' }}>
                       <span style={{ color: 'var(--k-9ca3af)' }}>From</span><span>{m.from}</span>
